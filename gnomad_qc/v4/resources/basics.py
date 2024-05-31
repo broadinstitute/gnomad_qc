@@ -289,22 +289,24 @@ def get_gnomad_v4_vds(
         logger.info("Filtering VDS to control samples only...")
         vds = hl.vds.filter_samples(vds, TRUTH_SAMPLES_S)
 
+    vmt = vds.variant_data
     if annotate_meta:
         logger.info("Annotating VDS variant_data with metadata...")
         meta_ht = meta().ht()
-        vds = hl.vds.VariantDataset(
-            vds.reference_data,
-            vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
-        )
+        vmt = vmt.annotate_cols(meta=meta_ht[vds.variant_data.col_key])
 
     if split:
-        vds = _split_and_filter_vds_for_loading(vds, filter_variant_ht, entries_to_keep)
+        vmt = _split_and_filter_variant_data_for_loading(
+            vmt, filter_variant_ht, entries_to_keep
+        )
 
     if entries_to_keep is not None:
         vds = hl.vds.VariantDataset(
             vds.reference_data,
             vds.variant_data.select_entries(*entries_to_keep),
         )
+
+    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     return vds
 
@@ -371,29 +373,28 @@ def get_gnomad_v4_genomes_vds(
     return vds
 
 
-def _split_and_filter_vds_for_loading(
-    vds: hl.vds.VariantDataset,
+def _split_and_filter_variant_data_for_loading(
+    mt: hl.MatrixTable,
     filter_variant_ht: hl.Table = None,
     entries_to_keep: Optional[List[str]] = None,
-) -> hl.vds.VariantDataset:
+) -> hl.MatrixTable:
     """
-    Split and filter a VDS to a set of variants and entries fields.
+    Split and filter a VDS variant data MT to a set of variants and entries fields.
 
-    :param vds: VDS to split and filter.
+    :param mt: VDS variant data MT to split and filter.
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of
         variants.
     :param entries_to_keep: Optional argument to keep only specific entries in the
-        returned VDS. Use the global entries (e.g. 'GT') instead of the local entries
+        returned MT. Use the global entries (e.g. 'GT') instead of the local entries
         (e.g. 'LGT') to keep.
-    :return: VDS split and filtered to the desired set of variants and entries fields.
+    :return: Split and filtered VDS variant data MT.
     """
-    vmt = vds.variant_data
     if entries_to_keep is not None:
         split_entries_to_keep = entries_to_keep + ["LA"]
         split_entries_to_keep = [
             "L" + e if e in {"GT", "AD", "PL"} else e for e in split_entries_to_keep
         ]
-        vmt = vmt.select_entries(*split_entries_to_keep)
+        mt = mt.select_entries(*split_entries_to_keep)
 
     if filter_variant_ht is not None:
         filter_locus_ht = (
@@ -401,23 +402,21 @@ def _split_and_filter_vds_for_loading(
             .key_by("locus")
             .checkpoint(hl.utils.new_temp_file("vmt_locus_filter", ".ht"))
         )
-        vmt = vmt.filter_rows(hl.is_defined(filter_locus_ht[vmt.locus]))
+        mt = mt.filter_rows(hl.is_defined(filter_locus_ht[mt.locus]))
 
     logger.info("Splitting multiallelics...")
-    vmt = vmt.annotate_rows(
-        n_unsplit_alleles=hl.len(vmt.alleles),
-        mixed_site=(hl.len(vmt.alleles) > 2)
-        & hl.any(lambda a: hl.is_indel(vmt.alleles[0], a), vmt.alleles[1:])
-        & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
+    mt = mt.annotate_rows(
+        n_unsplit_alleles=hl.len(mt.alleles),
+        mixed_site=(hl.len(mt.alleles) > 2)
+        & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
+        & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
     )
-    vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
+    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     if filter_variant_ht is not None:
-        vmt = vmt.filter_rows(hl.is_defined(filter_variant_ht[vmt.row_key]))
+        mt = mt.filter_rows(hl.is_defined(filter_variant_ht[mt.row_key]))
 
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-
-    return vds
+    return mt
 
 
 _gnomad_v4_genotypes = {

@@ -92,7 +92,7 @@ def get_gnomad_v3_vds(
             )
 
     if split:
-        vds = v4_basics._split_and_filter_vds_for_loading(
+        vds = v4_basics._split_and_filter_variant_data_for_loading(
             vds, filter_variant_ht, entries_to_keep
         )
 
