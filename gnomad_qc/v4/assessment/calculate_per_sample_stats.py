@@ -500,6 +500,9 @@ def main(args):
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
         if args.create_per_sample_counts_ht:
+            filtering_groups_res = get_summary_stats_filtering_groups(
+                data_type=data_type
+            )
             filter_groups_ht = filtering_groups_res.ht()
             logger.info(
                 "Calculating per-sample variant statistics for %s...", data_type
