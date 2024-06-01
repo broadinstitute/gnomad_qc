@@ -43,6 +43,7 @@ def get_gnomad_v4_vds(
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
     entries_to_keep: Optional[List[str]] = None,
+    annotate_het_non_ref: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 data with desired filtering and metadata annotations.
@@ -75,6 +76,8 @@ def get_gnomad_v4_vds(
     :param entries_to_keep: Optional argument to keep only specific entries in the
         returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
         of the local entries (e.g. 'LGT') to keep.
+    :param annotate_het_non_ref: Whether to annotate non_ref hets to unsplit variant
+        data. Default is False.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
@@ -295,6 +298,13 @@ def get_gnomad_v4_vds(
         meta_ht = meta().ht()
         vmt = vmt.annotate_cols(meta=meta_ht[vds.variant_data.col_key])
 
+    if annotate_het_non_ref:
+        logger.info("Annotating non_ref hets to unsplit variant data...")
+        vmt = vmt.annotate_entries(_het_non_ref=vmt.LGT.is_het_non_ref())
+        entries_to_keep = (
+            None if entries_to_keep is None else entries_to_keep + ["_het_non_ref"]
+        )
+
     if split:
         vmt = _split_and_filter_variant_data_for_loading(
             vmt, filter_variant_ht, entries_to_keep
@@ -318,6 +328,7 @@ def get_gnomad_v4_genomes_vds(
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     filter_variant_ht: Optional[hl.Table] = None,
     entries_to_keep: Optional[List[str]] = None,
+    annotate_het_non_ref: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
@@ -339,6 +350,8 @@ def get_gnomad_v4_genomes_vds(
     :param entries_to_keep: Optional argument to keep only specific entries in the
         returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
         of the local entries (e.g. 'LGT') to keep.
+    :param annotate_het_non_ref: Whether to annotate non_ref hets to unsplit variant
+        data. Default is False.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
     vds = get_gnomad_v3_vds(
@@ -351,6 +364,7 @@ def get_gnomad_v4_genomes_vds(
         chrom=chrom,
         filter_variant_ht=filter_variant_ht,
         entries_to_keep=entries_to_keep,
+        annotate_het_non_ref=annotate_het_non_ref,
     )
 
     if samples_meta or release_only:
@@ -394,10 +408,9 @@ def _split_and_filter_variant_data_for_loading(
         mt = mt.select_entries(*split_entries_to_keep)
 
     if filter_variant_ht is not None:
-        filter_locus_ht = (
-            filter_variant_ht.select()
-            .key_by("locus")
-            .checkpoint(hl.utils.new_temp_file("vmt_locus_filter", ".ht"))
+        # Prevents hail from running sort on HT which is already sorted.
+        filter_locus_ht = hl.Table(
+            hl.ir.TableKeyBy(filter_variant_ht._tir, ["locus"], is_sorted=True)
         )
         mt = mt.filter_rows(hl.is_defined(filter_locus_ht[mt.locus]))
 

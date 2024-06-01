@@ -313,6 +313,7 @@ def get_summary_stats_filter_groups_ht(
         _no_lcr=filter_exprs["no_lcr"],
         filter_groups=filter_groups_expr,
         variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
+        variant_af=ht.freq[0].AF,
     )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
@@ -322,7 +323,7 @@ def get_summary_stats_filter_groups_ht(
 
 
 def create_per_sample_counts_ht(
-    mt: hl.MatrixTable, filter_group_ht: hl.Table
+    mt: hl.MatrixTable, filter_group_ht: hl.Table, autosomes_only: bool = False
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
@@ -335,6 +336,8 @@ def create_per_sample_counts_ht(
     :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
         split.
     :param filter_group_ht: Table containing filter groups for summary stats.
+    :param autosomes_only: Whether to restrict analysis to autosomes only. Default is
+        False.
     :return: Table containing per-sample variant counts.
     """
     # Add Allele Type annotations to variant MatrixTable.
@@ -342,11 +345,24 @@ def create_per_sample_counts_ht(
         global_gt=mt.GT, alleles=mt.alleles
     )
     mt = mt.annotate_rows(variant_atypes=variant_types)
+    if autosomes_only:
+        ab_cutoff = 0.9
+        mt = filter_to_autosomes(mt)
+        mt = mt.annotate_entries(
+            GT=hl.if_else(
+                (mt.variant_af > 0.01)
+                & ((mt.AD[1] / mt.DP) > ab_cutoff)
+                & ~mt._het_non_ref,
+                hl.call(1, 1),
+                mt.GT,
+            )
+        )
 
     # Annotate the MT with the needed annotations.
     mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
     mt = mt.filter_entries(mt.GT.is_non_ref())
     mt = filter_to_adj(mt)
+
     mt = mt.select_entries("GT", "GQ", "DP")
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
@@ -529,11 +545,10 @@ def main(args):
                 filter_partitions=test_partitions,
                 filter_variant_ht=filter_groups_ht,
                 entries_to_keep=["GT", "GQ", "DP", "AD"],
+                annotate_het_non_ref=True,
             ).variant_data
-            if autosomes_only:
-                mt = filter_to_autosomes(mt)
 
-            create_per_sample_counts_ht(mt, filter_groups_ht).write(
+            create_per_sample_counts_ht(mt, filter_groups_ht, autosomes_only).write(
                 per_sample_res.path, overwrite=overwrite
             )
 
