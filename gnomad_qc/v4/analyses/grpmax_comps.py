@@ -210,8 +210,8 @@ def create_table(
         logger.info(
             f"\n{'non-synonymous' if non_syn_only else ''} variant count by genetic "
             f"ancestry group where the\n{'grpmax' if grpmax_counts else ''} AF is above"
-            f" {threshold}{' and the '+ {data_subset} + ' AF is below it' if grpmax_counts else ''}...\n"
-            f"{tabulate(table,headers=headers,tablefmt='fancy_grid')}"
+            f" {threshold}{' and the ' + str(data_subset) + ' AF is below it' if grpmax_counts else ''}...\n"
+            f"{tabulate(table, headers=headers, tablefmt='fancy_grid')}"
         )
 
 
