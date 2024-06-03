@@ -352,6 +352,7 @@ def create_per_sample_counts_ht(
             GT=hl.if_else(
                 (mt.variant_af > 0.01)
                 & ((mt.AD[1] / mt.DP) > ab_cutoff)
+                & mt.GT.is_het()
                 & ~mt._het_non_ref,
                 hl.call(1, 1),
                 mt.GT,
