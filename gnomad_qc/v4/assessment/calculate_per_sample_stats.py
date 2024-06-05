@@ -542,7 +542,7 @@ def main(args):
                     "--test-dataset or --test-n-partitions if it doesn't already exist."
                 )
             filter_groups_ht = get_summary_stats_filtering_groups(
-                data_type, autosomes_only=autosomes_only
+                data_type, test=test, autosomes_only=autosomes_only
             ).ht()
             vds_load_func = (
                 get_gnomad_v4_vds
