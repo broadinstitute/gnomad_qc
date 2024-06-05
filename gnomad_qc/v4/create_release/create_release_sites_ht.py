@@ -242,7 +242,8 @@ def get_config(
                 "faf_meta",
                 "faf_index_dict",
                 "age_distribution",
-            ] + (["downsamplings"] if data_type == "exomes" else []),
+            ]
+            + (["downsamplings"] if data_type == "exomes" else []),
         },
         "vep": {
             "ht": get_vep(data_type=data_type).ht(),

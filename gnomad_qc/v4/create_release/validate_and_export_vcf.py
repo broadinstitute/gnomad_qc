@@ -89,7 +89,8 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
 REGION_FLAG_FIELDS = {
-    "exomes": REGION_FLAG_FIELDS + [
+    "exomes": REGION_FLAG_FIELDS
+    + [
         "fail_interval_qc",
         "outside_ukb_capture_region",
         "outside_broad_capture_region",

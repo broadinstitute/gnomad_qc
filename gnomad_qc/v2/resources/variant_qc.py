@@ -112,9 +112,8 @@ def score_ranking_path(
     :rtype: str
     """
 
-    return (
-        "gs://gnomad/annotations/hail-{0}/ht/{1}/score_rankings/gnomad.{1}.{2}{3}.ht"
-        .format(hail_version, data_type, data, "_binned" if binned else "")
+    return "gs://gnomad/annotations/hail-{0}/ht/{1}/score_rankings/gnomad.{1}.{2}{3}.ht".format(
+        hail_version, data_type, data, "_binned" if binned else ""
     )
 
 

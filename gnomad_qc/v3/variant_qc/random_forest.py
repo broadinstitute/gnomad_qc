@@ -144,9 +144,8 @@ def create_rf_ht(
         *FEATURES,
         *TRUTH_DATA,
         **{
-            "transmitted_singleton": (ht[f"n_transmitted_{group}"] == 1) & (
-                ht[f"ac_qc_samples_{group}"] == 2
-            ),
+            "transmitted_singleton": (ht[f"n_transmitted_{group}"] == 1)
+            & (ht[f"ac_qc_samples_{group}"] == 2),
             "fail_hard_filters": (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
         },
         singleton=ht.ac_release_samples_raw == 1,

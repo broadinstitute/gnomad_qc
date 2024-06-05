@@ -1,4 +1,5 @@
 """Script containing variant QC related resources."""
+
 from typing import Union
 
 from gnomad.resources.grch38 import (
@@ -225,9 +226,7 @@ def get_rf_run_path(
     :param test: Whether to return the test RF runs list.
     :return: Path to json file.
     """
-    return (
-        f"{_variant_qc_root(version, test=test)}/rf/gnomad.exomes.v{version}.rf_runs.json"
-    )
+    return f"{_variant_qc_root(version, test=test)}/rf/gnomad.exomes.v{version}.rf_runs.json"
 
 
 def get_rf_model_path(
@@ -241,9 +240,7 @@ def get_rf_model_path(
     :param test: Whether to use a tmp path for variant QC tests.
     :return: Path to the RF model.
     """
-    return (
-        f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
-    )
+    return f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
 
 
 def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource:

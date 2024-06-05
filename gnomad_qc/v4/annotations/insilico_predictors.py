@@ -1,4 +1,5 @@
 """Script to generate Hail Tables with in silico predictors."""
+
 import argparse
 import logging
 

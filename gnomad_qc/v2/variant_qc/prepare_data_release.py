@@ -871,8 +871,9 @@ def make_info_dict(
             f"{prefix}_AN_popmax": {
                 "Number": "A",
                 "Description": (
-                    "Total number of alleles in the population with the maximum AF{}"
-                    .format(popmax_text)
+                    "Total number of alleles in the population with the maximum AF{}".format(
+                        popmax_text
+                    )
                 ),
             },
             f"{prefix}_AF_popmax": {

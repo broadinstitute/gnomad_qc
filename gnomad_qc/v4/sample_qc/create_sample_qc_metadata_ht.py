@@ -1,4 +1,5 @@
 """Script to merge the output of all sample QC modules into a single Table."""
+
 import argparse
 import json
 import logging

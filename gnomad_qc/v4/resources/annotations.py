@@ -1,4 +1,5 @@
 """Script containing annotation related resources."""
+
 from typing import Optional
 
 from gnomad.resources.grch38.gnomad import SUBSETS
@@ -210,9 +211,7 @@ def info_vcf_path(
             f"Invalid info_method: {info_method}. Must be one of 'AS', 'quasi', or "
             "'long_AS_missing_info'."
         )
-    return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}{'.split' if split else ''}.vcf.bgz"
-    )
+    return f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}{'.split' if split else ''}.vcf.bgz"
 
 
 def get_true_positive_vcf_path(
@@ -239,9 +238,7 @@ def get_true_positive_vcf_path(
     ]
     if true_positive_type not in tp_types:
         raise ValueError(f"true_positive_type must be one of {tp_types}")
-    return (
-        f'{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
-    )
+    return f'{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
 
 
 freq = VersionedTableResource(

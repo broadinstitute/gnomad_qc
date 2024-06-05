@@ -1,4 +1,5 @@
 """Script for running random forest model on gnomAD v4 variant QC data."""
+
 import argparse
 import json
 import logging

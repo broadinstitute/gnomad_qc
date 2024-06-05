@@ -1,4 +1,5 @@
 """Script containing generic resources."""
+
 import logging
 from typing import List, Optional, Set, Union
 

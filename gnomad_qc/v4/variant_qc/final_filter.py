@@ -1,4 +1,5 @@
 """Script to create final filter Table for release."""
+
 import argparse
 import logging
 from typing import Dict, Optional
