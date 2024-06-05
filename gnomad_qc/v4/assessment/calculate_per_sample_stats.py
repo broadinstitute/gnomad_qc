@@ -344,6 +344,8 @@ def create_per_sample_counts_ht(
     _, variant_types = vmt_sample_qc_variant_annotations(
         global_gt=mt.GT, alleles=mt.alleles
     )
+    # Annotate the MT with the needed annotations.
+    mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
     mt = mt.annotate_rows(variant_atypes=variant_types)
     if autosomes_only:
         ab_cutoff = 0.9
@@ -359,8 +361,6 @@ def create_per_sample_counts_ht(
             )
         )
 
-    # Annotate the MT with the needed annotations.
-    mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
     mt = mt.filter_entries(mt.GT.is_non_ref())
     mt = filter_to_adj(mt)
 
