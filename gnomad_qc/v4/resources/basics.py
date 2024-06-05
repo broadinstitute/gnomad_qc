@@ -76,8 +76,8 @@ def get_gnomad_v4_vds(
     :param entries_to_keep: Optional argument to keep only specific entries in the
         returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
         of the local entries (e.g. 'LGT') to keep.
-    :param annotate_het_non_ref: Whether to annotate non_ref hets to unsplit variant
-        data. Default is False.
+    :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
+        '_het_non_ref') to the variant data. Default is False.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
@@ -350,8 +350,8 @@ def get_gnomad_v4_genomes_vds(
     :param entries_to_keep: Optional argument to keep only specific entries in the
         returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
         of the local entries (e.g. 'LGT') to keep.
-    :param annotate_het_non_ref: Whether to annotate non_ref hets to unsplit variant
-        data. Default is False.
+    :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
+        '_het_non_ref') to the variant data. Default is False.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
     vds = get_gnomad_v3_vds(
