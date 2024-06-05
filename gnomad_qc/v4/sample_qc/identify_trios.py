@@ -1,4 +1,5 @@
 """Script to identify trios from relatedness data and filter based on Mendel errors and de novos."""
+
 import argparse
 import json
 import logging

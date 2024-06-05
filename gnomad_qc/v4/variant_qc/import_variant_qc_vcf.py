@@ -1,4 +1,5 @@
 """Script to load variant QC result VCF into a Hail Table."""
+
 import argparse
 import logging
 from typing import Optional, Tuple, Union

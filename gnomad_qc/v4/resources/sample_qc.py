@@ -594,9 +594,7 @@ def _get_ancestry_pca_ht_path(
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Path to requested ancestry PCA file.
     """
-    return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
-    )
+    return f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
 
 
 def ancestry_pca_loadings(
@@ -697,9 +695,7 @@ def pop_rf_path(
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: String path to sample pop RF model.
     """
-    return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
-    )
+    return f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
 
 
 def get_pop_ht(
@@ -745,9 +741,7 @@ def per_pop_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     :param version: Version of the JSON to return.
     :return: Path to per ancestry group minimum RF probabilities JSON.
     """
-    return (
-        f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
-    )
+    return f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
 
 
 ######################################################################

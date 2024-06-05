@@ -11,6 +11,7 @@ frequency and callrate filters are applied, then LD-pruning is performed.
 Additionally, the script creates a joint v3 and v4 metadata file for use in
 relatedness/ancestry PCA.
 """
+
 import argparse
 import logging
 from typing import Union

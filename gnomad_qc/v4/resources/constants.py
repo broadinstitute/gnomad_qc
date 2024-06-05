@@ -1,4 +1,5 @@
 """Script containing version and release constants."""
+
 DATA_TYPES = ["exomes", "genomes"]
 RELEASE_DATA_TYPES = DATA_TYPES + ["joint"]
 

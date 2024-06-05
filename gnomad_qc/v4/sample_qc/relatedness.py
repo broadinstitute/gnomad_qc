@@ -1,4 +1,5 @@
 """Script to compute relatedness estimates among pairs of samples in the callset."""
+
 import argparse
 import logging
 import textwrap
@@ -73,7 +74,9 @@ def print_cuking_command(
         "This printed command assumes that the cuKING directory is in the same "
         "location where the command is being run and that $PROJECT_ID is set!"
     )
-    print(textwrap.dedent(f"""\
+    print(
+        textwrap.dedent(
+            f"""\
              cd cuKING && \\
              ./cloud_batch_submit.py \\
                  --location=us-central1 \\
@@ -87,7 +90,9 @@ def print_cuking_command(
                  --kin-threshold={min_emission_kinship} \\
                  --split-factor={cuking_split_factor} &&
              cd ..
-             """))
+             """
+        )
+    )
 
 
 def compute_ibd_on_cuking_pair_subset(

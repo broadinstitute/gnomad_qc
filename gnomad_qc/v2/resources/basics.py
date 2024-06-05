@@ -379,9 +379,7 @@ def hardcalls_mt_path(data_type, split=True, hail_version=CURRENT_HAIL_VERSION):
 
 
 def non_refs_only_mt_path(data_type, split=True):
-    return (
-        f'gs://gnomad/non_refs_only/hail-0.2/mt/{data_type}/gnomad.{data_type}{"" if split else ".unsplit"}.mt'
-    )
+    return f'gs://gnomad/non_refs_only/hail-0.2/mt/{data_type}/gnomad.{data_type}{"" if split else ".unsplit"}.mt'
 
 
 def pbt_phased_trios_mt_path(
@@ -390,14 +388,11 @@ def pbt_phased_trios_mt_path(
     trio_matrix: bool = False,
     hail_version: str = CURRENT_HAIL_VERSION,
 ):
-    return (
-        "gs://gnomad/hardcalls/hail-{0}/mt/{1}/gnomad.{1}.trios.pbt_phased{2}{3}.mt"
-        .format(
-            hail_version,
-            data_type,
-            "" if split else ".unsplit",
-            ".trio_matrix" if trio_matrix else "",
-        )
+    return "gs://gnomad/hardcalls/hail-{0}/mt/{1}/gnomad.{1}.trios.pbt_phased{2}{3}.mt".format(
+        hail_version,
+        data_type,
+        "" if split else ".unsplit",
+        ".trio_matrix" if trio_matrix else "",
     )
 
 
@@ -450,8 +445,9 @@ def gnomad_public_pca_loadings_ht_path(
     :rtype: str
     """
     return get_release_file(
-        "gs://gcp-public-data--gnomad/release/{{0}}/pca/gnomad.r{{0}}.pca_loadings{0}.ht"
-        .format(f".{subpop}" if subpop else ""),
+        "gs://gcp-public-data--gnomad/release/{{0}}/pca/gnomad.r{{0}}.pca_loadings{0}.ht".format(
+            f".{subpop}" if subpop else ""
+        ),
         version,
     )
 
@@ -486,9 +482,8 @@ def coverage_mt_path(data_type, grouped: bool = False) -> str:
     :return: Coverage MT
     :rtype: MatrixTable
     """
-    return (
-        "gs://gnomad/coverage/hail-0.2/coverage/{0}/mt/gnomad.{0}.coverage{1}.mt"
-        .format(data_type, ".grouped" if grouped else "")
+    return "gs://gnomad/coverage/hail-0.2/coverage/{0}/mt/gnomad.{0}.coverage{1}.mt".format(
+        data_type, ".grouped" if grouped else ""
     )
 
 
@@ -671,9 +666,8 @@ constraint_ht_path = "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0
 
 # Sample QC files
 def qc_ht_path(data_type: str):
-    return (
-        "gs://gnomad/sample_qc/ht/gnomad.{}.high_callrate_common_biallelic_snps.ht"
-        .format(data_type)
+    return "gs://gnomad/sample_qc/ht/gnomad.{}.high_callrate_common_biallelic_snps.ht".format(
+        data_type
     )
 
 

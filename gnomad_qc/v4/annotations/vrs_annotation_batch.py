@@ -129,7 +129,8 @@ def init_job_with_gcloud(
     """
     job = init_job(batch, name, image, cpu, memory, disk_size)
     # Retry gcloud auth and gsutil commands to avoid transient failures
-    job.command("""
+    job.command(
+        """
     retry() {
               "$@" ||
                   (sleep 2 && "$@") ||
@@ -141,7 +142,8 @@ def init_job_with_gcloud(
         curl -sSL broad.io/install-gcs-connector | python3
     }
     retry curl_and_python
-    """)
+    """
+    )
     if mount:
         job.cloudfuse(mount, "/local-vrs-mount")
     return job

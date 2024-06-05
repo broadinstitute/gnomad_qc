@@ -1,4 +1,5 @@
 """Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
+
 import argparse
 import logging
 from pprint import pformat

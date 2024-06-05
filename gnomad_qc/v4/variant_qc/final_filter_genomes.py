@@ -1,4 +1,5 @@
 """Script to create final filter Table for v4 genomes release."""
+
 import argparse
 import logging
 from copy import deepcopy

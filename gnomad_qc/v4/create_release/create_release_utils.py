@@ -1,4 +1,5 @@
 """Common utils for creating gnomAD v4 exomes and genomes releases."""
+
 import hail as hl
 
 # Tool versions used in the release that were not on the source tables

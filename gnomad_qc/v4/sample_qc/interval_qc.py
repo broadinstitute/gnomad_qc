@@ -10,6 +10,7 @@ Two methods are available for defining high quality intervals:
 Aggregate statistics over samples can also be stratified by platform to determine
 per-platform high quality intervals.
 """
+
 import argparse
 import functools
 import logging

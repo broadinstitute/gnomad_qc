@@ -22,7 +22,6 @@ All samples impacted (169 added, 110 released) are releasable; the updates we ma
 were to their sample QC status (high quality vs filtered).
 """
 
-
 import argparse
 import logging
 

@@ -22,6 +22,7 @@ computed:
 
 Aggregated statistics can also be computed by ancestry.
 """
+
 import argparse
 import logging
 from copy import deepcopy

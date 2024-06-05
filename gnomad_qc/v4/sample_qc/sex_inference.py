@@ -1,4 +1,5 @@
 """Script to impute chromosomal sex karyotype annotation."""
+
 import argparse
 import json
 import logging

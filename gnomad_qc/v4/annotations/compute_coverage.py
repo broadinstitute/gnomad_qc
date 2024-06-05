@@ -1,4 +1,5 @@
 """Script to compute coverage statistics on gnomAD v4 exomes."""
+
 import argparse
 import logging
 from typing import Optional
