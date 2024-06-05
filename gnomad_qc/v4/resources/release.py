@@ -143,9 +143,7 @@ def release_ht_path(
     else:
         # Note: This function was not used to write out the v4.0 joint release HT. That
         # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
-        return (
-            f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.sites.ht"
-        )
+        return f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def release_sites(

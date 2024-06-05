@@ -622,9 +622,8 @@ def create_final_combined_faf_release(
         ),
         **{f"outside_{c}_region": hl.is_missing(i[ht.locus]) for c, i in intervals},
         **{
-            f"not_called_in_{d}": hl.is_missing(ht[f"{d}_freq"]) | hl.is_missing(
-                ht[f"{d}_freq"][1].AN
-            )
+            f"not_called_in_{d}": hl.is_missing(ht[f"{d}_freq"])
+            | hl.is_missing(ht[f"{d}_freq"][1].AN)
             for d in DATA_TYPES
         },
     }
