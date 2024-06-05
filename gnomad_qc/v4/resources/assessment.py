@@ -29,7 +29,6 @@ def _assessment_root(
 def get_summary_stats_filtering_groups(
     data_type: str = "exomes",
     test: bool = False,
-    autosomes_only: bool = False,
 ) -> VersionedTableResource:
     """
     Get the filtering groups used in the summary stats.
@@ -38,15 +37,13 @@ def get_summary_stats_filtering_groups(
         "genomes".
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
-    :param autosomes_only: Whether to use the autosomes only filtering groups table.
-        Default is False.
     :return: Filtering groups used in the summary stats.
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups{'.autosomes' if autosomes_only else ''}.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.ht"
             )
             for version in RELEASES
         },

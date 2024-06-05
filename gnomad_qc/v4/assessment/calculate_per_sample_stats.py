@@ -344,9 +344,10 @@ def create_per_sample_counts_ht(
     _, variant_types = vmt_sample_qc_variant_annotations(
         global_gt=mt.GT, alleles=mt.alleles
     )
+    mt = mt.annotate_rows(variant_atypes=variant_types)
+
     # Annotate the MT with the needed annotations.
     mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
-    mt = mt.annotate_rows(variant_atypes=variant_types)
     if autosomes_only:
         ab_cutoff = 0.9
         mt = filter_to_autosomes(mt)
@@ -461,7 +462,7 @@ def main(args):
     hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
 
     data_type = args.data_type
-    autosomes_only = args.autosomes_only
+    autosomes_only = args.autosomes_only_stats
     test_dataset = args.test_dataset
     test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
@@ -514,12 +515,10 @@ def main(args):
             logger.info("Creating Table of filter groups for summary stats...")
             release_ht = release_sites(data_type=data_type).ht()
             filtering_groups_res = get_summary_stats_filtering_groups(
-                data_type=data_type, test=test, autosomes_only=autosomes_only
+                data_type=data_type, test=test
             )
             if args.test_n_partitions:
                 release_ht = release_ht._filter_partitions(test_partitions)
-            if autosomes_only:
-                release_ht = filter_to_autosomes(release_ht)
 
             get_summary_stats_filter_groups_ht(
                 release_ht,
@@ -536,6 +535,12 @@ def main(args):
             logger.info(
                 "Calculating per-sample variant statistics for %s...", data_type
             )
+            if test:
+                logger.warning(
+                    "This test requires that the full filtering groups Table has been "
+                    "created. Please run --create-filter-group-ht without "
+                    "--test-dataset or --test-n-partitions if it doesn't already exist."
+                )
             filter_groups_ht = get_summary_stats_filtering_groups(
                 data_type, autosomes_only=autosomes_only
             ).ht()
@@ -594,7 +599,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test-dataset",
-        help="Test on a small number of variants",
+        help="Test on the test dataset instead of the full dataset.",
         action="store_true",
     )
     parser.add_argument(
@@ -602,11 +607,6 @@ if __name__ == "__main__":
         default="exomes",
         choices=["exomes", "genomes"],
         help="Data type (exomes or genomes) to produce summary stats for.",
-    )
-    parser.add_argument(
-        "--autosomes-only",
-        help="Whether to restrict analysis to autosomes only.",
-        action="store_true",
     )
     parser.add_argument(
         "--create-filter-group-ht",
@@ -624,6 +624,11 @@ if __name__ == "__main__":
             "Compute aggregate sample statistics from the per-sample counts and add "
             "them as globals to the output Table."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--autosomes-only-stats",
+        help="Whether to restrict per-sample summary stats to autosomes only.",
         action="store_true",
     )
     parser.add_argument(
