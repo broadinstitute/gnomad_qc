@@ -13,14 +13,14 @@ from gnomad.resources.resource_utils import (
 from gnomad_qc.v4.resources.constants import (
     ALL_SITES_AN_RELEASES,
     ANNOTATION_VERSIONS,
-    COMBINED_FAF_RELEASES,
     CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_ANNOTATION_VERSION,
-    CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_FREQ_VERSION,
     CURRENT_HGDP_TGP_RELEASE,
+    CURRENT_VERSION,
     FREQ_VERSIONS,
     HGDP_TGP_RELEASES,
+    VERSIONS,
 )
 
 SUBSETS = SUBSETS["v4"]
@@ -365,12 +365,12 @@ def get_combined_frequency(
     :return: Hail Table containing combined frequency annotations.
     """
     return VersionedTableResource(
-        CURRENT_COMBINED_FAF_RELEASE,
+        CURRENT_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies{'.filtered' if filtered else ''}.ht"
             )
-            for version in COMBINED_FAF_RELEASES
+            for version in VERSIONS
         },
     )
 
@@ -402,12 +402,12 @@ def get_freq_comparison(
         )
 
     return VersionedTableResource(
-        CURRENT_COMBINED_FAF_RELEASE,
+        CURRENT_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}{'.filtered' if filtered else ''}.ht"
             )
-            for version in COMBINED_FAF_RELEASES
+            for version in VERSIONS
         },
     )
 

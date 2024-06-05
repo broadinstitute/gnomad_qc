@@ -231,6 +231,27 @@ def compute_an_and_qual_hists_per_ref_site(
     return ht
 
 
+def add_exomes_interval_annotations(ht: hl.Table, padding: int = 150) -> hl.Table:
+    """
+    Add interval annotations to exomes HT.
+
+    :param ht: Input HT.
+    :param padding: Number of base pair padding to use for the calling intervals.
+    :return: HT with exome interval annotations.
+    """
+    # Add capture and calling intervals as region flags.
+    intervals = [(c, calling_intervals(c, 0).ht()) for c in ["broad", "ukb"]]
+    intervals = [(f"{c}_capture", i) for c, i in intervals] + [
+        (f"{c}_calling", adjust_interval_padding(i, padding)) for c, i in intervals
+    ]
+
+    ht = ht.annotate(
+        **{f"outside_{c}_region": hl.is_missing(i[ht.locus]) for c, i in intervals}
+    )
+
+    return ht
+
+
 def get_coverage_resources(
     test: bool,
     overwrite: bool,
@@ -296,12 +317,7 @@ def get_coverage_resources(
         output_resources={
             "an_qual_hist_ht": get_all_sites_an_and_qual_hists(
                 data_type=data_type, test=test
-            ),
-            "allele_number_ht": release_all_sites_an(
-                data_type=data_type,
-                public=False,
-                test=test,
-            ),
+            )
         },
     )
     export_coverage_files = PipelineStepResourceCollection(
@@ -314,10 +330,15 @@ def get_coverage_resources(
         },
         pipeline_input_steps=[compute_coverage_ht],
     )
-    export_an_tsv = PipelineStepResourceCollection(
-        "--export-all-sites-an-release-tsv",
+    export_an_files = PipelineStepResourceCollection(
+        "--export-all-sites-an-release-files",
         output_resources={
-            "allele_number_tsv": release_all_sites_an_tsv_path(data_type, test=test)
+            "allele_number_ht": release_all_sites_an(
+                data_type=data_type,
+                public=False,
+                test=test,
+            ),
+            "allele_number_tsv": release_all_sites_an_tsv_path(data_type, test=test),
         },
         pipeline_input_steps=[compute_allele_number_ht],
     )
@@ -328,7 +349,7 @@ def get_coverage_resources(
             "compute_coverage_ht": compute_coverage_ht,
             "compute_allele_number_ht": compute_allele_number_ht,
             "export_coverage_files": export_coverage_files,
-            "export_all_sites_an_release_tsv": export_an_tsv,
+            "export_all_sites_an_release_files": export_an_files,
         }
     )
 
@@ -498,10 +519,7 @@ def main(args):
             an_ht = an_ht.checkpoint(hl.utils.new_temp_file("an", "ht"))
             # Naive coalesce and write out the intermediate HT.
             an_ht = an_ht.naive_coalesce(n_partitions)
-            an_ht = an_ht.checkpoint(res.an_qual_hist_ht.path, overwrite=overwrite)
-            # Select only the AN and write out final Table.
-            an_ht = an_ht.select("AN")
-            an_ht.write(res.allele_number_ht.path, overwrite=overwrite)
+            an_ht.write(res.an_qual_hist_ht.path, overwrite=overwrite)
 
         if args.export_coverage_release_files:
             logger.info("Exporting coverage tsv...")
@@ -516,12 +534,22 @@ def main(args):
             ht = ht.checkpoint(res.release_ht.path, overwrite=overwrite)
             ht.export(res.coverage_tsv)
 
-        if args.export_all_sites_an_release_tsv:
-            logger.info("Exporting all sites AN tsv...")
-            res = coverage_resources.export_all_sites_an_release_tsv
+        if args.export_all_sites_an_release_files:
+            logger.info("Exporting all sites AN HT...")
+            res = coverage_resources.export_all_sites_an_release_files
             res.check_resource_existence()
-            ht = res.allele_number_ht.ht()
-            ht = ht.select(AN=ht.AN[0])
+
+            ht = res.an_qual_hist_ht.ht()
+            # Select only the AN and write out final Table.
+            ht = ht.select("AN")
+            if data_type == "exomes":
+                ht = add_exomes_interval_annotations(ht, calling_interval_padding)
+
+            ht = ht.checkpoint(res.allele_number_ht.path, overwrite=overwrite)
+
+            logger.info("Exporting all sites AN tsv...")
+            # Only export the adj AN for all release samples.
+            ht = ht.annotate(AN=ht.AN[0])
             ht.export(res.allele_number_tsv)
 
     finally:
@@ -609,8 +637,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--export-all-sites-an-release-tsv",
-        help="Export all sites AN release file.",
+        "--export-all-sites-an-release-files",
+        help="Export all sites AN release HT and TSV file.",
         action="store_true",
     )
 

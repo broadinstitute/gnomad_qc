@@ -46,7 +46,6 @@ from gnomad_qc.v4.resources.annotations import (
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import (
-    get_combined_faf_release,
     get_freq_array_readme,
     included_datasets_json_path,
     release_sites,
@@ -266,8 +265,8 @@ def get_config(
             "path": release_sites(data_type=data_type).path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release(filtered=True).ht(),
-            "path": get_combined_faf_release(filtered=True).path,
+            "ht": release_sites(data_type="joint").ht(),
+            "path": release_sites(data_type="joint").path,
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
