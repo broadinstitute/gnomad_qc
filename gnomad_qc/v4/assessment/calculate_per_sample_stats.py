@@ -470,9 +470,14 @@ def main(args):
     # The following four exome partitions have given us trouble with out-of-memory
     # errors in the past. We are testing on these partitions to ensure that the
     # per-sample stats script can handle them before running the entire dataset.
+    if data_type == "genomes" and args.test_difficult_partitions:
+        raise ValueError(
+            "Difficult partitions for testing have only been chosen for exomes data."
+        )
+
     test_partitions = (
         [20180, 40916, 41229, 46085]
-        if args.test_difficult_partitions and data_type == "exomes"
+        if args.test_difficult_partitions
         else test_partitions
     )
     test = test_partitions or test_dataset
