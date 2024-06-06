@@ -648,7 +648,7 @@ def main(args):
             ).write(per_sample_agg_res.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("per_sample_stats.original.non_ukb.big_executors"))
+        hl.copy_log(get_logging_path("per_sample_stats"))
 
 
 if __name__ == "__main__":
