@@ -25,7 +25,7 @@ logger.setLevel(logging.INFO)
 DIVERSE_GRPS = ["afr", "amr", "eas", "mid", "sas"]
 EUR_GRPS = {"all_eur": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
 FILTER_VALUES_TO_DROP = hl.array(["AC0", "InbreedingCoeff"])
-AF_THRESHOLDS = [0.0001, 0.001]
+AF_THRESHOLDS = [0.0, 0.0001, 0.001, 0.01]
 NS_CONSEQ_TERMS = CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT
 
 
@@ -61,9 +61,7 @@ def get_eur_freq(ht: hl.Table, eur_grps: list, version: str = "v4"):
 
 
 def filter_to_threshold(
-    ht: hl.Table,
-    af_threshold: float = 0.001,
-    version: str = "v4",
+    ht: hl.Table, af_threshold: float = 0.001, version: str = "v4", eur_filter=False
 ):
     """
     Filter to variants where eur AF is < threshold while grpmax > threshold.
@@ -77,7 +75,10 @@ def filter_to_threshold(
         grpmax_expr = ht.grpmax.gnomad
     else:
         grpmax_expr = ht.popmax[0]
-    ht = ht.filter((grpmax_expr.AF > af_threshold) & (ht.eur_AF < af_threshold))
+    filter_expr = grpmax_expr.AF > af_threshold
+    if eur_filter:
+        filter_expr &= ht.eur_AF < af_threshold
+    ht = ht.filter(filter_expr)
     return ht
 
 
@@ -86,6 +87,7 @@ def version_stats(
     t_variants: int,
     version: str = "v4",
     grpmax_counts: bool = False,
+    eur_filter: bool = False,
 ) -> Dict[str, Dict[str, Dict[str, int]]]:
     """
     Calculate grpmax stats for a given gnomAD version.
@@ -99,48 +101,73 @@ def version_stats(
     results_dict = {}
 
     if grpmax_counts:
-        logger.info(
-            "Calculating grpmax counts for diverse genetic ancestry groups to "
-            "deduplicate variant counts..."
-        )
-        # Iterate through just nfe group and all eur grp for calculating eur AF
-        for grp_id, grps in EUR_GRPS.items():
-            # Get european frequency by calculating the cumulative AF in the passed
-            # europe genetic ancestry list
-            p_ht = get_eur_freq(ht, eur_grps=grps, version=version)
+        if version == "v4":
+            ht = ht.annotate(
+                grpmax_ga=ht.grpmax.gnomad.gen_anc,
+                grpmax_af=ht.grpmax.gnomad.AF,
+            )
+        else:
+            ht = ht.annotate(
+                grpmax_ga=ht.popmax[0].pop,
+                grpmax_af=ht.popmax[0].AF,
+            )
 
-            counts_by_thresholds = {}
+        if eur_filter:
+            logger.info(
+                "Calculating grpmax counts for diverse genetic ancestry groups to "
+                "deduplicate variant counts..."
+            )
+            # Iterate through just nfe group and all eur grp for calculating eur AF
+            for grp_id, grps in EUR_GRPS.items():
+                # Get european frequency by calculating the cumulative AF in the passed
+                # europe genetic ancestry list
+                p_ht = get_eur_freq(ht, eur_grps=grps, version=version)
+
+                counts_by_thresholds = {}
+                for threshold in AF_THRESHOLDS:
+                    t_ht = filter_to_threshold(
+                        p_ht, threshold, version=version, eur_filter=eur_filter
+                    )
+                    t_ht = t_ht.checkpoint(
+                        f"gs://gnomad-tmp-4day/grpmax_comps_{version}_{grp_id}_{threshold}.ht",
+                        overwrite=True,
+                    )
+                    logger.info(
+                        "Number of variants after filtering grpmax AF threshold for %s"
+                        " at %s threshold in %s: %s ( %.2f%% of total variants)",
+                        grp_id,
+                        threshold,
+                        version,
+                        t_ht.count(),
+                        t_ht.count() / t_variants * 100,
+                    )
+
+                    t_ht = t_ht.filter(
+                        hl.literal(DIVERSE_GRPS).contains(t_ht.grpmax_ga)
+                    )
+
+                    # For each diverse genetic ancestry group, aggregate the number of
+                    # variants where that group is grpmax
+                    counts_by_thresholds[threshold] = t_ht.aggregate(
+                        hl.agg.counter(t_ht.grpmax_ga)
+                    )
+                    # Add a total count for all groups
+                    counts_by_thresholds[threshold]["all"] = t_ht.count()
+                results_dict[grp_id] = counts_by_thresholds
+        else:
+            logger.info(
+                "Aggregating grpmax variant counts for genetic ancestry groups..."
+            )
+            grps = deepcopy(DIVERSE_GRPS) + ["nfe"]
             for threshold in AF_THRESHOLDS:
-                t_ht = filter_to_threshold(p_ht, threshold, version=version)
-                t_ht = t_ht.checkpoint(
-                    f"gs://gnomad-tmp-4day/grpmax_comps_{version}_{grp_id}_{threshold}.ht",
-                    overwrite=True,
+                t_ht = filter_to_threshold(ht, threshold, version=version)
+                results_dict[threshold] = t_ht.aggregate(
+                    hl.dict(
+                        {grp: hl.agg.count_where(t_ht.grpmax_ga == grp) for grp in grps}
+                    )
                 )
-                logger.info(
-                    "Number of variants after filtering grpmax AF threshold for %s at"
-                    " %s threshold in %s: %s ( %.2f%% of total variants)",
-                    grp_id,
-                    threshold,
-                    version,
-                    t_ht.count(),
-                    t_ht.count() / t_variants * 100,
-                )
+                results_dict[threshold]["all"] = t_ht.count()
 
-                if version == "v4":
-                    t_ht = t_ht.annotate(grpmax_ga=t_ht.grpmax.gnomad.gen_anc)
-                else:
-                    t_ht = t_ht.annotate(grpmax_ga=t_ht.popmax[0].pop)
-
-                t_ht = t_ht.filter(hl.literal(DIVERSE_GRPS).contains(t_ht.grpmax_ga))
-
-                # For each diverse genetic ancestry group, aggregate the number of
-                # variants where that group is grpmax
-                counts_by_thresholds[threshold] = t_ht.aggregate(
-                    hl.agg.counter(t_ht.grpmax_ga)
-                )
-                # Add a total count for all groups
-                counts_by_thresholds[threshold]["all"] = t_ht.count()
-            results_dict[grp_id] = counts_by_thresholds
     else:
         logger.info(
             "Aggregating variant counts for genetic ancestry groups, variants "
@@ -172,6 +199,7 @@ def create_table(
     data_subset: str = None,
     grpmax_counts: bool = False,
     non_syn_only: bool = False,
+    eur_filter: bool = False,
 ):
     """
     Create tables of grpmax stats.
@@ -181,19 +209,24 @@ def create_table(
     :param version_dict: Dictionary of grpmax stats
     :param data_subset: Data subset
     :param grpmax_counts: Results calculated using only grpmax counts for diverse genetic ancestry groups
+    :param non_syn_only: Keep only non-synonymous variants
+    :param eur_filter: Filter to variants where eur AF is < threshold while grpmax > threshold
     """
     headers = ["genetic ancestry group", "v2", "v4", "difference(v4-v2)"]
     v2_dict_index = (
-        version_dict["v2"][data_subset] if grpmax_counts else version_dict["v2"]
+        version_dict["v2"][data_subset]
+        if grpmax_counts and eur_filter
+        else version_dict["v2"]
     )
     v4_dict_index = (
-        version_dict["v4"][data_subset] if grpmax_counts else version_dict["v4"]
+        version_dict["v4"][data_subset]
+        if grpmax_counts and eur_filter
+        else version_dict["v4"]
     )
     grps = deepcopy(DIVERSE_GRPS)
+    grps = grps + ["all"]
 
-    if grpmax_counts:
-        grps.append("all")
-    else:
+    if not eur_filter:
         grps.append("nfe")
 
     for threshold in AF_THRESHOLDS:
@@ -209,8 +242,8 @@ def create_table(
             table.append([grp, v2_val, v4_val, diff])
         logger.info(
             f"\n{'non-synonymous' if non_syn_only else ''} variant count by genetic "
-            f"ancestry group where the\n{'grpmax' if grpmax_counts else ''} AF is above"
-            f" {threshold}{' and the ' + str(data_subset) + ' AF is below it' if grpmax_counts else ''}...\n"
+            f"ancestry group where the{' grpmax' if grpmax_counts else ''} AF is above"
+            f" {threshold}{' and the ' + str(data_subset) + ' AF is below it' if grpmax_counts and eur_filter else ''}...\n"
             f"{tabulate(table, headers=headers, tablefmt='fancy_grid')}"
         )
 
@@ -220,6 +253,9 @@ def main(args):
     version_dict = {}
     grpmax_counts = args.grpmax_counts
     non_syn_only = args.non_syn_only
+    csq_terms = args.csq_terms
+    eur_filter = args.eur_filter
+    csq_terms = csq_terms if csq_terms else non_syn_only
 
     for version in ["v4", "v2"]:
         if version == "v4":
@@ -241,18 +277,27 @@ def main(args):
             ht = filter_vep_to_canonical_transcripts(ht, filter_empty_csq=True)
             msg = "canonical transcript filtering"
 
-        if non_syn_only:
-            logger.info("Filtering to keep only non-synonymous variants...")
+        if csq_terms:
+            logger.info(
+                "Filtering to keep only %s ...",
+                (
+                    str(csq_terms) + " variants"
+                    if csq_terms and not non_syn_only
+                    else "non-synonymous variants"
+                ),
+            )
             # NOTE: There is no garauntree the most severe consequence is from the
             # canonical transcript if table is filtered to canonical transcripts
             ht = ht.filter(
-                hl.literal(NS_CONSEQ_TERMS).contains(ht.vep.most_severe_consequence)
+                hl.literal(csq_terms).contains(ht.vep.most_severe_consequence)
             )
             ns_variants = ht.count()
 
             if msg:
                 msg += " and "
-            msg += "non-synonymous consequence filtering"
+            msg += (
+                f"{'non-synonymous consequence' if non_syn_only else str(csq_terms) + ' filtering'}"
+            )
 
             logger.info(
                 "Total number of variants in %s %s: %s (%.2f%% of total variants)",
@@ -291,18 +336,22 @@ def main(args):
             t_variants=t_variants,
             version=version,
             grpmax_counts=grpmax_counts,
+            eur_filter=eur_filter,
         )
 
-    if grpmax_counts:
+    if grpmax_counts and eur_filter:
         for eur_grp in EUR_GRPS.keys():
             create_table(
                 version_dict,
                 data_subset=eur_grp,
                 grpmax_counts=grpmax_counts,
                 non_syn_only=non_syn_only,
+                eur_filter=eur_filter,
             )
     else:
-        create_table(version_dict, non_syn_only=non_syn_only)
+        create_table(
+            version_dict, grpmax_counts=grpmax_counts, non_syn_only=non_syn_only
+        )
 
 
 if __name__ == "__main__":
@@ -337,9 +386,24 @@ if __name__ == "__main__":
         action="store_true",
         help="Filter to two partitions of each HT for testing purposes",
     )
+    parser.add_argument(
+        "--csq-terms",
+        nargs="+",
+        help="Consequence terms to consider",
+        default=NS_CONSEQ_TERMS,
+    )
+    parser.add_argument(
+        "--eur-filter",
+        action="store_true",
+        help="Filter to variants where eur AF is < threshold while grpmax > threshold",
+    )
     args = parser.parse_args()
     if args.drop_hard_filtered and args.no_variant_qc_filters:
         raise ValueError(
             "Cannot use --drop-hard-filtered-variants and --all-variants together"
         )
+    if args.non_syn_only and (args.csq_terms != NS_CONSEQ_TERMS):
+        raise ValueError("Cannot use --non-syn-only and --csq-terms together")
+    if args.eur_filter and not args.grpmax_counts:
+        raise ValueError("Cannot use --eur-filter without --grpmax-counts")
     main(args)
