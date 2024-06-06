@@ -382,7 +382,7 @@ def create_intermediate_mt_for_sample_counts(
         ht._entries,
     ).filter(lambda x: hl.is_defined(x[1]))
     stat_expr = {
-        "non_ref": lambda x: x[0],
+        "non_ref": lambda x: True,
         "het": lambda x: x[1].is_het(),
         "hom_var": lambda x: x[1].is_hom_var(),
         "high_ab_het_ref": lambda x: x[4],
@@ -662,8 +662,8 @@ def main(args):
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
     )
-    temp_intermediate_mt_path = get_checkpoint_path(
-        "per_sample_summary_stats_intermediate" + (".test" if test else ""), mt=True
+    temp_intermediate_ht_path = get_checkpoint_path(
+        "per_sample_summary_stats_intermediate" + (".test" if test else "")
     )
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
@@ -731,15 +731,13 @@ def main(args):
 
             create_intermediate_mt_for_sample_counts(
                 mt, filter_groups_ht, autosomes_only
-            ).write(temp_intermediate_mt_path, overwrite=overwrite)
+            ).write(temp_intermediate_ht_path, overwrite=overwrite)
 
         if create_per_sample_counts:
             logger.info(
                 "Calculating per-sample variant statistics for %s...", data_type
             )
-            ht = hl.read_table(temp_intermediate_mt_path)._filter_partitions(
-                range(1000)
-            )
+            ht = hl.read_table(temp_intermediate_ht_path)
             create_per_sample_counts_ht(ht).write(
                 per_sample_res.path, overwrite=overwrite
             )
