@@ -598,7 +598,7 @@ def main(args):
                 rare_variants_afs=rare_variants_afs,
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
-        if args.create_per_sample_counts_ht:
+        if create_per_sample_counts:
             logger.info(
                 "Calculating per-sample variant statistics for %s...", data_type
             )
