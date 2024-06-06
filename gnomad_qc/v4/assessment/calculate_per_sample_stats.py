@@ -351,7 +351,7 @@ def create_intermediate_mt_for_sample_counts(
     :return: Table containing per-sample variant counts.
     """
     # Annotate the MT with the needed annotations.
-    mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
+    mt = annotate_with_ht(mt, filter_group_ht)
     mt = mt.filter_entries(mt.GT.is_non_ref())
     if autosomes_only:
         logger.info(
