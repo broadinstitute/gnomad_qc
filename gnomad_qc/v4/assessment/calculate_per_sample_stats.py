@@ -436,9 +436,7 @@ def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
             for s in ht.sample_idx_by_stat
         ]
     )
-    ht = ht.checkpoint(
-        "gs://gnomad-tmp/julia/temp_agg.ht", _read_if_exists=True
-    )  # overwrite=True)
+    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg.ht", overwrite=True)
 
     ht = ht.annotate(
         stat_counts=hl.enumerate(ht.samples).map(
@@ -450,21 +448,18 @@ def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
     # Need the key_by because otherwise the repartitioning will not work, and will only
     # be as many partitions as the number of filter_groups.
     ht = ht.key_by("s").repartition(5000)
-    ht = ht.checkpoint(
-        "gs://gnomad-tmp/julia/temp_agg3.ht",
-        _read_if_exists=True,  # _read_if_exists=True
-    )
+    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg3.ht", overwrite=True)
 
     ht = ht.group_by("s", "filter_groups").aggregate(
         stat_counts=hl.agg.array_sum(ht.stat_counts)
     )
-    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg4.ht", _read_if_exists=True)
+    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg4.ht", overwrite=True)
 
     stat_map = {s: i for i, s in enumerate(stats)}
     all_stats = stats + [s for s in ht.filter_groups[0] if s != "group_filter"]
     non_ref_idx = stat_map["non_ref"]
     ht = ht.group_by("s").aggregate(
-        filter_groups=hl.agg.array_agg(
+        summary_stats=hl.agg.array_agg(
             lambda x: hl.struct(
                 **{
                     f"n_{s}": hl.agg.sum(
@@ -489,7 +484,7 @@ def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
         "r_insertion_deletion": ("n_insertion", "n_deletion"),
     }.items()
     ht = ht.annotate(
-        filter_groups=ht.filter_groups.map(
+        summary_stats=ht.summary_stats.map(
             lambda x: x.annotate(
                 n_indel=x.n_insertion + x.n_deletion,
                 n_snp=x.n_transition + x.n_transversion,
