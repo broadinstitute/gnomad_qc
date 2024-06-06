@@ -475,7 +475,6 @@ def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
             ht.filter_groups,
         )
     )
-    ht.describe()
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
     ratios = {
         "r_ti_tv": ("n_transition", "n_transversion"),
@@ -526,23 +525,33 @@ def compute_agg_sample_stats(
         subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
-    ht = ht.transmute(subset=subset, gen_anc=gen_anc)
+    ht = ht.annotate(subset=subset, gen_anc=gen_anc)
+    ht = ht.explode("gen_anc").explode("subset")
 
-    ht = ht.explode("summary_stats").explode("gen_anc").explode("subset")
-    ht = ht.checkpoint(hl.utils.new_temp_file("summary_stats_explode", "ht"))
-
-    ht = ht.group_by("subset", "gen_anc", "filter_group_meta").aggregate(
-        **{
-            metric: hl.struct(
-                mean=hl.agg.mean(ht.summary_stats[1][metric]),
-                min=hl.agg.min(ht.summary_stats[1][metric]),
-                max=hl.agg.max(ht.summary_stats[1][metric]),
-                quantiles=hl.agg.approx_quantiles(
-                    ht.summary_stats[1][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
-                ),
-            )
-            for metric in ht.summary_stats[1]
-        }
+    ht = ht.group_by("subset", "gen_anc").aggregate(
+        summary_stats=hl.agg.array_agg(
+            lambda x: hl.struct(
+                **{
+                    m: hl.struct(
+                        mean=hl.agg.mean(x[m]),
+                        min=hl.agg.min(x[m]),
+                        max=hl.agg.max(x[m]),
+                        quantiles=hl.agg.approx_quantiles(
+                            x[m], [0.0, 0.25, 0.5, 0.75, 1.0]
+                        ),
+                    )
+                    for m in x
+                }
+            ),
+            ht.summary_stats,
+        )
+    )
+    ht = ht.annotate(
+        summary_stats=hl.zip(ht.filter_group_meta, ht.summary_stats)
+    ).select_globals()
+    ht = ht.explode("summary_stats")
+    ht = ht.annotate(
+        filter_group_meta=ht.summary_stats[0], summary_stats=ht.summary_stats[1]
     )
 
     return ht
