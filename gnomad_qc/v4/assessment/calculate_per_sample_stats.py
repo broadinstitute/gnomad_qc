@@ -25,7 +25,7 @@ Aggregated statistics can also be computed by ancestry.
 import argparse
 import logging
 from copy import deepcopy
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 from gnomad.assessment.summary_stats import (
@@ -45,7 +45,8 @@ from gnomad.utils.vep import (
     get_most_severe_consequence_for_summary,
 )
 from hail.genetics.allele_type import AlleleType
-from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
+from hail.methods.qc import _qc_allele_type
+from hail.utils.misc import divide_null
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
@@ -54,6 +55,7 @@ from gnomad_qc.v4.resources.assessment import (
     get_summary_stats_filtering_groups,
 )
 from gnomad_qc.v4.resources.basics import (
+    get_checkpoint_path,
     get_gnomad_v4_genomes_vds,
     get_gnomad_v4_vds,
     get_logging_path,
@@ -312,8 +314,12 @@ def get_summary_stats_filter_groups_ht(
     ht = ht.select(
         _no_lcr=filter_exprs["no_lcr"],
         filter_groups=filter_groups_expr,
-        variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
-        variant_af=ht.freq[0].AF,
+        ac1=ht.freq[0].AC == 1,
+        af=ht.freq[0].AF,
+        **{
+            k: _qc_allele_type(ht.alleles[0], ht.alleles[1]) == v
+            for k, v in ALLELE_TYPE_MAP.items()
+        },
     )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
@@ -322,8 +328,12 @@ def get_summary_stats_filter_groups_ht(
     return ht.filter(ht._no_lcr).drop("_no_lcr")
 
 
-def create_per_sample_counts_ht(
-    mt: hl.MatrixTable, filter_group_ht: hl.Table, autosomes_only: bool = False
+def create_intermediate_mt_for_sample_counts(
+    mt: hl.MatrixTable,
+    filter_group_ht: hl.Table,
+    autosomes_only: bool = False,
+    gq_bins: Tuple[int] = (60,),
+    dp_bins: Tuple[int] = (20, 30),
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
@@ -340,14 +350,9 @@ def create_per_sample_counts_ht(
         False.
     :return: Table containing per-sample variant counts.
     """
-    # Add Allele Type annotations to variant MatrixTable.
-    _, variant_types = vmt_sample_qc_variant_annotations(
-        global_gt=mt.GT, alleles=mt.alleles
-    )
-    mt = mt.annotate_rows(variant_atypes=variant_types)
-
     # Annotate the MT with the needed annotations.
     mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
+    mt = mt.filter_entries(mt.GT.is_non_ref())
     if autosomes_only:
         logger.info(
             "Filtering to autosomes only and performing high AB het -> hom alt "
@@ -356,43 +361,140 @@ def create_per_sample_counts_ht(
         ab_cutoff = 0.9
         mt = filter_to_autosomes(mt)
         mt = mt.annotate_entries(
-            GT=hl.if_else(
-                (mt.variant_af > 0.01)
+            high_ab_het_ref=(
+                (mt.af > 0.01)
                 & ((mt.AD[1] / mt.DP) > ab_cutoff)
                 & mt.GT.is_het()
-                & ~mt._het_non_ref,
-                hl.call(1, 1),
-                mt.GT,
+                & ~mt._het_non_ref
             )
         )
 
-    mt = mt.filter_entries(mt.GT.is_non_ref())
     mt = filter_to_adj(mt)
+    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref")
 
-    mt = mt.select_entries("GT", "GQ", "DP")
+    # Convert MT to HT with a row annotation that is an array of all samples entries
+    # for that variant.
+    ht = mt.localize_entries("_entries", "_cols")
 
-    # Run Hail's 'vmt_sample_qc' for all requested filter groups.
-    qc_expr = vmt_sample_qc(
-        global_gt=mt.GT,
-        gq=mt.GQ,
-        variant_ac=mt.variant_ac,
-        variant_atypes=mt.variant_atypes,
-        dp=mt.DP,
-    )
-    ht = mt.select_cols(
-        summary_stats=hl.agg.array_agg(
-            lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups
-        )
-    ).cols()
-    ht = ht.annotate_globals(
-        summary_stats_meta=filter_group_ht.index_globals().filter_group_meta
-    )
-    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
-
-    # Add 'n_indel' to the output Table.
+    entry_expr = hl.map(
+        lambda i, e: (i, e.GT, e.GQ, e.DP, e.high_ab_het_ref),
+        hl.range(hl.len(ht._cols)),
+        ht._entries,
+    ).filter(lambda x: hl.is_defined(x[1]))
+    stat_expr = {
+        "non_ref": lambda x: x[0],
+        "het": lambda x: x[1].is_het(),
+        "hom_var": lambda x: x[1].is_hom_var(),
+        "high_ab_het_ref": lambda x: x[4],
+        **{f"over_gq_{gq}": lambda x: x[2] >= gq for gq in gq_bins},
+        **{f"over_dp_{dp}": lambda x: x[3] >= dp for dp in dp_bins},
+    }
     ht = ht.annotate(
-        summary_stats=ht.summary_stats.map(
-            lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion)
+        filter_groups=ht.filter_groups.map(
+            lambda x: hl.struct(
+                group_filter=x,
+                singleton=x & ht.ac1,
+                singleton_ti=x & ht.transition & ht.ac1,
+                singleton_tv=x & ht.transversion & ht.ac1,
+                **{k: x & ht[k] for k in ALLELE_TYPE_MAP.keys()},
+            )
+        ),
+        sample_idx_by_stat=hl.struct(
+            **{
+                k: entry_expr.filter(f).map(lambda x: x[0])
+                for k, f in stat_expr.items()
+            }
+        ),
+    )
+    ht = ht.select_globals(
+        samples=ht._cols.map(lambda x: x.s),
+        filter_group_meta=filter_group_ht.index_globals().filter_group_meta,
+    )
+
+    return ht
+
+
+def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
+    """
+    Create Table of Hail's sample_qc output broken down by requested variant groupings.
+
+    Useful for finding the number of variants per sample, either all variants, or
+    variants fall into specific capture regions, or variants that are rare
+    (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical
+    or mane transcripts.
+
+    :param ht: Input Table containing variant data. Must have multi-allelic sites split.
+    :return: Table containing per-sample variant counts.
+    """
+    stats = list(ht.sample_idx_by_stat.keys())
+    # Needs all workers due to shuffle.
+    # Error summary: IOException: No space left on device
+
+    ht = ht.group_by("filter_groups").aggregate(
+        stat_counts=[
+            hl.agg.explode(lambda x: hl.agg.counter(x), ht.sample_idx_by_stat[s])
+            for s in ht.sample_idx_by_stat
+        ]
+    )
+    ht = ht.checkpoint(
+        "gs://gnomad-tmp/julia/temp_agg.ht", _read_if_exists=True
+    )  # overwrite=True)
+
+    ht = ht.annotate(
+        stat_counts=hl.enumerate(ht.samples).map(
+            lambda x: (x[1], ht.stat_counts.map(lambda s: s.get(x[0], 0)))
+        )
+    ).explode("stat_counts")
+    ht = ht.select(s=ht.stat_counts[0], stat_counts=ht.stat_counts[1])
+
+    # Need the key_by because otherwise the repartitioning will not work, and will only
+    # be as many partitions as the number of filter_groups.
+    ht = ht.key_by("s").repartition(5000)
+    ht = ht.checkpoint(
+        "gs://gnomad-tmp/julia/temp_agg3.ht",
+        _read_if_exists=True,  # _read_if_exists=True
+    )
+
+    ht = ht.group_by("s", "filter_groups").aggregate(
+        stat_counts=hl.agg.array_sum(ht.stat_counts)
+    )
+    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg4.ht", _read_if_exists=True)
+
+    stat_map = {s: i for i, s in enumerate(stats)}
+    all_stats = stats + [s for s in ht.filter_groups[0] if s != "group_filter"]
+    non_ref_idx = stat_map["non_ref"]
+    ht = ht.group_by("s").aggregate(
+        filter_groups=hl.agg.array_agg(
+            lambda x: hl.struct(
+                **{
+                    f"n_{s}": hl.agg.sum(
+                        hl.if_else(
+                            x.group_filter if s in stats else x[s],
+                            ht.stat_counts[stat_map[s] if s in stats else non_ref_idx],
+                            0,
+                        )
+                    )
+                    for s in all_stats
+                }
+            ),
+            ht.filter_groups,
+        )
+    )
+    ht.describe()
+    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
+    ratios = {
+        "r_ti_tv": ("n_transition", "n_transversion"),
+        "r_ti_tv_singleton": ("n_singleton_ti", "n_singleton_tv"),
+        "r_het_hom_var": ("n_het", "n_hom_var"),
+        "r_insertion_deletion": ("n_insertion", "n_deletion"),
+    }.items()
+    ht = ht.annotate(
+        filter_groups=ht.filter_groups.map(
+            lambda x: x.annotate(
+                n_indel=x.n_insertion + x.n_deletion,
+                n_snp=x.n_transition + x.n_transversion,
+                **{k: divide_null(hl.float64(x[n]), x[d]) for k, (n, d) in ratios},
+            )
         )
     )
 
@@ -429,15 +531,12 @@ def compute_agg_sample_stats(
         subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
-    ht = ht.transmute(
-        subset=subset,
-        gen_anc=gen_anc,
-        summary_stats=hl.zip(ht.summary_stats_meta, ht.summary_stats),
-    )
+    ht = ht.transmute(subset=subset, gen_anc=gen_anc)
 
     ht = ht.explode("summary_stats").explode("gen_anc").explode("subset")
+    ht = ht.checkpoint(hl.utils.new_temp_file("summary_stats_explode", "ht"))
 
-    ht = ht.group_by("subset", "gen_anc", variant_filter=ht.summary_stats[0]).aggregate(
+    ht = ht.group_by("subset", "gen_anc", "filter_group_meta").aggregate(
         **{
             metric: hl.struct(
                 mean=hl.agg.mean(ht.summary_stats[1][metric]),
@@ -448,7 +547,6 @@ def compute_agg_sample_stats(
                 ),
             )
             for metric in ht.summary_stats[1]
-            if isinstance(ht.summary_stats[1][metric], hl.expr.NumericExpression)
         }
     )
 
@@ -463,7 +561,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
     # SSA Logs are easier to troubleshoot with.
-    hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
+    hl._set_flags(use_ssa_logs="1")
 
     data_type = args.data_type
     create_filter_group = args.create_filter_group_ht
@@ -564,6 +662,9 @@ def main(args):
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
     )
+    temp_intermediate_mt_path = get_checkpoint_path(
+        "per_sample_summary_stats_intermediate" + (".test" if test else ""), mt=True
+    )
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
 
@@ -598,10 +699,9 @@ def main(args):
                 rare_variants_afs=rare_variants_afs,
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
-        if create_per_sample_counts:
-            logger.info(
-                "Calculating per-sample variant statistics for %s...", data_type
-            )
+        if args.create_intermediate_mt_for_sample_counts:
+            logger.info("Creating intermediate MatrixTable for per-sample counts...")
+
             if test and not test_gene:
                 logger.warning(
                     "This test requires that the full filtering groups Table has been "
@@ -629,7 +729,18 @@ def main(args):
                 annotate_het_non_ref=True,
             ).variant_data
 
-            create_per_sample_counts_ht(mt, filter_groups_ht, autosomes_only).write(
+            create_intermediate_mt_for_sample_counts(
+                mt, filter_groups_ht, autosomes_only
+            ).write(temp_intermediate_mt_path, overwrite=overwrite)
+
+        if create_per_sample_counts:
+            logger.info(
+                "Calculating per-sample variant statistics for %s...", data_type
+            )
+            ht = hl.read_table(temp_intermediate_mt_path)._filter_partitions(
+                range(1000)
+            )
+            create_per_sample_counts_ht(ht).write(
                 per_sample_res.path, overwrite=overwrite
             )
 
@@ -648,7 +759,7 @@ def main(args):
             ).write(per_sample_agg_res.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("per_sample_stats.original.non_ukb.big_executors"))
+        hl.copy_log(get_logging_path("per_sample_stats"))
 
 
 if __name__ == "__main__":
@@ -713,6 +824,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--create-filter-group-ht",
         help="Create Table of filter groups for summary stats.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--create-intermediate-mt-for-sample-counts",
+        help=(
+            "Create intermediate MatrixTable for per-sample variant counts. The output "
+            "MatrixTable will be written to a temporary location!"
+        ),
         action="store_true",
     )
     parser.add_argument(
