@@ -34,6 +34,7 @@ from gnomad.assessment.summary_stats import (
     get_summary_stats_variant_filter_expr,
 )
 from gnomad.utils.annotations import annotate_with_ht
+from gnomad.utils.filtering import filter_to_adj, filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     CSQ_CODING,
@@ -43,11 +44,15 @@ from gnomad.utils.vep import (
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
 )
+from hail.genetics.allele_type import AlleleType
 from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
-from gnomad_qc.v4.resources.assessment import get_per_sample_counts
+from gnomad_qc.v4.resources.assessment import (
+    get_per_sample_counts,
+    get_summary_stats_filtering_groups,
+)
 from gnomad_qc.v4.resources.basics import (
     get_gnomad_v4_genomes_vds,
     get_gnomad_v4_vds,
@@ -128,6 +133,14 @@ MAP_FILTER_FIELD_TO_META = {
 Dictionary to rename keys in `SUM_STAT_FILTERS`, `COMMON_FILTERS`, or
 `LOF_FILTERS_FOR_COMBO` to final metadata keys.
 """
+
+ALLELE_TYPE_MAP = {
+    "insertion": AlleleType.INSERTION,
+    "deletion": AlleleType.DELETION,
+    "transition": AlleleType.TRANSITION,
+    "transversion": AlleleType.TRANSVERSION,
+    "star": AlleleType.STAR,
+}
 
 
 def get_capture_filter_exprs(
@@ -296,20 +309,21 @@ def get_summary_stats_filter_groups_ht(
 
     # Remove 'no_lcr' filter expression from filter groups and annotate the Table with
     # the no_lcr filter and an array of the filter groups.
-    ht = ht.select(_no_lcr=filter_exprs["no_lcr"], filter_groups=filter_groups_expr)
-
+    ht = ht.select(
+        _no_lcr=filter_exprs["no_lcr"],
+        filter_groups=filter_groups_expr,
+        variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
+        variant_af=ht.freq[0].AF,
+    )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
     # Filter to only variants that are not in low confidence regions.
-    ht = ht.filter(ht._no_lcr).drop("_no_lcr")
-    ht = ht.checkpoint(hl.utils.new_temp_file("stats_annotation", "ht"))
-
-    return ht
+    return ht.filter(ht._no_lcr).drop("_no_lcr")
 
 
 def create_per_sample_counts_ht(
-    mt: hl.MatrixTable, filter_group_ht: hl.Table
+    mt: hl.MatrixTable, filter_group_ht: hl.Table, autosomes_only: bool = False
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
@@ -322,17 +336,40 @@ def create_per_sample_counts_ht(
     :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
         split.
     :param filter_group_ht: Table containing filter groups for summary stats.
+    :param autosomes_only: Whether to restrict analysis to autosomes only. Default is
+        False.
     :return: Table containing per-sample variant counts.
     """
-    # Add extra Allele Count and Allele Type annotations to variant MatrixTable,
-    # according to Hail standards, to help their computation.
-    variant_ac, variant_types = vmt_sample_qc_variant_annotations(
+    # Add Allele Type annotations to variant MatrixTable.
+    _, variant_types = vmt_sample_qc_variant_annotations(
         global_gt=mt.GT, alleles=mt.alleles
     )
-    mt = mt.annotate_rows(variant_ac=variant_ac, variant_atypes=variant_types)
+    mt = mt.annotate_rows(variant_atypes=variant_types)
 
     # Annotate the MT with the needed annotations.
-    mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
+    mt = annotate_with_ht(mt, filter_group_ht)
+    if autosomes_only:
+        logger.info(
+            "Filtering to autosomes only and performing high AB het -> hom alt "
+            "adjustment of GT..."
+        )
+        ab_cutoff = 0.9
+        mt = filter_to_autosomes(mt)
+        mt = mt.annotate_entries(
+            GT=hl.if_else(
+                (mt.variant_af > 0.01)
+                & ((mt.AD[1] / mt.DP) > ab_cutoff)
+                & mt.GT.is_het()
+                & ~mt._het_non_ref,
+                hl.call(1, 1),
+                mt.GT,
+            )
+        )
+
+    mt = mt.filter_entries(mt.GT.is_non_ref())
+    mt = filter_to_adj(mt)
+
+    mt = mt.select_entries("GT", "GQ", "DP")
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     qc_expr = vmt_sample_qc(
@@ -429,21 +466,103 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
     # SSA Logs are easier to troubleshoot with.
-    hl._set_flags(use_ssa_logs="1")
+    hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
 
     data_type = args.data_type
-    test = args.test
+    create_filter_group = args.create_filter_group_ht
+    create_per_sample_counts = args.create_per_sample_counts_ht
+    autosomes_only = args.autosomes_only_stats
+    test_dataset = args.test_dataset
+    test_gene = args.test_gene
+    test_difficult_partitions = args.test_difficult_partitions
+    test_partitions = (
+        list(range(args.test_n_partitions)) if args.test_n_partitions else None
+    )
+
+    if create_filter_group:
+        err_msg = ""
+        if test_partitions and create_per_sample_counts:
+            err_msg = (
+                "Cannot test on a custom number of partitions (--test-n-partitions) "
+                "when using both --create-filter-group-ht and "
+                "--create-per-sample-counts-ht because there is not an overlap in "
+                "partitions."
+            )
+        if test_difficult_partitions:
+            err_msg = (
+                "Difficult partitions (--test-difficult-partitions) are only chosen "
+                "for testing per-sample counts, we recommend using only --test-gene to "
+                "test that --create-filter-group-ht is working as expected."
+            )
+        if test_dataset and not create_filter_group:
+            err_msg = (
+                "The use of the test VDS (--test-dataset) is only relevant when also"
+                " testing per-sample counts (--create-per-sample-counts-ht), we "
+                "recommend using only --test-gene to test that --create-filter-group-ht"
+                " is working as expected."
+            )
+        if err_msg:
+            raise ValueError(
+                err_msg
+                + " For a quick test of both --create-filter-group-ht and "
+                "--create-per-sample-counts-ht arguments of the pipeline at the "
+                "same time use '--test-gene --test-dataset'. The full run of the "
+                "--create-filter-group-ht step is relatively quick and after tests "
+                "are complete on the filter group creation, the full run of "
+                "--create-filter-group-ht should be done to further test "
+                "--create-per-sample-counts-ht for memory errors."
+            )
+
+    # The following four exome partitions have given us trouble with out-of-memory
+    # errors in the past. We are testing on these partitions to ensure that the
+    # per-sample stats script can handle them before running the entire dataset.
+    if test_difficult_partitions:
+        if data_type == "genomes":
+            raise ValueError(
+                "Difficult partitions for testing have only been chosen for exomes."
+            )
+        if test_dataset or test_partitions:
+            raise ValueError(
+                "Cannot test on difficult partitions (--test-difficult-partitions) and "
+                "test dataset (--test-dataset) or a custom number of partitions "
+                "(--test-n-partitions) at the same time. Difficult partitions only "
+                "apply to the full exomes VDS."
+            )
+        logger.info(
+            "Testing on difficult exome partitions to make sure the tests can pass "
+            "without memory errors..."
+        )
+        test_partitions = [20180, 40916, 41229, 46085]
+
+    if test_gene and test_partitions:
+        raise ValueError(
+            "Cannot use --test-gene and --test-n-partitions or "
+            "--test-difficult-partitions at the same time."
+        )
+    filter_intervals = ["chr1:55039447-55064852"] if test_gene else None
+
+    test = test_partitions or test_dataset or test_gene
     overwrite = args.overwrite
-    ukb_capture_intervals = not args.skip_filter_ukb_capture_intervals
-    broad_capture_intervals = not args.skip_filter_broad_capture_intervals
+    ukb_capture_intervals = (
+        False if data_type == "genomes" else not args.skip_filter_ukb_capture_intervals
+    )
+    broad_capture_intervals = (
+        False
+        if data_type == "genomes"
+        else not args.skip_filter_broad_capture_intervals
+    )
     rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
     per_sample_res = get_per_sample_counts(
-        test=test, data_type=data_type, suffix=args.custom_suffix
+        test=test,
+        data_type=data_type,
+        suffix=args.custom_suffix,
+        autosomes_only=autosomes_only,
     )
     per_sample_agg_res = get_per_sample_counts(
         test=test,
         data_type=data_type,
         suffix=args.custom_suffix,
+        autosomes_only=autosomes_only,
         aggregated=True,
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
@@ -452,28 +571,26 @@ def main(args):
         raise ValueError("Stratifying by subset is only working on exomes data type.")
 
     try:
-        if args.create_per_sample_counts_ht:
-            chrom = "chr22" if test else None
-            if data_type == "exomes":
-                logger.info("Calculating per-sample variant statistics for exomes...")
-                mt = get_gnomad_v4_vds(
-                    test=test, release_only=True, split=True, chrom=chrom
-                ).variant_data
-            else:
-                logger.info("Calculating per-sample variant statistics for genomes...")
-                mt = get_gnomad_v4_genomes_vds(
-                    test=test, release_only=True, split=True, chrom=chrom
-                ).variant_data
-                ukb_capture_intervals = False
-                broad_capture_intervals = False
-
+        if create_filter_group:
+            logger.info(
+                "Creating Table of filter groups for %s summary stats...", data_type
+            )
             release_ht = release_sites(data_type=data_type).ht()
-            if test:
+            filtering_groups_res = get_summary_stats_filtering_groups(
+                data_type=data_type, test=test
+            )
+            if test_partitions:
+                release_ht = release_ht._filter_partitions(test_partitions)
+            if test_gene:
                 release_ht = hl.filter_intervals(
-                    release_ht, [hl.parse_locus_interval("chr22")]
+                    release_ht,
+                    [
+                        hl.parse_locus_interval(x, reference_genome="GRCh38")
+                        for x in filter_intervals
+                    ],
                 )
 
-            filter_groups_ht = get_summary_stats_filter_groups_ht(
+            get_summary_stats_filter_groups_ht(
                 release_ht,
                 pass_filters=not args.skip_pass_filters,
                 ukb_capture=ukb_capture_intervals,
@@ -482,8 +599,40 @@ def main(args):
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
                 rare_variants_afs=rare_variants_afs,
+            ).write(filtering_groups_res.path, overwrite=overwrite)
+
+        if create_per_sample_counts:
+            logger.info(
+                "Calculating per-sample variant statistics for %s...", data_type
             )
-            create_per_sample_counts_ht(mt, filter_groups_ht).write(
+            if test and not test_gene:
+                logger.warning(
+                    "This test requires that the full filtering groups Table has been "
+                    "created. Please run --create-filter-group-ht without "
+                    "--test-gene or --test-n-partitions if it doesn't already exist."
+                )
+
+            filter_groups_ht = get_summary_stats_filtering_groups(
+                data_type, test=test_gene
+            ).ht()
+            vds_load_func = (
+                get_gnomad_v4_vds
+                if data_type == "exomes"
+                else get_gnomad_v4_genomes_vds
+            )
+            mt = vds_load_func(
+                test=test_dataset,
+                split=True,
+                release_only=True,
+                filter_partitions=test_partitions,
+                filter_variant_ht=filter_groups_ht,
+                filter_intervals=filter_intervals,
+                split_reference_blocks=False,
+                entries_to_keep=["GT", "GQ", "DP", "AD"],
+                annotate_het_non_ref=True,
+            ).variant_data
+
+            create_per_sample_counts_ht(mt, filter_groups_ht, autosomes_only).write(
                 per_sample_res.path, overwrite=overwrite
             )
 
@@ -517,8 +666,45 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--test",
-        help="Test on a small number of variants",
+        "--test-gene",
+        help=(
+            "Filter Tables/VDS to only the PCSK9 gene for testing. Recommended for a "
+            "quick test (if used with --test-dataset) that the full pipeline is "
+            "working. This is not recommended for testing potential memory errors in "
+            "--create-per-sample-counts-ht."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-n-partitions",
+        type=int,
+        help=(
+            "Number of partitions to use for testing --create-per-sample-counts-ht. "
+            "Recommended as a quick test of --create-per-sample-counts-ht "
+            "if combined with --test-dataset. It can also be useful as a test for "
+            "memory errors in --create-per-sample-counts-ht when not combined with "
+            "--test-dataset."
+        ),
+    )
+    parser.add_argument(
+        "--test-difficult-partitions",
+        help=(
+            "Whether to test on a set of 4 exome partitions that have been "
+            "particularly difficult and caused memory errors in other parts of the "
+            "QC workflow. Recommended to test for memory errors in "
+            "--create-per-sample-counts-ht."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-dataset",
+        help=(
+            "Use the test VDS instead of the full VDS. Recommended for testing "
+            "--create-per-sample-counts-ht. Use in combination with --test-gene or"
+            "--test-n-partitions for a quick test of --create-per-sample-counts-ht "
+            "or alone as a test that there are no memory errors when aggregating "
+            "stats for full exomes."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -526,6 +712,11 @@ if __name__ == "__main__":
         default="exomes",
         choices=["exomes", "genomes"],
         help="Data type (exomes or genomes) to produce summary stats for.",
+    )
+    parser.add_argument(
+        "--create-filter-group-ht",
+        help="Create Table of filter groups for summary stats.",
+        action="store_true",
     )
     parser.add_argument(
         "--create-per-sample-counts-ht",
@@ -538,6 +729,11 @@ if __name__ == "__main__":
             "Compute aggregate sample statistics from the per-sample counts and add "
             "them as globals to the output Table."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--autosomes-only-stats",
+        help="Whether to restrict per-sample summary stats to autosomes only.",
         action="store_true",
     )
     parser.add_argument(
