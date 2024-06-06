@@ -347,7 +347,7 @@ def create_per_sample_counts_ht(
     mt = mt.annotate_rows(variant_atypes=variant_types)
 
     # Annotate the MT with the needed annotations.
-    mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
+    mt = annotate_with_ht(mt, filter_group_ht)
     if autosomes_only:
         logger.info(
             "Filtering to autosomes only and performing high AB het -> hom alt "
