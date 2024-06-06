@@ -43,7 +43,7 @@ def get_summary_stats_filtering_groups(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.6_5_24.ht"
             )
             for version in RELEASES
         },
@@ -81,7 +81,7 @@ def get_per_sample_counts(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}{'.'+suffix if suffix else ''}.per_sample_variant_counts{'.autosomes' if autosomes_only else ''}{'.aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}{'.'+suffix if suffix else ''}.per_sample_variant_counts{'.autosomes' if autosomes_only else ''}{'.aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.6_5_24.ht"
             )
             for version in RELEASES
         },

@@ -40,6 +40,8 @@ def get_gnomad_v4_vds(
     filter_partitions: Optional[List[int]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     filter_variant_ht: Optional[hl.Table] = None,
+    filter_intervals: Optional[List[str]] = None,
+    split_reference_blocks: bool = True,
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
     entries_to_keep: Optional[List[str]] = None,
@@ -69,6 +71,9 @@ def get_gnomad_v4_vds(
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of
         variants. Only supported when splitting the VDS.
+    :param filter_intervals: Optional argument to filter the VDS to specific intervals.
+    :param split_reference_blocks: Whether to split the reference data at the edges of
+        the intervals defined by `filter_intervals`. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
@@ -132,6 +137,16 @@ def get_gnomad_v4_vds(
         vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(filter_partitions),
             vds.variant_data._filter_partitions(filter_partitions),
+        )
+
+    if filter_intervals:
+        logger.info("Filtering to %s intervals...", len(filter_intervals))
+        filter_intervals = [
+            hl.parse_locus_interval(x, reference_genome="GRCh38")
+            for x in filter_intervals
+        ]
+        vds = hl.vds.filter_intervals(
+            vds, filter_intervals, split_reference_blocks=split_reference_blocks
         )
 
     # Remove the chr19 site with excessive numbers of alleles (n=27374) which tends to
@@ -327,6 +342,8 @@ def get_gnomad_v4_genomes_vds(
     filter_partitions: Optional[List[int]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     filter_variant_ht: Optional[hl.Table] = None,
+    filter_intervals: Optional[List[str]] = None,
+    split_reference_blocks: bool = True,
     entries_to_keep: Optional[List[str]] = None,
     annotate_het_non_ref: bool = False,
 ) -> hl.vds.VariantDataset:
@@ -347,6 +364,9 @@ def get_gnomad_v4_genomes_vds(
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of
         variants. Only supported when splitting the VDS.
+    :param filter_intervals: Optional argument to filter the VDS to specific intervals.
+    :param split_reference_blocks: Whether to split the reference data at the edges of
+        the intervals defined by `filter_intervals`. Default is True.
     :param entries_to_keep: Optional argument to keep only specific entries in the
         returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
         of the local entries (e.g. 'LGT') to keep.
@@ -363,6 +383,8 @@ def get_gnomad_v4_genomes_vds(
         filter_partitions=filter_partitions,
         chrom=chrom,
         filter_variant_ht=filter_variant_ht,
+        filter_intervals=filter_intervals,
+        split_reference_blocks=split_reference_blocks,
         entries_to_keep=entries_to_keep,
         annotate_het_non_ref=annotate_het_non_ref,
     )
