@@ -367,6 +367,7 @@ def compute_agg_sample_stats(
     meta_ht: Optional[hl.Table] = None,
     by_ancestry: bool = False,
     by_subset: bool = False,
+    data_type: str = "exomes",
 ) -> hl.Table:
     """
     Compute aggregate statistics for per-sample QC metrics.
@@ -377,6 +378,7 @@ def compute_agg_sample_stats(
     :param by_ancestry: Boolean indicating whether to stratify by ancestry.
     :param by_subset: Boolean indicating whether to stratify by subset. This is only
          working on "exomes" data.
+    :param data_type: Data type for sample QC metrics, e.g. "exomes" or "genomes".
     :return: Struct of aggregate statistics for per-sample QC metrics.
     """
     if meta_ht is None and by_ancestry:
@@ -388,8 +390,9 @@ def compute_agg_sample_stats(
     gen_anc = ["global"]
     if meta_ht is not None:
         meta_s = meta_ht[ht.s]
-        subset_expr = hl.if_else(meta_s.project_meta.ukb_sample, "ukb", "non-ukb")
-        subset += [subset_expr] if by_subset else []
+        if data_type == "exomes":
+            subset_expr = hl.if_else(meta_s.project_meta.ukb_sample, "ukb", "non-ukb")
+            subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
     ht = ht.transmute(
@@ -486,16 +489,17 @@ def main(args):
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
-            ht = per_sample_res.ht().checkpoint(
-                hl.utils.new_temp_file("per_sample_counts", "ht")
-            )
-            ht = compute_agg_sample_stats(
-                ht,
+            if test:
+                logger.warning(
+                    "Using whatever per-sample counts testing Table that was most "
+                    "recently created."
+                )
+            compute_agg_sample_stats(
+                per_sample_res.ht(),
                 meta(data_type=data_type).ht(),
                 by_ancestry=args.by_ancestry,
                 by_subset=args.by_subset,
-            )
-            ht.write(per_sample_agg_res.path, overwrite=overwrite)
+            ).write(per_sample_agg_res.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("per_sample_stats"))
