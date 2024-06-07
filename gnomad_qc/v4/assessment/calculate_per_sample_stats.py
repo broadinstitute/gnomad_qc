@@ -667,7 +667,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
             )
         )
     )
-    ht = ht.transmute_globals(summary_stats_meta=ht.filter_groups_meta)
+    ht = ht.transmute_globals(summary_stats_meta=ht.filter_group_meta)
 
     return ht
 
