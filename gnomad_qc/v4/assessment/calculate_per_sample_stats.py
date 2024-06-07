@@ -612,7 +612,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
 
     # Need the key_by because otherwise the repartitioning will not work, and will only
     # be as many partitions as the number of filter_groups.
-    n_partitions = max(int(n_partitions * n_samples * 0.001), 50)
+    n_partitions = max(int((n_partitions * n_samples) / 50000), 50)
     tmp_path = new_temp_file("stat_counts_explode_sample", "ht")
     ht.key_by("s").write(tmp_path)
     ht = hl.read_table(tmp_path, _n_partitions=n_partitions)
