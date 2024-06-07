@@ -864,6 +864,9 @@ def main(args):
                 rare_variants_afs=rare_variants_afs,
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
+        filter_groups_res = get_summary_stats_filtering_groups(
+            data_type, test=test_gene
+        )
         if args.create_intermediate_mt_for_sample_counts:
             logger.info("Creating intermediate MatrixTable for per-sample counts...")
 
@@ -874,9 +877,7 @@ def main(args):
                     "--test-gene or --test-n-partitions if it doesn't already exist."
                 )
 
-            filter_groups_ht = get_summary_stats_filtering_groups(
-                data_type, test=test_gene
-            ).ht()
+            filter_groups_ht = filter_groups_res.ht()
             vds_load_func = (
                 get_gnomad_v4_vds
                 if data_type == "exomes"
@@ -895,7 +896,7 @@ def main(args):
             ).variant_data
 
             create_intermediate_mt_for_sample_counts(
-                mt, filter_groups_ht, autosomes_only
+                mt, filter_groups_res.ht(), autosomes_only
             ).write(temp_intermediate_ht_path, overwrite=overwrite)
 
         if create_per_sample_counts:
@@ -922,9 +923,9 @@ def main(args):
                     per_sample_res.path, overwrite=overwrite
                 )
             else:
-                create_per_sample_counts_ht(ht).write(
-                    per_sample_res.path, overwrite=overwrite
-                )
+                create_per_sample_counts_ht(
+                    ht, filter_groups_res.ht(), autosomes_only
+                ).write(per_sample_res.path, overwrite=overwrite)
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
