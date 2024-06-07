@@ -504,7 +504,7 @@ def create_intermediate_mt_for_sample_counts(
     # belongs to the filter group.
     # The sample_idx_by_stat annotation contains a struct with arrays of sample indices
     # for each genotype level stat.
-    ac1 = mt.variant_ac[1] == 1
+    ac1 = ht.variant_ac[1] == 1
     ht = ht.select(
         filter_groups=ht.filter_groups.map(
             lambda x: hl.struct(
