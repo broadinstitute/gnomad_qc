@@ -48,6 +48,7 @@ from hail.genetics.allele_type import AlleleType
 from hail.methods.qc import _qc_allele_type
 from hail.utils import new_temp_file
 from hail.utils.misc import divide_null
+from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
@@ -315,12 +316,8 @@ def get_summary_stats_filter_groups_ht(
     ht = ht.select(
         _no_lcr=filter_exprs["no_lcr"],
         filter_groups=filter_groups_expr,
-        ac1=ht.freq[0].AC == 1,
-        af=ht.freq[0].AF,
-        **{
-            k: _qc_allele_type(ht.alleles[0], ht.alleles[1]) == v
-            for k, v in ALLELE_TYPE_MAP.items()
-        },
+        variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
+        variant_af=ht.freq[0].AF,
     )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
@@ -467,7 +464,7 @@ def create_intermediate_mt_for_sample_counts(
         mt = filter_to_autosomes(mt)
         mt = mt.annotate_entries(
             high_ab_het_ref=(
-                (mt.af > 0.01)
+                (mt.variant_af > 0.01)
                 & ((mt.AD[1] / mt.DP) > ab_cutoff)
                 & mt.GT.is_het()
                 & ~mt._het_non_ref
@@ -507,13 +504,14 @@ def create_intermediate_mt_for_sample_counts(
     # belongs to the filter group.
     # The sample_idx_by_stat annotation contains a struct with arrays of sample indices
     # for each genotype level stat.
+    ac1 = mt.variant_ac[1]
     ht = ht.select(
         filter_groups=ht.filter_groups.map(
             lambda x: hl.struct(
                 group_filter=x,
-                singleton=x & ht.ac1,
-                singleton_ti=x & ht.transition & ht.ac1,
-                singleton_tv=x & ht.transversion & ht.ac1,
+                singleton=x & ac1,
+                singleton_ti=x & ht.transition & ac1,
+                singleton_tv=x & ht.transversion & ac1,
                 **{k: x & ht[k] for k in ALLELE_TYPE_MAP.keys()},
             )
         ),
