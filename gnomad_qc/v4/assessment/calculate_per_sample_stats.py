@@ -46,6 +46,7 @@ from gnomad.utils.vep import (
 )
 from hail.genetics.allele_type import AlleleType
 from hail.methods.qc import _qc_allele_type
+from hail.utils import new_temp_file
 from hail.utils.misc import divide_null
 
 from gnomad_qc.slack_creds import slack_token
@@ -328,12 +329,8 @@ def get_summary_stats_filter_groups_ht(
     return ht.filter(ht._no_lcr).drop("_no_lcr")
 
 
-def create_intermediate_mt_for_sample_counts(
-    mt: hl.MatrixTable,
-    filter_group_ht: hl.Table,
-    autosomes_only: bool = False,
-    gq_bins: Tuple[int] = (60,),
-    dp_bins: Tuple[int] = (20, 30),
+def create_per_sample_counts_ht(
+    mt: hl.MatrixTable, filter_group_ht: hl.Table, autosomes_only: bool = False
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
@@ -350,9 +347,117 @@ def create_intermediate_mt_for_sample_counts(
         False.
     :return: Table containing per-sample variant counts.
     """
+    # Add Allele Type annotations to variant MatrixTable.
+    _, variant_types = vmt_sample_qc_variant_annotations(
+        global_gt=mt.GT, alleles=mt.alleles
+    )
+    mt = mt.annotate_rows(variant_atypes=variant_types)
+
     # Annotate the MT with the needed annotations.
     mt = annotate_with_ht(mt, filter_group_ht)
+    if autosomes_only:
+        logger.info(
+            "Filtering to autosomes only and performing high AB het -> hom alt "
+            "adjustment of GT..."
+        )
+        ab_cutoff = 0.9
+        mt = filter_to_autosomes(mt)
+        mt = mt.annotate_entries(
+            GT=hl.if_else(
+                (mt.variant_af > 0.01)
+                & ((mt.AD[1] / mt.DP) > ab_cutoff)
+                & mt.GT.is_het()
+                & ~mt._het_non_ref,
+                hl.call(1, 1),
+                mt.GT,
+            )
+        )
+
     mt = mt.filter_entries(mt.GT.is_non_ref())
+    mt = filter_to_adj(mt)
+
+    mt = mt.select_entries("GT", "GQ", "DP")
+
+    # Run Hail's 'vmt_sample_qc' for all requested filter groups.
+    qc_expr = vmt_sample_qc(
+        global_gt=mt.GT,
+        gq=mt.GQ,
+        variant_ac=mt.variant_ac,
+        variant_atypes=mt.variant_atypes,
+        dp=mt.DP,
+    )
+    ht = mt.select_cols(
+        summary_stats=hl.agg.array_agg(
+            lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups
+        )
+    ).cols()
+    ht = ht.annotate_globals(
+        summary_stats_meta=filter_group_ht.index_globals().filter_group_meta
+    )
+    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
+
+    # Add 'n_indel' to the output Table.
+    ht = ht.annotate(
+        summary_stats=ht.summary_stats.map(
+            lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion)
+        )
+    )
+
+    return ht
+
+
+def create_intermediate_mt_for_sample_counts(
+    mt: hl.MatrixTable,
+    filter_group_ht: hl.Table,
+    autosomes_only: bool = False,
+    gq_bins: Tuple[int] = (60,),
+    dp_bins: Tuple[int] = (20, 30),
+) -> hl.Table:
+    """
+    Create intermediate MatrixTable for computing per-sample stats counts.
+
+    This function creates an intermediate Table for use in
+    `create_per_sample_counts_ht`. It does the following:
+        - Filters to non-ref genotypes (likely unnecessary if the MT is already a
+          variant data MT).
+        - Annotates the rows with the filter group metadata from `filter_group_ht`.
+        - If `autosomes_only` is True, filters to autosomes only and performs the high
+          AB het -> hom alt adjustment of GT.
+        - Filters to `adj` genotypes.
+        - Converts the MT to a HT with a `sample_idx_by_stat` row annotation that is
+          a struct of arrays of sample indices for each genotype level stat. The stats
+          are: non_ref, het, hom_var, high_ab_het_ref, over_gq_{gq}, and over_dp_{dp}.
+        - Changes the `filter_groups` annotation from an array of booleans to an array
+          of structs with `group_filter` being the original filter group boolean value
+          and additional boolean annotations indicating whether the variant is included
+          in each of the following variant level stats: singleton, singleton_ti,
+          singleton_tv, insertion, deletion, transition, and transversion.
+
+    This structure creates a large intermediate Table that allows for memory efficient
+    computation of per-sample stats counts. Smaller datasets do not require this
+    intermediate step and can compute per-sample stats counts directly from the MT and
+    with the use of Hail's `vmt_sample_qc` function.
+
+    :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
+        split.
+    :param filter_group_ht: Table containing filter group metadata from
+        `get_summary_stats_filter_groups_ht`.
+    :param autosomes_only: Boolean indicating whether to filter to autosomes only. When
+        True, the high AB het -> hom alt adjustment of GT is performed.
+    :param gq_bins: Tuple of GQ bins to use for filtering. Default is (60,).
+    :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
+    :return: Intermediate Table for computing per-sample stats counts.
+    """
+    # Annotate the MT with all annotations on the filter group HT.
+    mt = annotate_with_ht(mt, filter_group_ht)
+
+    # Filter to non-ref genotypes, which is likely unnecessary if the MT is already a
+    # variant data MT.
+    mt = mt.filter_entries(mt.GT.is_non_ref())
+
+    # For now, only add a high_ab_het_ref annotation if autosomes_only is True.
+    # TODO: Modify this when we have fixed the script to correctly handle sex
+    #  chromosomes.
     if autosomes_only:
         logger.info(
             "Filtering to autosomes only and performing high AB het -> hom alt "
@@ -369,6 +474,7 @@ def create_intermediate_mt_for_sample_counts(
             )
         )
 
+    # Filter to adj genotypes and select only the necessary entries to be localized.
     mt = filter_to_adj(mt)
     mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref")
 
@@ -376,11 +482,15 @@ def create_intermediate_mt_for_sample_counts(
     # for that variant.
     ht = mt.localize_entries("_entries", "_cols")
 
+    # Add an index for each sample to the entries array to map entries back to samples.
     entry_expr = hl.map(
         lambda i, e: (i, e.GT, e.GQ, e.DP, e.high_ab_het_ref),
         hl.range(hl.len(ht._cols)),
         ht._entries,
     ).filter(lambda x: hl.is_defined(x[1]))
+
+    # Create a dictionary of boolean expressions for each genotype level stat indicating
+    # whether that genotype should be counted for that stat.
     stat_expr = {
         "non_ref": lambda x: True,
         "het": lambda x: x[1].is_het(),
@@ -389,7 +499,15 @@ def create_intermediate_mt_for_sample_counts(
         **{f"over_gq_{gq}": lambda x: x[2] >= gq for gq in gq_bins},
         **{f"over_dp_{dp}": lambda x: x[3] >= dp for dp in dp_bins},
     }
-    ht = ht.annotate(
+
+    # Annotate the HT with the filter group metadata and the sample index by stat.
+    # The filter groups annotation contains an array of structs with boolean
+    # expressions for each variant level stat indicating whether the variant should be
+    # counted for that stat and a group_filter boolean indicating whether the variant
+    # belongs to the filter group.
+    # The sample_idx_by_stat annotation contains a struct with arrays of sample indices
+    # for each genotype level stat.
+    ht = ht.select(
         filter_groups=ht.filter_groups.map(
             lambda x: hl.struct(
                 group_filter=x,
@@ -406,6 +524,8 @@ def create_intermediate_mt_for_sample_counts(
             }
         ),
     )
+
+    # Annotate the HT with globals for the sample IDs and filter group metadata.
     ht = ht.select_globals(
         samples=ht._cols.map(lambda x: x.s),
         filter_group_meta=filter_group_ht.index_globals().filter_group_meta,
@@ -414,30 +534,58 @@ def create_intermediate_mt_for_sample_counts(
     return ht
 
 
-def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
+def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     """
-    Create Table of Hail's sample_qc output broken down by requested variant groupings.
+    Create Table of sample QC metrics broken down by requested variant groupings.
 
-    Useful for finding the number of variants per sample, either all variants, or
-    variants fall into specific capture regions, or variants that are rare
-    (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical
-    or mane transcripts.
+    .. warning::
+
+        This function is memory intensive and should be run on a cluster with
+        n1-highmem-8 workers and big-executors enabled. It also requires shuffling,
+        so a cluster with all workers is recommended.
+
+    Takes an intermediate Table (returned by `create_intermediate_mt_for_sample_counts`)
+    with an array of variant level stats by filter groups and an array of sample
+    indices for each genotype level stat.
+
+    This function restructures the Table a few times to get around memory errors that
+    occur when trying to aggregate the Table directly.
+
+    The following steps are taken:
+        - The Table is grouped by filter group (including all variant level stats) and
+          aggregated to get the count of variants for each sample in each filter group.
+          Leads to a Table where the number of rows is approximately the number of
+          filter groups times the possible permutations of variant level stats. If
+          This number is too small, it might be better to use
+          `create_per_sample_counts_ht`.
+        - Sample IDs are mapped to the sample indices and the Table is exploded so that
+          each row is counts for a sample and a filter group. The number of rows in the
+          Table is approximately the number of samples times the number of rows in the
+          previous Table.
+        - Group the Table by sample to get a struct of the count of variants by sample
+          QC metric for each sample in each filter group.
+        - Add sample QC stats that are combinations of other stats.
 
     :param ht: Input Table containing variant data. Must have multi-allelic sites split.
     :return: Table containing per-sample variant counts.
     """
+    n_samples = hl.eval(hl.len(ht.samples))
     stats = list(ht.sample_idx_by_stat.keys())
-    # Needs all workers due to shuffle.
-    # Error summary: IOException: No space left on device
 
-    ht = ht.group_by("filter_groups").aggregate(
+    # Group by filter groups and aggregate the count of variants for each sample in each
+    # filter group.
+    tmp_path = new_temp_file("agg_filter_groups", "ht")
+    ht.group_by("filter_groups").aggregate(
         stat_counts=[
             hl.agg.explode(lambda x: hl.agg.counter(x), ht.sample_idx_by_stat[s])
             for s in ht.sample_idx_by_stat
         ]
-    )
-    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg.ht", overwrite=True)
+    ).write(tmp_path)
+    n_partitions = len(hl.eval(ht.filter_group_meta)) * 8
+    ht = hl.read_table(tmp_path, _n_partitions=n_partitions)
 
+    # Map the sample indices to the sample IDs and fill in samples with no counts for
+    # the variant level stat with 0, then explode the stat counts array.
     ht = ht.annotate(
         stat_counts=hl.enumerate(ht.samples).map(
             lambda x: (x[1], ht.stat_counts.map(lambda s: s.get(x[0], 0)))
@@ -447,14 +595,20 @@ def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
 
     # Need the key_by because otherwise the repartitioning will not work, and will only
     # be as many partitions as the number of filter_groups.
-    ht = ht.key_by("s").repartition(5000)
-    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg3.ht", overwrite=True)
+    n_partitions = max(int(n_partitions * n_samples * 0.001), 50)
+    tmp_path = new_temp_file("stat_counts_explode_sample", "ht")
+    ht.key_by("s").write(tmp_path)
+    ht = hl.read_table(tmp_path, _n_partitions=n_partitions)
 
+    # Group by sample and filter group to get the count of variants for each sample in
+    # each filter group (including all variant level filters too).
     ht = ht.group_by("s", "filter_groups").aggregate(
         stat_counts=hl.agg.array_sum(ht.stat_counts)
     )
-    ht = ht.checkpoint("gs://gnomad-tmp/julia/temp_agg4.ht", overwrite=True)
+    ht = ht.checkpoint(new_temp_file("agg_filter_groups_and_sample", "ht"))
 
+    # Group by sample to get a struct of the count of variants for each sample QC stat
+    # for each sample in each filter group.
     stat_map = {s: i for i, s in enumerate(stats)}
     all_stats = stats + [s for s in ht.filter_groups[0] if s != "group_filter"]
     non_ref_idx = stat_map["non_ref"]
@@ -475,7 +629,12 @@ def create_per_sample_counts_ht(ht: hl.Table) -> hl.Table:
             ht.filter_groups,
         )
     )
-    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
+    n_partitions = max(int(n_samples * 0.001), 50)
+    ht = ht.naive_coalesce(n_partitions).checkpoint(
+        new_temp_file("per_sample_counts", "ht")
+    )
+
+    # Add sample QC stats that are combinations of other stats.
     ratios = {
         "r_ti_tv": ("n_transition", "n_transversion"),
         "r_ti_tv_singleton": ("n_singleton_ti", "n_singleton_tv"),
@@ -667,7 +826,7 @@ def main(args):
         by_subset=args.by_subset,
     )
     temp_intermediate_ht_path = get_checkpoint_path(
-        "per_sample_summary_stats_intermediate" + (".test" if test else "")
+        "per_sample_summary_stats_intermediate" + (".test" if test else ""), mt=True
     )
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
@@ -741,10 +900,29 @@ def main(args):
             logger.info(
                 "Calculating per-sample variant statistics for %s...", data_type
             )
-            ht = hl.read_table(temp_intermediate_ht_path)
-            create_per_sample_counts_ht(ht).write(
-                per_sample_res.path, overwrite=overwrite
-            )
+            if args.use_intermediate_mt_for_sample_counts:
+                logger.info("Using intermediate MatrixTable for per-sample counts...")
+                ht = hl.read_table(temp_intermediate_ht_path)
+            else:
+                ht = get_summary_stats_filtering_groups(data_type=data_type).ht()
+            if args.test_n_partitions:
+                ht = ht._filter_partitions(test_partitions)
+            if test_gene:
+                ht = hl.filter_intervals(
+                    ht,
+                    [
+                        hl.parse_locus_interval(x, reference_genome="GRCh38")
+                        for x in filter_intervals
+                    ],
+                )
+            if args.use_intermediate_mt_for_sample_counts:
+                create_per_sample_counts_from_intermediate_ht(ht).write(
+                    per_sample_res.path, overwrite=overwrite
+                )
+            else:
+                create_per_sample_counts(ht).write(
+                    per_sample_res.path, overwrite=overwrite
+                )
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
@@ -839,6 +1017,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--create-per-sample-counts-ht",
         help="Create per-sample variant counts Table.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--use-intermediate-mt-for-sample-counts",
+        help=(
+            "Use intermediate MatrixTable for per-sample variant counts. This is only "
+            "relevant when using --create-per-sample-counts-ht."
+        ),
         action="store_true",
     )
     parser.add_argument(

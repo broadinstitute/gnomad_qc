@@ -43,7 +43,7 @@ def get_summary_stats_filtering_groups(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.6_6_24.ht"
             )
             for version in RELEASES
         },
