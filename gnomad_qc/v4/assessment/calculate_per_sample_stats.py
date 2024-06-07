@@ -331,7 +331,11 @@ def get_summary_stats_filter_groups_ht(
 
 
 def create_per_sample_counts_ht(
-    mt: hl.MatrixTable, filter_group_ht: hl.Table, autosomes_only: bool = False
+    mt: hl.MatrixTable,
+    filter_group_ht: hl.Table,
+    autosomes_only: bool = False,
+    gq_bins: Tuple[int] = (60,),
+    dp_bins: Tuple[int] = (20, 30),
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
@@ -346,6 +350,8 @@ def create_per_sample_counts_ht(
     :param filter_group_ht: Table containing filter groups for summary stats.
     :param autosomes_only: Whether to restrict analysis to autosomes only. Default is
         False.
+    :param gq_bins: Tuple of GQ bins to use for filtering. Default is (60,).
+    :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Table containing per-sample variant counts.
     """
     # Add Allele Type annotations to variant MatrixTable.
@@ -386,6 +392,8 @@ def create_per_sample_counts_ht(
         variant_ac=mt.variant_ac,
         variant_atypes=mt.variant_atypes,
         dp=mt.DP,
+        gq_bins=gq_bins,
+        dp_bins=dp_bins,
     )
     ht = mt.select_cols(
         summary_stats=hl.agg.array_agg(
@@ -400,7 +408,14 @@ def create_per_sample_counts_ht(
     # Add 'n_indel' to the output Table.
     ht = ht.annotate(
         summary_stats=ht.summary_stats.map(
-            lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion)
+            lambda x: x.annotate(
+                n_indel=x.n_insertion + x.n_deletion,
+                **{
+                    f"over_{k}_{b}": x[f"bases_over_{k}_threshold"][i]
+                    for k, bins in {"gq": gq_bins, "dp": dp_bins}.items()
+                    for i, b in enumerate(bins)
+                },
+            ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
         )
     )
 
@@ -652,6 +667,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
             )
         )
     )
+    ht = ht.transmute_globals(summary_stats_meta=ht.filter_groups_meta)
 
     return ht
 
@@ -708,7 +724,7 @@ def compute_agg_sample_stats(
         )
     )
     ht = ht.annotate(
-        summary_stats=hl.zip(ht.filter_group_meta, ht.summary_stats)
+        summary_stats=hl.zip(ht.summary_stats_meta, ht.summary_stats)
     ).select_globals()
     ht = ht.explode("summary_stats")
     ht = ht.annotate(
@@ -864,12 +880,12 @@ def main(args):
                 rare_variants_afs=rare_variants_afs,
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
-        filter_groups_res = get_summary_stats_filtering_groups(
+        filter_groups_ht = get_summary_stats_filtering_groups(
             data_type, test=test_gene
-        )
-        if args.create_intermediate_mt_for_sample_counts:
-            logger.info("Creating intermediate MatrixTable for per-sample counts...")
-
+        ).ht()
+        if args.create_intermediate_mt_for_sample_counts or (
+            create_per_sample_counts and not args.use_intermediate_mt_for_sample_counts
+        ):
             if test and not test_gene:
                 logger.warning(
                     "This test requires that the full filtering groups Table has been "
@@ -877,7 +893,6 @@ def main(args):
                     "--test-gene or --test-n-partitions if it doesn't already exist."
                 )
 
-            filter_groups_ht = filter_groups_res.ht()
             vds_load_func = (
                 get_gnomad_v4_vds
                 if data_type == "exomes"
@@ -895,9 +910,13 @@ def main(args):
                 annotate_het_non_ref=True,
             ).variant_data
 
-            create_intermediate_mt_for_sample_counts(
-                mt, filter_groups_res.ht(), autosomes_only
-            ).write(temp_intermediate_ht_path, overwrite=overwrite)
+            if args.create_intermediate_mt_for_sample_counts:
+                logger.info(
+                    "Creating intermediate MatrixTable for per-sample counts..."
+                )
+                create_intermediate_mt_for_sample_counts(
+                    mt, filter_groups_ht, autosomes_only
+                ).write(temp_intermediate_ht_path, overwrite=overwrite)
 
         if create_per_sample_counts:
             logger.info(
@@ -906,26 +925,23 @@ def main(args):
             if args.use_intermediate_mt_for_sample_counts:
                 logger.info("Using intermediate MatrixTable for per-sample counts...")
                 ht = hl.read_table(temp_intermediate_ht_path)
-            else:
-                ht = get_summary_stats_filtering_groups(data_type=data_type).ht()
-            if args.test_n_partitions:
-                ht = ht._filter_partitions(test_partitions)
-            if test_gene:
-                ht = hl.filter_intervals(
-                    ht,
-                    [
-                        hl.parse_locus_interval(x, reference_genome="GRCh38")
-                        for x in filter_intervals
-                    ],
-                )
-            if args.use_intermediate_mt_for_sample_counts:
+                if args.test_n_partitions:
+                    ht = ht._filter_partitions(test_partitions)
+                if test_gene:
+                    ht = hl.filter_intervals(
+                        ht,
+                        [
+                            hl.parse_locus_interval(x, reference_genome="GRCh38")
+                            for x in filter_intervals
+                        ],
+                    )
                 create_per_sample_counts_from_intermediate_ht(ht).write(
                     per_sample_res.path, overwrite=overwrite
                 )
             else:
-                create_per_sample_counts_ht(
-                    ht, filter_groups_res.ht(), autosomes_only
-                ).write(per_sample_res.path, overwrite=overwrite)
+                create_per_sample_counts_ht(mt, filter_groups_ht, autosomes_only).write(
+                    per_sample_res.path, overwrite=overwrite
+                )
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
