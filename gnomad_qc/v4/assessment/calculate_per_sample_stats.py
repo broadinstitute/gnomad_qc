@@ -1023,7 +1023,10 @@ if __name__ == "__main__":
         "--use-intermediate-mt-for-sample-counts",
         help=(
             "Use intermediate MatrixTable for per-sample variant counts. This is only "
-            "relevant when using --create-per-sample-counts-ht."
+            "relevant when using --create-per-sample-counts-ht. Note that the this "
+            "step is memory intensive and should be run on a cluster with n1-highmem-8 "
+            "workers and big-executors enabled. It also requires shuffling, so a "
+            "cluster with all workers is recommended."
         ),
         action="store_true",
     )
