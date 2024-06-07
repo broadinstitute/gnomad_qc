@@ -318,6 +318,10 @@ def get_summary_stats_filter_groups_ht(
         filter_groups=filter_groups_expr,
         variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
         variant_af=ht.freq[0].AF,
+        **{
+            k: _qc_allele_type(ht.alleles[0], ht.alleles[1]) == v
+            for k, v in ALLELE_TYPE_MAP.items()
+        },
     )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
