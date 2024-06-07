@@ -844,7 +844,7 @@ def main(args):
         by_subset=args.by_subset,
     )
     temp_intermediate_ht_path = get_checkpoint_path(
-        "per_sample_summary_stats_intermediate" + (".test" if test else ""), mt=True
+        "per_sample_summary_stats_intermediate" + (".test" if test else "")
     )
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
