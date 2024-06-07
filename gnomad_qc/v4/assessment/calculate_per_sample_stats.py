@@ -922,7 +922,7 @@ def main(args):
                     per_sample_res.path, overwrite=overwrite
                 )
             else:
-                create_per_sample_counts(ht).write(
+                create_per_sample_counts_ht(ht).write(
                     per_sample_res.path, overwrite=overwrite
                 )
 
