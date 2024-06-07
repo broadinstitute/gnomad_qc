@@ -434,6 +434,7 @@ def create_intermediate_mt_for_sample_counts(
 
     This function creates an intermediate Table for use in
     `create_per_sample_counts_ht`. It does the following:
+
         - Filters to non-ref genotypes (likely unnecessary if the MT is already a
           variant data MT).
         - Annotates the rows with the filter group metadata from `filter_group_ht`.
@@ -569,6 +570,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     occur when trying to aggregate the Table directly.
 
     The following steps are taken:
+
         - The Table is grouped by filter group (including all variant level stats) and
           aggregated to get the count of variants for each sample in each filter group.
           Leads to a Table where the number of rows is approximately the number of
