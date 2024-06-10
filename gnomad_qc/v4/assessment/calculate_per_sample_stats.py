@@ -425,8 +425,9 @@ def compute_agg_sample_stats(
     gen_anc = ["global"]
     if meta_ht is not None:
         meta_s = meta_ht[ht.s]
-        subset_expr = hl.if_else(meta_s.project_meta.ukb_sample, "ukb", "non-ukb")
-        subset += [subset_expr] if by_subset else []
+        if by_subset:
+            subset_expr = hl.if_else(meta_s.project_meta.ukb_sample, "ukb", "non-ukb")
+            subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
     ht = ht.transmute(
