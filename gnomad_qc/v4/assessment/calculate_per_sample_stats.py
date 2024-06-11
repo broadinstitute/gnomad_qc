@@ -634,7 +634,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # the filter group and random group for each sample.
     ht = ht.annotate(_rand_group=hl.rand_int32(n_rand_groups))
     ht = ht.group_by("filter_groups", "_rand_group").aggregate(
-        stat_counts=hl.struct(
+        counts=hl.struct(
             **{
                 k: hl.agg.explode(lambda x: hl.agg.counter(x), v)
                 for k, v in ht.sample_idx_by_stat.items()
@@ -653,20 +653,22 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # samples is much larger than the number of filter groups, this allows for
     # repartitioning the Table to have more partitions than the number of filter groups,
     # helping the final aggregation get around memory errors.
-    agg_func = lambda i: {k: hl.agg.sum(v.get(i, 0)) for k, v in ht.stat_counts.items()}
     ht = (
         ht.group_by("filter_groups")
         .aggregate(
-            stat_counts=hl.zip(
+            counts=hl.zip(
                 ht.samples,
                 hl.agg.array_agg(
-                    lambda i: hl.struct(**agg_func(i)), hl.range(n_samples)
+                    lambda i: hl.struct(
+                        **{k: hl.agg.sum(v.get(i, 0)) for k, v in ht.counts.items()}
+                    ),
+                    hl.range(n_samples),
                 ),
             )
         )
-        .explode("stat_counts")
+        .explode("counts")
     )
-    ht = ht.annotate(s=ht.stat_counts[0], stat_counts=ht.stat_counts[1])
+    ht = ht.annotate(s=ht.counts[0], counts=ht.counts[1])
 
     # After the explode, the number of rows is much larger, at approximately the number
     # of samples times the number of filter groups, so it's important to repartition the
@@ -680,21 +682,19 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     logger.info("Reading in as %s partitions.", ht.n_partitions())
 
     # Group by sample to get a struct of the count of variants for each sample QC stat
-    # for each sample in each filter group. Uses filter_groups annotation to filter to
-    # variants that belong to each filter group, and the stat_counts annotation to get
-    # the count of variants for each genotype level stat. The non_ref genotype level
+    # for each sample in each filter group. Uses 'filter_groups' annotation to filter to
+    # variants that belong to each filter group, and the 'counts' annotation to get
+    # the count of variants for each genotype level stat. The 'non_ref' genotype level
     # count is used with all variant level stat filter to get the count of variants for
     # each.
     variant_filters = [s for s in ht.filter_groups[0] if s != "group_filter"]
-    agg_func = lambda x, f, s: hl.agg.sum(hl.int(x[f]) * ht.stat_counts[s])
+    agg_func = lambda x, f, s: hl.agg.sum(hl.int(x[f]) * ht.counts[s])
     ht = (
         ht.group_by("s")
         .aggregate(
             summary_stats=hl.agg.array_agg(
                 lambda x: hl.struct(
-                    **{
-                        f"n_{s}": agg_func(x, "group_filter", s) for s in ht.stat_counts
-                    },
+                    **{f"n_{s}": agg_func(x, "group_filter", s) for s in ht.counts},
                     **{f"n_{f}": agg_func(x, f, "non_ref") for f in variant_filters},
                 ),
                 ht.filter_groups,
