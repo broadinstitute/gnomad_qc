@@ -588,69 +588,107 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     :param ht: Input Table containing variant data. Must have multi-allelic sites split.
     :return: Table containing per-sample variant counts.
     """
+    # Get the number of filter groups, samples, and variants in the Table to determine
+    # a reasonable number of partitions to use for the aggregated filter group HT, and
+    # the number of random groups needed to have approximately the desired partitions.
+    n_filter_groups = len(hl.eval(ht.filter_group_meta))
     n_samples = hl.eval(hl.len(ht.samples))
-    stats = list(ht.sample_idx_by_stat.keys())
+    n_variants = hl.eval(ht.count())
+    # 2^3 = 8 because there are about 3 variant level stats: singletons (singleton_ti
+    # and singleton_tv will never overlap, and one of them will always also be a
+    # singleton), transition/transversion, insertion/deletion.
+    n_filter_permutations = n_filter_groups * 8
+    # Split the Table into approximately 10,000 variants per partition.
+    n_mem_partitions = max(int(n_variants / 10000), n_filter_permutations)
+    # Compute the number of random groups needed to have approximately n_mem_partitions.
+    n_rand_groups = max(int(n_mem_partitions / n_filter_permutations), 1)
+    logger.info(
+        "Aggregating counts for each sample in each filter group...\n"
+        "\tNumber of samples: %d\n"
+        "\tNumber of variants: %d\n"
+        "\tNumber of filter groups: %d\n"
+        "\tApproximate number of filter permutations: %d\n\n"
+        "\tCalculated number of partitions to improve memory usage: %d\n"
+        "\tNumber of random groups to have approximately the above partitions: %d",
+        n_samples,
+        n_variants,
+        n_filter_groups,
+        n_filter_permutations,
+        n_mem_partitions,
+        n_rand_groups,
+    )
 
-    # Group by filter groups and aggregate the count of variants for each sample in each
-    # filter group.
+    # Group by filter groups and the random group to get the count of variants matching
+    # the filter group and random group for each sample.
+    ht = ht.annotate(_rand_group=hl.rand_int32(n_rand_groups))
+    ht = ht.group_by("filter_groups", "_rand_group").aggregate(
+        stat_counts=hl.struct(
+            **{
+                k: hl.agg.explode(lambda x: hl.agg.counter(x), v)
+                for k, v in ht.sample_idx_by_stat.items()
+            }
+        )
+    )
     tmp_path = new_temp_file("agg_filter_groups", "ht")
-    ht.group_by("filter_groups").aggregate(
-        stat_counts=[
-            hl.agg.explode(lambda x: hl.agg.counter(x), ht.sample_idx_by_stat[s])
-            for s in ht.sample_idx_by_stat
-        ]
-    ).write(tmp_path)
-    n_partitions = len(hl.eval(ht.filter_group_meta)) * 8
-    ht = hl.read_table(tmp_path, _n_partitions=n_partitions)
+    ht = ht.write(tmp_path)
+    ht = hl.read_table(tmp_path, _n_partitions=n_mem_partitions)
+    logger.info("Reading in as %s partitions.", ht.n_partitions())
 
     # Map the sample indices to the sample IDs and fill in samples with no counts for
-    # the variant level stat with 0, then explode the stat counts array.
-    ht = ht.annotate(
-        stat_counts=hl.enumerate(ht.samples).map(
-            lambda x: (x[1], ht.stat_counts.map(lambda s: s.get(x[0], 0)))
+    # the variant level stat with 0, then explode the stat counts array. This
+    # transforms the Table so there is one row for each sample and filter group. Since
+    # we need aggregate counts for each sample by filter group, and the number of
+    # samples is much larger than the number of filter groups, this allows for
+    # repartitioning the Table to have more partitions than the number of filter groups,
+    # helping the final aggregation get around memory errors.
+    agg_func = lambda i: {k: hl.agg.sum(v.get(i, 0)) for k, v in ht.stat_counts.items()}
+    ht = (
+        ht.group_by("filter_groups")
+        .aggregate(
+            stat_counts=hl.zip(
+                ht.samples,
+                hl.agg.array_agg(
+                    lambda i: hl.struct(**agg_func(i)), hl.range(n_samples)
+                ),
+            )
         )
-    ).explode("stat_counts")
-    ht = ht.select(s=ht.stat_counts[0], stat_counts=ht.stat_counts[1])
+        .explode("stat_counts")
+    )
+    ht = ht.annotate(s=ht.stat_counts[0], stat_counts=ht.stat_counts[1])
 
-    # Need the key_by because otherwise the repartitioning will not work, and will only
-    # be as many partitions as the number of filter_groups.
-    n_partitions = max(int((n_partitions * n_samples) / 50000), 50)
+    # After the explode, the number of rows is much larger, at approximately the number
+    # of samples times the number of filter groups, so it's important to repartition the
+    # Table. This is done as a repartition on read, and the key_by is needed because
+    # otherwise the repartitioning will not work, and will only be as many partitions
+    # as the number of filter_groups.
+    n_partitions = max(int((n_filter_permutations * n_samples) / 50000), 50)
     tmp_path = new_temp_file("stat_counts_explode_sample", "ht")
     ht.key_by("s").write(tmp_path)
     ht = hl.read_table(tmp_path, _n_partitions=n_partitions)
-
-    # Group by sample and filter group to get the count of variants for each sample in
-    # each filter group (including all variant level filters too).
-    ht = ht.group_by("s", "filter_groups").aggregate(
-        stat_counts=hl.agg.array_sum(ht.stat_counts)
-    )
-    ht = ht.checkpoint(new_temp_file("agg_filter_groups_and_sample", "ht"))
+    logger.info("Reading in as %s partitions.", ht.n_partitions())
 
     # Group by sample to get a struct of the count of variants for each sample QC stat
-    # for each sample in each filter group.
-    stat_map = {s: i for i, s in enumerate(stats)}
-    all_stats = stats + [s for s in ht.filter_groups[0] if s != "group_filter"]
-    non_ref_idx = stat_map["non_ref"]
-    ht = ht.group_by("s").aggregate(
-        summary_stats=hl.agg.array_agg(
-            lambda x: hl.struct(
-                **{
-                    f"n_{s}": hl.agg.sum(
-                        hl.if_else(
-                            x.group_filter if s in stats else x[s],
-                            ht.stat_counts[stat_map[s] if s in stats else non_ref_idx],
-                            0,
-                        )
-                    )
-                    for s in all_stats
-                }
-            ),
-            ht.filter_groups,
+    # for each sample in each filter group. Uses filter_groups annotation to filter to
+    # variants that belong to each filter group, and the stat_counts annotation to get
+    # the count of variants for each genotype level stat. The non_ref genotype level
+    # count is used with all variant level stat filter to get the count of variants for
+    # each.
+    variant_filters = [s for s in ht.filter_groups[0] if s != "group_filter"]
+    agg_func = lambda x, f, s: hl.agg.sum(hl.int(x[f]) * ht.stat_counts[s])
+    ht = (
+        ht.group_by("s")
+        .aggregate(
+            summary_stats=hl.agg.array_agg(
+                lambda x: hl.struct(
+                    **{
+                        f"n_{s}": agg_func(x, "group_filter", s) for s in ht.stat_counts
+                    },
+                    **{f"n_{f}": agg_func(x, f, "non_ref") for f in variant_filters},
+                ),
+                ht.filter_groups,
+            )
         )
-    )
-    n_partitions = max(int(n_samples * 0.001), 50)
-    ht = ht.naive_coalesce(n_partitions).checkpoint(
-        new_temp_file("per_sample_counts", "ht")
+        .checkpoint(new_temp_file("per_sample_counts", "ht"))
     )
 
     # Add sample QC stats that are combinations of other stats.
@@ -670,6 +708,10 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
         )
     )
     ht = ht.transmute_globals(summary_stats_meta=ht.filter_group_meta)
+
+    n_partitions = max(int(n_samples * 0.001), min(50, n_samples))
+    logger.info("Naive coalescing to %s partitions.", n_partitions)
+    ht = ht.naive_coalesce(n_partitions)
 
     return ht
 
