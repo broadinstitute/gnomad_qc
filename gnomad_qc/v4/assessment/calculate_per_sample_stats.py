@@ -51,6 +51,7 @@ from hail.utils.misc import divide_null
 from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources import meta
 from gnomad_qc.v4.resources.assessment import (
     get_per_sample_counts,
@@ -318,16 +319,81 @@ def get_summary_stats_filter_groups_ht(
         filter_groups=filter_groups_expr,
         variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
         variant_af=ht.freq[0].AF,
-        **{
-            k: _qc_allele_type(ht.alleles[0], ht.alleles[1]) == v
-            for k, v in ALLELE_TYPE_MAP.items()
-        },
+        variant_atypes=[_qc_allele_type(ht.alleles[0], ht.alleles[1])],
     )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
     # Filter to only variants that are not in low confidence regions.
     return ht.filter(ht._no_lcr).drop("_no_lcr")
+
+
+def prepare_mt_for_sample_counts(
+    mt: hl.MatrixTable,
+    filter_group_ht: hl.Table,
+    autosomes_only: bool = False,
+    for_intermediate: bool = False,
+) -> hl.MatrixTable:
+    """
+    Prepare MatrixTable for computing per-sample stats counts.
+
+    This function prepares the MatrixTable for computing per-sample stats counts. It
+    does the following:
+
+        - Annotates the rows with the filter group metadata from `filter_group_ht`.
+        - If `autosomes_only` is True, filters to autosomes only and performs the high
+          AB het -> hom alt adjustment of GT, or adds a high_ab_het_ref annotation if
+          `for_intermediate` is True.
+        - Filters to `adj` genotypes and selects only the necessary entries for
+          downstream processing.
+
+    :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
+        split.
+    :param filter_group_ht: Table containing filter group metadata from
+        `get_summary_stats_filter_groups_ht`.
+    :param autosomes_only: Boolean indicating whether to filter to autosomes only. When
+        True, the high AB het -> hom alt adjustment of GT is performed.
+    :param for_intermediate: Boolean indicating whether to prepare the MT for
+        intermediate Table creation (`create_intermediate_mt_for_sample_counts`).
+        Default is False.
+    :return: MatrixTable prepared for computing per-sample stats counts.
+    """
+    select_fields = ["GT", "GQ", "DP"]
+    if for_intermediate:
+        select_fields.append("high_ab_het_ref")
+
+    # Annotate the MT with all annotations on the filter group HT.
+    mt = annotate_with_ht(mt, filter_group_ht)
+
+    # Filter to non-ref genotypes, which is likely unnecessary if the MT is already a
+    # variant data MT.
+    mt = mt.filter_entries(mt.GT.is_non_ref())
+
+    # For now, only add a high_ab_het_ref annotation (or correction) if autosomes_only
+    # is True.
+    # TODO: Modify this when we have fixed the script to correctly handle sex
+    #  chromosomes.
+    if autosomes_only:
+        logger.info(
+            "Filtering to autosomes only and performing high AB het -> hom alt "
+            "adjustment of GT..."
+        )
+        mt = filter_to_autosomes(mt)
+        high_ab_het_ref_expr = hom_alt_depletion_fix(
+            mt.GT,
+            mt._het_non_ref,
+            mt.variant_af,
+            mt.AD[1] / mt.DP,
+            return_bool=for_intermediate,
+        )
+        field_name = "GT" if not for_intermediate else "high_ab_het_ref"
+        mt = mt.annotate_entries(**{field_name: high_ab_het_ref_expr})
+
+    # Filter to adj genotypes and select only the necessary entries to be localized.
+    mt = filter_to_adj(mt)
+    mt = mt.select_entries(*select_fields)
+
+    return mt
 
 
 def create_per_sample_counts_ht(
@@ -354,36 +420,7 @@ def create_per_sample_counts_ht(
     :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Table containing per-sample variant counts.
     """
-    # Add Allele Type annotations to variant MatrixTable.
-    _, variant_types = vmt_sample_qc_variant_annotations(
-        global_gt=mt.GT, alleles=mt.alleles
-    )
-    mt = mt.annotate_rows(variant_atypes=variant_types)
-
-    # Annotate the MT with the needed annotations.
-    mt = annotate_with_ht(mt, filter_group_ht)
-    if autosomes_only:
-        logger.info(
-            "Filtering to autosomes only and performing high AB het -> hom alt "
-            "adjustment of GT..."
-        )
-        ab_cutoff = 0.9
-        mt = filter_to_autosomes(mt)
-        mt = mt.annotate_entries(
-            GT=hl.if_else(
-                (mt.variant_af > 0.01)
-                & ((mt.AD[1] / mt.DP) > ab_cutoff)
-                & mt.GT.is_het()
-                & ~mt._het_non_ref,
-                hl.call(1, 1),
-                mt.GT,
-            )
-        )
-
-    mt = mt.filter_entries(mt.GT.is_non_ref())
-    mt = filter_to_adj(mt)
-
-    mt = mt.select_entries("GT", "GQ", "DP")
+    mt = prepare_mt_for_sample_counts(mt, filter_group_ht, autosomes_only)
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     qc_expr = vmt_sample_qc(
@@ -405,7 +442,7 @@ def create_per_sample_counts_ht(
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
-    # Add 'n_indel' to the output Table.
+    # Add 'n_indel' to the output Table and rename the DP and GQ fields.
     ht = ht.annotate(
         summary_stats=ht.summary_stats.map(
             lambda x: x.annotate(
@@ -465,35 +502,7 @@ def create_intermediate_mt_for_sample_counts(
     :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Intermediate Table for computing per-sample stats counts.
     """
-    # Annotate the MT with all annotations on the filter group HT.
-    mt = annotate_with_ht(mt, filter_group_ht)
-
-    # Filter to non-ref genotypes, which is likely unnecessary if the MT is already a
-    # variant data MT.
-    mt = mt.filter_entries(mt.GT.is_non_ref())
-
-    # For now, only add a high_ab_het_ref annotation if autosomes_only is True.
-    # TODO: Modify this when we have fixed the script to correctly handle sex
-    #  chromosomes.
-    if autosomes_only:
-        logger.info(
-            "Filtering to autosomes only and performing high AB het -> hom alt "
-            "adjustment of GT..."
-        )
-        ab_cutoff = 0.9
-        mt = filter_to_autosomes(mt)
-        mt = mt.annotate_entries(
-            high_ab_het_ref=(
-                (mt.variant_af > 0.01)
-                & ((mt.AD[1] / mt.DP) > ab_cutoff)
-                & mt.GT.is_het()
-                & ~mt._het_non_ref
-            )
-        )
-
-    # Filter to adj genotypes and select only the necessary entries to be localized.
-    mt = filter_to_adj(mt)
-    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref")
+    mt = prepare_mt_for_sample_counts(mt, filter_group_ht, autosomes_only, True)
 
     # Convert MT to HT with a row annotation that is an array of all samples entries
     # for that variant.
@@ -525,14 +534,17 @@ def create_intermediate_mt_for_sample_counts(
     # The sample_idx_by_stat annotation contains a struct with arrays of sample indices
     # for each genotype level stat.
     ac1 = ht.variant_ac[1] == 1
+    allele_type_expr = hl.struct(
+        **{k: ht.variant_atypes[0] == v for k, v in ALLELE_TYPE_MAP.items()}
+    )
     ht = ht.select(
         filter_groups=ht.filter_groups.map(
             lambda x: hl.struct(
                 group_filter=x,
                 singleton=x & ac1,
-                singleton_ti=x & ht.transition & ac1,
-                singleton_tv=x & ht.transversion & ac1,
-                **{k: x & ht[k] for k in ALLELE_TYPE_MAP.keys()},
+                singleton_ti=x & allele_type_expr.transition & ac1,
+                singleton_tv=x & allele_type_expr.transversion & ac1,
+                **{k: x & allele_type_expr[k] for k in ALLELE_TYPE_MAP.keys()},
             )
         ),
         sample_idx_by_stat=hl.struct(
