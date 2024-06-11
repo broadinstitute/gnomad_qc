@@ -7,6 +7,7 @@ from pprint import pprint
 from typing import Dict
 
 import hail as hl
+from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.vep import (
     CSQ_CODING_HIGH_IMPACT,
     CSQ_CODING_MEDIUM_IMPACT,
@@ -14,7 +15,10 @@ from gnomad.utils.vep import (
 )
 from tabulate import tabulate
 
-from gnomad_qc.v2.resources.basics import get_gnomad_public_data
+from gnomad_qc.v2.resources.basics import (
+    get_gnomad_liftover_data_path,
+    get_gnomad_public_data,
+)
 from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -25,7 +29,7 @@ logger.setLevel(logging.INFO)
 DIVERSE_GRPS = ["afr", "amr", "eas", "mid", "sas"]
 EUR_GRPS = {"all_eur": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
 FILTER_VALUES_TO_DROP = hl.array(["AC0", "InbreedingCoeff"])
-AF_THRESHOLDS = [0.0, 0.0001, 0.001, 0.01]
+AF_THRESHOLDS = [0.0001, 0.001, 0.01]
 NS_CONSEQ_TERMS = CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT
 
 
@@ -260,8 +264,13 @@ def main(args):
     for version in ["v4", "v2"]:
         if version == "v4":
             ht = release_sites().ht()
+        elif args.use_v2_liftover:
+            ht = hl.read_table(get_gnomad_liftover_data_path("exomes"))
+            vep_ht = vep_context.versions["105"].ht()
+            ht = ht.annotate(vep=vep_ht[ht.key].vep)
         else:
             ht = get_gnomad_public_data("exomes")
+
         if args.test:
             # Filter to two partitions
             ht = ht._filter_partitions([0, 1])
@@ -397,6 +406,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Filter to variants where eur AF is < threshold while grpmax > threshold",
     )
+    parser.add_argument(
+        "--use-v2-liftover",
+        action="store_true",
+        help="Use v2 liftover annotated with vep 105 for comparison",
+    )
+
     args = parser.parse_args()
     if args.drop_hard_filtered and args.no_variant_qc_filters:
         raise ValueError(
