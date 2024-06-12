@@ -12,6 +12,7 @@ from gnomad.utils.vep import (
     CSQ_CODING_HIGH_IMPACT,
     CSQ_CODING_MEDIUM_IMPACT,
     filter_vep_to_canonical_transcripts,
+    process_consequences,
 )
 from tabulate import tabulate
 
@@ -283,6 +284,7 @@ def main(args):
         # All MANE Select transcripts are canonical
         if args.canonical:
             logger.info("Filtering to only MANE Select and canonical transcripts...")
+            ht = process_consequences(ht)
             ht = filter_vep_to_canonical_transcripts(ht, filter_empty_csq=True)
             msg = "canonical transcript filtering"
 
@@ -298,7 +300,12 @@ def main(args):
             # NOTE: There is no guarantee the most severe consequence is from the
             # canonical transcript if table is filtered to canonical transcripts
             ht = ht.filter(
-                hl.literal(csq_terms).contains(ht.vep.most_severe_consequence)
+                hl.literal(csq_terms).contains(
+                    ht.vep.worst_csq_for_variant_canonical
+                )  # Need to determine field, process_consequences produces this one, should that function move up?
+                # Should we just run on canonical alwways?
+                # IF so move and keep this field, otherwise add more conditionals to the
+                # vep field that we access
             )
             ns_variants = ht.count()
 
