@@ -295,7 +295,7 @@ def main(args):
                     else "non-synonymous variants"
                 ),
             )
-            # NOTE: There is no garauntree the most severe consequence is from the
+            # NOTE: There is no guarantee the most severe consequence is from the
             # canonical transcript if table is filtered to canonical transcripts
             ht = ht.filter(
                 hl.literal(csq_terms).contains(ht.vep.most_severe_consequence)
