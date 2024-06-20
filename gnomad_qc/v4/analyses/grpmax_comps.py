@@ -132,6 +132,9 @@ def version_stats(
                     t_ht = filter_to_threshold(
                         p_ht, threshold, version=version, eur_filter=eur_filter
                     )
+                    t_ht = t_ht.filter(
+                        hl.literal(DIVERSE_GRPS).contains(t_ht.grpmax_ga)
+                    )
                     t_ht = t_ht.checkpoint(
                         f"gs://gnomad-tmp-4day/grpmax_comps_{version}_{grp_id}_{threshold}.ht",
                         overwrite=True,
@@ -144,10 +147,6 @@ def version_stats(
                         version,
                         t_ht.count(),
                         t_ht.count() / t_variants * 100,
-                    )
-
-                    t_ht = t_ht.filter(
-                        hl.literal(DIVERSE_GRPS).contains(t_ht.grpmax_ga)
                     )
 
                     # For each diverse genetic ancestry group, aggregate the number of
@@ -282,15 +281,14 @@ def main(args):
         msg = ""
         ht = process_consequences(ht, has_polyphen=False)
 
-        if csq_terms:
-            logger.info(
-                "Filtering to keep only %s ...",
-                (
-                    str(csq_terms) + " variants"
-                    if csq_terms and not non_syn_only
-                    else "non-synonymous variants"
-                ),
-            )
+        logger.info(
+            "Filtering to keep only %s ...",
+            (
+                str(csq_terms) + " variants"
+                if not non_syn_only
+                else "non-synonymous variants"
+            ),
+        )
         if args.canonical:
             vep_csq_expr = ht.vep.worst_csq_for_variant_canonical
             msg += " on canonical transcripts"
