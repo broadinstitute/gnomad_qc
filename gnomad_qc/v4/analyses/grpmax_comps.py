@@ -11,7 +11,6 @@ from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.vep import (
     CSQ_CODING_HIGH_IMPACT,
     CSQ_CODING_MEDIUM_IMPACT,
-    filter_vep_to_canonical_transcripts,
     process_consequences,
 )
 from tabulate import tabulate
@@ -281,12 +280,7 @@ def main(args):
             "Total number of variants in %s before filtering: %s", version, t_variants
         )
         msg = ""
-        # All MANE Select transcripts are canonical
-        if args.canonical:
-            logger.info("Filtering to only MANE Select and canonical transcripts...")
-            ht = process_consequences(ht)
-            ht = filter_vep_to_canonical_transcripts(ht, filter_empty_csq=True)
-            msg = "canonical transcript filtering"
+        ht = process_consequences(ht, has_polyphen=False)
 
         if csq_terms:
             logger.info(
@@ -297,31 +291,25 @@ def main(args):
                     else "non-synonymous variants"
                 ),
             )
-            # NOTE: There is no guarantee the most severe consequence is from the
-            # canonical transcript if table is filtered to canonical transcripts
-            ht = ht.filter(
-                hl.literal(csq_terms).contains(
-                    ht.vep.worst_csq_for_variant_canonical
-                )  # Need to determine field, process_consequences produces this one, should that function move up?
-                # Should we just run on canonical alwways?
-                # IF so move and keep this field, otherwise add more conditionals to the
-                # vep field that we access
-            )
-            ns_variants = ht.count()
+        if args.canonical:
+            vep_csq_expr = ht.vep.worst_csq_for_variant_canonical
+            msg += " on canonical transcripts"
+        else:
+            vep_csq_expr = ht.vep.worst_csq_for_variant
+            msg += " on all transcripts"
 
-            if msg:
-                msg += " and "
-            msg += (
-                f"{'non-synonymous consequence' if non_syn_only else str(csq_terms) + ' filtering'}"
-            )
+        ht = ht.filter(
+            hl.literal(csq_terms).contains(vep_csq_expr.most_severe_consequence)
+        )
+        ns_variants = ht.count()
 
-            logger.info(
-                "Total number of variants in %s %s: %s (%.2f%% of total variants)",
-                version,
-                "after " + msg if msg else "",
-                ns_variants,
-                (ns_variants / t_variants) * 100,
-            )
+        logger.info(
+            "Total number of variants in %s %s: %s (%.2f%% of total variants)",
+            version,
+            "after " + msg if msg else "",
+            ns_variants,
+            (ns_variants / t_variants) * 100,
+        )
 
         ht = ht.checkpoint(
             f"gs://gnomad-tmp-4day/grp_comps_{version}_canonical_non_syn.ht",
