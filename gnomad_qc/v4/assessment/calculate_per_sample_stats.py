@@ -332,7 +332,6 @@ def prepare_mt_for_sample_counts(
     mt: hl.MatrixTable,
     filter_group_ht: hl.Table,
     autosomes_only: bool = False,
-    for_intermediate: bool = False,
 ) -> hl.MatrixTable:
     """
     Prepare MatrixTable for computing per-sample stats counts.
@@ -340,10 +339,11 @@ def prepare_mt_for_sample_counts(
     This function prepares the MatrixTable for computing per-sample stats counts. It
     does the following:
 
+        - Filters to non-ref genotypes (likely unnecessary if the MT is already a
+          variant data MT).
         - Annotates the rows with the filter group metadata from `filter_group_ht`.
-        - If `autosomes_only` is True, filters to autosomes only and performs the high
-          AB het -> hom alt adjustment of GT, or adds a high_ab_het_ref annotation if
-          `for_intermediate` is True.
+        - If `autosomes_only` is True, filters to autosomes only, performs the high
+          AB het -> hom alt adjustment of GT, and adds a 'high_ab_het_ref' annotation.
         - Filters to `adj` genotypes and selects only the necessary entries for
           downstream processing.
 
@@ -353,15 +353,8 @@ def prepare_mt_for_sample_counts(
         `get_summary_stats_filter_groups_ht`.
     :param autosomes_only: Boolean indicating whether to filter to autosomes only. When
         True, the high AB het -> hom alt adjustment of GT is performed.
-    :param for_intermediate: Boolean indicating whether to prepare the MT for
-        intermediate Table creation (`create_intermediate_mt_for_sample_counts`).
-        Default is False.
     :return: MatrixTable prepared for computing per-sample stats counts.
     """
-    select_fields = ["GT", "GQ", "DP"]
-    if for_intermediate:
-        select_fields.append("high_ab_het_ref")
-
     # Annotate the MT with all annotations on the filter group HT.
     mt = annotate_with_ht(mt, filter_group_ht)
 
@@ -379,27 +372,26 @@ def prepare_mt_for_sample_counts(
             "adjustment of GT..."
         )
         mt = filter_to_autosomes(mt)
-        high_ab_het_ref_expr = hom_alt_depletion_fix(
-            mt.GT,
-            mt._het_non_ref,
-            mt.variant_af,
-            mt.AD[1] / mt.DP,
-            return_bool=for_intermediate,
+        base_args = [mt.GT, mt._het_non_ref, mt.variant_af, mt.AD[1] / mt.DP]
+        mt = mt.annotate_entries(
+            GT=hom_alt_depletion_fix(*base_args, return_bool=False),
+            high_ab_het_ref=hom_alt_depletion_fix(*base_args, return_bool=True),
         )
-        field_name = "GT" if not for_intermediate else "high_ab_het_ref"
-        mt = mt.annotate_entries(**{field_name: high_ab_het_ref_expr})
 
     # Filter to adj genotypes and select only the necessary entries to be localized.
     mt = filter_to_adj(mt)
-    mt = mt.select_entries(*select_fields)
+    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref")
+
+    # Add the filter_group_meta global in filter_group_ht to the MT.
+    mt = mt.annotate_globals(
+        filter_group_meta=filter_group_ht.index_globals().filter_group_meta
+    )
 
     return mt
 
 
 def create_per_sample_counts_ht(
     mt: hl.MatrixTable,
-    filter_group_ht: hl.Table,
-    autosomes_only: bool = False,
     gq_bins: Tuple[int] = (60,),
     dp_bins: Tuple[int] = (20, 30),
 ) -> hl.Table:
@@ -413,15 +405,10 @@ def create_per_sample_counts_ht(
 
     :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
         split.
-    :param filter_group_ht: Table containing filter groups for summary stats.
-    :param autosomes_only: Whether to restrict analysis to autosomes only. Default is
-        False.
     :param gq_bins: Tuple of GQ bins to use for filtering. Default is (60,).
     :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Table containing per-sample variant counts.
     """
-    mt = prepare_mt_for_sample_counts(mt, filter_group_ht, autosomes_only)
-
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     qc_expr = vmt_sample_qc(
         global_gt=mt.GT,
@@ -431,15 +418,13 @@ def create_per_sample_counts_ht(
         dp=mt.DP,
         gq_bins=gq_bins,
         dp_bins=dp_bins,
-    )
+    ).annotate(n_high_ab_het_ref=hl.agg.count_where(mt.high_ab_het_ref))
     ht = mt.select_cols(
         summary_stats=hl.agg.array_agg(
             lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups
         )
     ).cols()
-    ht = ht.annotate_globals(
-        summary_stats_meta=filter_group_ht.index_globals().filter_group_meta
-    )
+    ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
     # Add 'n_indel' to the output Table and rename the DP and GQ fields.
@@ -461,8 +446,6 @@ def create_per_sample_counts_ht(
 
 def create_intermediate_mt_for_sample_counts(
     mt: hl.MatrixTable,
-    filter_group_ht: hl.Table,
-    autosomes_only: bool = False,
     gq_bins: Tuple[int] = (60,),
     dp_bins: Tuple[int] = (20, 30),
 ) -> hl.Table:
@@ -472,12 +455,6 @@ def create_intermediate_mt_for_sample_counts(
     This function creates an intermediate Table for use in
     `create_per_sample_counts_ht`. It does the following:
 
-        - Filters to non-ref genotypes (likely unnecessary if the MT is already a
-          variant data MT).
-        - Annotates the rows with the filter group metadata from `filter_group_ht`.
-        - If `autosomes_only` is True, filters to autosomes only and performs the high
-          AB het -> hom alt adjustment of GT.
-        - Filters to `adj` genotypes.
         - Converts the MT to a HT with a `sample_idx_by_stat` row annotation that is
           a struct of arrays of sample indices for each genotype level stat. The stats
           are: non_ref, het, hom_var, high_ab_het_ref, over_gq_{gq}, and over_dp_{dp}.
@@ -494,16 +471,10 @@ def create_intermediate_mt_for_sample_counts(
 
     :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
         split.
-    :param filter_group_ht: Table containing filter group metadata from
-        `get_summary_stats_filter_groups_ht`.
-    :param autosomes_only: Boolean indicating whether to filter to autosomes only. When
-        True, the high AB het -> hom alt adjustment of GT is performed.
     :param gq_bins: Tuple of GQ bins to use for filtering. Default is (60,).
     :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Intermediate Table for computing per-sample stats counts.
     """
-    mt = prepare_mt_for_sample_counts(mt, filter_group_ht, autosomes_only, True)
-
     # Convert MT to HT with a row annotation that is an array of all samples entries
     # for that variant.
     ht = mt.localize_entries("_entries", "_cols")
@@ -558,7 +529,7 @@ def create_intermediate_mt_for_sample_counts(
     # Annotate the HT with globals for the sample IDs and filter group metadata.
     ht = ht.select_globals(
         samples=ht._cols.map(lambda x: x.s),
-        filter_group_meta=filter_group_ht.index_globals().filter_group_meta,
+        filter_group_meta=ht.filter_group_meta,
     )
 
     return ht
@@ -954,25 +925,29 @@ def main(args):
                 if data_type == "exomes"
                 else get_gnomad_v4_genomes_vds
             )
-            mt = vds_load_func(
-                test=test_dataset,
-                split=True,
-                release_only=True,
-                filter_partitions=test_partitions,
-                filter_variant_ht=filter_groups_ht,
-                filter_intervals=filter_intervals,
-                split_reference_blocks=False,
-                entries_to_keep=["GT", "GQ", "DP", "AD"],
-                annotate_het_non_ref=True,
-            ).variant_data
+            mt = prepare_mt_for_sample_counts(
+                vds_load_func(
+                    test=test_dataset,
+                    split=True,
+                    release_only=True,
+                    filter_partitions=test_partitions,
+                    filter_variant_ht=filter_groups_ht,
+                    filter_intervals=filter_intervals,
+                    split_reference_blocks=False,
+                    entries_to_keep=["GT", "GQ", "DP", "AD"],
+                    annotate_het_non_ref=True,
+                ).variant_data,
+                filter_groups_ht,
+                autosomes_only,
+            )
 
             if args.create_intermediate_mt_for_sample_counts:
                 logger.info(
                     "Creating intermediate MatrixTable for per-sample counts..."
                 )
-                create_intermediate_mt_for_sample_counts(
-                    mt, filter_groups_ht, autosomes_only
-                ).write(temp_intermediate_ht_path, overwrite=overwrite)
+                create_intermediate_mt_for_sample_counts(mt).write(
+                    temp_intermediate_ht_path, overwrite=overwrite
+                )
 
         if create_per_sample_counts:
             logger.info(
@@ -995,7 +970,7 @@ def main(args):
                     per_sample_res.path, overwrite=overwrite
                 )
             else:
-                create_per_sample_counts_ht(mt, filter_groups_ht, autosomes_only).write(
+                create_per_sample_counts_ht(mt).write(
                     per_sample_res.path, overwrite=overwrite
                 )
 
