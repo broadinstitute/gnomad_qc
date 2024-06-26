@@ -427,13 +427,15 @@ def create_per_sample_counts_ht(
     ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
-    # Add 'n_indel' to the output Table and rename the DP and GQ fields.
+    # Add 'n_indel' and ' n_non_ref_alleles' to the output Table and rename the DP and
+    # GQ fields.
     ht = ht.annotate(
         summary_stats=ht.summary_stats.map(
             lambda x: x.annotate(
+                n_non_ref_alleles=x.n_non_ref + x.n_hom_var,
                 n_indel=x.n_insertion + x.n_deletion,
                 **{
-                    f"over_{k}_{b}": x[f"bases_over_{k}_threshold"][i]
+                    f"n_over_{k}_{b}": x[f"bases_over_{k}_threshold"][i]
                     for k, bins in {"gq": gq_bins, "dp": dp_bins}.items()
                     for i, b in enumerate(bins)
                 },
@@ -480,22 +482,21 @@ def create_intermediate_mt_for_sample_counts(
     ht = mt.localize_entries("_entries", "_cols")
 
     # Add an index for each sample to the entries array to map entries back to samples.
-    entry_expr = hl.map(
+    entry = hl.map(
         lambda i, e: (i, e.GT, e.GQ, e.DP, e.high_ab_het_ref),
         hl.range(hl.len(ht._cols)),
         ht._entries,
     ).filter(lambda x: hl.is_defined(x[1]))
 
-    # Create a dictionary of boolean expressions for each genotype level stat indicating
-    # whether that genotype should be counted for that stat.
-    stat_expr = {
-        "non_ref": lambda x: True,
-        "het": lambda x: x[1].is_het(),
-        "hom_var": lambda x: x[1].is_hom_var(),
-        "high_ab_het_ref": lambda x: x[4],
-        **{f"over_gq_{gq}": lambda x: x[2] >= gq for gq in gq_bins},
-        **{f"over_dp_{dp}": lambda x: x[3] >= dp for dp in dp_bins},
-    }
+    # Filter the entry array to genotype should be counted for each genotype level stat.
+    stat_expr = hl.struct(
+        non_ref=entry.filter(lambda x: True),
+        het=entry.filter(lambda x: x[1].is_het()),
+        hom_var=entry.filter(lambda x: x[1].is_hom_var()),
+        high_ab_het_ref=entry.filter(lambda x: x[4]),
+        **{f"over_gq_{gq}": entry.filter(lambda x: x[2] >= gq) for gq in gq_bins},
+        **{f"over_dp_{dp}": entry.filter(lambda x: x[3] >= dp) for dp in dp_bins},
+    )
 
     # Annotate the HT with the filter group metadata and the sample index by stat.
     # The filter groups annotation contains an array of structs with boolean
@@ -518,11 +519,8 @@ def create_intermediate_mt_for_sample_counts(
                 **{k: x & allele_type_expr[k] for k in ALLELE_TYPE_MAP.keys()},
             )
         ),
-        sample_idx_by_stat=hl.struct(
-            **{
-                k: entry_expr.filter(f).map(lambda x: x[0])
-                for k, f in stat_expr.items()
-            }
+        sample_idx_by_stat=stat_expr.annotate(
+            **{k: stat_expr[k].map(lambda x: x[0]) for k in stat_expr}
         ),
     )
 
@@ -655,9 +653,12 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # Group by sample to get a struct of the count of variants for each sample QC stat
     # for each sample in each filter group. Uses 'filter_groups' annotation to filter to
     # variants that belong to each filter group, and the 'counts' annotation to get
-    # the count of variants for each genotype level stat. The 'non_ref' genotype level
-    # count is used with all variant level stat filter to get the count of variants for
-    # each.
+    # the count of variants for each genotype level stat. The 'non_ref_alleles' genotype
+    # level count is used with all variant level stat filter to get the count of
+    # variants for each.
+    ht = ht.annotate(
+        counts=ht.counts.annotate(non_ref_alleles=ht.counts.non_ref + ht.counts.hom_var)
+    )
     variant_filters = [s for s in ht.filter_groups[0] if s != "group_filter"]
     agg_func = lambda x, f, s: hl.agg.sum(hl.int(x[f]) * ht.counts[s])
     ht = (
@@ -666,7 +667,10 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
             summary_stats=hl.agg.array_agg(
                 lambda x: hl.struct(
                     **{f"n_{s}": agg_func(x, "group_filter", s) for s in ht.counts},
-                    **{f"n_{f}": agg_func(x, f, "non_ref") for f in variant_filters},
+                    **{
+                        f"n_{f}": agg_func(x, f, "non_ref_alleles")
+                        for f in variant_filters
+                    },
                 ),
                 ht.filter_groups,
             )
