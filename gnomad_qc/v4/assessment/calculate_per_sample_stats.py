@@ -694,7 +694,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
             )
         )
     )
-    ht = ht.transmute_globals(summary_stats_meta=ht.filter_group_meta)
+    ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
 
     n_partitions = max(int(n_samples * 0.001), min(50, n_samples))
     logger.info("Naive coalescing to %s partitions.", n_partitions)
