@@ -761,6 +761,7 @@ def compute_agg_sample_stats(
     ht = ht.annotate(
         filter_group_meta=ht.summary_stats[0], summary_stats=ht.summary_stats[1]
     )
+    ht = ht.key_by(*ht.key, "filter_group_meta")
 
     return ht
 
