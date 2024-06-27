@@ -466,6 +466,7 @@ def create_intermediate_mt_for_sample_counts(
           indicating whether the variant is included in each of the following variant
           level stats: singleton, singleton_ti, singleton_tv, insertion, deletion,
           transition, and transversion.
+
     This structure creates a large intermediate Table that allows for memory efficient
     computation of per-sample stats counts. Smaller datasets do not require this
     intermediate step and can compute per-sample stats counts directly from the MT and
