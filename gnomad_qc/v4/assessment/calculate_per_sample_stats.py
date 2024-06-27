@@ -641,9 +641,11 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
 
     # After the explode, the number of rows is much larger, at approximately the number
     # of samples times the number of filter groups, so it's important to repartition the
-    # Table. This is done as a repartition on read, and the key_by is needed because
-    # otherwise the repartitioning will not work, and will only be as many partitions
-    # as the number of filter_groups.
+    # Table. In this case, we try to have about 50,000 rows per partition, which seems
+    # to work well, but only going as low as 50 partitions. The repartition is done as a
+    # repartition on read, and the key_by is needed because otherwise the
+    # repartitioning will not work, and will only be as many partitions as the number
+    # of filter_groups.
     n_partitions = max(int((n_filter_permutations * n_samples) / 50000), 50)
     tmp_path = new_temp_file("stat_counts_explode_sample", "ht")
     ht.key_by("s").write(tmp_path)
