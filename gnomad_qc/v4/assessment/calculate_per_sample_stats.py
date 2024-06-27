@@ -798,6 +798,8 @@ def main(args):
     test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
     )
+    if not autosomes_only:
+        raise NotImplementedError("The current implementation only supports autosomes")
 
     if create_filter_group:
         err_msg = ""
