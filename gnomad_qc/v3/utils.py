@@ -11,6 +11,7 @@ def hom_alt_depletion_fix(
     af_cutoff: float = 0.01,
     ab_cutoff: float = 0.9,
     use_v3_1_correction: bool = False,
+    return_bool: bool = False,
 ) -> hl.expr.CallExpression:
     """
     Get expression for genotypes with temporary fix for the depletion of homozygous alternate genotypes.
@@ -32,12 +33,26 @@ def hom_alt_depletion_fix(
     :param use_v3_1_correction: Use the version of the correction that was used for
         the v3.1.2 release. This version was missing the `missing_false=True` in the
         if_else statement. Default is False.
+    :param return_bool: Return a boolean expression indicating whether the genotype
+        should be adjusted. Default is False, which returns the adjusted genotype.
     :return: Expression for genotypes adjusted for the hom alt depletion fix.
     """
-    return hl.if_else(
-        (af_expr > af_cutoff) & gt_expr.is_het()
+    high_ab_het_expr = (
+        (af_expr > af_cutoff)
+        & gt_expr.is_het()
         # Skip adjusting genotypes if sample originally had a het nonref genotype.
-        & ~het_non_ref_expr & (ab_expr > ab_cutoff),
+        & ~het_non_ref_expr
+        & (ab_expr > ab_cutoff)
+    )
+
+    if return_bool:
+        if not use_v3_1_correction:
+            high_ab_het_expr = hl.or_else(high_ab_het_expr, False)
+
+        return high_ab_het_expr
+
+    return hl.if_else(
+        high_ab_het_expr,
         hl.call(1, 1),
         gt_expr,
         missing_false=False if use_v3_1_correction else True,
