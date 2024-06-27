@@ -557,6 +557,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
           aggregated to get the count of variants for each sample in each filter group.
           Leads to a Table where the number of rows is approximately the number of
           filter groups times the possible permutations of variant level stats.
+
             - Since this number can sometimes be too few partitions to get around the
               memory errors, we approximate a reasonable number of partitions as the
               number required to split the table into approximately 10,000 variants per
@@ -568,6 +569,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
               number of desired partitions.
             - Therefore, the number of random groups is the ideal number of partitions
               divided by the number of possible filter groups.
+
         - Sample IDs are mapped to the sample indices and the Table is exploded so that
           each row is counts for a sample and a filter group. The number of rows in the
           Table is approximately the number of samples times the number of rows in the
