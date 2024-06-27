@@ -461,10 +461,10 @@ def create_intermediate_mt_for_sample_counts(
           a struct of arrays of sample indices for each genotype level stat. The stats
           are: non_ref, het, hom_var, high_ab_het_ref, over_gq_{gq}, and over_dp_{dp}.
         - Changes the `filter_groups` annotation from an array of booleans to an array
-          of structs where `group_filter` is the original filter group boolean value, 
+          of structs where `group_filter` is the original filter group boolean value,
           mapping to the filter_group_meta, and adds boolean annotations to the struct
           indicating whether the variant is included in each of the following variant
-          level stats: singleton, singleton_ti, singleton_tv, insertion, deletion, 
+          level stats: singleton, singleton_ti, singleton_tv, insertion, deletion,
           transition, and transversion.
     This structure creates a large intermediate Table that allows for memory efficient
     computation of per-sample stats counts. Smaller datasets do not require this
@@ -912,9 +912,6 @@ def main(args):
                 rare_variants_afs=rare_variants_afs,
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
-        filter_groups_ht = get_summary_stats_filtering_groups(
-            data_type, test=test_gene
-        ).ht()
         if args.create_intermediate_mt_for_sample_counts or (
             create_per_sample_counts and not args.use_intermediate_mt_for_sample_counts
         ):
@@ -924,6 +921,10 @@ def main(args):
                     "created. Please run --create-filter-group-ht without "
                     "--test-gene or --test-n-partitions if it doesn't already exist."
                 )
+
+            filter_groups_ht = get_summary_stats_filtering_groups(
+                data_type, test=test_gene
+            ).ht()
 
             vds_load_func = (
                 get_gnomad_v4_vds
