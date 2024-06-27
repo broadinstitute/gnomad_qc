@@ -461,11 +461,11 @@ def create_intermediate_mt_for_sample_counts(
           a struct of arrays of sample indices for each genotype level stat. The stats
           are: non_ref, het, hom_var, high_ab_het_ref, over_gq_{gq}, and over_dp_{dp}.
         - Changes the `filter_groups` annotation from an array of booleans to an array
-          of structs with `group_filter` being the original filter group boolean value
-          and additional boolean annotations indicating whether the variant is included
-          in each of the following variant level stats: singleton, singleton_ti,
-          singleton_tv, insertion, deletion, transition, and transversion.
-
+          of structs where `group_filter` is the original filter group boolean value, 
+          mapping to the filter_group_meta, and adds boolean annotations to the struct
+          indicating whether the variant is included in each of the following variant
+          level stats: singleton, singleton_ti, singleton_tv, insertion, deletion, 
+          transition, and transversion.
     This structure creates a large intermediate Table that allows for memory efficient
     computation of per-sample stats counts. Smaller datasets do not require this
     intermediate step and can compute per-sample stats counts directly from the MT and
@@ -499,10 +499,10 @@ def create_intermediate_mt_for_sample_counts(
     )
 
     # Annotate the HT with the filter group metadata and the sample index by stat.
-    # The filter groups annotation contains an array of structs with boolean
-    # expressions for each variant level stat indicating whether the variant should be
-    # counted for that stat and a group_filter boolean indicating whether the variant
-    # belongs to the filter group.
+    # The filter groups annotation contains an array of structs with a group_filter
+    # boolean indicating whether the variant belongs to the filter group and boolean
+    # expressions for each variant level stat, i.e. singleton, indicating whether the
+    # variant should be counted for that stat.
     # The sample_idx_by_stat annotation contains a struct with arrays of sample indices
     # for each genotype level stat.
     ac1 = ht.variant_ac[1] == 1
@@ -556,7 +556,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
           aggregated to get the count of variants for each sample in each filter group.
           Leads to a Table where the number of rows is approximately the number of
           filter groups times the possible permutations of variant level stats. If
-          This number is too small, it might be better to use
+          this number is too small, it might be better to use
           `create_per_sample_counts_ht`.
         - Sample IDs are mapped to the sample indices and the Table is exploded so that
           each row is counts for a sample and a filter group. The number of rows in the
