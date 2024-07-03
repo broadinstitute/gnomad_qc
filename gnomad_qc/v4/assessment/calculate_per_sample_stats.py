@@ -25,7 +25,7 @@ Aggregated statistics can also be computed by ancestry.
 import argparse
 import logging
 from copy import deepcopy
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import hail as hl
 from gnomad.assessment.summary_stats import (
@@ -33,8 +33,9 @@ from gnomad.assessment.summary_stats import (
     get_summary_stats_filter_group_meta,
     get_summary_stats_variant_filter_expr,
 )
-from gnomad.utils.annotations import annotate_with_ht
-from gnomad.utils.filtering import filter_to_adj, filter_to_autosomes
+from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
+from gnomad.utils.annotations import annotate_with_ht, get_adj_expr
+from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     CSQ_CODING,
@@ -48,7 +49,7 @@ from hail.genetics.allele_type import AlleleType
 from hail.methods.qc import _qc_allele_type
 from hail.utils import new_temp_file
 from hail.utils.misc import divide_null
-from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
+from hail.vds.sample_qc import vmt_sample_qc
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
@@ -316,6 +317,13 @@ def get_summary_stats_filter_groups_ht(
     # the no_lcr filter and an array of the filter groups.
     ht = ht.select(
         _no_lcr=filter_exprs["no_lcr"],
+        sex_chr_nonpar_group=(
+            hl.case()
+            .when(ht.locus.in_autosome_or_par(), "autosome_or_par")
+            .when(ht.locus.in_x_nonpar(), "x_nonpar")
+            .when(ht.locus.in_y_nonpar(), "y_nonpar")
+            .or_missing()
+        ),
         filter_groups=filter_groups_expr,
         variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
         variant_af=ht.freq[0].AF,
@@ -331,7 +339,8 @@ def get_summary_stats_filter_groups_ht(
 def prepare_mt_for_sample_counts(
     mt: hl.MatrixTable,
     filter_group_ht: hl.Table,
-    autosomes_only: bool = False,
+    adjust_ploidy_before_adj: bool = False,
+    adjust_ploidy_after_adj: bool = False,
 ) -> hl.MatrixTable:
     """
     Prepare MatrixTable for computing per-sample stats counts.
@@ -342,8 +351,8 @@ def prepare_mt_for_sample_counts(
         - Filters to non-ref genotypes (likely unnecessary if the MT is already a
           variant data MT).
         - Annotates the rows with the filter group metadata from `filter_group_ht`.
-        - If `autosomes_only` is True, filters to autosomes only, performs the high
-          AB het -> hom alt adjustment of GT, and adds a 'high_ab_het_ref' annotation.
+        - Performs the high AB het -> hom alt adjustment of GT, and adds a
+          'high_ab_het_ref' annotation.
         - Filters to `adj` genotypes and selects only the necessary entries for
           downstream processing.
 
@@ -351,8 +360,12 @@ def prepare_mt_for_sample_counts(
         split.
     :param filter_group_ht: Table containing filter group metadata from
         `get_summary_stats_filter_groups_ht`.
-    :param autosomes_only: Boolean indicating whether to filter to autosomes only. When
-        True, the high AB het -> hom alt adjustment of GT is performed.
+    :param adjust_ploidy_before_adj: Whether to adjust ploidy before determining the adj
+        annotation. Default is False.
+    :param adjust_ploidy_after_adj: Whether to adjust ploidy after determining the adj
+        annotation. This is included for consistency with v3.1, where we added the adj
+        annotation before adjusting ploidy, but the correct thing to do is to adjust
+        ploidy before determining the adj annotation. Default is False.
     :return: MatrixTable prepared for computing per-sample stats counts.
     """
     # Annotate the MT with all annotations on the filter group HT.
@@ -362,25 +375,31 @@ def prepare_mt_for_sample_counts(
     # variant data MT.
     mt = mt.filter_entries(mt.GT.is_non_ref())
 
-    # For now, only add a high_ab_het_ref annotation (or correction) if autosomes_only
-    # is True.
-    # TODO: Modify this when we have fixed the script to correctly handle sex
-    #  chromosomes.
-    if autosomes_only:
-        logger.info(
-            "Filtering to autosomes only and performing high AB het -> hom alt "
-            "adjustment of GT..."
+    # NOTE: The correct thing to do here is to adjust ploidy before determining the adj
+    # annotation because haploid GTs have different adj filtering criteria, but the
+    # option to adjust ploidy after adj is included for consistency with v3.1, where we
+    # added the adj annotation before adjusting for sex ploidy.
+    gt_expr = mt.GT
+    adj_expr = get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD)
+    if adjust_ploidy_before_adj or adjust_ploidy_after_adj:
+        logger.info("Adjusting ploidy on sex chromosomes...")
+        gt_expr = adjusted_sex_ploidy_expr(
+            mt.locus, gt_expr, mt.meta.sex_imputation.sex_karyotype
         )
-        mt = filter_to_autosomes(mt)
-        base_args = [mt.GT, mt._het_non_ref, mt.variant_af, mt.AD[1] / mt.DP]
-        mt = mt.annotate_entries(
-            GT=hom_alt_depletion_fix(*base_args, return_bool=False),
-            high_ab_het_ref=hom_alt_depletion_fix(*base_args, return_bool=True),
-        )
+        if adjust_ploidy_before_adj:
+            adj_expr = get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD)
+
+    logger.info("Performing high AB het -> hom alt adjustment of GT...")
+    base_args = [gt_expr, mt._het_non_ref, mt.variant_af, mt.AD[1] / mt.DP]
+    mt = mt.annotate_entries(
+        GT=hom_alt_depletion_fix(*base_args, return_bool=False),
+        adj=adj_expr,
+        high_ab_het_ref=hom_alt_depletion_fix(*base_args, return_bool=True),
+    )
 
     # Filter to adj genotypes and select only the necessary entries to be localized.
     mt = filter_to_adj(mt)
-    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref")
+    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref").select_cols()
 
     # Add the filter_group_meta global in filter_group_ht to the MT.
     mt = mt.annotate_globals(
@@ -388,6 +407,58 @@ def prepare_mt_for_sample_counts(
     )
 
     return mt
+
+
+def annotate_per_sample_stat_combinations(
+    ht: hl.Table,
+    sums: Dict[str, List[str]] = {
+        "n_indel": ["n_insertion", "n_deletion"],
+        "n_transition": ["n_transition", "n_transversion"],
+    },
+    diffs: Dict[str, Tuple[str, str]] = {},
+    ratios: Dict[str, Tuple[str, str]] = {
+        "r_ti_tv": ("n_transition", "n_transversion"),
+        "r_ti_tv_singleton": ("n_singleton_ti", "n_singleton_tv"),
+        "r_het_hom_var": ("n_het", "n_hom_var"),
+        "r_insertion_deletion": ("n_insertion", "n_deletion"),
+    },
+    additional_stat_combos: Optional[Dict[str, Callable]] = {},
+) -> hl.Table:
+    """
+    Annotate the per-sample stats Table with ratios of other per-sample stats.
+
+    :param ht: Input Table containing per-sample stats.
+    :param sums: Dictionary of per-sample stats to sum. The key is the name of the sum
+        and the value is a List of the stats to sum. Default is to sum the number of
+        insertions and deletions to get the total number of indels, and the number of
+        transitions and transversions to get the total number of transitions.
+    :param diffs: Dictionary of per-sample stats to subtract. The key is the name of the
+        difference and the value is a tuple of the stats to subtract, where the second
+        stat is subtracted from the first. Default is {}.
+    :param ratios: Dictionary of ratios to compute. The key is the name of the ratio
+        and the value is a tuple of the numerator and denominator per-sample stats.
+        Default is to compute the transition/transversion ratio, the singleton
+        transition/transversion ratio, the heterozygous/homozygous variant ratio, and
+        the insertion/deletion ratio.
+    :param additional_stat_combos: Optional dictionary of additional per-sample stat
+        combinations to compute. The key is the name of the stat and the value is a
+        function that takes the per-sample stats struct and returns the computed stat.
+        Default is {}.
+    :return: Table containing per-sample stats annotated with the requested ratios.
+    """
+    return ht.annotate(
+        summary_stats=ht.summary_stats.map(
+            lambda x: x.annotate(
+                **{k: hl.sum([x[s] for s in v]) for k, v in sums.items()},
+                **{k: x[d1] - x[d2] for k, (d1, d2) in diffs.items()},
+                **{
+                    k: divide_null(hl.float64(x[n]), x[d])
+                    for k, (n, d) in ratios.items()
+                },
+                **{k: v(x) for k, v in additional_stat_combos.items()},
+            )
+        )
+    )
 
 
 def create_per_sample_counts_ht(
@@ -418,32 +489,45 @@ def create_per_sample_counts_ht(
         dp=mt.DP,
         gq_bins=gq_bins,
         dp_bins=dp_bins,
-    ).annotate(n_high_ab_het_ref=hl.agg.count_where(mt.high_ab_het_ref))
-    ht = mt.select_cols(
-        summary_stats=hl.agg.array_agg(
-            lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups
-        )
-    ).cols()
-    ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
-    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
-
-    # Add 'n_indel' and ' n_non_ref_alleles' to the output Table and rename the DP and
-    # GQ fields.
-    ht = ht.annotate(
-        summary_stats=ht.summary_stats.map(
-            lambda x: x.annotate(
-                n_non_ref_alleles=x.n_non_ref + x.n_hom_var,
-                n_indel=x.n_insertion + x.n_deletion,
-                **{
-                    f"n_over_{k}_{b}": x[f"bases_over_{k}_threshold"][i]
-                    for k, bins in {"gq": gq_bins, "dp": dp_bins}.items()
-                    for i, b in enumerate(bins)
-                },
-            ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
-        )
     )
 
-    return ht
+    # Add aggregations for the number of hemizygous variants and high AB het ref
+    # genotypes and rename the DP and GQ fields.
+    qc_expr = qc_expr.annotate(
+        n_hemi_var=hl.agg.count_where(mt.GT.is_haploid()),
+        n_high_ab_het_ref=hl.agg.count_where(mt.high_ab_het_ref),
+        **{
+            f"n_over_{k}_{b}": qc_expr[f"bases_over_{k}_threshold"][i]
+            for k, bins in {"gq": gq_bins, "dp": dp_bins}.items()
+            for i, b in enumerate(bins)
+        },
+    ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
+
+    ht = (
+        mt.select_cols(
+            _ss=hl.agg.group_by(
+                mt.sex_chr_nonpar_group,
+                hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
+            ).items()
+        )
+        .cols()
+        .explode("_ss")
+    )
+    ht = ht.annotate(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
+
+    # Add 'n_indel' and ' n_non_ref_alleles' to the output Table.
+    ht = annotate_per_sample_stat_combinations(
+        ht, diffs={"n_hom_var": ("n_hom_var", "n_hemi_var")}, sums={}, ratios={}
+    )
+    ht = annotate_per_sample_stat_combinations(
+        ht,
+        sums={
+            "n_indel": ["n_insertion", "n_deletion"],
+            "n_non_ref_alleles": ["n_non_ref", "n_hom_var"],
+        },
+    )
+
+    return ht.select_globals(summary_stats_meta=ht.filter_group_meta)
 
 
 def create_intermediate_mt_for_sample_counts(
@@ -493,7 +577,8 @@ def create_intermediate_mt_for_sample_counts(
     stat_expr = hl.struct(
         non_ref=entry.filter(lambda x: True),
         het=entry.filter(lambda x: x[1].is_het()),
-        hom_var=entry.filter(lambda x: x[1].is_hom_var()),
+        hom_var=entry.filter(lambda x: x[1].is_hom_var() & ~x[1].is_haploid()),
+        hemi_var=entry.filter(lambda x: x[1].is_haploid()),
         high_ab_het_ref=entry.filter(lambda x: x[4]),
         **{f"over_gq_{gq}": entry.filter(lambda x: x[2] >= gq) for gq in gq_bins},
         **{f"over_dp_{dp}": entry.filter(lambda x: x[3] >= dp) for dp in dp_bins},
@@ -511,6 +596,7 @@ def create_intermediate_mt_for_sample_counts(
         **{k: ht.variant_atypes[0] == v for k, v in ALLELE_TYPE_MAP.items()}
     )
     ht = ht.select(
+        "sex_chr_nonpar_group",
         filter_groups=ht.filter_groups.map(
             lambda x: hl.struct(
                 group_filter=x,
@@ -541,8 +627,8 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     .. warning::
 
         This function is memory intensive and should be run on a cluster with
-        n1-highmem-8 workers and big-executors enabled. It also requires shuffling,
-        so a cluster with all workers is recommended.
+        n1-highmem-8 workers. It also requires shuffling, so a cluster with all
+        workers is recommended.
 
     Takes an intermediate Table (returned by `create_intermediate_mt_for_sample_counts`)
     with an array of variant level stats by filter groups and an array of sample
@@ -614,7 +700,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # Group by filter groups and the random group to get the count of variants matching
     # the filter group and random group for each sample.
     ht = ht.annotate(_rand_group=hl.rand_int32(n_rand_groups))
-    ht = ht.group_by("filter_groups", "_rand_group").aggregate(
+    ht = ht.group_by("sex_chr_nonpar_group", "filter_groups", "_rand_group").aggregate(
         counts=hl.struct(
             **{
                 k: hl.agg.explode(lambda x: hl.agg.counter(x), v)
@@ -635,7 +721,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # repartitioning the Table to have more partitions than the number of filter groups,
     # helping the final aggregation get around memory errors.
     ht = (
-        ht.group_by("filter_groups")
+        ht.group_by("sex_chr_nonpar_group", "filter_groups")
         .aggregate(
             counts=hl.zip(
                 ht.samples,
@@ -676,7 +762,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     variant_filters = [s for s in ht.filter_groups[0] if s != "group_filter"]
     agg_func = lambda x, f, s: hl.agg.sum(hl.int(x[f]) * ht.counts[s])
     ht = (
-        ht.group_by("s")
+        ht.group_by("s", "sex_chr_nonpar_group")
         .aggregate(
             summary_stats=hl.agg.array_agg(
                 lambda x: hl.struct(
@@ -692,29 +778,41 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
         .checkpoint(new_temp_file("per_sample_counts", "ht"))
     )
 
-    # Add sample QC stats that are combinations of other stats.
-    ratios = {
-        "r_ti_tv": ("n_transition", "n_transversion"),
-        "r_ti_tv_singleton": ("n_singleton_ti", "n_singleton_tv"),
-        "r_het_hom_var": ("n_het", "n_hom_var"),
-        "r_insertion_deletion": ("n_insertion", "n_deletion"),
-    }.items()
-    ht = ht.annotate(
-        summary_stats=ht.summary_stats.map(
-            lambda x: x.annotate(
-                n_indel=x.n_insertion + x.n_deletion,
-                n_snp=x.n_transition + x.n_transversion,
-                **{k: divide_null(hl.float64(x[n]), x[d]) for k, (n, d) in ratios},
-            )
-        )
-    )
-    ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
+    # Add 'n_indel', 'n_snp' and sample QC stats that are combinations of other stats.
+    ht = annotate_per_sample_stat_combinations(ht)
 
     n_partitions = max(int(n_samples * 0.001), min(50, n_samples))
     logger.info("Naive coalescing to %s partitions.", n_partitions)
     ht = ht.naive_coalesce(n_partitions)
 
-    return ht
+    return ht.select_globals(summary_stats_meta=ht.filter_group_meta)
+
+
+def combine_autosome_and_sex_chr_stats(
+    autosome_ht: hl.Table,
+    sex_chr_ht: hl.Table,
+) -> hl.Table:
+    """
+    Combine autosomal and sex chromosome per-sample stats Tables.
+
+    :param autosome_ht: Table containing per-sample stats for autosomes.
+    :param sex_chr_ht: Table containing per-sample stats for sex chromosomes.
+    :return: Table containing combined per-sample stats.
+    """
+    ht = autosome_ht.union(sex_chr_ht)
+    ht = ht.group_by("s", "sex_chr_nonpar_group").aggregate(
+        summary_stats=hl.agg.array_agg(
+            lambda x: hl.struct(
+                **{
+                    k: hl.agg.sum(hl.or_else(v, 0))
+                    for k, v in x.items()
+                    if k.startswith("n_")
+                },
+            ),
+            ht.summary_stats,
+        )
+    )
+    return annotate_per_sample_stat_combinations(ht, sums={})
 
 
 def compute_agg_sample_stats(
@@ -795,14 +893,19 @@ def main(args):
     create_filter_group = args.create_filter_group_ht
     create_per_sample_counts = args.create_per_sample_counts_ht
     autosomes_only = args.autosomes_only_stats
+    sex_chr_only = args.sex_chr_only_stats
     test_dataset = args.test_dataset
     test_gene = args.test_gene
     test_difficult_partitions = args.test_difficult_partitions
     test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
     )
-    if not autosomes_only:
-        raise NotImplementedError("The current implementation only supports autosomes")
+
+    if autosomes_only and sex_chr_only:
+        raise ValueError(
+            "Cannot use --autosomes-only-stats and --sex-chr-only-stats at the same "
+            "time."
+        )
 
     if create_filter_group:
         err_msg = ""
@@ -864,7 +967,16 @@ def main(args):
             "Cannot use --test-gene and --test-n-partitions or "
             "--test-difficult-partitions at the same time."
         )
-    filter_intervals = ["chr1:55039447-55064852"] if test_gene else None
+
+    filter_intervals = None
+    if test_gene:
+        filter_intervals = []
+        if not sex_chr_only:
+            # Filter to 10kb in PCSK9.
+            filter_intervals.append("chr1:55039447-55064852")
+        if not autosomes_only:
+            # Filter to TRPC5 on chrX.
+            filter_intervals.append("chrX:111776000-111786000")
 
     test = test_partitions or test_dataset or test_gene
     overwrite = args.overwrite
@@ -877,23 +989,29 @@ def main(args):
         else not args.skip_filter_broad_capture_intervals
     )
     rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
+    res_base_args = {"test": test, "data_type": data_type, "suffix": args.custom_suffix}
     per_sample_res = get_per_sample_counts(
-        test=test,
-        data_type=data_type,
-        suffix=args.custom_suffix,
-        autosomes_only=autosomes_only,
+        **res_base_args,
+        autosomes=autosomes_only,
+        sex_chr=sex_chr_only,
+        use_intermediate=args.use_intermediate_mt_for_sample_counts,
+        created_from_merge=False,
     )
     per_sample_agg_res = get_per_sample_counts(
-        test=test,
-        data_type=data_type,
-        suffix=args.custom_suffix,
-        autosomes_only=autosomes_only,
+        **res_base_args,
+        autosomes=autosomes_only,
+        sex_chr=sex_chr_only,
         aggregated=True,
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
+        use_intermediate=args.use_intermediate_mt_for_sample_counts,
+        created_from_merge=args.combine_autosome_and_sex_chr_stats,
     )
     temp_intermediate_ht_path = get_checkpoint_path(
-        "per_sample_summary_stats_intermediate" + (".test" if test else "")
+        "per_sample_summary_stats_intermediate"
+        + (".test" if test else "")
+        + (".autosomes" if autosomes_only else "")
+        + (".sex_chr" if sex_chr_only else "")
     )
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
@@ -954,14 +1072,18 @@ def main(args):
                     split=True,
                     release_only=True,
                     filter_partitions=test_partitions,
+                    autosomes_only=autosomes_only,
+                    sex_chr_only=sex_chr_only,
                     filter_variant_ht=filter_groups_ht,
                     filter_intervals=filter_intervals,
                     split_reference_blocks=False,
                     entries_to_keep=["GT", "GQ", "DP", "AD"],
                     annotate_het_non_ref=True,
+                    annotate_meta=not autosomes_only,
                 ).variant_data,
                 filter_groups_ht,
-                autosomes_only,
+                adjust_ploidy_before_adj=not autosomes_only and (data_type == "exomes"),
+                adjust_ploidy_after_adj=not autosomes_only and (data_type == "genomes"),
             )
 
             if args.create_intermediate_mt_for_sample_counts:
@@ -996,6 +1118,21 @@ def main(args):
                 create_per_sample_counts_ht(mt).write(
                     per_sample_res.path, overwrite=overwrite
                 )
+
+        if args.combine_autosome_and_sex_chr_stats:
+            logger.info(
+                "Combining per-sample stats for autosomes with per-sample stats for "
+                "sex chromosomes..."
+            )
+            per_sample_res = get_per_sample_counts(
+                **res_base_args,
+                use_intermediate=args.use_intermediate_mt_for_sample_counts,
+                created_from_merge=True,
+            )
+            combine_autosome_and_sex_chr_stats(
+                get_per_sample_counts(**res_base_args, autosomes=True).ht(),
+                get_per_sample_counts(**res_base_args, sex_chr=True).ht(),
+            ).write(per_sample_res.path, overwrite=overwrite)
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
@@ -1098,8 +1235,16 @@ if __name__ == "__main__":
             "Use intermediate MatrixTable for per-sample variant counts. This is only "
             "relevant when using --create-per-sample-counts-ht. Note that the this "
             "step is memory intensive and should be run on a cluster with n1-highmem-8 "
-            "workers and big-executors enabled. It also requires shuffling, so a "
-            "cluster with all workers is recommended."
+            "workers. It also requires shuffling, so a cluster with all workers is "
+            "recommended."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--combine-autosome-and-sex-chr-stats",
+        help=(
+            "Combine per-sample counts for autosomes with per-sample counts for sex "
+            "chromosomes."
         ),
         action="store_true",
     )
@@ -1114,6 +1259,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--autosomes-only-stats",
         help="Whether to restrict per-sample summary stats to autosomes only.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--sex-chr-only-stats",
+        help="Whether to restrict per-sample summary stats to sex chromosomes only.",
         action="store_true",
     )
     parser.add_argument(
