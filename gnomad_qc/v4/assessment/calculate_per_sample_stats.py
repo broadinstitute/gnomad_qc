@@ -1058,6 +1058,8 @@ def get_pipeline_resources(
     autosomes_only: bool,
     sex_chr_only: bool,
     use_intermediate_mt_for_sample_counts: bool,
+    by_ancestry: bool,
+    by_subset: bool,
     overwrite: bool,
     custom_suffix: Optional[str] = None,
 ) -> PipelineResourceCollection:
@@ -1071,6 +1073,10 @@ def get_pipeline_resources(
     :param sex_chr_only: Whether to gather resources for sex chromosomes only.
     :param use_intermediate_mt_for_sample_counts: Whether to use an intermediate MT for
         computing per-sample counts.
+    :param by_ancestry: Whether to return resource for aggregate stats stratified by
+        ancestry.
+    :param by_subset: Whether to return resource for aggregate stats stratified by
+        subset.
     :param overwrite: Whether to overwrite resources if they exist.
     :param custom_suffix: Optional custom suffix to add to the resource names.
     :return: PipelineResourceCollection containing resources for all steps of the
@@ -1130,8 +1136,6 @@ def get_pipeline_resources(
                 **res_base_args,
                 autosomes=autosomes_only,
                 sex_chr=sex_chr_only,
-                use_intermediate=args.use_intermediate_mt_for_sample_counts,
-                created_from_merge=False,
             )
         },
     )
@@ -1145,13 +1149,7 @@ def get_pipeline_resources(
                 "sex_chr_ht": get_per_sample_counts(**res_base_args, sex_chr=True)
             },
         },
-        output_resources={
-            "per_sample_ht": get_per_sample_counts(
-                **res_base_args,
-                use_intermediate=args.use_intermediate_mt_for_sample_counts,
-                created_from_merge=True,
-            )
-        },
+        output_resources={"per_sample_ht": get_per_sample_counts(**res_base_args)},
     )
     aggregate_stats = PipelineStepResourceCollection(
         "--aggregate-sample-stats",
@@ -1167,10 +1165,8 @@ def get_pipeline_resources(
                 autosomes=autosomes_only,
                 sex_chr=sex_chr_only,
                 aggregated=True,
-                by_ancestry=args.by_ancestry,
-                by_subset=args.by_subset,
-                use_intermediate=args.use_intermediate_mt_for_sample_counts,
-                created_from_merge=args.combine_autosome_and_sex_chr_stats,
+                by_ancestry=by_ancestry,
+                by_subset=by_subset,
             )
         },
     )
@@ -1250,6 +1246,8 @@ def main(args):
         autosomes_only=autosomes_only,
         sex_chr_only=sex_chr_only,
         use_intermediate_mt_for_sample_counts=use_intermediate,
+        by_ancestry=args.by_ancestry,
+        by_subset=args.by_subset,
         overwrite=overwrite,
         custom_suffix=args.custom_suffix,
     )
