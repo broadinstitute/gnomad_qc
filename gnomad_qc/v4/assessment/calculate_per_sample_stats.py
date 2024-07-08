@@ -347,6 +347,7 @@ def get_capture_filter_exprs(
 
 def get_summary_stats_filter_groups_ht(
     ht: hl.Table,
+    capture_regions: bool = False,
     vep_canonical: bool = True,
     vep_mane: bool = False,
     rare_variants_afs: Optional[list[float]] = None,
@@ -372,6 +373,8 @@ def get_summary_stats_filter_groups_ht(
 
     :param ht: Table containing variant annotations. The following annotations are
         required: 'freq', 'filters', 'region_flags', and 'vep'.
+    :param capture_regions: Whether to include filtering groups for variants in UK
+        Biobank and Broad capture regions. Default is False.
     :param vep_canonical: Whether to filter to only canonical transcripts. If trying
         count variants in all transcripts, set it to False. Default is True.
     :param vep_mane: Whether to filter to only MANE transcripts. Default is False.
@@ -408,7 +411,7 @@ def get_summary_stats_filter_groups_ht(
     # requested.
     filter_exprs = {
         "all_variants": hl.literal(True),
-        **get_capture_filter_exprs(ht),
+        **(get_capture_filter_exprs(ht) if capture_regions else {}),
         **get_summary_stats_variant_filter_expr(
             ht,
             filter_lcr=True,
@@ -1205,7 +1208,6 @@ def main(args):
     autosomes_only = args.autosomes_only_stats
     sex_chr_only = args.sex_chr_only_stats
     exomes = data_type == "exomes"
-    ukb_capture_intervals = broad_capture_intervals = exomes
     rare_variants_afs = args.rare_variants_afs
 
     if autosomes_only and sex_chr_only:
@@ -1275,6 +1277,7 @@ def main(args):
 
             get_summary_stats_filter_groups_ht(
                 ht,
+                capture_regions=exomes,
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
                 rare_variants_afs=rare_variants_afs,
