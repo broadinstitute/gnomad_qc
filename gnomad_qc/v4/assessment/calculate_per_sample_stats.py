@@ -590,7 +590,7 @@ def annotate_per_sample_stat_combinations(
     ht: hl.Table,
     sums: Dict[str, List[str]] = {
         "n_indel": ["n_insertion", "n_deletion"],
-        "n_transition": ["n_transition", "n_transversion"],
+        "n_snp": ["n_transition", "n_transversion"],
     },
     diffs: Dict[str, Tuple[str, str]] = {},
     ratios: Dict[str, Tuple[str, str]] = {
