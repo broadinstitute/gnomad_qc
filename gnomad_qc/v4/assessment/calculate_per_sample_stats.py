@@ -161,7 +161,9 @@ def process_test_args(
     test_partitions: Optional[List[int]] = None,
     test_difficult_partitions: bool = False,
     create_filter_group: bool = False,
+    create_intermediate: bool = False,
     create_per_sample_counts: bool = False,
+    use_intermediate: bool = False,
     sex_chr_only: bool = False,
     autosomes_only: bool = False,
 ) -> Tuple[Optional[List[hl.tinterval]], Optional[List[int]]]:
@@ -204,8 +206,12 @@ def process_test_args(
         partitions. Default is False.
     :param create_filter_group: Boolean indicating whether the filter group HT is being
         created. Default is False.
+    :param create_intermediate: Boolean indicating whether the intermediate MT is being
+        created. Default is False.
     :param create_per_sample_counts: Boolean indicating whether the per-sample counts HT
         is being created. Default is False.
+    :param use_intermediate: Boolean indicating whether the intermediate MT is being
+        used. Default is False.
     :param sex_chr_only: Boolean indicating whether the dataset is being filtered to
         sex chromosomes only. Default is False.
     :param autosomes_only: Boolean indicating whether the dataset is being filtered to
@@ -274,8 +280,8 @@ def process_test_args(
         )
 
     if (
-        args.create_intermediate_mt_for_sample_counts
-        or (create_per_sample_counts and not args.use_intermediate_mt_for_sample_counts)
+        create_intermediate
+        or (create_per_sample_counts and not use_intermediate)
         and not test_gene
     ):
         logger.warning(
@@ -1235,7 +1241,9 @@ def main(args):
             test_partitions=test_partitions,
             test_difficult_partitions=test_difficult_partitions,
             create_filter_group=create_filter_group,
+            create_intermediate=create_intermediate,
             create_per_sample_counts=create_per_sample_counts,
+            use_intermediate=use_intermediate,
             sex_chr_only=sex_chr_only,
             autosomes_only=autosomes_only,
         )
