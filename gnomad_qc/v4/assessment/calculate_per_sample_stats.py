@@ -680,17 +680,15 @@ def create_per_sample_counts_ht(
         },
     ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
 
-    ht = (
-        mt.select_cols(
-            _ss=hl.agg.group_by(
-                mt.sex_chr_nonpar_group,
-                hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
-            ).items()
-        )
-        .cols()
-        .explode("_ss")
+    mt = mt.select_cols(
+        _ss=hl.agg.group_by(
+            mt.sex_chr_nonpar_group,
+            hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
+        ).items()
     )
+    ht = mt.cols().explode("_ss")
     ht = ht.transmute(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
+    ht = ht.checkpoint(get_checkpoint_path("per_sample_stats", "ht"), overwrite=True)
 
     # Add 'n_indel' and ' n_non_ref_alleles' to the output Table.
     ht = annotate_per_sample_stat_combinations(
@@ -703,6 +701,7 @@ def create_per_sample_counts_ht(
             "n_non_ref_alleles": ["n_non_ref", "n_hom_var"],
         },
     )
+    ht = ht.key_by("s", "sex_chr_nonpar_group")
 
     return ht.select_globals(summary_stats_meta=ht.filter_group_meta)
 
