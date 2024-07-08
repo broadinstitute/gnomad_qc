@@ -690,7 +690,7 @@ def create_per_sample_counts_ht(
         .cols()
         .explode("_ss")
     )
-    ht = ht.annotate(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
+    ht = ht.transmute(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
 
     # Add 'n_indel' and ' n_non_ref_alleles' to the output Table.
     ht = annotate_per_sample_stat_combinations(
