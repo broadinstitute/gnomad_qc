@@ -10,7 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedVariantDatasetResource,
 )
 
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
+import gnomad_qc.v3.resources.basics as v3_basics
 from gnomad_qc.v4.resources.constants import (
     CURRENT_RAW_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
@@ -400,7 +400,7 @@ def get_gnomad_v4_genomes_vds(
         '_het_non_ref') to the variant data. Default is False.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
-    vds = get_gnomad_v3_vds(
+    vds = v3_basics.get_gnomad_v3_vds(
         split=split,
         remove_hard_filtered_samples=remove_hard_filtered_samples,
         release_only=False,
