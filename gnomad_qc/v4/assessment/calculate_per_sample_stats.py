@@ -23,6 +23,7 @@ computed:
 Aggregated statistics can also be computed by ancestry.
 """
 import argparse
+import itertools
 import logging
 from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Tuple
@@ -638,6 +639,63 @@ def annotate_per_sample_stat_combinations(
     )
 
 
+# TODO: Move this to gnomad_methods? If so, where?
+
+
+def fill_missing_key_combinations(
+    ht: hl.Table,
+    fill_values: Dict[str, hl.expr.Expression],
+    key_values: Optional[Dict[str, List]] = None,
+) -> hl.Table:
+    """
+    Fill missing key combinations with requested fill values.
+
+    :param ht: Input Table containing key fields.
+    :param fill_values: Dictionary of fill values to use for missing key combinations.
+    :param key_values: Optional dictionary of unique values to use for each key field.
+        Default is None. If None, the unique values for each key field are collected
+        from the input Table.
+    :return: Table with missing key combinations filled with requested fill values.
+    """
+    key_fields = list(ht.key.keys())
+
+    # Extract unique values for each annotation.
+    key_values = key_values or {}
+    key_values = [
+        key_values.get(f, ht.aggregate(hl.agg.collect_as_set(ht[f])))
+        for f in key_fields
+    ]
+
+    # Create all combinations of the unique values for each key.
+    all_combinations = list(itertools.product(*key_values))
+
+    # Convert the list of combinations to a Hail Table.
+    all_combinations_ht = hl.Table.parallelize(
+        [{f: c for f, c in zip(key_fields, combo)} for combo in all_combinations],
+        hl.tstruct(**{f: ht[f].dtype for f in key_fields}),
+    ).key_by(*key_fields)
+
+    # Left join original table with all_combinations to include all possible
+    # combinations.
+    ht = all_combinations_ht.join(ht, how="left")
+
+    # Fill missing row annotations with requested fill values.
+    ht = ht.annotate(**{f: hl.coalesce(ht[f], v) for f, v in fill_values.items()})
+
+    return ht
+
+
+def missing_struct_expr(
+    dtypes: hl.expr.types.tstruct,
+) -> hl.expr.StructExpression:
+    """
+    Create a struct of missing values for each field and type in the input struct.
+
+    :param dtypes: StructExpression containing the field names and missing values.
+    """
+    return hl.struct(**{f: hl.missing(t) for f, t in dtypes.items()})
+
+
 def create_per_sample_counts_ht(
     mt: hl.MatrixTable,
     gq_bins: Tuple[int] = (60,),
@@ -657,6 +715,7 @@ def create_per_sample_counts_ht(
     :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Table containing per-sample variant counts.
     """
+    samples = mt.aggregate_cols(hl.agg.collect(mt.s))
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     qc_expr = vmt_sample_qc(
         global_gt=mt.GT,
@@ -688,7 +747,7 @@ def create_per_sample_counts_ht(
     )
     ht = mt.cols().explode("_ss")
     ht = ht.transmute(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
-    ht = ht.checkpoint(get_checkpoint_path("per_sample_stats", "ht"), overwrite=True)
+    ht = ht.checkpoint(new_temp_file("per_sample_stats", "ht"), overwrite=True)
 
     # Add 'n_indel' and ' n_non_ref_alleles' to the output Table.
     ht = annotate_per_sample_stat_combinations(
@@ -702,6 +761,22 @@ def create_per_sample_counts_ht(
         },
     )
     ht = ht.key_by("s", "sex_chr_nonpar_group")
+
+    # Fill missing key combinations with 0 or missing values.
+    ht = fill_missing_key_combinations(
+        ht,
+        {
+            "summary_stats": hl.range(hl.eval(hl.len(ht.filter_group_meta))).map(
+                lambda x: hl.struct(
+                    **{
+                        f: 0 if f.startswith("n_") else hl.missing(t)
+                        for f, t in ht.summary_stats.dtype.element_type.items()
+                    }
+                )
+            )
+        },
+        {"s": samples},
+    )
 
     return ht.select_globals(summary_stats_meta=ht.filter_group_meta)
 
@@ -1137,7 +1212,10 @@ def get_pipeline_resources(
             [create_intermediate] if use_intermediate_mt_for_sample_counts else []
         ),
         add_input_resources={
-            "--create-filter-group-ht": {"filter_groups_ht": filter_groups_ht}
+            "--create-filter-group-ht": {"filter_groups_ht": filter_groups_ht},
+            "sample_qc/create_sample_qc_metadata_ht.py": {
+                "meta_ht": meta(data_type=data_type)
+            },
         },
         output_resources={
             "per_sample_ht": get_per_sample_counts(
@@ -1322,6 +1400,19 @@ def main(args):
                         res.filter_groups_ht.ht(),
                         adjust_ploidy=not autosomes_only,
                         **vds_load_params,
+                    )
+                )
+
+            # TODO: Move to it's own function, or is it OK here?
+            if not autosomes_only:
+                sex_karyotype = res.meta_ht.ht()[ht.s].sex_imputation.sex_karyotype
+                missing_ss = missing_struct_expr(ht.summary_stats.dtype.element_type)
+                ht = ht.annotate(
+                    summary_stats=hl.if_else(
+                        (sex_karyotype == "XX")
+                        & (ht.sex_chr_nonpar_group == "y_nonpar"),
+                        ht.summary_stats.map(lambda x: missing_ss),
+                        ht.summary_stats,
                     )
                 )
 
