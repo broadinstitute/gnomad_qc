@@ -21,19 +21,19 @@ def main(args):
     gvcfs = args.gvcfs
     temp_path = args.temp_path
     save_path = args.temp_path + "combiner_plan.json"
+    output_path = args.output_path if args.output_path else dragen_tgp_vds.path
 
     vds = create_vds(
         gvcfs=gvcfs,
-        output_path=dragen_tgp_vds.path,
+        output_path=output_path,
         temp_path=temp_path,
         save_path=save_path,
         use_genome_default_intervals=args.use_genome_default_intervals,
-        use_exome_default_intervals=args.use_exome_default_intervals,
         intervals=args.intervals,
         gvcf_batch_size=args.gvcf_batch_size,
     )
     logger.info("VDS variant data schema: %s", vds.variant_data.describe())
-    logger.info("VDS sample data schema: %s", vds.sample_data.describe())
+    logger.info("VDS reference data schema: %s", vds.reference_data.describe())
 
 
 if __name__ == "__main__":
@@ -52,11 +52,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-genome-default-intervals",
         help="Use the default genome intervals",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--use-exome-default-intervals",
-        help="Use the default exome intervals",
         action="store_true",
     )
     parser.add_argument(
