@@ -21,7 +21,14 @@ def main(args):
     gvcfs = args.gvcfs
     temp_path = args.temp_path
     save_path = temp_path + "combiner_plan.json"
-    output_path = args.output_path if args.output_path else dragen_tgp_vds.path
+
+    if args.output_path:
+        output_path = args.output_path
+    else:
+        logger.info(
+            "No output path provided, using DRAGEN TGP VDS path as output path."
+        )
+        output_path = dragen_tgp_vds.path
 
     vds = create_vds(
         gvcfs=gvcfs,
