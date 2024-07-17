@@ -20,7 +20,7 @@ def main(args):
     )
     gvcfs = args.gvcfs
     temp_path = args.temp_path
-    save_path = args.temp_path + "combiner_plan.json"
+    save_path = temp_path + "combiner_plan.json"
     output_path = args.output_path if args.output_path else dragen_tgp_vds.path
 
     vds = create_vds(
@@ -39,27 +39,27 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--gvcfs", help="Path to file with only gVCF paths", required=True
+        "--gvcfs", help="Path to txt file with only gVCF paths", required=True
     )
     parser.add_argument(
-        "--output-path", help="Path to write output VDS to", required=True
+        "--output-path", help="Path to write output VDS to.", required=True
     )
     parser.add_argument(
         "--temp-path",
-        help="Path to write temporary files, including save path on failure",
+        help="Directory path to write temporary files, including save path on failure.",
         default="gs://gnomad-tmp-4day/combiner/",
     )
     parser.add_argument(
         "--use-genome-default-intervals",
-        help="Use the default genome intervals",
+        help="Use the default genome intervals.",
         action="store_true",
     )
     parser.add_argument(
-        "--intervals", help="Optional list of intervals to use", nargs="+"
+        "--intervals", help="Optional list of intervals to use.", nargs="+"
     )
     parser.add_argument(
         "--gvcf-batch-size",
-        help="Number of GVCFs to combine into a Variant Dataset at once",
+        help="Number of GVCFs to combine into a Variant Dataset at once.",
         type=int,
     )
     args = parser.parse_args()
