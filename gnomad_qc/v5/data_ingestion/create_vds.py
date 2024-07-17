@@ -14,7 +14,7 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    """Create VDS from table of GVCFs paths and write to output path."""
+    """Create VDS from text file of GVCFs paths and write to output path."""
     hl.init(
         log="/tmp/gvcf_combiner.log", default_reference="GRCh38", tmp_dir=args.temp_path
     )
@@ -39,15 +39,16 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--gvcfs", help="Path to txt file with only gVCF paths", required=True
+        "--gvcfs", help="Path to txt file with only gVCF paths", required=True, type=str
     )
     parser.add_argument(
-        "--output-path", help="Path to write output VDS to.", required=True
+        "--output-path", help="Path to write output VDS to.", required=True, type=str
     )
     parser.add_argument(
         "--temp-path",
         help="Directory path to write temporary files, including save path on failure.",
         default="gs://gnomad-tmp-4day/combiner/",
+        type=str,
     )
     parser.add_argument(
         "--use-genome-default-intervals",
@@ -55,7 +56,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--intervals", help="Optional list of intervals to use.", nargs="+"
+        "--intervals",
+        help="Text file of intervals to use for VDS creation.",
+        type=str,
     )
     parser.add_argument(
         "--gvcf-batch-size",
