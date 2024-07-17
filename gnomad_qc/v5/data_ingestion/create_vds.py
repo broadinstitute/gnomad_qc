@@ -40,13 +40,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--gvcfs",
-        help="Path to txt file with only gVCF paths.",
+        help="Path to text file with only gVCF paths.",
         required=True,
         type=str,
     )
-    parser.add_argument(
-        "--output-path", help="Path to write output VDS to.", required=True, type=str
-    )
+    parser.add_argument("--output-path", help="Path to write output VDS to.", type=str)
     parser.add_argument(
         "--temp-path",
         help="Directory path to write temporary files, including save path on failure.",
