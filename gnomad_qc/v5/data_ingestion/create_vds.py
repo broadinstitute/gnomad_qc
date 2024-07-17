@@ -1,4 +1,4 @@
-"""Script to combine gVCFs into a single VDS."""
+"""Script to combine GVCFs into a single VDS."""
 
 import argparse
 import logging
@@ -39,7 +39,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--gvcfs", help="Path to txt file with only gVCF paths", required=True, type=str
+        "--gvcfs",
+        help="Path to txt file with only gVCF paths.",
+        required=True,
+        type=str,
     )
     parser.add_argument(
         "--output-path", help="Path to write output VDS to.", required=True, type=str
@@ -52,7 +55,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--use-genome-default-intervals",
-        help="Use the default genome intervals.",
+        help="Use hail's default genome intervals.",
         action="store_true",
     )
     parser.add_argument(
