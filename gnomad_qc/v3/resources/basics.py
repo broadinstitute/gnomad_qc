@@ -73,6 +73,10 @@ def get_gnomad_v3_vds(
     if isinstance(chrom, str):
         chrom = [chrom]
 
+    if autosomes_only and sex_chr_only:
+        raise ValueError(
+            "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
+        )
     if autosomes_only or sex_chr_only:
         rg = vds.reference_genome
         sex_chrom = set(rg.x_contigs + rg.y_contigs)
@@ -80,10 +84,6 @@ def get_gnomad_v3_vds(
             chrom = sex_chrom
         else:
             chrom = set(rg.contigs) - (sex_chrom | set(rg.mt_contigs))
-    elif autosomes_only and sex_chr_only:
-        raise ValueError(
-            "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
-        )
 
     if chrom is not None:
         logger.info("Filtering to chromosome(s) %s...", chrom)

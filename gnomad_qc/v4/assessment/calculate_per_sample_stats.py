@@ -23,7 +23,6 @@ computed:
 Aggregated statistics can also be computed by ancestry.
 """
 import argparse
-import itertools
 import logging
 from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Tuple
@@ -36,7 +35,12 @@ from gnomad.assessment.summary_stats import (
 )
 from gnomad.resources.resource_utils import TableResource
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
-from gnomad.utils.annotations import annotate_with_ht, get_adj_expr
+from gnomad.utils.annotations import (
+    annotate_with_ht,
+    fill_missing_key_combinations,
+    get_adj_expr,
+    missing_struct_expr,
+)
 from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
@@ -171,8 +175,8 @@ def process_test_args(
     """
     Process test arguments for the per-sample stats pipeline.
 
-    Raises a ValueError if the test argument combination is invalid or returns the
-    intervals and partitions to filter to for testing.
+    Return the intervals and partitions to filter to for testing or raise a ValueError
+    if the test argument combination is invalid.
 
     The test argument combination is invalid if:
 
@@ -187,7 +191,7 @@ def process_test_args(
 
         - `test_difficult_partitions` is True, and:
 
-            - `data_type` is "genomes" because difficult partitions are only chosen for
+            - `data_type` is "genomes" because difficult partitions are only relevant for
               the raw exome VDS.
             - `test_dataset` or `test_partitions` is True because difficult partitions
               only apply to the full exomes VDS.
@@ -204,7 +208,7 @@ def process_test_args(
         PCSK9 is on chr1 and TRPC5 is on chrX and ZFY is on chrY). Default is False.
     :param test_partitions: Optional list of partitions to test on. Default is None.
     :param test_difficult_partitions: Boolean indicating whether to test on difficult
-        partitions. Default is False.
+        partitions. For exomes only. Default is False.
     :param create_filter_group: Boolean indicating whether the filter group HT is being
         created. Default is False.
     :param create_intermediate: Boolean indicating whether the intermediate MT is being
@@ -245,12 +249,11 @@ def process_test_args(
             raise ValueError(
                 err_msg
                 + " For a quick test of both --create-filter-group-ht and "
-                "--create-per-sample-counts-ht arguments of the pipeline at the "
-                "same time use '--test-gene --test-dataset'. The full run of the "
-                "--create-filter-group-ht step is relatively quick and after tests "
-                "are complete on the filter group creation, the full run of "
-                "--create-filter-group-ht should be done to further test "
-                "--create-per-sample-counts-ht for memory errors."
+                "--create-per-sample-counts-ht, use '--test-gene --test-dataset'. "
+                "The full run of the --create-filter-group-ht step is relatively "
+                "quick and once tests are complete on the filter group creation, "
+                "the full run of --create-filter-group-ht should be done to further"
+                " test --create-per-sample-counts-ht for memory errors."
             )
 
     # The following four exome partitions have given us trouble with out-of-memory
@@ -639,63 +642,6 @@ def annotate_per_sample_stat_combinations(
     )
 
 
-# TODO: Move this to gnomad_methods? If so, where?
-
-
-def fill_missing_key_combinations(
-    ht: hl.Table,
-    fill_values: Dict[str, hl.expr.Expression],
-    key_values: Optional[Dict[str, List]] = None,
-) -> hl.Table:
-    """
-    Fill missing key combinations with requested fill values.
-
-    :param ht: Input Table containing key fields.
-    :param fill_values: Dictionary of fill values to use for missing key combinations.
-    :param key_values: Optional dictionary of unique values to use for each key field.
-        Default is None. If None, the unique values for each key field are collected
-        from the input Table.
-    :return: Table with missing key combinations filled with requested fill values.
-    """
-    key_fields = list(ht.key.keys())
-
-    # Extract unique values for each annotation.
-    key_values = key_values or {}
-    key_values = [
-        key_values.get(f, ht.aggregate(hl.agg.collect_as_set(ht[f])))
-        for f in key_fields
-    ]
-
-    # Create all combinations of the unique values for each key.
-    all_combinations = list(itertools.product(*key_values))
-
-    # Convert the list of combinations to a Hail Table.
-    all_combinations_ht = hl.Table.parallelize(
-        [{f: c for f, c in zip(key_fields, combo)} for combo in all_combinations],
-        hl.tstruct(**{f: ht[f].dtype for f in key_fields}),
-    ).key_by(*key_fields)
-
-    # Left join original table with all_combinations to include all possible
-    # combinations.
-    ht = all_combinations_ht.join(ht, how="left")
-
-    # Fill missing row annotations with requested fill values.
-    ht = ht.annotate(**{f: hl.coalesce(ht[f], v) for f, v in fill_values.items()})
-
-    return ht
-
-
-def missing_struct_expr(
-    dtypes: hl.expr.types.tstruct,
-) -> hl.expr.StructExpression:
-    """
-    Create a struct of missing values for each field and type in the input struct.
-
-    :param dtypes: StructExpression containing the field names and missing values.
-    """
-    return hl.struct(**{f: hl.missing(t) for f, t in dtypes.items()})
-
-
 def create_per_sample_counts_ht(
     mt: hl.MatrixTable,
     gq_bins: Tuple[int] = (60,),
@@ -739,12 +685,20 @@ def create_per_sample_counts_ht(
         },
     ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
 
+    # Group the variants by 'sex_chr_nonpar_group' ('autosome_or_par', 'x_nonpar', and
+    # 'y_nonpar') and aggregate the sample stats for each filter group. This gives a
+    # dictionary where the keys are the 'sex_chr_nonpar_group' and the values are the
+    # array of sample stats for each filter group, which is then converted to an array
+    # of key-value pairs.
     mt = mt.select_cols(
         _ss=hl.agg.group_by(
             mt.sex_chr_nonpar_group,
             hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
         ).items()
     )
+
+    # Explode the aggregated sample stats so that each 'sex_chr_nonpar_group' has its
+    # own row.
     ht = mt.cols().explode("_ss")
     ht = ht.transmute(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
     ht = ht.checkpoint(new_temp_file("per_sample_stats", "ht"), overwrite=True)
@@ -1111,6 +1065,11 @@ def compute_agg_sample_stats(
     ht = ht.annotate(
         filter_group_meta=ht.summary_stats[0], summary_stats=ht.summary_stats[1]
     ).checkpoint(new_temp_file("agg_sample_stats.explode", "ht"))
+
+    # Note: For this aggregation to work on the full dataset without a Spark/Hadoop
+    # error, it needs to be split into multiple aggregations. An easy split is to move
+    # the quantiles aggregation into a separate aggregation, which will allow the
+    # aggregation to work on the full dataset.
     grouped_ht = ht.group_by(
         "subset", "gen_anc", "sex_chr_nonpar_group", "filter_group_meta"
     )
@@ -1403,7 +1362,8 @@ def main(args):
                     )
                 )
 
-            # TODO: Move to it's own function, or is it OK here?
+            # Set 'y_nonpar' sample stats to missing for XX individuals if not autosomes
+            # only.
             if not autosomes_only:
                 sex_karyotype = res.meta_ht.ht()[ht.s].sex_imputation.sex_karyotype
                 missing_ss = missing_struct_expr(ht.summary_stats.dtype.element_type)
