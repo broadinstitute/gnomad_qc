@@ -14,7 +14,7 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    """Create VDS from text file of VDS or GVCFs paths and write to output path."""
+    """Create VDS from text file of VDSes or GVCFs paths and write to output path."""
     hl.init(
         log="/tmp/gvcf_combiner.log", default_reference="GRCh38", tmp_dir=args.temp_path
     )
@@ -24,7 +24,7 @@ def main(args):
     save_path = temp_path + "combiner_plan.json"
 
     if not vdses and not gvcfs:
-        raise ValueError("No VDSes or gVCFs provided to combine into a VDS.")
+        raise ValueError("No VDSes or GVCFs provided to combine into a VDS.")
 
     if args.output_path:
         output_path = args.output_path
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--gvcfs",
-        help="Path to text file with only gVCF paths.",
+        help="Path to text file with only GVCF paths.",
         type=str,
     )
     parser.add_argument("--output-path", help="Path to write output VDS to.", type=str)
