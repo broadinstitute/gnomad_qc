@@ -35,10 +35,10 @@ def main(args):
         output_path = dragen_tgp_vds.path
 
     vds = create_vds(
-        vdses=vdses,
-        gvcfs=gvcfs,
         output_path=output_path,
         temp_path=temp_path,
+        vdses=vdses,
+        gvcfs=gvcfs,
         save_path=save_path,
         use_genome_default_intervals=args.use_genome_default_intervals,
         intervals=args.intervals,
