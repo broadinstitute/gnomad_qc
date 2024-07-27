@@ -1127,6 +1127,11 @@ def get_pipeline_resources(
     # Initialize pipeline resource collection.
     per_sample_pipeline = PipelineResourceCollection(
         pipeline_name="calculate_per_sample_stats",
+        pipeline_resources={
+            "sample_qc/create_sample_qc_metadata_ht.py": {
+                "meta_ht": meta(data_type=data_type)
+            }
+        },
         overwrite=overwrite,
     )
 
@@ -1171,10 +1176,7 @@ def get_pipeline_resources(
             [create_intermediate] if use_intermediate_mt_for_sample_counts else []
         ),
         add_input_resources={
-            "--create-filter-group-ht": {"filter_groups_ht": filter_groups_ht},
-            "sample_qc/create_sample_qc_metadata_ht.py": {
-                "meta_ht": meta(data_type=data_type)
-            },
+            "--create-filter-group-ht": {"filter_groups_ht": filter_groups_ht}
         },
         output_resources={
             "per_sample_ht": get_per_sample_counts(
@@ -1199,11 +1201,6 @@ def get_pipeline_resources(
     aggregate_stats = PipelineStepResourceCollection(
         "--aggregate-sample-stats",
         pipeline_input_steps=[create_per_sample_counts],
-        add_input_resources={
-            "sample_qc/create_sample_qc_metadata_ht.py": {
-                "meta_ht": meta(data_type=data_type)
-            }
-        },
         output_resources={
             "per_sample_agg_ht": get_per_sample_counts(
                 **res_base_args,
@@ -1297,6 +1294,7 @@ def main(args):
         overwrite=overwrite,
         custom_suffix=args.custom_suffix,
     )
+    meta_ht = per_sample_stats_resources.meta_ht.ht()
 
     # Define VDS load function and parameters.
     vds_load_params = {
@@ -1341,6 +1339,8 @@ def main(args):
                 )
             ).write(res.temp_intermediate_ht.path, overwrite=overwrite)
 
+        per_sample_ht = None
+        per_sample_ht_path = None
         if create_per_sample_counts:
             logger.info("Calculating per-sample variant statistics for %s...")
             res = per_sample_stats_resources.create_per_sample_counts
@@ -1362,21 +1362,8 @@ def main(args):
                     )
                 )
 
-            # Set 'y_nonpar' sample stats to missing for XX individuals if not autosomes
-            # only.
-            if not autosomes_only:
-                sex_karyotype = res.meta_ht.ht()[ht.s].sex_imputation.sex_karyotype
-                missing_ss = missing_struct_expr(ht.summary_stats.dtype.element_type)
-                ht = ht.annotate(
-                    summary_stats=hl.if_else(
-                        (sex_karyotype == "XX")
-                        & (ht.sex_chr_nonpar_group == "y_nonpar"),
-                        ht.summary_stats.map(lambda x: missing_ss),
-                        ht.summary_stats,
-                    )
-                )
-
-            ht.write(res.per_sample_ht.path, overwrite=overwrite)
+            per_sample_ht = ht
+            per_sample_ht_path = res.per_sample_ht.path
 
         if test and (combine_chr_stats or aggregate_stats):
             logger.warning(
@@ -1392,9 +1379,28 @@ def main(args):
             res = per_sample_stats_resources.combine_stats
             res.check_resource_existence()
 
-            combine_autosome_and_sex_chr_stats(
+            per_sample_ht = combine_autosome_and_sex_chr_stats(
                 res.autosomes_ht.ht(), res.sex_chr_ht.ht()
-            ).write(res.per_sample_ht.path, overwrite=overwrite)
+            )
+            per_sample_ht_path = res.per_sample_ht.path
+
+        if per_sample_ht is not None:
+            # Set 'y_nonpar' sample stats to missing for XX individuals if not autosomes
+            # only.
+            if not autosomes_only:
+                sex_karyotype = meta_ht[per_sample_ht.s].sex_imputation.sex_karyotype
+                missing_ss = missing_struct_expr(
+                    per_sample_ht.summary_stats.dtype.element_type
+                )
+                per_sample_ht = per_sample_ht.annotate(
+                    summary_stats=hl.if_else(
+                        (sex_karyotype == "XX")
+                        & (per_sample_ht.sex_chr_nonpar_group == "y_nonpar"),
+                        per_sample_ht.summary_stats.map(lambda x: missing_ss),
+                        per_sample_ht.summary_stats,
+                    )
+                )
+            per_sample_ht.write(per_sample_ht_path, overwrite=overwrite)
 
         if aggregate_stats:
             logger.info("Computing aggregate sample statistics...")
@@ -1403,7 +1409,7 @@ def main(args):
 
             compute_agg_sample_stats(
                 res.per_sample_ht.ht(),
-                res.meta_ht.ht(),
+                meta_ht,
                 by_ancestry=args.by_ancestry,
                 by_subset=args.by_subset,
             ).write(res.per_sample_agg_ht.path, overwrite=overwrite)
