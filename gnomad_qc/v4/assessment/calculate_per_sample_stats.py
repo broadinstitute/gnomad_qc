@@ -25,7 +25,7 @@ Aggregated statistics can also be computed by ancestry.
 import argparse
 import logging
 from copy import deepcopy
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import hail as hl
 from gnomad.assessment.summary_stats import (
@@ -33,8 +33,15 @@ from gnomad.assessment.summary_stats import (
     get_summary_stats_filter_group_meta,
     get_summary_stats_variant_filter_expr,
 )
-from gnomad.utils.annotations import annotate_with_ht
-from gnomad.utils.filtering import filter_to_adj, filter_to_autosomes
+from gnomad.resources.resource_utils import TableResource
+from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
+from gnomad.utils.annotations import (
+    annotate_with_ht,
+    fill_missing_key_combinations,
+    get_adj_expr,
+    missing_struct_expr,
+)
+from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     CSQ_CODING,
@@ -48,8 +55,12 @@ from hail.genetics.allele_type import AlleleType
 from hail.methods.qc import _qc_allele_type
 from hail.utils import new_temp_file
 from hail.utils.misc import divide_null
-from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
+from hail.vds.sample_qc import vmt_sample_qc
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources import meta
@@ -148,10 +159,164 @@ ALLELE_TYPE_MAP = {
 }
 
 
+def process_test_args(
+    data_type: str,
+    test_dataset: bool = False,
+    test_gene: bool = False,
+    test_partitions: Optional[List[int]] = None,
+    test_difficult_partitions: bool = False,
+    create_filter_group: bool = False,
+    create_intermediate: bool = False,
+    create_per_sample_counts: bool = False,
+    use_intermediate: bool = False,
+    sex_chr_only: bool = False,
+    autosomes_only: bool = False,
+) -> Tuple[Optional[List[hl.tinterval]], Optional[List[int]]]:
+    """
+    Process test arguments for the per-sample stats pipeline.
+
+    Return the intervals and partitions to filter to for testing or raise a ValueError
+    if the test argument combination is invalid.
+
+    The test argument combination is invalid if:
+
+        - `create_filter_group` is True, and:
+
+            - `test_partitions` and `create_per_sample_counts` are both True because the
+              partitions in the release HT and the raw VDS are different.
+            - `test_difficult_partitions` is True because difficult partitions are only
+              relevant for testing per-sample counts.
+            - `test_dataset` is True and `create_per_sample_counts` is False because the
+              test dataset is only relevant when testing per-sample counts.
+
+        - `test_difficult_partitions` is True, and:
+
+            - `data_type` is "genomes" because difficult partitions are only relevant for
+              the raw exome VDS.
+            - `test_dataset` or `test_partitions` is True because difficult partitions
+              only apply to the full exomes VDS.
+
+        - `test_gene` is True, and `test_partitions` or `test_difficult_partitions` is
+          True because there is no (or likely no) overlap in partitions between the
+          gene test intervals and the test partitions or difficult partitions.
+
+    :param data_type: Data type of the dataset.
+    :param test_dataset: Boolean indicating whether to use the test dataset instead of
+        the full dataset. Default is False.
+    :param test_gene: Boolean indicating whether to filter the dataset to PCSK9 and/or
+        TRPC5 and ZFY (depends on values of `sex_chr_only` and `autosomes_only` because
+        PCSK9 is on chr1 and TRPC5 is on chrX and ZFY is on chrY). Default is False.
+    :param test_partitions: Optional list of partitions to test on. Default is None.
+    :param test_difficult_partitions: Boolean indicating whether to test on difficult
+        partitions. For exomes only. Default is False.
+    :param create_filter_group: Boolean indicating whether the filter group HT is being
+        created. Default is False.
+    :param create_intermediate: Boolean indicating whether the intermediate MT is being
+        created. Default is False.
+    :param create_per_sample_counts: Boolean indicating whether the per-sample counts HT
+        is being created. Default is False.
+    :param use_intermediate: Boolean indicating whether the intermediate MT is being
+        used. Default is False.
+    :param sex_chr_only: Boolean indicating whether the dataset is being filtered to
+        sex chromosomes only. Default is False.
+    :param autosomes_only: Boolean indicating whether the dataset is being filtered to
+        autosomes only. Default is False.
+    :return: Tuple of filter intervals and partitions to filter to for testing.
+    """
+    if create_filter_group:
+        err_msg = ""
+        if test_partitions and create_per_sample_counts:
+            err_msg = (
+                "Cannot test on a custom number of partitions (--test-n-partitions) "
+                "when using both --create-filter-group-ht and "
+                "--create-per-sample-counts-ht because there is not an overlap in "
+                "partitions."
+            )
+        if test_difficult_partitions:
+            err_msg = (
+                "Difficult partitions (--test-difficult-partitions) are only chosen "
+                "for testing per-sample counts, we recommend using only --test-gene to "
+                "test that --create-filter-group-ht is working as expected."
+            )
+        if test_dataset and not create_per_sample_counts:
+            err_msg = (
+                "The use of the test VDS (--test-dataset) is only relevant when also"
+                " testing per-sample counts (--create-per-sample-counts-ht), we "
+                "recommend using only --test-gene to test that --create-filter-group-ht"
+                " is working as expected."
+            )
+        if err_msg:
+            raise ValueError(
+                err_msg
+                + " For a quick test of both --create-filter-group-ht and "
+                "--create-per-sample-counts-ht, use '--test-gene --test-dataset'. "
+                "The full run of the --create-filter-group-ht step is relatively "
+                "quick and once tests are complete on the filter group creation, "
+                "the full run of --create-filter-group-ht should be done to further"
+                " test --create-per-sample-counts-ht for memory errors."
+            )
+
+    # The following four exome partitions have given us trouble with out-of-memory
+    # errors in the past. We are testing on these partitions to ensure that the
+    # per-sample stats script can handle them before running the entire dataset.
+    if test_difficult_partitions:
+        if data_type == "genomes":
+            raise ValueError(
+                "Difficult partitions for testing have only been chosen for exomes."
+            )
+        if test_dataset or test_partitions:
+            raise ValueError(
+                "Cannot test on difficult partitions (--test-difficult-partitions) and "
+                "test dataset (--test-dataset) or a custom number of partitions "
+                "(--test-n-partitions) at the same time. Difficult partitions only "
+                "apply to the full exomes VDS."
+            )
+        logger.info(
+            "Testing on difficult exome partitions to make sure the tests can pass "
+            "without memory errors..."
+        )
+        test_partitions = [20180, 40916, 41229, 46085]
+
+    if test_gene and test_partitions:
+        raise ValueError(
+            "Cannot use --test-gene and --test-n-partitions or "
+            "--test-difficult-partitions at the same time."
+        )
+
+    if (
+        create_intermediate
+        or (create_per_sample_counts and not use_intermediate)
+        and not test_gene
+    ):
+        logger.warning(
+            "This test requires that the full filtering groups Table has been "
+            "created. Please run --create-filter-group-ht without "
+            "--test-gene or --test-n-partitions if it doesn't already exist."
+        )
+
+    filter_intervals = None
+    if test_gene:
+        filter_intervals = []
+        if not sex_chr_only:
+            # Filter to 10kb in PCSK9.
+            filter_intervals.append("chr1:55039447-55064852")
+        if not autosomes_only:
+            # Filter to TRPC5 on chrX and ZFY on chrY.
+            filter_intervals.extend(
+                ["chrX:111776000-111786000", "chrY:2935281-2982506"]
+            )
+        filter_intervals = [
+            hl.parse_locus_interval(x, reference_genome="GRCh38")
+            for x in filter_intervals
+        ]
+
+    return filter_intervals, test_partitions
+
+
 def get_capture_filter_exprs(
     ht: hl.Table,
-    ukb_capture: bool = False,
-    broad_capture: bool = False,
+    ukb_capture: bool = True,
+    broad_capture: bool = True,
 ) -> Dict[str, hl.expr.BooleanExpression]:
     """
     Get filter expressions for UK Biobank and Broad capture regions.
@@ -159,7 +324,9 @@ def get_capture_filter_exprs(
     :param ht: Table containing variant annotations. The following annotations are
         required: 'region_flags'.
     :param ukb_capture: Expression for variants that are in UKB capture intervals.
+        Default is True.
     :param broad_capture: Expression for variants that are in Broad capture intervals.
+        Default is True.
     :return: Dictionary of filter expressions for UK Biobank and Broad capture regions.
     """
     filter_expr = {}
@@ -190,10 +357,7 @@ def get_capture_filter_exprs(
 
 def get_summary_stats_filter_groups_ht(
     ht: hl.Table,
-    pass_filters: bool = False,
-    ukb_capture: bool = False,
-    broad_capture: bool = False,
-    by_csqs: bool = False,
+    capture_regions: bool = False,
     vep_canonical: bool = True,
     vep_mane: bool = False,
     rare_variants_afs: Optional[list[float]] = None,
@@ -202,64 +366,66 @@ def get_summary_stats_filter_groups_ht(
     Create Table annotated with an array of booleans indicating whether a variant belongs to certain filter groups.
 
     A 'filter_groups' annotation is added to the Table containing an ArrayExpression of
-    BooleanExpressions for each requested filter group.
+    BooleanExpressions for the following filter groups:
+
+        - All variants
+        - Variants that pass all variant QC filters
+        - Variants in UK Biobank capture regions
+        - Variants in Broad capture regions
+        - Variants in the intersect of UK Biobank and Broad capture regions
+        - Variants in the union of UK Biobank and Broad capture regions
+        - Variant consequence: loss-of-function, missense, and synonymous
+        - Rare variants with allele frequencies less than the thresholds in
+          `rare_variants_afs`
 
     A 'filter_group_meta' global annotation is added to the Table containing an array
     of dictionaries detailing the filters used in each filter group.
 
     :param ht: Table containing variant annotations. The following annotations are
-        required: 'freq', 'filters', and 'region_flags'. If `by_csqs` is True, 'vep' is
-        also required.
-    :param pass_filters: Include count of variants that pass all variant QC filters.
-    :param ukb_capture: Include count of variants that are in UKB capture intervals.
-    :param broad_capture: Include count of variants that are in Broad capture intervals
-    :param by_csqs: Include count of variants by variant consequence: loss-of-function,
-        missense, and synonymous.
-    :param vep_canonical: If `by_csqs` is True, filter to only canonical transcripts.
-        If trying count variants in all transcripts, set it to False. Default is True.
-    :param vep_mane: If `by_csqs` is True, filter to only MANE transcripts. Default is
-        False.
-    :param rare_variants_afs: The allele frequency thresholds to use for rare variants.
+        required: 'freq', 'filters', 'region_flags', and 'vep'.
+    :param capture_regions: Whether to include filtering groups for variants in UK
+        Biobank and Broad capture regions. Default is False.
+    :param vep_canonical: Whether to filter to only canonical transcripts. If trying
+        count variants in all transcripts, set it to False. Default is True.
+    :param vep_mane: Whether to filter to only MANE transcripts. Default is False.
+    :param rare_variants_afs: Optional list of allele frequency thresholds to use for
+        rare variant filtering.
     :return: Table containing an ArrayExpression of filter groups for summary stats.
     """
-    csq_filter_expr = {}
-    if by_csqs:
-        # Filter to only canonical or MANE transcripts if requested and get the most
-        # severe consequence for each variant.
-        ht = filter_vep_transcript_csqs(
-            ht,
-            synonymous=False,
-            canonical=vep_canonical,
-            mane_select=vep_mane,
-            filter_empty_csq=False,
-        )
-        ht = get_most_severe_consequence_for_summary(ht)
+    # Filter to only canonical or MANE transcripts if requested and get the most
+    # severe consequence for each variant.
+    ht = filter_vep_transcript_csqs(
+        ht,
+        synonymous=False,
+        canonical=vep_canonical,
+        mane_select=vep_mane,
+        filter_empty_csq=False,
+    )
+    ht = get_most_severe_consequence_for_summary(ht)
 
-        # Create filter expressions for the requested consequence types.
-        csq_filter_expr.update(
-            get_summary_stats_csq_filter_expr(
-                ht,
-                lof_csq_set=LOF_CSQ_SET,
-                lof_label_set=LOFTEE_LABELS,
-                lof_no_flags=True,
-                lof_any_flags=True,
-                additional_csq_sets={
-                    "coding": set(CSQ_CODING),
-                    "non_coding": set(CSQ_NON_CODING),
-                },
-                additional_csqs=set(SUM_STAT_FILTERS["csq"]),
-            )
-        )
+    # Create filter expressions for the consequence types.
+    csq_filter_expr = get_summary_stats_csq_filter_expr(
+        ht,
+        lof_csq_set=LOF_CSQ_SET,
+        lof_label_set=LOFTEE_LABELS,
+        lof_no_flags=True,
+        lof_any_flags=True,
+        additional_csq_sets={
+            "coding": set(CSQ_CODING),
+            "non_coding": set(CSQ_NON_CODING),
+        },
+        additional_csqs=set(SUM_STAT_FILTERS["csq"]),
+    )
 
     # Create filter expressions for LCR, variant QC filters, and rare variant AFs if
     # requested.
     filter_exprs = {
         "all_variants": hl.literal(True),
-        **get_capture_filter_exprs(ht, ukb_capture, broad_capture),
+        **(get_capture_filter_exprs(ht) if capture_regions else {}),
         **get_summary_stats_variant_filter_expr(
             ht,
             filter_lcr=True,
-            filter_expr=ht.filters if pass_filters else None,
+            filter_expr=ht.filters,
             freq_expr=ht.freq[0].AF,
             max_af=rare_variants_afs,
         ),
@@ -316,6 +482,13 @@ def get_summary_stats_filter_groups_ht(
     # the no_lcr filter and an array of the filter groups.
     ht = ht.select(
         _no_lcr=filter_exprs["no_lcr"],
+        sex_chr_nonpar_group=(
+            hl.case()
+            .when(ht.locus.in_autosome_or_par(), "autosome_or_par")
+            .when(ht.locus.in_x_nonpar(), "x_nonpar")
+            .when(ht.locus.in_y_nonpar(), "y_nonpar")
+            .or_missing()
+        ),
         filter_groups=filter_groups_expr,
         variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
         variant_af=ht.freq[0].AF,
@@ -328,33 +501,54 @@ def get_summary_stats_filter_groups_ht(
     return ht.filter(ht._no_lcr).drop("_no_lcr")
 
 
-def prepare_mt_for_sample_counts(
-    mt: hl.MatrixTable,
+def load_mt_for_sample_counts(
+    data_type: str,
     filter_group_ht: hl.Table,
-    autosomes_only: bool = False,
+    adjust_ploidy: bool = False,
+    **kwargs,
 ) -> hl.MatrixTable:
     """
-    Prepare MatrixTable for computing per-sample stats counts.
+    Load VDS variant data and prepare MatrixTable for computing per-sample stats counts.
 
-    This function prepares the MatrixTable for computing per-sample stats counts. It
-    does the following:
+    This function loads the VDS for the requested data type and prepares the variant
+    data MatrixTable for computing per-sample stats counts. It does the following:
 
         - Filters to non-ref genotypes (likely unnecessary if the MT is already a
           variant data MT).
         - Annotates the rows with the filter group metadata from `filter_group_ht`.
-        - If `autosomes_only` is True, filters to autosomes only, performs the high
-          AB het -> hom alt adjustment of GT, and adds a 'high_ab_het_ref' annotation.
+        - Performs the high AB het -> hom alt adjustment of GT, and adds a
+          'high_ab_het_ref' annotation.
         - Filters to `adj` genotypes and selects only the necessary entries for
           downstream processing.
 
-    :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
-        split.
+    :param data_type: Data type of the MatrixTable to return. Either 'genomes' or
+        'exomes'.
     :param filter_group_ht: Table containing filter group metadata from
         `get_summary_stats_filter_groups_ht`.
-    :param autosomes_only: Boolean indicating whether to filter to autosomes only. When
-        True, the high AB het -> hom alt adjustment of GT is performed.
+    :param adjust_ploidy: Whether to adjust ploidy. If `data_type` is 'exomes', ploidy
+        is adjusted before determining the adj annotation. If `data_type` is 'genomes',
+        the ploidy adjustment is done after determining the adj annotation. This
+        difference is only added for consistency with v3.1, where we added the adj
+        annotation before adjusting ploidy, but the correct thing to do is to adjust
+        ploidy before determining the adj annotation. Default is False.
+    :param kwargs: Additional keyword arguments to pass to the VDS loading function.
     :return: MatrixTable prepared for computing per-sample stats counts.
     """
+    # Load the VDS for the requested data type and filter to the variants in the
+    # filter group HT.
+    vds_load_func = (
+        get_gnomad_v4_vds if data_type == "exomes" else get_gnomad_v4_genomes_vds
+    )
+    mt = vds_load_func(
+        split=True,
+        release_only=True,
+        split_reference_blocks=False,
+        entries_to_keep=["GT", "GQ", "DP", "AD"],
+        annotate_het_non_ref=True,
+        filter_variant_ht=filter_group_ht,
+        **kwargs,
+    ).variant_data
+
     # Annotate the MT with all annotations on the filter group HT.
     mt = annotate_with_ht(mt, filter_group_ht)
 
@@ -362,25 +556,31 @@ def prepare_mt_for_sample_counts(
     # variant data MT.
     mt = mt.filter_entries(mt.GT.is_non_ref())
 
-    # For now, only add a high_ab_het_ref annotation (or correction) if autosomes_only
-    # is True.
-    # TODO: Modify this when we have fixed the script to correctly handle sex
-    #  chromosomes.
-    if autosomes_only:
-        logger.info(
-            "Filtering to autosomes only and performing high AB het -> hom alt "
-            "adjustment of GT..."
+    # NOTE: The correct thing to do here is to adjust ploidy before determining the adj
+    # annotation because haploid GTs have different adj filtering criteria, but the
+    # option to adjust ploidy after adj is included for consistency with v3.1, where we
+    # added the adj annotation before adjusting for sex ploidy.
+    gt_expr = mt.GT
+    adj_expr = get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD)
+    if adjust_ploidy:
+        logger.info("Adjusting ploidy on sex chromosomes...")
+        gt_expr = adjusted_sex_ploidy_expr(
+            mt.locus, gt_expr, mt.meta.sex_imputation.sex_karyotype
         )
-        mt = filter_to_autosomes(mt)
-        base_args = [mt.GT, mt._het_non_ref, mt.variant_af, mt.AD[1] / mt.DP]
-        mt = mt.annotate_entries(
-            GT=hom_alt_depletion_fix(*base_args, return_bool=False),
-            high_ab_het_ref=hom_alt_depletion_fix(*base_args, return_bool=True),
-        )
+        if data_type == "exomes":
+            adj_expr = get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD)
+
+    logger.info("Performing high AB het -> hom alt adjustment of GT...")
+    base_args = [gt_expr, mt._het_non_ref, mt.variant_af, mt.AD[1] / mt.DP]
+    mt = mt.annotate_entries(
+        GT=hom_alt_depletion_fix(*base_args, return_bool=False),
+        adj=adj_expr,
+        high_ab_het_ref=hom_alt_depletion_fix(*base_args, return_bool=True),
+    )
 
     # Filter to adj genotypes and select only the necessary entries to be localized.
     mt = filter_to_adj(mt)
-    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref")
+    mt = mt.select_entries("GT", "GQ", "DP", "high_ab_het_ref").select_cols()
 
     # Add the filter_group_meta global in filter_group_ht to the MT.
     mt = mt.annotate_globals(
@@ -388,6 +588,58 @@ def prepare_mt_for_sample_counts(
     )
 
     return mt
+
+
+def annotate_per_sample_stat_combinations(
+    ht: hl.Table,
+    sums: Dict[str, List[str]] = {
+        "n_indel": ["n_insertion", "n_deletion"],
+        "n_snp": ["n_transition", "n_transversion"],
+    },
+    diffs: Dict[str, Tuple[str, str]] = {},
+    ratios: Dict[str, Tuple[str, str]] = {
+        "r_ti_tv": ("n_transition", "n_transversion"),
+        "r_ti_tv_singleton": ("n_singleton_ti", "n_singleton_tv"),
+        "r_het_hom_var": ("n_het", "n_hom_var"),
+        "r_insertion_deletion": ("n_insertion", "n_deletion"),
+    },
+    additional_stat_combos: Optional[Dict[str, Callable]] = {},
+) -> hl.Table:
+    """
+    Annotate the per-sample stats Table with ratios of other per-sample stats.
+
+    :param ht: Input Table containing per-sample stats.
+    :param sums: Dictionary of per-sample stats to sum. The key is the name of the sum
+        and the value is a List of the stats to sum. Default is to sum the number of
+        insertions and deletions to get the total number of indels, and the number of
+        transitions and transversions to get the total number of transitions.
+    :param diffs: Dictionary of per-sample stats to subtract. The key is the name of the
+        difference and the value is a tuple of the stats to subtract, where the second
+        stat is subtracted from the first. Default is {}.
+    :param ratios: Dictionary of ratios to compute. The key is the name of the ratio
+        and the value is a tuple of the numerator and denominator per-sample stats.
+        Default is to compute the transition/transversion ratio, the singleton
+        transition/transversion ratio, the heterozygous/homozygous variant ratio, and
+        the insertion/deletion ratio.
+    :param additional_stat_combos: Optional dictionary of additional per-sample stat
+        combinations to compute. The key is the name of the stat and the value is a
+        function that takes the per-sample stats struct and returns the computed stat.
+        Default is {}.
+    :return: Table containing per-sample stats annotated with the requested ratios.
+    """
+    return ht.annotate(
+        summary_stats=ht.summary_stats.map(
+            lambda x: x.annotate(
+                **{k: hl.sum([x[s] for s in v]) for k, v in sums.items()},
+                **{k: x[d1] - x[d2] for k, (d1, d2) in diffs.items()},
+                **{
+                    k: divide_null(hl.float64(x[n]), x[d])
+                    for k, (n, d) in ratios.items()
+                },
+                **{k: v(x) for k, v in additional_stat_combos.items()},
+            )
+        )
+    )
 
 
 def create_per_sample_counts_ht(
@@ -409,6 +661,7 @@ def create_per_sample_counts_ht(
     :param dp_bins: Tuple of DP bins to use for filtering. Default is (20, 30).
     :return: Table containing per-sample variant counts.
     """
+    samples = mt.aggregate_cols(hl.agg.collect(mt.s))
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     qc_expr = vmt_sample_qc(
         global_gt=mt.GT,
@@ -418,32 +671,68 @@ def create_per_sample_counts_ht(
         dp=mt.DP,
         gq_bins=gq_bins,
         dp_bins=dp_bins,
-    ).annotate(n_high_ab_het_ref=hl.agg.count_where(mt.high_ab_het_ref))
-    ht = mt.select_cols(
-        summary_stats=hl.agg.array_agg(
-            lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups
-        )
-    ).cols()
-    ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
-    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
-
-    # Add 'n_indel' and ' n_non_ref_alleles' to the output Table and rename the DP and
-    # GQ fields.
-    ht = ht.annotate(
-        summary_stats=ht.summary_stats.map(
-            lambda x: x.annotate(
-                n_non_ref_alleles=x.n_non_ref + x.n_hom_var,
-                n_indel=x.n_insertion + x.n_deletion,
-                **{
-                    f"n_over_{k}_{b}": x[f"bases_over_{k}_threshold"][i]
-                    for k, bins in {"gq": gq_bins, "dp": dp_bins}.items()
-                    for i, b in enumerate(bins)
-                },
-            ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
-        )
     )
 
-    return ht
+    # Add aggregations for the number of hemizygous variants and high AB het ref
+    # genotypes and rename the DP and GQ fields.
+    qc_expr = qc_expr.annotate(
+        n_hemi_var=hl.agg.count_where(mt.GT.is_haploid()),
+        n_high_ab_het_ref=hl.agg.count_where(mt.high_ab_het_ref),
+        **{
+            f"n_over_{k}_{b}": qc_expr[f"bases_over_{k}_threshold"][i]
+            for k, bins in {"gq": gq_bins, "dp": dp_bins}.items()
+            for i, b in enumerate(bins)
+        },
+    ).drop(*[f"bases_over_{k}_threshold" for k in {"gq", "dp"}])
+
+    # Group the variants by 'sex_chr_nonpar_group' ('autosome_or_par', 'x_nonpar', and
+    # 'y_nonpar') and aggregate the sample stats for each filter group. This gives a
+    # dictionary where the keys are the 'sex_chr_nonpar_group' and the values are the
+    # array of sample stats for each filter group, which is then converted to an array
+    # of key-value pairs.
+    mt = mt.select_cols(
+        _ss=hl.agg.group_by(
+            mt.sex_chr_nonpar_group,
+            hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
+        ).items()
+    )
+
+    # Explode the aggregated sample stats so that each 'sex_chr_nonpar_group' has its
+    # own row.
+    ht = mt.cols().explode("_ss")
+    ht = ht.transmute(sex_chr_nonpar_group=ht._ss[0], summary_stats=ht._ss[1])
+    ht = ht.checkpoint(new_temp_file("per_sample_stats", "ht"), overwrite=True)
+
+    # Add 'n_indel' and ' n_non_ref_alleles' to the output Table.
+    ht = annotate_per_sample_stat_combinations(
+        ht, diffs={"n_hom_var": ("n_hom_var", "n_hemi_var")}, sums={}, ratios={}
+    )
+    ht = annotate_per_sample_stat_combinations(
+        ht,
+        sums={
+            "n_indel": ["n_insertion", "n_deletion"],
+            "n_non_ref_alleles": ["n_non_ref", "n_hom_var"],
+        },
+    )
+    ht = ht.key_by("s", "sex_chr_nonpar_group")
+
+    # Fill missing key combinations with 0 or missing values.
+    ht = fill_missing_key_combinations(
+        ht,
+        {
+            "summary_stats": hl.range(hl.eval(hl.len(ht.filter_group_meta))).map(
+                lambda x: hl.struct(
+                    **{
+                        f: 0 if f.startswith("n_") else hl.missing(t)
+                        for f, t in ht.summary_stats.dtype.element_type.items()
+                    }
+                )
+            )
+        },
+        {"s": samples},
+    )
+
+    return ht.select_globals(summary_stats_meta=ht.filter_group_meta)
 
 
 def create_intermediate_mt_for_sample_counts(
@@ -493,7 +782,8 @@ def create_intermediate_mt_for_sample_counts(
     stat_expr = hl.struct(
         non_ref=entry.filter(lambda x: True),
         het=entry.filter(lambda x: x[1].is_het()),
-        hom_var=entry.filter(lambda x: x[1].is_hom_var()),
+        hom_var=entry.filter(lambda x: x[1].is_hom_var() & ~x[1].is_haploid()),
+        hemi_var=entry.filter(lambda x: x[1].is_haploid()),
         high_ab_het_ref=entry.filter(lambda x: x[4]),
         **{f"over_gq_{gq}": entry.filter(lambda x: x[2] >= gq) for gq in gq_bins},
         **{f"over_dp_{dp}": entry.filter(lambda x: x[3] >= dp) for dp in dp_bins},
@@ -511,6 +801,7 @@ def create_intermediate_mt_for_sample_counts(
         **{k: ht.variant_atypes[0] == v for k, v in ALLELE_TYPE_MAP.items()}
     )
     ht = ht.select(
+        "sex_chr_nonpar_group",
         filter_groups=ht.filter_groups.map(
             lambda x: hl.struct(
                 group_filter=x,
@@ -541,8 +832,8 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     .. warning::
 
         This function is memory intensive and should be run on a cluster with
-        n1-highmem-8 workers and big-executors enabled. It also requires shuffling,
-        so a cluster with all workers is recommended.
+        n1-highmem-8 workers. It also requires shuffling, so a cluster with all
+        workers is recommended.
 
     Takes an intermediate Table (returned by `create_intermediate_mt_for_sample_counts`)
     with an array of variant level stats by filter groups and an array of sample
@@ -614,7 +905,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # Group by filter groups and the random group to get the count of variants matching
     # the filter group and random group for each sample.
     ht = ht.annotate(_rand_group=hl.rand_int32(n_rand_groups))
-    ht = ht.group_by("filter_groups", "_rand_group").aggregate(
+    ht = ht.group_by("sex_chr_nonpar_group", "filter_groups", "_rand_group").aggregate(
         counts=hl.struct(
             **{
                 k: hl.agg.explode(lambda x: hl.agg.counter(x), v)
@@ -635,7 +926,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     # repartitioning the Table to have more partitions than the number of filter groups,
     # helping the final aggregation get around memory errors.
     ht = (
-        ht.group_by("filter_groups")
+        ht.group_by("sex_chr_nonpar_group", "filter_groups")
         .aggregate(
             counts=hl.zip(
                 ht.samples,
@@ -676,7 +967,7 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
     variant_filters = [s for s in ht.filter_groups[0] if s != "group_filter"]
     agg_func = lambda x, f, s: hl.agg.sum(hl.int(x[f]) * ht.counts[s])
     ht = (
-        ht.group_by("s")
+        ht.group_by("s", "sex_chr_nonpar_group")
         .aggregate(
             summary_stats=hl.agg.array_agg(
                 lambda x: hl.struct(
@@ -692,29 +983,41 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
         .checkpoint(new_temp_file("per_sample_counts", "ht"))
     )
 
-    # Add sample QC stats that are combinations of other stats.
-    ratios = {
-        "r_ti_tv": ("n_transition", "n_transversion"),
-        "r_ti_tv_singleton": ("n_singleton_ti", "n_singleton_tv"),
-        "r_het_hom_var": ("n_het", "n_hom_var"),
-        "r_insertion_deletion": ("n_insertion", "n_deletion"),
-    }.items()
-    ht = ht.annotate(
-        summary_stats=ht.summary_stats.map(
-            lambda x: x.annotate(
-                n_indel=x.n_insertion + x.n_deletion,
-                n_snp=x.n_transition + x.n_transversion,
-                **{k: divide_null(hl.float64(x[n]), x[d]) for k, (n, d) in ratios},
-            )
-        )
-    )
-    ht = ht.select_globals(summary_stats_meta=ht.filter_group_meta)
+    # Add 'n_indel', 'n_snp' and sample QC stats that are combinations of other stats.
+    ht = annotate_per_sample_stat_combinations(ht)
 
     n_partitions = max(int(n_samples * 0.001), min(50, n_samples))
     logger.info("Naive coalescing to %s partitions.", n_partitions)
     ht = ht.naive_coalesce(n_partitions)
 
-    return ht
+    return ht.select_globals(summary_stats_meta=ht.filter_group_meta)
+
+
+def combine_autosome_and_sex_chr_stats(
+    autosome_ht: hl.Table,
+    sex_chr_ht: hl.Table,
+) -> hl.Table:
+    """
+    Combine autosomal and sex chromosome per-sample stats Tables.
+
+    :param autosome_ht: Table containing per-sample stats for autosomes.
+    :param sex_chr_ht: Table containing per-sample stats for sex chromosomes.
+    :return: Table containing combined per-sample stats.
+    """
+    ht = autosome_ht.union(sex_chr_ht)
+    ht = ht.group_by("s", "sex_chr_nonpar_group").aggregate(
+        summary_stats=hl.agg.array_agg(
+            lambda x: hl.struct(
+                **{
+                    k: hl.agg.sum(hl.or_else(v, 0))
+                    for k, v in x.items()
+                    if k.startswith("n_")
+                },
+            ),
+            ht.summary_stats,
+        )
+    )
+    return annotate_per_sample_stat_combinations(ht, sums={})
 
 
 def compute_agg_sample_stats(
@@ -748,37 +1051,179 @@ def compute_agg_sample_stats(
             subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
-    ht = ht.annotate(subset=subset, gen_anc=gen_anc)
-    ht = ht.explode("gen_anc").explode("subset")
-
-    ht = ht.group_by("subset", "gen_anc").aggregate(
-        summary_stats=hl.agg.array_agg(
-            lambda x: hl.struct(
-                **{
-                    m: hl.struct(
-                        mean=hl.agg.mean(x[m]),
-                        min=hl.agg.min(x[m]),
-                        max=hl.agg.max(x[m]),
-                        quantiles=hl.agg.approx_quantiles(
-                            x[m], [0.0, 0.25, 0.5, 0.75, 1.0]
-                        ),
-                    )
-                    for m in x
-                }
-            ),
-            ht.summary_stats,
+    ht = (
+        ht.annotate(
+            subset=subset,
+            gen_anc=gen_anc,
+            summary_stats=hl.zip(ht.summary_stats_meta, ht.summary_stats),
         )
+        .select_globals()
+        .explode("gen_anc")
+        .explode("subset")
+        .explode("summary_stats")
     )
-    ht = ht.annotate(
-        summary_stats=hl.zip(ht.summary_stats_meta, ht.summary_stats)
-    ).select_globals()
-    ht = ht.explode("summary_stats")
     ht = ht.annotate(
         filter_group_meta=ht.summary_stats[0], summary_stats=ht.summary_stats[1]
+    ).checkpoint(new_temp_file("agg_sample_stats.explode", "ht"))
+
+    # Note: For this aggregation to work on the full dataset without a Spark/Hadoop
+    # error, it needs to be split into multiple aggregations. An easy split is to move
+    # the quantiles aggregation into a separate aggregation, which will allow the
+    # aggregation to work on the full dataset.
+    grouped_ht = ht.group_by(
+        "subset", "gen_anc", "sex_chr_nonpar_group", "filter_group_meta"
     )
-    ht = ht.key_by(*ht.key, "filter_group_meta")
+    ht1 = grouped_ht.aggregate(
+        **{
+            k: hl.struct(mean=hl.agg.mean(v), min=hl.agg.min(v), max=hl.agg.max(v))
+            for k, v in ht.summary_stats.items()
+        }
+    ).checkpoint(new_temp_file("agg_sample_stats.first_agg", "ht"))
+    ht2 = grouped_ht.aggregate(
+        **{
+            k: hl.agg.approx_quantiles(v, [0.0, 0.25, 0.5, 0.75, 1.0])
+            for k, v in ht.summary_stats.items()
+        }
+    ).checkpoint(new_temp_file("agg_sample_stats.second_agg", "ht"))
+    ht2_keyed = ht2[ht1.key]
+    ht = ht1.annotate(
+        **{k: ht1[k].annotate(quantiles=ht2_keyed[k]) for k in ht1.row_value}
+    )
 
     return ht
+
+
+def get_pipeline_resources(
+    data_type: str,
+    test: bool,
+    test_gene: bool,
+    autosomes_only: bool,
+    sex_chr_only: bool,
+    use_intermediate_mt_for_sample_counts: bool,
+    by_ancestry: bool,
+    by_subset: bool,
+    overwrite: bool,
+    custom_suffix: Optional[str] = None,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the per-sample stats pipeline.
+
+    :param data_type: Data type of the dataset.
+    :param test: Whether to gather all resources for testing.
+    :param test_gene: Whether the test is being performed on specific gene(s).
+    :param autosomes_only: Whether to gather resources for autosomes only.
+    :param sex_chr_only: Whether to gather resources for sex chromosomes only.
+    :param use_intermediate_mt_for_sample_counts: Whether to use an intermediate MT for
+        computing per-sample counts.
+    :param by_ancestry: Whether to return resource for aggregate stats stratified by
+        ancestry.
+    :param by_subset: Whether to return resource for aggregate stats stratified by
+        subset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :param custom_suffix: Optional custom suffix to add to the resource names.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        per-sample stats pipeline.
+    """
+    # Initialize pipeline resource collection.
+    per_sample_pipeline = PipelineResourceCollection(
+        pipeline_name="calculate_per_sample_stats",
+        pipeline_resources={
+            "sample_qc/create_sample_qc_metadata_ht.py": {
+                "meta_ht": meta(data_type=data_type)
+            }
+        },
+        overwrite=overwrite,
+    )
+
+    res_base_args = {"test": test, "data_type": data_type, "suffix": custom_suffix}
+
+    # Create resource collection for each step of the pipeline.
+    create_filter_group = PipelineStepResourceCollection(
+        "--create-filter-group-ht",
+        input_resources={
+            "v4 release HT": {"release_ht": release_sites(data_type=data_type)}
+        },
+        output_resources={
+            "filter_groups_ht": get_summary_stats_filtering_groups(
+                data_type=data_type, test=test
+            )
+        },
+    )
+
+    # Uses `test_gene` instead of just `test` because the filter groups HT will not
+    # have the same partitions as the raw VDS, so unless the test is on a specific
+    # gene(s), the test will not work as expected.
+    filter_groups_ht = get_summary_stats_filtering_groups(data_type, test=test_gene)
+    create_intermediate = PipelineStepResourceCollection(
+        "--create-intermediate-mt-for-sample-counts",
+        input_resources={
+            "--create-filter-group-ht": {"filter_groups_ht": filter_groups_ht}
+        },
+        output_resources={
+            "temp_intermediate_ht": TableResource(
+                get_checkpoint_path(
+                    "per_sample_summary_stats_intermediate"
+                    + (".test" if test else "")
+                    + (".autosomes" if autosomes_only else "")
+                    + (".sex_chr" if sex_chr_only else "")
+                )
+            )
+        },
+    )
+    create_per_sample_counts = PipelineStepResourceCollection(
+        "--create-per-sample-counts-ht",
+        pipeline_input_steps=(
+            [create_intermediate] if use_intermediate_mt_for_sample_counts else []
+        ),
+        add_input_resources={
+            "--create-filter-group-ht": {"filter_groups_ht": filter_groups_ht}
+        },
+        output_resources={
+            "per_sample_ht": get_per_sample_counts(
+                **res_base_args,
+                autosomes=autosomes_only,
+                sex_chr=sex_chr_only,
+            )
+        },
+    )
+    combine_stats = PipelineStepResourceCollection(
+        "--combine-autosome-and-sex-chr-stats",
+        input_resources={
+            "--create-per-sample-counts-ht --autosomes-only-stats": {
+                "autosomes_ht": get_per_sample_counts(**res_base_args, autosomes=True)
+            },
+            "--create-per-sample-counts-ht --sex-chr-only-stats": {
+                "sex_chr_ht": get_per_sample_counts(**res_base_args, sex_chr=True)
+            },
+        },
+        output_resources={"per_sample_ht": get_per_sample_counts(**res_base_args)},
+    )
+    aggregate_stats = PipelineStepResourceCollection(
+        "--aggregate-sample-stats",
+        pipeline_input_steps=[create_per_sample_counts],
+        output_resources={
+            "per_sample_agg_ht": get_per_sample_counts(
+                **res_base_args,
+                autosomes=autosomes_only,
+                sex_chr=sex_chr_only,
+                aggregated=True,
+                by_ancestry=by_ancestry,
+                by_subset=by_subset,
+            )
+        },
+    )
+    # Add all steps to the pipeline resource collection.
+    per_sample_pipeline.add_steps(
+        {
+            "create_filter_group": create_filter_group,
+            "create_intermediate": create_intermediate,
+            "create_per_sample_counts": create_per_sample_counts,
+            "combine_stats": combine_stats,
+            "aggregate_stats": aggregate_stats,
+        }
+    )
+
+    return per_sample_pipeline
 
 
 def main(args):
@@ -791,225 +1236,183 @@ def main(args):
     # SSA Logs are easier to troubleshoot with.
     hl._set_flags(use_ssa_logs="1")
 
+    overwrite = args.overwrite
     data_type = args.data_type
     create_filter_group = args.create_filter_group_ht
     create_per_sample_counts = args.create_per_sample_counts_ht
+    create_intermediate = args.create_intermediate_mt_for_sample_counts
+    use_intermediate = args.use_intermediate_mt_for_sample_counts
+    combine_chr_stats = args.combine_autosome_and_sex_chr_stats
+    aggregate_stats = args.aggregate_sample_stats
     autosomes_only = args.autosomes_only_stats
+    sex_chr_only = args.sex_chr_only_stats
+    exomes = data_type == "exomes"
+    rare_variants_afs = args.rare_variants_afs
+
+    if autosomes_only and sex_chr_only:
+        raise ValueError(
+            "Cannot use --autosomes-only-stats and --sex-chr-only-stats at the same "
+            "time."
+        )
+    if not exomes and args.by_subset:
+        raise ValueError("Stratifying by subset is only working on exomes data type.")
+
+    # Handle test arguments.
     test_dataset = args.test_dataset
     test_gene = args.test_gene
     test_difficult_partitions = args.test_difficult_partitions
     test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
     )
-    if not autosomes_only:
-        raise NotImplementedError("The current implementation only supports autosomes")
-
-    if create_filter_group:
-        err_msg = ""
-        if test_partitions and create_per_sample_counts:
-            err_msg = (
-                "Cannot test on a custom number of partitions (--test-n-partitions) "
-                "when using both --create-filter-group-ht and "
-                "--create-per-sample-counts-ht because there is not an overlap in "
-                "partitions."
-            )
-        if test_difficult_partitions:
-            err_msg = (
-                "Difficult partitions (--test-difficult-partitions) are only chosen "
-                "for testing per-sample counts, we recommend using only --test-gene to "
-                "test that --create-filter-group-ht is working as expected."
-            )
-        if test_dataset and not create_filter_group:
-            err_msg = (
-                "The use of the test VDS (--test-dataset) is only relevant when also"
-                " testing per-sample counts (--create-per-sample-counts-ht), we "
-                "recommend using only --test-gene to test that --create-filter-group-ht"
-                " is working as expected."
-            )
-        if err_msg:
-            raise ValueError(
-                err_msg
-                + " For a quick test of both --create-filter-group-ht and "
-                "--create-per-sample-counts-ht arguments of the pipeline at the "
-                "same time use '--test-gene --test-dataset'. The full run of the "
-                "--create-filter-group-ht step is relatively quick and after tests "
-                "are complete on the filter group creation, the full run of "
-                "--create-filter-group-ht should be done to further test "
-                "--create-per-sample-counts-ht for memory errors."
-            )
-
-    # The following four exome partitions have given us trouble with out-of-memory
-    # errors in the past. We are testing on these partitions to ensure that the
-    # per-sample stats script can handle them before running the entire dataset.
-    if test_difficult_partitions:
-        if data_type == "genomes":
-            raise ValueError(
-                "Difficult partitions for testing have only been chosen for exomes."
-            )
-        if test_dataset or test_partitions:
-            raise ValueError(
-                "Cannot test on difficult partitions (--test-difficult-partitions) and "
-                "test dataset (--test-dataset) or a custom number of partitions "
-                "(--test-n-partitions) at the same time. Difficult partitions only "
-                "apply to the full exomes VDS."
-            )
-        logger.info(
-            "Testing on difficult exome partitions to make sure the tests can pass "
-            "without memory errors..."
-        )
-        test_partitions = [20180, 40916, 41229, 46085]
-
-    if test_gene and test_partitions:
-        raise ValueError(
-            "Cannot use --test-gene and --test-n-partitions or "
-            "--test-difficult-partitions at the same time."
-        )
-    filter_intervals = ["chr1:55039447-55064852"] if test_gene else None
-
     test = test_partitions or test_dataset or test_gene
-    overwrite = args.overwrite
-    ukb_capture_intervals = (
-        False if data_type == "genomes" else not args.skip_filter_ukb_capture_intervals
-    )
-    broad_capture_intervals = (
-        False
-        if data_type == "genomes"
-        else not args.skip_filter_broad_capture_intervals
-    )
-    rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
-    per_sample_res = get_per_sample_counts(
+    filter_intervals = None
+    if test:
+        filter_intervals, test_partitions = process_test_args(
+            data_type,
+            test_dataset=test_dataset,
+            test_gene=test_gene,
+            test_partitions=test_partitions,
+            test_difficult_partitions=test_difficult_partitions,
+            create_filter_group=create_filter_group,
+            create_intermediate=create_intermediate,
+            create_per_sample_counts=create_per_sample_counts,
+            use_intermediate=use_intermediate,
+            sex_chr_only=sex_chr_only,
+            autosomes_only=autosomes_only,
+        )
+
+    # Get per-sample stats pipeline resources.
+    per_sample_stats_resources = get_pipeline_resources(
+        data_type,
         test=test,
-        data_type=data_type,
-        suffix=args.custom_suffix,
+        test_gene=test_gene,
         autosomes_only=autosomes_only,
-    )
-    per_sample_agg_res = get_per_sample_counts(
-        test=test,
-        data_type=data_type,
-        suffix=args.custom_suffix,
-        autosomes_only=autosomes_only,
-        aggregated=True,
+        sex_chr_only=sex_chr_only,
+        use_intermediate_mt_for_sample_counts=use_intermediate,
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
+        overwrite=overwrite,
+        custom_suffix=args.custom_suffix,
     )
-    temp_intermediate_ht_path = get_checkpoint_path(
-        "per_sample_summary_stats_intermediate" + (".test" if test else "")
-    )
-    if data_type != "exomes" and args.by_subset:
-        raise ValueError("Stratifying by subset is only working on exomes data type.")
+    meta_ht = per_sample_stats_resources.meta_ht.ht()
 
+    # Define VDS load function and parameters.
+    vds_load_params = {
+        "test": test_dataset,
+        "filter_partitions": test_partitions,
+        "autosomes_only": autosomes_only,
+        "sex_chr_only": sex_chr_only,
+        "filter_intervals": filter_intervals,
+        "annotate_meta": not autosomes_only,
+    }
+
+    logger.info("Starting per-sample stats pipeline for %s...", data_type)
     try:
         if create_filter_group:
-            logger.info(
-                "Creating Table of filter groups for %s summary stats...", data_type
-            )
-            release_ht = release_sites(data_type=data_type).ht()
-            filtering_groups_res = get_summary_stats_filtering_groups(
-                data_type=data_type, test=test
-            )
-            if test_partitions:
-                release_ht = release_ht._filter_partitions(test_partitions)
-            if test_gene:
-                release_ht = hl.filter_intervals(
-                    release_ht,
-                    [
-                        hl.parse_locus_interval(x, reference_genome="GRCh38")
-                        for x in filter_intervals
-                    ],
-                )
+            logger.info("Creating Table of filter groups for %s summary stats...")
+            res = per_sample_stats_resources.create_filter_group
+            res.check_resource_existence()
+
+            ht = res.release_ht.ht()
+            ht = ht._filter_partitions(test_partitions) if test_partitions else ht
+            ht = hl.filter_intervals(ht, filter_intervals) if test_gene else ht
 
             get_summary_stats_filter_groups_ht(
-                release_ht,
-                pass_filters=not args.skip_pass_filters,
-                ukb_capture=ukb_capture_intervals,
-                broad_capture=broad_capture_intervals,
-                by_csqs=not args.skip_by_csqs,
+                ht,
+                capture_regions=exomes,
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
                 rare_variants_afs=rare_variants_afs,
-            ).write(filtering_groups_res.path, overwrite=overwrite)
+            ).write(res.filter_groups_ht.path, overwrite=overwrite)
 
-        if args.create_intermediate_mt_for_sample_counts or (
-            create_per_sample_counts and not args.use_intermediate_mt_for_sample_counts
-        ):
-            if test and not test_gene:
-                logger.warning(
-                    "This test requires that the full filtering groups Table has been "
-                    "created. Please run --create-filter-group-ht without "
-                    "--test-gene or --test-n-partitions if it doesn't already exist."
+        if create_intermediate:
+            logger.info("Creating intermediate MatrixTable for per-sample counts...")
+            res = per_sample_stats_resources.create_intermediate
+            res.check_resource_existence()
+
+            create_intermediate_mt_for_sample_counts(
+                load_mt_for_sample_counts(
+                    data_type,
+                    res.filter_groups_ht.ht(),
+                    adjust_ploidy=not autosomes_only,
+                    **vds_load_params,
                 )
+            ).write(res.temp_intermediate_ht.path, overwrite=overwrite)
 
-            filter_groups_ht = get_summary_stats_filtering_groups(
-                data_type, test=test_gene
-            ).ht()
-
-            vds_load_func = (
-                get_gnomad_v4_vds
-                if data_type == "exomes"
-                else get_gnomad_v4_genomes_vds
-            )
-            mt = prepare_mt_for_sample_counts(
-                vds_load_func(
-                    test=test_dataset,
-                    split=True,
-                    release_only=True,
-                    filter_partitions=test_partitions,
-                    filter_variant_ht=filter_groups_ht,
-                    filter_intervals=filter_intervals,
-                    split_reference_blocks=False,
-                    entries_to_keep=["GT", "GQ", "DP", "AD"],
-                    annotate_het_non_ref=True,
-                ).variant_data,
-                filter_groups_ht,
-                autosomes_only,
-            )
-
-            if args.create_intermediate_mt_for_sample_counts:
-                logger.info(
-                    "Creating intermediate MatrixTable for per-sample counts..."
-                )
-                create_intermediate_mt_for_sample_counts(mt).write(
-                    temp_intermediate_ht_path, overwrite=overwrite
-                )
-
+        per_sample_ht = None
+        per_sample_ht_path = None
         if create_per_sample_counts:
-            logger.info(
-                "Calculating per-sample variant statistics for %s...", data_type
-            )
-            if args.use_intermediate_mt_for_sample_counts:
+            logger.info("Calculating per-sample variant statistics for %s...")
+            res = per_sample_stats_resources.create_per_sample_counts
+            res.check_resource_existence()
+
+            if use_intermediate:
                 logger.info("Using intermediate MatrixTable for per-sample counts...")
-                ht = hl.read_table(temp_intermediate_ht_path)
-                if args.test_n_partitions:
-                    ht = ht._filter_partitions(test_partitions)
-                if test_gene:
-                    ht = hl.filter_intervals(
-                        ht,
-                        [
-                            hl.parse_locus_interval(x, reference_genome="GRCh38")
-                            for x in filter_intervals
-                        ],
-                    )
-                create_per_sample_counts_from_intermediate_ht(ht).write(
-                    per_sample_res.path, overwrite=overwrite
-                )
+                ht = res.temp_intermediate_ht.ht()
+                ht = ht._filter_partitions(test_partitions) if test_partitions else ht
+                ht = hl.filter_intervals(ht, filter_intervals) if test_gene else ht
+                ht = create_per_sample_counts_from_intermediate_ht(ht)
             else:
-                create_per_sample_counts_ht(mt).write(
-                    per_sample_res.path, overwrite=overwrite
+                ht = create_per_sample_counts_ht(
+                    load_mt_for_sample_counts(
+                        data_type,
+                        res.filter_groups_ht.ht(),
+                        adjust_ploidy=not autosomes_only,
+                        **vds_load_params,
+                    )
                 )
 
-        if args.aggregate_sample_stats:
-            logger.info("Computing aggregate sample statistics...")
-            if test:
-                logger.warning(
-                    "Using whatever per-sample counts testing Table that was most "
-                    "recently created."
+            per_sample_ht = ht
+            per_sample_ht_path = res.per_sample_ht.path
+
+        if test and (combine_chr_stats or aggregate_stats):
+            logger.warning(
+                "Testing: Using whatever per-sample counts testing Table(s) was most "
+                "recently created."
+            )
+
+        if combine_chr_stats:
+            logger.info(
+                "Combining per-sample stats for autosomes with per-sample stats for "
+                "sex chromosomes..."
+            )
+            res = per_sample_stats_resources.combine_stats
+            res.check_resource_existence()
+
+            per_sample_ht = combine_autosome_and_sex_chr_stats(
+                res.autosomes_ht.ht(), res.sex_chr_ht.ht()
+            )
+            per_sample_ht_path = res.per_sample_ht.path
+
+        if per_sample_ht is not None:
+            # Set 'y_nonpar' sample stats to missing for XX individuals if not autosomes
+            # only.
+            if not autosomes_only:
+                sex_karyotype = meta_ht[per_sample_ht.s].sex_imputation.sex_karyotype
+                missing_ss = missing_struct_expr(
+                    per_sample_ht.summary_stats.dtype.element_type
                 )
+                per_sample_ht = per_sample_ht.annotate(
+                    summary_stats=hl.if_else(
+                        (sex_karyotype == "XX")
+                        & (per_sample_ht.sex_chr_nonpar_group == "y_nonpar"),
+                        per_sample_ht.summary_stats.map(lambda x: missing_ss),
+                        per_sample_ht.summary_stats,
+                    )
+                )
+            per_sample_ht.write(per_sample_ht_path, overwrite=overwrite)
+
+        if aggregate_stats:
+            logger.info("Computing aggregate sample statistics...")
+            res = per_sample_stats_resources.aggregate_stats
+            res.check_resource_existence()
+
             compute_agg_sample_stats(
-                per_sample_res.ht(),
-                meta(data_type=data_type).ht(),
+                res.per_sample_ht.ht(),
+                meta_ht,
                 by_ancestry=args.by_ancestry,
                 by_subset=args.by_subset,
-            ).write(per_sample_agg_res.path, overwrite=overwrite)
+            ).write(res.per_sample_agg_ht.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("per_sample_stats"))
@@ -1029,10 +1432,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test-gene",
         help=(
-            "Filter Tables/VDS to only the PCSK9 gene for testing. Recommended for a "
-            "quick test (if used with --test-dataset) that the full pipeline is "
-            "working. This is not recommended for testing potential memory errors in "
-            "--create-per-sample-counts-ht."
+            "Filter Tables/VDS to only the PCSK9 and/or TRPC5 and ZFY genes for "
+            "testing. Recommended for a quick test (if used with --test-dataset) that "
+            "the full pipeline is working. This is not recommended for testing "
+            "potential memory errors in --create-per-sample-counts-ht."
         ),
         action="store_true",
     )
@@ -1098,8 +1501,16 @@ if __name__ == "__main__":
             "Use intermediate MatrixTable for per-sample variant counts. This is only "
             "relevant when using --create-per-sample-counts-ht. Note that the this "
             "step is memory intensive and should be run on a cluster with n1-highmem-8 "
-            "workers and big-executors enabled. It also requires shuffling, so a "
-            "cluster with all workers is recommended."
+            "workers. It also requires shuffling, so a cluster with all workers is "
+            "recommended."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--combine-autosome-and-sex-chr-stats",
+        help=(
+            "Combine per-sample counts for autosomes with per-sample counts for sex "
+            "chromosomes."
         ),
         action="store_true",
     )
@@ -1117,32 +1528,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--skip-pass-filters",
-        help=(
-            "Whether to skip calculating the number of per-sample variants for those "
-            "variants that pass all variant QC filters."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--skip-filter-ukb-capture-intervals",
-        help=(
-            "Whether to skip calculating the number of variants filtered to UK Biobank "
-            "capture regions."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--skip-filter-broad-capture-intervals",
-        help=(
-            "Whether to skip calculating the number of variants filtered to Broad "
-            "capture regions."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--skip-rare-variants",
-        help="Whether to skip calculating the number of rare variants (adj AF <0.1%).",
+        "--sex-chr-only-stats",
+        help="Whether to restrict per-sample summary stats to sex chromosomes only.",
         action="store_true",
     )
     parser.add_argument(
@@ -1150,15 +1537,6 @@ if __name__ == "__main__":
         type=float,
         default=SUM_STAT_FILTERS["max_af"],
         help="The allele frequency threshold to use for rare variants.",
-    )
-    parser.add_argument(
-        "--skip-by-csqs",
-        help=(
-            "Whether to skip calculating the number of variants by consequence type:"
-            " missense, synonymous, and loss-of-function (splice_acceptor_variant,"
-            " splice_donor_variant, stop_gained, frameshift_variant)."
-        ),
-        action="store_true",
     )
     parser.add_argument(
         "--vep-canonical",
