@@ -114,9 +114,6 @@ def get_pipeline_resources(
         overwrite=overwrite,
     )
 
-    ht = gnomad_res.vep_context.versions[vep_version].ht().naive_coalesce(5000)
-    tx_mt = gnomad_res.gtex_rsem.versions[gtex_version].mt()
-
     # Create resource collection for each step of the pipeline.
     annotation_level = PipelineStepResourceCollection(
         "--annotation-level",
