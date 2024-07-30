@@ -1,4 +1,5 @@
 """Script to validate and export only the false duplication Hail Table of 3 genes to a VCF."""
+
 import argparse
 import logging
 from copy import deepcopy
@@ -15,6 +16,7 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad_qc.v2.annotations.generate_frequency_data import POPS_TO_REMOVE_FOR_POPMAX
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.release import get_false_dup_genes_path
+from gnomad_qc.v4.create_release.create_false_dup_liftover import FALSE_DUP_GENES
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -22,8 +24,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("false_dup_genes")
 logger.setLevel(logging.INFO)
-
-FALSE_DUP_GENES = ["KCNE1", "CBS", "CRYAA"]
 
 LIFTOVER_POPS = {
     "afr": "African/African-American",
@@ -244,7 +244,7 @@ def v4_false_dup_unfurl_annotations(
     return hl.struct(**expr_dict)
 
 
-def custom_make_info_expr(
+def make_info_expr_false_dups(
     t: hl.Table,
 ) -> Dict[str, hl.expr.Expression]:
     """
@@ -308,10 +308,12 @@ def custom_make_info_expr(
 
         vcf_info_dict.update({f"vep_{dt}": t[f"v2_{dt}_vep"]})
 
+        vcf_info_dict.update({f"filters_{dt}": t[f"v2_{dt}"].filters})
+
     return vcf_info_dict
 
 
-def _joint_filters(ht: hl.Table) -> hl.Table:
+def prepare_joint_filters(ht: hl.Table) -> hl.Table:
     """ "
     Annotate Hail Table with new 'filters' field, for status in exomes and genomes.
 
@@ -380,14 +382,14 @@ def prepare_false_dup_ht_for_validation(
     )
 
     # Add variant annotations to INFO field
-    ht = ht.annotate(info=ht.info.annotate(**custom_make_info_expr(ht)))
+    ht = ht.annotate(info=ht.info.annotate(**make_info_expr_false_dups(ht)))
 
     # Add VEP-specific globals
     ht = ht.annotate_globals(
         vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
     )
 
-    ht = _joint_filters(ht)
+    ht = prepare_joint_filters(ht)
 
     ht = ht.annotate(
         rsid=hl.if_else(
@@ -396,9 +398,7 @@ def prepare_false_dup_ht_for_validation(
     )
 
     # Select relevant fields for VCF export
-    ht = ht.select(
-        "info", "filters", "rsid"
-    )  # we'd want filters information, that is IN
+    ht = ht.select("info", "filters", "rsid")
 
     return ht
 
@@ -418,26 +418,50 @@ def prepare_vcf_filter_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
         variant_qc_filter="RF",
     )
 
+    ac0_text = v2_exomes_filter_dict["AC0"]["Description"]
+    inbreeding_coeff_text = v2_exomes_filter_dict["InbreedingCoeff"]["Description"]
+    rf_exomes_text = v2_exomes_filter_dict["RF"]["Description"]
+    rf_genomes_text = v2_genomes_filter_dict["RF"]["Description"]
+
     custom_filter_dict = {
         "EXOMES_FILTERED": {
             "Description": (
-                "Filtered out or not present in Exomes. See info annotation"
-                " filters_exomes for more."
+                "Filtered out or not present in Exomes. Cause stored in"
+                " the info annotation filters_exomes."
             )
         },
         "GENOMES_FILTERED": {
             "Description": (
-                "Filtered out or not present in Genomes. See info annotation"
-                " filters_genomes for more."
+                "Filtered out or not present in Genomes. Cause stored in"
+                " the info annotation filters_genomes."
             )
         },
         "PASS": {"Description": "Passed all variant filters"},
+        "AC0": {
+            "Description": f"In INFO exomes_filters and genomes_filters: {ac0_text}"
+        },
+        "InbreedingCoeff": {
+            "Description": f"In INFO exomes_filters and genomes_filters: {inbreeding_coeff_text}"
+        },
+        "RF": {
+            "Description": f"In exomes for exomes_filters: {rf_exomes_text}. In genomes for genomes_filters: {rf_genomes_text}"
+        },
     }
 
+    vcf_info_dict = {
+        "filters_exomes": {}, "filters_genomes": {}
+    }  # NOTE: not implemented: populate_info_dict(info_fields=unfurled_ht.info)
+
+    for dt in ["exomes", "genomes"]:
+        vcf_info_dict[f"filters_{dt}"] = {
+            "Description:": f"Reasons for variant failure in {dt}. See #FILTER for more",
+            "Type": "String",
+            "Number": ".",
+        }
+
     return {
-        "exomes": v2_exomes_filter_dict,
-        "genomes": v2_genomes_filter_dict,
-        "FILTERS": custom_filter_dict,
+        "info": vcf_info_dict,
+        "filter": custom_filter_dict,
     }
 
 
@@ -620,47 +644,21 @@ def populate_info_dict(
     if age_hist_distribution:
         age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
 
-    # TODO: we'll have to pass in age_hists directly, sicne we don't have a 'hist' structure.
-    # # Add age histogram data to info dict.
-    # vcf_info_dict.update(
-    #     make_info_dict(
-    #         label_delimiter=label_delimiter,
-    #         bin_edges=bin_edges,
-    #         age_hist_distribution=age_hist_distribution,
-    #     )
-    # )
-
-    # # Add variant quality histograms to info dict.
-    # vcf_info_dict.update(
-    #     make_hist_dict(bin_edges, adj=True, drop_n_smaller_larger=True)
-    # )
-
-    #     # Add in silico prediction annotations to info_dict.
-    #     vcf_info_dict.update(in_silico_dict)
-
-    #     # Add VRS annotations to info_dict.
-    #     vcf_info_dict.update(vrs_fields_dict)
-
     return vcf_info_dict
 
 
 def main(args):
     ht = hl.read_table(get_false_dup_genes_path(release_version="4.0"))
     ht = prepare_false_dup_ht_for_validation(ht)
-    header_dict = {
-        "info": prepare_vcf_filter_header(ht),
-        "filter": prepare_vcf_filter_header(ht),
-    }
-    hl.export_vcf(ht, "gs://gnomad-tmp-4day/tester_with_filters.vcf.bgz")
+    appended_header = prepare_vcf_filter_header(ht)
+
+    export_path = get_false_dup_genes_path(test=args.test).replace(".ht", ".vcf.bgz")
+    logger.info(f"Writing to: {export_path}...")
+    hl.export_vcf(ht, export_path, metadata=appended_header)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--overwrite",
-        help="Option to overwrite existing custom liftover table.",
-        action="store_true",
-    )
     parser.add_argument(
         "--test",
         help="Option to store output at test paths.",
