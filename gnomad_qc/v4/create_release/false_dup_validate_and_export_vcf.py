@@ -5,6 +5,8 @@ import logging
 from copy import deepcopy
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import HGDP_POPS, POPS, SUBSETS, TGP_POPS
+from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
@@ -15,8 +17,8 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 
 from gnomad_qc.v2.annotations.generate_frequency_data import POPS_TO_REMOVE_FOR_POPMAX
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
-from gnomad_qc.v4.resources.release import get_false_dup_genes_path
 from gnomad_qc.v4.create_release.create_false_dup_liftover import FALSE_DUP_GENES
+from gnomad_qc.v4.resources.release import get_false_dup_genes_path
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -30,8 +32,17 @@ LIFTOVER_POPS = {
     "amr": "Admixed American",
     "asj": "Ashkenazi Jewish",
     "eas": "East Asian",
+    "eas_jpn": "Japanese",
+    "eas_kor": "Korean",
+    "eas_oea": "non-Korean, non-Japanese East Asian",
     "fin": "Finnish",
     "nfe": "Non-Finnish European",
+    "nfe_bgr": "Non-Finnish European - Bulgarian",
+    "nfe_est": "Non-Finnish European - Estonian",
+    "nfe_nwe": "Non-Finnish European - North-Western European",
+    "nfe_onf": "Non-Finnish European - Other Non-Finnish",
+    "nfe_seu": "Non-Finnish European - Southern Europe",
+    "nfe_swe": "Non-Finnish European - Swedish",
     "oth": "Other",
     "sas": "South Asian",
 }
@@ -403,7 +414,10 @@ def prepare_false_dup_ht_for_validation(
     return ht
 
 
-def prepare_vcf_filter_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
+def prepare_vcf_liftover_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
+    """
+    Make custom dictionary to populate VCF Header with inteligible information.
+    """
     v2_exomes_filter_dict = make_vcf_filter_dict(
         hl.eval(unfurled_ht.rf_exomes.rf_snv_cutoff.min_score),
         hl.eval(unfurled_ht.rf_exomes.rf_indel_cutoff.min_score),
@@ -448,9 +462,7 @@ def prepare_vcf_filter_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
         },
     }
 
-    vcf_info_dict = {
-        "filters_exomes": {}, "filters_genomes": {}
-    }  # NOTE: not implemented: populate_info_dict(info_fields=unfurled_ht.info)
+    vcf_info_dict = populate_info_dict(list(unfurled_ht.info))
 
     for dt in ["exomes", "genomes"]:
         vcf_info_dict[f"filters_{dt}"] = {
@@ -613,36 +625,68 @@ def populate_info_dict(
     """
     # Get existing info fields from predefined info_dict, e.g. `FS`,
     # `non_par`, `negative_train_site`...
-    vcf_info_dict = info_dict.copy()
-    vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
+    vcf_info_dict = info_dict.copy()  # this does NOT contain "_exomes" or "_genomes" in
 
     # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
+    # this ought to be fine as is, I think!
     vcf_info_dict.update(
         add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
     )
 
-    for subset in subset_list:
-        subset_pops = deepcopy(pops)
-        if (subset == "joint") | (data_type == "genomes"):
-            subset_pops.update({"ami": "Amish"})
-        description_text = "" if subset == "" else f" in {subset} subset"
+    for dt in ["exomes", "genomes", "joint"]:
+        # so the names don't exist with "_exomes" or "_genomes" inside of the vcf_info_dict
+        # but they do inside of info_fields
 
-        subset_info = populate_subset_info_dict(
-            subset=subset,
-            description_text=description_text,
-            data_type=data_type,
-            pops=subset_pops,
-            faf_pops=faf_pops,
-            sexes=sexes,
-            label_delimiter=label_delimiter,
-        )
+        # for each row in the MT:
+        if dt != "joint":
+            for f in info_fields:
 
-        vcf_info_dict.update(
-            {k.replace("v2_liftover_", ""): v for k, v in subset_info.items()}
-        )
+                # de-data type it
+                f_sans_dt = f.replace(
+                    f"_{dt}", ""
+                )  # this is how it appears in the texty vcf_info_dict
+
+                # if it's non-AS and we have a description for it, add it in!
+                if f_sans_dt in list(vcf_info_dict.keys()):
+                    appending_struct = vcf_info_dict[f_sans_dt].copy()
+                    appending_struct["Description"] += f" in {dt}"
+                    vcf_info_dict[f] = appending_struct
+
+                # AS fix, needed to grab AS info
+                if f_sans_dt[:3] == "as_":
+                    f_sans_dt = f_sans_dt.replace(
+                        "as_", "AS_", 1
+                    )  # only replace first instance
+
+                    if f_sans_dt in list(vcf_info_dict.keys()):
+                        appending_struct = vcf_info_dict[f_sans_dt].copy()
+                        appending_struct["Description"] += f" - in {dt}"
+                        vcf_info_dict[f] = appending_struct
+
+            for subset in subset_list["v2_liftover"]:
+                subset_pops = deepcopy(pops)
+                if (subset == "joint") | (data_type == "genomes"):
+                    subset_pops.update({"ami": "Amish"})
+                description_text = "" if subset == "" else f" in {subset} subset"
+
+                subset_info = populate_subset_info_dict(
+                    subset=subset,
+                    description_text=description_text,
+                    data_type=dt,
+                    pops=subset_pops,
+                    faf_pops=faf_pops,
+                    sexes=["male", "female"],
+                    label_delimiter=label_delimiter,
+                )
+
+                vcf_info_dict.update(
+                    {k.replace("v2_liftover_", ""): v for k, v in subset_info.items()}
+                )
 
     if age_hist_distribution:
         age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
+    else:
+        logger.info("Punting on age_hists...")
 
     return vcf_info_dict
 
@@ -650,7 +694,7 @@ def populate_info_dict(
 def main(args):
     ht = hl.read_table(get_false_dup_genes_path(release_version="4.0"))
     ht = prepare_false_dup_ht_for_validation(ht)
-    appended_header = prepare_vcf_filter_header(ht)
+    appended_header = prepare_vcf_liftover_header(ht)
 
     export_path = get_false_dup_genes_path(test=args.test).replace(".ht", ".vcf.bgz")
     logger.info(f"Writing to: {export_path}...")
