@@ -34,21 +34,20 @@ def _analysis_root(
 
 def get_pext(
     name: str = "base_level",
-    gtex_version: str = "v7",
-    vep_version: str = "105",
+    gtex_version: str = "v10",
     test: bool = False,
 ) -> TableResource:
     """
     Get pext annotation file.
 
     :param name: Name of the pext annotation file. Default is "base_level".
-    :param gtex_version: GTEx version. Default is "v7".
-    :param vep_version: VEP version. Default is "105".
+        Must be one of ["annotation_level", "base_level", "browser"].
+    :param gtex_version: GTEx version. Default is "v10".
     :param test: Whether to use a tmp path for analysis of the test dataset instead of
         the full dataset. Default is False.
     :return: Pext annotation file.
     """
-    version = f"gtex_{gtex_version}.vep_{vep_version}"
+    version = f"gtex_{gtex_version}"
     return TableResource(
         path=(
             f"{_analysis_root('pext', version=version, test=test)}/gnomad.pext.{version}.{name}.ht"

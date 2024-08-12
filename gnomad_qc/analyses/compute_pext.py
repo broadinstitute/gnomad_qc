@@ -7,6 +7,7 @@ from typing import Tuple
 import hail as hl
 from gnomad.resources import grch37 as gnomad_grch37
 from gnomad.resources import grch38 as gnomad_grch38
+from gnomad.utils.reference_genome import get_reference_genome
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.transcript_annotation import (
     TISSUES_TO_EXCLUDE,
@@ -51,25 +52,38 @@ def filter_to_test(
     :param tx_mt: Transcript MT to filter.
     :return: Filtered HT and MT.
     """
-    test_intervals = [
-        hl.parse_locus_interval("19:45409011-45412650"),  # ENSG00000130203, APOE
-        hl.parse_locus_interval("13:47405685-47471169"),  # ENSG00000102468, HTR2A
-        hl.parse_locus_interval("1:910579-917497"),  # ENSG00000187642, C1orf170/PERM1
-        hl.parse_locus_interval("1:6521211-6526255"),  # ENSG00000215788, TNFRSF25
-        hl.parse_locus_interval("1:1138888-1142071"),  # ENSG00000186891, TNFRSF18
-    ]
-    test_genes = [
-        "ENSG00000130203",
-        "ENSG00000102468",
-        "ENSG00000187642",
-        "ENSG00000215788",
-        "ENSG00000186891",
-    ]
+    test_genes = {
+        "ENSG00000130203": {  # APOE
+            "GRCh37": "19:45409011-45412650",
+            "GRCh38": "chr19:44905791-44909393",
+        },
+        "ENSG00000102468": {  # HTR2A
+            "GRCh37": "13:47405685-47471169",
+            "GRCh38": "chr13:46831546-46897076",
+        },
+        "ENSG00000187642": {  # C1orf170/PERM1
+            "GRCh37": "1:910579-917497",
+            "GRCh38": "chr1:975204-982093",
+        },
+        "ENSG00000215788": {  # TNFRSF25
+            "GRCh37": "1:6521211-6526255",
+            "GRCh38": "chr1:6460786-6466175",
+        },
+        "ENSG00000186891": {  # TNFRSF18
+            "GRCh37": "1:1138888-1142071",
+            "GRCh38": "chr1:1203508-1206592",
+        },
+    }
 
     logger.info(
         "Filtering VEP context Table to the following genes: %s...",
-        ", ".join(test_genes),
+        ", ".join(list(test_genes.keys())),
     )
+
+    # Get the reference genome build from the HT.
+    build = get_reference_genome(ht.locus).name
+
+    test_intervals = [hl.parse_locus_interval(g[build]) for g in test_genes.values()]
     ht = hl.filter_intervals(ht, test_intervals)
 
     tx_mt = tx_mt.filter_rows(hl.literal(test_genes).contains(tx_mt.gene_id))
@@ -85,22 +99,22 @@ def filter_to_test(
 def get_pipeline_resources(
     test: bool,
     gtex_version: str,
-    vep_version: str,
     overwrite: bool,
 ) -> PipelineResourceCollection:
     """
     Get pipeline resources for pext annotation pipeline.
 
     :param test: Whether to get resources for a test run.
-    :param gtex_version: GTEx version to get resources for.
-    :param vep_version: VEP version to get resources for.
+    :param gtex_version: GTEx version to get resources for. Must be one of 'v7' or 'v10'.
     :param overwrite: Whether to overwrite existing data.
     :return: Pipeline resource collection for pext annotation pipeline.
     """
     if gtex_version == "v7":
         gnomad_res = gnomad_grch37
+        vep_version = "85"
     elif gtex_version == "v10":
         gnomad_res = gnomad_grch38
+        vep_version = "105"
     else:
         raise ValueError("Invalid GTEx version")
 
@@ -118,35 +132,20 @@ def get_pipeline_resources(
     annotation_level = PipelineStepResourceCollection(
         "--annotation-level",
         output_resources={
-            "annotation_pext_ht": get_pext(
-                "annotation_level",
-                gtex_version,
-                vep_version,
-                test=test,
-            ),
+            "annotation_pext_ht": get_pext("annotation_level", gtex_version, test),
         },
     )
     base_level = PipelineStepResourceCollection(
         "--base-level",
         output_resources={
-            "base_pext_ht": get_pext(
-                "base_level",
-                gtex_version,
-                vep_version,
-                test=test,
-            ),
+            "base_pext_ht": get_pext("base_level", gtex_version, test),
         },
     )
     browser_ht = PipelineStepResourceCollection(
         "--browser-ht",
         pipeline_input_steps=[base_level],
         output_resources={
-            "browser_pext_ht": get_pext(
-                "browser",
-                gtex_version,
-                vep_version,
-                test=test,
-            ),
+            "browser_pext_ht": get_pext("browser", gtex_version, test),
         },
     )
 
@@ -166,16 +165,15 @@ def main(args):
     """Script to get release pext annotation files."""
     test = args.test
     gtex_version = args.gtex_version
-    vep_version = args.vep_version
     overwrite = args.overwrite
 
     hl.init(
         log="/pext.log",
-        default_reference="GRCh37" if gtex_version == "v7" else "GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    hl.default_reference("GRCh37" if gtex_version == "v7" else "GRCh38")
 
-    pext_res = get_pipeline_resources(test, gtex_version, vep_version, overwrite)
+    pext_res = get_pipeline_resources(test, gtex_version, overwrite)
     ht = pext_res.context_ht.ht().naive_coalesce(5000)
     tx_mt = pext_res.tx_mt.mt()
 
@@ -236,7 +234,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="This script creates the pext annotation files for release."
     )
-    parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
+    parser.add_argument("--overwrite", help="Overwrite data.", action="store_true")
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
@@ -249,12 +247,6 @@ if __name__ == "__main__":
         help="GTEx version to use for pext scores.",
         default="v10",
         choices=["v7", "v10"],
-    )
-    parser.add_argument(
-        "--vep-version",
-        help="VEP version to use for pext scores.",
-        default="105",
-        choices=["85", "95", "101", "105"],
     )
     parser.add_argument(
         "--annotation-level",
