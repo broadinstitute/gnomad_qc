@@ -358,7 +358,7 @@ def get_gnomad_v4_genomes_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
-    samples_meta: bool = False,
+    annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
@@ -379,7 +379,7 @@ def get_gnomad_v4_genomes_vds(
         filters (only relevant after sample QC).
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
-    :param samples_meta: Whether to add v4 genomes metadata to VDS variant_data in
+    :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in
         'meta' column.
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
@@ -418,7 +418,7 @@ def get_gnomad_v4_genomes_vds(
         annotate_het_non_ref=annotate_het_non_ref,
     )
 
-    if samples_meta or release_only:
+    if annotate_meta or release_only:
         meta_ht = meta(data_type="genomes").ht()
         if release_only:
             vds = hl.vds.filter_samples(
@@ -426,7 +426,7 @@ def get_gnomad_v4_genomes_vds(
                 meta_ht.filter(meta_ht.release),
             )
 
-        if samples_meta:
+        if annotate_meta:
             vd = vds.variant_data
             vds = hl.vds.VariantDataset(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])

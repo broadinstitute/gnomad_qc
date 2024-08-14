@@ -81,9 +81,9 @@ def get_gnomad_v3_vds(
         rg = vds.reference_genome
         sex_chrom = set(rg.x_contigs + rg.y_contigs)
         if sex_chr_only:
-            chrom = sex_chrom
+            chrom = list(sex_chrom)
         else:
-            chrom = set(rg.contigs) - (sex_chrom | set(rg.mt_contigs))
+            chrom = list(set(rg.contigs) - (sex_chrom | set(rg.mt_contigs)))
 
     if chrom is not None:
         logger.info("Filtering to chromosome(s) %s...", chrom)
