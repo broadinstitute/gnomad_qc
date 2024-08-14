@@ -174,6 +174,10 @@ def main(args):
     hl.default_reference("GRCh37" if gtex_version == "v7" else "GRCh38")
 
     pext_res = get_pipeline_resources(test, gtex_version, overwrite)
+
+    # Reduce the number of partitions in the context HT to avoid long run times.
+    # The context HTs are >30K partitions, which led to long run times for the pipeline,
+    # reducing the number of partitions to 5K helped reduce the run time.
     ht = pext_res.context_ht.ht().naive_coalesce(5000)
     tx_mt = pext_res.tx_mt.mt()
 
