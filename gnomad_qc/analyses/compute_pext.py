@@ -7,6 +7,8 @@ from typing import Tuple
 import hail as hl
 from gnomad.resources import grch37 as gnomad_grch37
 from gnomad.resources import grch38 as gnomad_grch38
+from gnomad.resources.grch37.gnomad import public_release as gnomad_release_grch37
+from gnomad.resources.grch38.gnomad import public_release as gnomad_release_grch38
 from gnomad.utils.reference_genome import get_reference_genome
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.transcript_annotation import (
@@ -112,9 +114,21 @@ def get_pipeline_resources(
     if gtex_version == "v7":
         gnomad_res = gnomad_grch37
         vep_version = "85"
+        gnomad_exomes = gnomad_release_grch37("exomes").versions["2.1.1"]
+        gnomad_genomes = gnomad_release_grch37("genomes").versions["2.1.1"]
+        tx_mt = gnomad_res.gtex_rsem.versions[gtex_version]
     elif gtex_version == "v10":
         gnomad_res = gnomad_grch38
         vep_version = "105"
+        gnomad_exomes = gnomad_release_grch38("exomes").versions["4.1"]
+        gnomad_genomes = gnomad_release_grch38("genomes").versions["4.1"]
+
+        # TODO: Update to use the GTEx v10 MT public resource when we can.
+        from gnomad.resources.resource_utils import MatrixTableResource
+
+        tx_mt = MatrixTableResource(
+            "gs://gnomad/resources/grch38/gtex/gtex_rsem_v10.mt"
+        )
     else:
         raise ValueError("Invalid GTEx version")
 
@@ -123,7 +137,7 @@ def get_pipeline_resources(
         pipeline_name="compute_pext",
         pipeline_resources={
             "context HT": {"context_ht": gnomad_res.vep_context.versions[vep_version]},
-            "GTEx RSEM MT": {"tx_mt": gnomad_res.gtex_rsem.versions[gtex_version]},
+            "GTEx RSEM MT": {"tx_mt": tx_mt},
         },
         overwrite=overwrite,
     )
@@ -132,13 +146,33 @@ def get_pipeline_resources(
     annotation_level = PipelineStepResourceCollection(
         "--annotation-level",
         output_resources={
-            "annotation_pext_ht": get_pext("annotation_level", gtex_version, test),
+            "annotation_level_pext_ht": get_pext(
+                "annotation_level", gtex_version, test
+            ),
         },
     )
     base_level = PipelineStepResourceCollection(
         "--base-level",
         output_resources={
             "base_pext_ht": get_pext("base_level", gtex_version, test),
+        },
+    )
+    gnomad_exomes = PipelineStepResourceCollection(
+        "--gnomad-exomes-ht",
+        input_resources={
+            "gnomad exomes HT": {"gnomad_exomes_ht": gnomad_exomes},
+        },
+        output_resources={
+            "gnomad_exomes_pext_ht": get_pext("gnomad_exomes", gtex_version, test),
+        },
+    )
+    gnomad_genomes = PipelineStepResourceCollection(
+        "--gnomad-genomes-ht",
+        input_resources={
+            "gnomad genomes HT": {"gnomad_genomes_ht": gnomad_genomes},
+        },
+        output_resources={
+            "gnomad_genomes_pext_ht": get_pext("gnomad_genomes", gtex_version, test),
         },
     )
     browser_ht = PipelineStepResourceCollection(
@@ -154,6 +188,8 @@ def get_pipeline_resources(
         {
             "annotation_level": annotation_level,
             "base_level": base_level,
+            "gnomad_exomes": gnomad_exomes,
+            "gnomad_genomes": gnomad_genomes,
             "browser_ht": browser_ht,
         }
     )
@@ -166,6 +202,9 @@ def main(args):
     test = args.test
     gtex_version = args.gtex_version
     overwrite = args.overwrite
+    annotation_level = ["annotation_level"] if args.annotation_level else []
+    annotation_level += ["gnomad_exomes"] if args.gnomad_exomes_ht else []
+    annotation_level += ["gnomad_genomes"] if args.gnomad_genomes_ht else []
 
     hl.init(
         log="/pext.log",
@@ -192,14 +231,24 @@ def main(args):
         new_temp_file(f"{f'test_' if test else ''}tx_ht", "ht"), overwrite=overwrite
     )
 
-    if args.annotation_level:
+    if annotation_level:
         logger.info("Creating annotation-level pext scores...")
-        res = pext_res.annotation_level
-        res.check_resource_existence()
 
-        perform_tx_annotation_pipeline(
-            ht, tx_ht, tissues_to_exclude_from_mean=TISSUES_TO_EXCLUDE[gtex_version]
-        ).write(res.annotation_pext_ht.path, overwrite=overwrite)
+        for dataset in annotation_level:
+            dataset_name = "context" if dataset == "annotation_level" else dataset
+            logger.info("Annotating the %s HT...", dataset_name.replace("_", " "))
+            res = getattr(pext_res, dataset)
+            res.check_resource_existence()
+
+            perform_tx_annotation_pipeline(
+                (
+                    ht
+                    if dataset == "annotation_level"
+                    else getattr(res, f"{dataset}_ht").ht()
+                ),
+                tx_ht,
+                tissues_to_exclude_from_mean=TISSUES_TO_EXCLUDE[gtex_version],
+            ).write(getattr(res, f"{dataset}_pext_ht").path, overwrite=overwrite)
 
     if args.base_level:
         logger.info("Creating base-level pext scores...")
@@ -259,6 +308,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--base-level", help="Get base-level pext scores.", action="store_true"
+    )
+    parser.add_argument(
+        "--gnomad-exomes-ht",
+        help="Get pext Table for gnomAD exomes sites.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--gnomad-genomes-ht",
+        help="Get pext Table for gnomAD genomes sites.",
+        action="store_true",
     )
     parser.add_argument(
         "--browser-ht",

@@ -24,11 +24,11 @@ def _analysis_root(
         the full dataset.
     :return: Root path of analysis resources.
     """
-    version = f"{version}/" if version else ""
+    version = f"/{version}" if version else ""
     return (
-        f"gs://gnomad-tmp/gnomad_{name}_testing/{version}"
+        f"gs://gnomad-tmp/gnomad_{name}_testing{version}"
         if test
-        else f"gs://gnomad/analyses/{name}/{version}"
+        else f"gs://gnomad/analyses/{name}{version}"
     )
 
 
@@ -41,7 +41,8 @@ def get_pext(
     Get pext annotation file.
 
     :param name: Name of the pext annotation file. Default is "base_level".
-        Must be one of ["annotation_level", "base_level", "browser"].
+        Must be one of ["annotation_level", "base_level", "gnomad_exomes",
+        "gnomad_genomes", "browser"].
     :param gtex_version: GTEx version. Default is "v10".
     :param test: Whether to use a tmp path for analysis of the test dataset instead of
         the full dataset. Default is False.
