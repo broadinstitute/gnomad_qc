@@ -41,8 +41,8 @@ def get_pext(
     Get pext annotation file.
 
     :param name: Name of the pext annotation file. Default is "base_level".
-        Must be one of ["annotation_level", "base_level", "gnomad_exomes",
-        "gnomad_genomes", "browser"].
+        Must be one of ["annotation_level", "base_level", "exomes", "genomes",
+        "browser"].
     :param gtex_version: GTEx version. Default is "v10".
     :param test: Whether to use a tmp path for analysis of the test dataset instead of
         the full dataset. Default is False.

@@ -116,6 +116,8 @@ def get_pipeline_resources(
         vep_version = "85"
         gnomad_exomes = gnomad_release_grch37("exomes").versions["2.1.1"]
         gnomad_genomes = gnomad_release_grch37("genomes").versions["2.1.1"]
+
+        # TODO: Remove this once the GTEx v10 MT public resource is available.
         tx_mt = gnomad_res.gtex_rsem.versions[gtex_version]
     elif gtex_version == "v10":
         gnomad_res = gnomad_grch38
@@ -123,7 +125,7 @@ def get_pipeline_resources(
         gnomad_exomes = gnomad_release_grch38("exomes").versions["4.1"]
         gnomad_genomes = gnomad_release_grch38("genomes").versions["4.1"]
 
-        # TODO: Update to use the GTEx v10 MT public resource when we can.
+        # TODO: Update to use the GTEx v10 MT public resource once it is available.
         from gnomad.resources.resource_utils import MatrixTableResource
 
         tx_mt = MatrixTableResource(
@@ -137,6 +139,8 @@ def get_pipeline_resources(
         pipeline_name="compute_pext",
         pipeline_resources={
             "context HT": {"context_ht": gnomad_res.vep_context.versions[vep_version]},
+            # TODO: Change to use gnomad_res.gtex_rsem.versions[gtex_version], once
+            #  the public version is available.
             "GTEx RSEM MT": {"tx_mt": tx_mt},
         },
         overwrite=overwrite,
@@ -163,7 +167,7 @@ def get_pipeline_resources(
             "gnomad exomes HT": {"gnomad_exomes_ht": gnomad_exomes},
         },
         output_resources={
-            "gnomad_exomes_pext_ht": get_pext("gnomad_exomes", gtex_version, test),
+            "gnomad_exomes_pext_ht": get_pext("exomes", gtex_version, test),
         },
     )
     gnomad_genomes = PipelineStepResourceCollection(
@@ -172,7 +176,7 @@ def get_pipeline_resources(
             "gnomad genomes HT": {"gnomad_genomes_ht": gnomad_genomes},
         },
         output_resources={
-            "gnomad_genomes_pext_ht": get_pext("gnomad_genomes", gtex_version, test),
+            "gnomad_genomes_pext_ht": get_pext("genomes", gtex_version, test),
         },
     )
     browser_ht = PipelineStepResourceCollection(
