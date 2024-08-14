@@ -427,7 +427,7 @@ def main(args):
                     release_only=True,
                     test=test,
                     filter_partitions=range(2) if test_2_partitions else None,
-                    samples_meta=True,
+                    annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
                 interval_ht = None
