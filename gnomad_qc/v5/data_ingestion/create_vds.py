@@ -16,8 +16,11 @@ logger.setLevel(logging.INFO)
 def main(args):
     """Create VDS from text file of VDSes or GVCFs paths and write to output path."""
     hl.init(
-        log="/tmp/gvcf_combiner.log", default_reference="GRCh38", tmp_dir=args.temp_path
+        log="/tmp/gvcf_combiner.log",
+        tmp_dir=args.temp_path,
+        copy_spark_log_on_error=True,
     )
+    hl.default_reference("GRCh38")
     vdses = args.vdses
     gvcfs = args.gvcfs
     temp_path = args.temp_path
