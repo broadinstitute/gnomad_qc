@@ -1,8 +1,8 @@
 """Script to validate and export only the false duplication Hail Table of 3 genes to a VCF."""
 
 import argparse
+import copy
 import logging
-import copy 
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import HGDP_POPS, POPS, SUBSETS, TGP_POPS
@@ -115,10 +115,12 @@ FALSE_DUP_AS = [
 FALSE_DUP_AS_VQSR = ["culprit", "VQSLOD", "NEGATIVE_TRAIN_SITE", "POSITIVE_TRAIN_SITE"]
 
 LIFTOVER_VEP = "Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|EXON|INTRON|HGVSc|HGVSp|cDNA_position|CDS_position|Protein_position|Amino_acids|Codons|Existing_variation|ALLELE_NUM|DISTANCE|STRAND|FLAGS|VARIANT_CLASS|MINIMISED|SYMBOL_SOURCE|HGNC_ID|CANONICAL|TSL|APPRIS|CCDS|ENSP|SWISSPROT|TREMBL|UNIPARC|GENE_PHENO|SIFT|PolyPhen|DOMAINS|HGVS_OFFSET|GMAF|AFR_MAF|AMR_MAF|EAS_MAF|EUR_MAF|SAS_MAF|AA_MAF|EA_MAF|ExAC_MAF|ExAC_Adj_MAF|ExAC_AFR_MAF|ExAC_AMR_MAF|ExAC_EAS_MAF|ExAC_FIN_MAF|ExAC_NFE_MAF|ExAC_OTH_MAF|ExAC_SAS_MAF|CLIN_SIG|SOMATIC|PHENO|PUBMED|MOTIF_NAME|MOTIF_POS|HIGH_INF_POS|MOTIF_SCORE_CHANGE|LoF|LoF_filter|LoF_flags|LoF_info"
-LIFTOVER_EDGES = {'age':'30.0|35.0|40.0|45.0|50.0|55.0|60.0|65.0|70.0|75.0|80.0',
-                  'gq':'0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100',
-                  'ab':'0.0|0.1|0.1|0.2|0.2|0.2|0.3|0.4|0.4|0.5|0.5|0.6|0.6|0.7|0.7|0.8|0.8|0.9|0.9|1.0|1.0',
-                  'dp':'0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100'}
+LIFTOVER_EDGES = {
+    "age": "30.0|35.0|40.0|45.0|50.0|55.0|60.0|65.0|70.0|75.0|80.0",
+    "gq": "0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100",
+    "ab": "0.0|0.1|0.1|0.2|0.2|0.2|0.3|0.4|0.4|0.5|0.5|0.6|0.6|0.7|0.7|0.8|0.8|0.9|0.9|1.0|1.0",
+    "dp": "0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100",
+}
 
 
 def v4_false_dup_unfurl_annotations(
@@ -320,7 +322,7 @@ def make_info_expr_false_dups(
 
         vcf_info_dict.update({f"vep_{dt}": t[f"v2_{dt}_vep"]})
 
-        vcf_info_dict.update({f"filters_{dt}": t[f"v2_{dt}"].filters})
+        vcf_info_dict.update({f"{dt}_nfoitlters": t[f"v2_{dt}"].filters})
 
     return vcf_info_dict
 
@@ -415,8 +417,7 @@ def prepare_false_dup_ht_for_validation(
     return ht
 
 
-
-# SO THIS FUNCTION IS ACTUALLY WORKING FINE, LET'S CHECK OUT POPULATE INFO 
+# SO THIS FUNCTION IS ACTUALLY WORKING FINE, LET'S CHECK OUT POPULATE INFO
 def prepare_vcf_liftover_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
     """
     Make custom dictionary to populate VCF Header with inteligible information.
@@ -444,13 +445,13 @@ def prepare_vcf_liftover_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
         "EXOMES_FILTERED": {
             "Description": (
                 "Filtered out or not present in Exomes. Cause stored in"
-                " the info annotation filters_exomes."
+                " the info annotation exomes_filters."
             )
         },
         "GENOMES_FILTERED": {
             "Description": (
                 "Filtered out or not present in Genomes. Cause stored in"
-                " the info annotation filters_genomes."
+                " the info annotation genomes_filters."
             )
         },
         "PASS": {"Description": "Passed all variant filters"},
@@ -467,15 +468,22 @@ def prepare_vcf_liftover_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
 
     vcf_info_dict = populate_info_dict(list(unfurled_ht.info))
 
-    for dt in ["exomes", "genomes"]:
-        vcf_info_dict[f"filters_{dt}"] = {
-            "Description:": f"Reasons for variant failure in {dt}. See #FILTER for more",
+    vcf_info_dict.update(
+        {
+            f"{dt}_nfoitlters": {
+                "Type": "String",
+                "Number": ".",
+                "Description": f"EDITED AS Reasons for variant failure in {dt}. See #FILTER for more.",
+            }
+            for dt in ["exomes", "genomes"]
         }
+    )
 
     return {
         "info": vcf_info_dict,
         "filter": custom_filter_dict,
     }
+
 
 def populate_subset_info_dict(
     subset: str,
@@ -532,20 +540,20 @@ def populate_subset_info_dict(
                 suffix=data_type,
             )
         )
-        
-        logger.info('hehe joint faf')
-        
-        if not data_type=='joint':
+
+        logger.info("hehe joint faf")
+
+        if not data_type == "joint":
             faf_dict_fix = {k.replace("_adj_", "_"): v for k, v in faf_dict.items()}
         else:
-            logger.info(f'hehe joint faf returns: {faf_dict}')
+            logger.info(f"hehe joint faf returns: {faf_dict}")
 
             faf_dict_fix = faf_dict
 
         vcf_info_dict.update(faf_dict_fix)
     # Add AC, AN, AF, nhomalt fields to dict.
     label_groups = create_label_groups(pops=pops, sexes=sexes)
-#     print('label groups: ',label_groups)
+    #     print('label groups: ',label_groups)
     for label_group in label_groups:
         label_group_dict = {}
         label_group_dict.update(
@@ -560,32 +568,29 @@ def populate_subset_info_dict(
                 suffix=data_type,
             )
         )
-        
-        if not data_type=='joint':
+
+        if not data_type == "joint":
             vcf_info_dict.update(
                 {k.replace("_adj_", "_"): v for k, v in label_group_dict.items()}
             )
-        else:            
-            vcf_info_dict.update(
-                {k: v for k, v in label_group_dict.items()}
-            )
-           
+        else:
+            vcf_info_dict.update({k: v for k, v in label_group_dict.items()})
+
     custom_fafmax = {}
-    for fafnum in ['95','99']:
-        custom_fafmax[f'fafmax_faf{fafnum}_max_joint'] = {
-            'Description':f"Filtering allele frequency (using Poisson {fafnum}% CI) for genetic ancestry group with highest such frequency.",
-            'Number':'.',
-            'Type':'Float'
+    for fafnum in ["95", "99"]:
+        custom_fafmax[f"fafmax_faf{fafnum}_max_joint"] = {
+            "Description": f"Filtering allele frequency (using Poisson {fafnum}% CI) for genetic ancestry group with highest such frequency.",
+            "Number": ".",
+            "Type": "Float",
         }
-        custom_fafmax[f'fafmax_faf{fafnum}_max_gen_anc_joint'] = {
-            'Description':f"Genetic ancestry group with highest filtering allele frequency (using Poisson {fafnum}% CI).",
-            'Number':'.',
-            'Type':'String'
+        custom_fafmax[f"fafmax_faf{fafnum}_max_gen_anc_joint"] = {
+            "Description": f"Genetic ancestry group with highest filtering allele frequency (using Poisson {fafnum}% CI).",
+            "Number": ".",
+            "Type": "String",
         }
-        
+
     vcf_info_dict.update(custom_fafmax)
-    
-    
+
     # Add grpmax.
     grpmax_dict = make_info_dict(
         suffix=f"{subset}_{data_type}",
@@ -594,24 +599,24 @@ def populate_subset_info_dict(
         grpmax=True,
         description_text=description_text,
     )
-#     print('hehe grpmax returns: ',grpmax_dict)
+    #     print('hehe grpmax returns: ',grpmax_dict)
 
     pop_str = f"grpmax_{subset}_{data_type}"
-    grpmax_dict[f'pop_{pop_str}'] = copy.copy(grpmax_dict[f'{pop_str}'])
-    
-#     print('hehe grpmax returns: ',grpmax_dict)
-    
-    if data_type=='joint':
+    grpmax_dict[f"pop_{pop_str}"] = copy.copy(grpmax_dict[f"{pop_str}"])
+
+    #     print('hehe grpmax returns: ',grpmax_dict)
+
+    if data_type == "joint":
         vcf_info_dict.update(
             {
                 k.replace(
                     f"grpmax_{subset}",
                     f"{subset}_grpmax",
-                ).replace('_grpmax','grpmax'): v
+                ).replace("_grpmax", "grpmax"): v
                 for k, v in grpmax_dict.items()
             }
         )
-    else:      
+    else:
         vcf_info_dict.update(
             {
                 k.replace(
@@ -624,7 +629,8 @@ def populate_subset_info_dict(
 
     return vcf_info_dict
 
-# this has some custom fixes we'd need... what's up with this ? 
+
+# this has some custom fixes we'd need... what's up with this ?
 def populate_info_dict(
     info_fields: List[str],
     bin_edges: Dict[str, str] = LIFTOVER_EDGES,
@@ -675,75 +681,85 @@ def populate_info_dict(
     """
     # Get existing info fields from predefined info_dict, e.g. `FS`,
     # `non_par`, `negative_train_site`...
-    vcf_info_dict = copy.copy(info_dict)  # this does NOT contain "_exomes" or "_genomes" in
-    # such that vcf_info_dict has the texy descriptions 
+    vcf_info_dict = copy.copy(
+        info_dict
+    )  # this does NOT contain "_exomes" or "_genomes" in
+    # such that vcf_info_dict has the texy descriptions
 
     # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
     # this ought to be fine as is, I think!
     vcf_info_dict.update(
         add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
     )
-    
-#     print(vcf_info_dict)
-    
-    additional_as = ['pab_max','DP','DB','DS','InbreedingCoeff']
-    additional_vqsr = ['culprit','VQSLOD','NEGATIVE_TRAIN_SITE','POSITIVE_TRAIN_SITE']
-    
-    vcf_info_dict['pab_max'] = {'Description':f"{vcf_info_dict['AS_pab_max']['Description']} non-allele specific",
-                                'Number':'.'}
-    
-    vcf_info_dict['DP'] = {'Description':"Depth of informative coverage for each sample; reads with MQ=255 or with bad mates are filtered",
-                                'Number':'.'}
-    
-    vcf_info_dict['DB'] = {'Description':"dbSNP membership",
-                                'Number':'.'}
-    
-    vcf_info_dict['DS'] = {'Description':"Dosage",
-                                'Number':'.'}
-    
-    vcf_info_dict['qual'] = {'Description': "Phred-scaled quality score for the assertion made in ALT"}
-    
-    vcf_info_dict['InbreedingCoeff'] = vcf_info_dict['inbreeding_coeff']
-    
-    vcf_info_dict['vep'] = {'Description':LIFTOVER_VEP}
-    
-    # culprit, VQSLOD, train sites: 
-    # everything above but qual: 
-    
-    for dt in ['exomes','genomes']:
+
+    #     print(vcf_info_dict)
+
+    additional_as = ["pab_max", "DP", "DB", "DS", "InbreedingCoeff"]
+    additional_vqsr = [
+        "culprit",
+        "VQSLOD",
+        "NEGATIVE_TRAIN_SITE",
+        "POSITIVE_TRAIN_SITE",
+    ]
+
+    vcf_info_dict["pab_max"] = {
+        "Description": f"{vcf_info_dict['AS_pab_max']['Description']} non-allele specific",
+        "Number": ".",
+    }
+
+    vcf_info_dict["DP"] = {
+        "Description": "Depth of informative coverage for each sample; reads with MQ=255 or with bad mates are filtered",
+        "Number": ".",
+    }
+
+    vcf_info_dict["DB"] = {"Description": "dbSNP membership", "Number": "."}
+
+    vcf_info_dict["DS"] = {"Description": "Dosage", "Number": "."}
+
+    vcf_info_dict["qual"] = {
+        "Description": "Phred-scaled quality score for the assertion made in ALT"
+    }
+
+    vcf_info_dict["InbreedingCoeff"] = vcf_info_dict["inbreeding_coeff"]
+
+    vcf_info_dict["vep"] = {"Description": LIFTOVER_VEP}
+
+    # culprit, VQSLOD, train sites:
+    # everything above but qual:
+
+    for dt in ["exomes", "genomes"]:
         for as_i in additional_as:
             m_i = copy.copy(vcf_info_dict[as_i])
-            m_i['Description'] = f"Allele-specific: {m_i['Description']}"
-            vcf_info_dict[f'AS_{as_i}'] =  copy.copy(m_i)
+            m_i["Description"] = f"Allele-specific: {m_i['Description']}"
+            vcf_info_dict[f"AS_{as_i}"] = copy.copy(m_i)
 
         for as_vqsr_i in additional_vqsr:
             m_i = copy.copy(vcf_info_dict[as_vqsr_i])
-            m_i['Description'] = f"Allele-specific VQSR: {m_i['Description']}"
-            vcf_info_dict[f'AS_vqsr_{as_vqsr_i}'] =  copy.copy(m_i)
-        
-        
-    
-    for info_field in info_fields: 
-        # there are only exome and genomes fields from this 
-        info_dt = info_field.split('_')[-1] 
-        info_sans_dt = info_field.replace(f'_{info_dt}','')
-        
+            m_i["Description"] = f"Allele-specific VQSR: {m_i['Description']}"
+            vcf_info_dict[f"AS_vqsr_{as_vqsr_i}"] = copy.copy(m_i)
+
+    for info_field in info_fields:
+        # there are only exome and genomes fields from this
+        info_dt = info_field.split("_")[-1]
+        info_sans_dt = info_field.replace(f"_{info_dt}", "")
+
         # AS fix, needed to grab AS info
         if info_sans_dt[:3] == "as_":
             info_sans_dt = info_sans_dt.replace(
                 "as_", "AS_", 1
             )  # only replace first instance
-        
-        if info_dt in ['exomes','genomes'] and info_sans_dt in list(vcf_info_dict.keys()):
+
+        if info_dt in ["exomes", "genomes"] and info_sans_dt in list(
+            vcf_info_dict.keys()
+        ):
             appending_struct = copy.copy(vcf_info_dict[info_sans_dt])
             appending_struct["Description"] += f" in {info_dt}"
             vcf_info_dict[info_field] = copy.copy(appending_struct)
 
-            
-    for dt in ['exomes','genomes']: 
-        logger.info(f'my dt: {dt}')
-        for subset in subset_list["v2_liftover"]: 
-            logger.info(f'my subset: {subset}')
+    for dt in ["exomes", "genomes"]:
+        logger.info(f"my dt: {dt}")
+        for subset in subset_list["v2_liftover"]:
+            logger.info(f"my subset: {subset}")
             subset_pops = copy.copy(pops)
             # no amish in the v2 liftover frequencies
             description_text = "" if subset == "" else f" in {subset} subset"
@@ -761,11 +777,11 @@ def populate_info_dict(
             vcf_info_dict.update(
                 {k.replace("v2_liftover_", ""): v for k, v in subset_info.items()}
             )
-            
-    for dt in ['joint']:
-        logger.info(f'my dt: {dt}')
-        for subset in ['']: 
-            logger.info(f'my subset: {subset}')
+
+    for dt in ["joint"]:
+        logger.info(f"my dt: {dt}")
+        for subset in [""]:
+            logger.info(f"my subset: {subset}")
             subset_pops = copy.copy(pops)
             # no amish in the v2 liftover frequencies
             description_text = "" if subset == "" else f" in {subset} subset"
@@ -780,83 +796,83 @@ def populate_info_dict(
                 label_delimiter=label_delimiter,
             )
 
-                    
             vcf_info_dict.update(
                 {k.replace("v2_liftover_", ""): v for k, v in subset_info.items()}
             )
-    
+
     def _hist_code(hist_list: list):
-    
+
         hist_dict = {}
 
-        for hist in hist_list: 
-            hist_non = hist.replace('_non_','_non') # make splitting easier 
-            whats_counted = "Histogram" if not '_n_' in hist else "Counts"
+        for hist in hist_list:
+            hist_non = hist.replace("_non_", "_non")  # make splitting easier
+            whats_counted = "Histogram" if not "_n_" in hist else "Counts"
 
-            hist_split = hist_non.split('_')
+            hist_split = hist_non.split("_")
             s1 = f"{whats_counted} of {hist_split[0]} in {hist_split[-1]} data type"
 
-
-            if 'age' in hist:
+            if "age" in hist:
 
                 het_hom_text = "in homozygous individuals"
-                if hist_split[2] == 'het':
+                if hist_split[2] == "het":
                     het_hom_text = "in heterozygous individuals"
 
-                if not '_n_' in hist:
+                if not "_n_" in hist:
                     hist_dict.update(
-                    {
-                        hist:{
-                            "Number":"A",
-                            "Description":f"{s1} {het_hom_text}. Bin edges are {bin_edges[hist_split[0]]}"
+                        {
+                            hist: {
+                                "Number": "A",
+                                "Description": f"{s1} {het_hom_text}. Bin edges are {bin_edges[hist_split[0]]}",
+                            }
                         }
-                    })
-                elif '_smaller_' in hist:
+                    )
+                elif "_smaller_" in hist:
                     hist_dict.update(
-                    {
-                        hist:{
-                            "Number":"A",
-                            "Description":f"{s1} falling below lowest bin in {het_hom_text}. Bin edges are {bin_edges[hist_split[0]]}"
+                        {
+                            hist: {
+                                "Number": "A",
+                                "Description": f"{s1} falling below lowest bin in {het_hom_text}. Bin edges are {bin_edges[hist_split[0]]}",
+                            }
                         }
-                    })
+                    )
                 else:
                     hist_dict.update(
-                    {
-                        hist:{
-                            "Number":"A",
-                            "Description":f"{s1} above highest bin in {het_hom_text}. Bin edges are {bin_edges[hist_split[0]]}"
+                        {
+                            hist: {
+                                "Number": "A",
+                                "Description": f"{s1} above highest bin in {het_hom_text}. Bin edges are {bin_edges[hist_split[0]]}",
+                            }
                         }
-                    })         
+                    )
 
             else:
                 all_alt_text = "in all alleles"
-                if hist_split[2] == 'alt':
-                    all_alt_text = 'alternate alleles'
-                if not '_n_' in hist:
+                if hist_split[2] == "alt":
+                    all_alt_text = "alternate alleles"
+                if not "_n_" in hist:
                     hist_dict.update(
-                    {
-                        hist:{
-                            "Number":"A",
-                            "Description":f"{s1} {all_alt_text}. Bin edges are {bin_edges[hist_split[0]]}"
+                        {
+                            hist: {
+                                "Number": "A",
+                                "Description": f"{s1} {all_alt_text}. Bin edges are {bin_edges[hist_split[0]]}",
+                            }
                         }
-                    })
+                    )
                 else:
                     hist_dict.update(
-                    {
-                        hist:{
-                            "Number":"A",
-                            "Description":f"{s1} above highest bin in {all_alt_text}. Bin edges are {bin_edges[hist_split[0]]}"
+                        {
+                            hist: {
+                                "Number": "A",
+                                "Description": f"{s1} above highest bin in {all_alt_text}. Bin edges are {bin_edges[hist_split[0]]}",
+                            }
                         }
-                    })
-                    
-        return hist_dict
-    
-    liftover_hists = [info_hist for info_hist in info_fields if 'hist' in info_hist]
-    
-    vcf_info_dict.update(
-        {k:v for k,v in _hist_code(liftover_hists).items()}
-        )
+                    )
 
+        return hist_dict
+
+    liftover_hists = [info_hist for info_hist in info_fields if "hist" in info_hist]
+
+    vcf_info_dict.update({k: v for k, v in _hist_code(liftover_hists).items()})
 
     return vcf_info_dict
 
@@ -866,17 +882,20 @@ def main(args):
     ht = prepare_false_dup_ht_for_validation(ht)
     appended_header = prepare_vcf_liftover_header(ht)
 
-    logger.info('Header validation...')
-    ret_header_infokeys = appended_header['info'].keys()
+    logger.info("Header validation...")
+    ret_header_infokeys = appended_header["info"].keys()
     for row_i in ht.info:
         if row_i not in ret_header_infokeys:
-    #         if not any(subset_key in row_i for subset_key in ['AC','AN','AF','nhomalt','hist','faf','grpmax']):
-            logger.warning(f'NOT IN HEADER: {row_i}')
-    for row_f in ['filters_exomes','filters_genomes']:
-        logger.info(f'{row_f} as: ')
-        ht.info[f'{row_f}'].show()
-        logger.info(f'{row_f} in appended_header as: {appended_header["info"][row_f]}')
+            #         if not any(subset_key in row_i for subset_key in ['AC','AN','AF','nhomalt','hist','faf','grpmax']):
+            logger.warning(f"NOT IN HEADER: {row_i}")
 
+    for row_f in ["exomes_nfoitlters", "genomes_nfoitlters"]:
+
+        logger.info(f"{row_f} as: ")
+        ht.info[f"{row_f}"].show()
+        logger.info(
+            f'{row_f} in appended_header info as: {appended_header["info"][row_f]}'
+        )
 
     export_path = get_false_dup_genes_path(test=args.test).replace(".ht", ".vcf.bgz")
     logger.info(f"Writing to: {export_path}...")
