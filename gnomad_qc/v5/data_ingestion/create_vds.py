@@ -1,4 +1,4 @@
-"""Script to combine GVCFs into a single VDS."""
+"""Script to combine VDSes and GVCFs into a single VDS."""
 
 import argparse
 import logging
@@ -14,13 +14,20 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    """Create VDS from text file of GVCFs paths and write to output path."""
+    """Create VDS from text file of VDSes or GVCFs paths and write to output path."""
     hl.init(
-        log="/tmp/gvcf_combiner.log", default_reference="GRCh38", tmp_dir=args.temp_path
+        log="/tmp/gvcf_combiner.log",
+        tmp_dir=args.temp_path,
+        copy_spark_log_on_error=True,
     )
+    hl.default_reference("GRCh38")
+    vdses = args.vdses
     gvcfs = args.gvcfs
     temp_path = args.temp_path
     save_path = temp_path + "combiner_plan.json"
+
+    if not vdses and not gvcfs:
+        raise ValueError("No VDSes or GVCFs provided to combine into a VDS.")
 
     if args.output_path:
         output_path = args.output_path
@@ -31,9 +38,10 @@ def main(args):
         output_path = dragen_tgp_vds.path
 
     vds = create_vds(
-        gvcfs=gvcfs,
         output_path=output_path,
         temp_path=temp_path,
+        vdses=vdses,
+        gvcfs=gvcfs,
         save_path=save_path,
         use_genome_default_intervals=args.use_genome_default_intervals,
         intervals=args.intervals,
@@ -46,9 +54,13 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--vdses",
+        help="Path to text file with only VDS paths.",
+        type=str,
+    )
+    parser.add_argument(
         "--gvcfs",
-        help="Path to text file with only gVCF paths.",
-        required=True,
+        help="Path to text file with only GVCF paths.",
         type=str,
     )
     parser.add_argument("--output-path", help="Path to write output VDS to.", type=str)
