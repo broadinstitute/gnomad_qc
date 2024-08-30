@@ -99,9 +99,7 @@ def annotation_hists_params_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Path to file with annotation histograms
     """
-    return (
-        f"{_release_root(version=release_version, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}_annotation_hist_params.json"
-    )
+    return f"{_release_root(version=release_version, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}_annotation_hist_params.json"
 
 
 def qual_hists_json_path(
@@ -117,9 +115,7 @@ def qual_hists_json_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for histogram JSON
     """
-    return (
-        f"{_release_root(release_version, test, data_type, extension='json')}/gnomad.{data_type}.v{release_version}_qual_hists.json"
-    )
+    return f"{_release_root(release_version, test, data_type, extension='json')}/gnomad.{data_type}.v{release_version}_qual_hists.json"
 
 
 def release_ht_path(
@@ -147,9 +143,7 @@ def release_ht_path(
     else:
         # Note: This function was not used to write out the v4.0 joint release HT. That
         # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
-        return (
-            f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.sites.ht"
-        )
+        return f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def release_sites(
@@ -203,15 +197,11 @@ def release_vcf_path(
         release_version = CURRENT_RELEASE
 
     if contig:
-        return (
-            f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.{contig}.vcf.bgz"
-        )
+        return f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.{contig}.vcf.bgz"
     else:
         # If contig is None, return path to sharded vcf bucket.
         # NOTE: need to add .bgz or else hail will not bgzip shards.
-        return (
-            f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.vcf.bgz"
-        )
+        return f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.vcf.bgz"
 
 
 def release_header_path(
@@ -230,9 +220,7 @@ def release_header_path(
     if release_version is None:
         release_version = CURRENT_RELEASE
 
-    return (
-        f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}_header_dict.pickle"
-    )
+    return f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}_header_dict.pickle"
 
 
 def append_to_vcf_header_path(
@@ -251,9 +239,7 @@ def append_to_vcf_header_path(
         'exomes' or 'genomes'. Default is 'exomes'.
     :return: Filepath for extra fields TSV file.
     """
-    return (
-        f"gs://gnomad/release/{release_version}/vcf/{data_type}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
-    )
+    return f"gs://gnomad/release/{release_version}/vcf/{data_type}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
 def release_coverage_path(
@@ -297,15 +283,11 @@ def release_coverage_path(
                 data_type,
                 release_version,
             )
-            return (
-                f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
-            )
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
         else:
             return path
     else:
-        return (
-            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
-        )
+        return f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
 
 
 def release_coverage_tsv_path(
@@ -321,9 +303,7 @@ def release_coverage_tsv_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Coverage TSV path.
     """
-    return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
-    )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
 
 
 def release_all_sites_an_tsv_path(
@@ -345,9 +325,7 @@ def release_all_sites_an_tsv_path(
         if release_version is not None
         else CURRENT_ALL_SITES_AN_RELEASE[data_type]
     )
-    return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
-    )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
 
 
 def release_coverage(
@@ -428,9 +406,7 @@ def included_datasets_json_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: File path for release versions included datasets JSON
     """
-    return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}.included_datasets.json"
-    )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}.included_datasets.json"
 
 
 def validated_release_ht(
@@ -486,6 +462,4 @@ def get_false_dup_genes_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Combined custom liftover table path for the three genes in false duplication.
     """
-    return (
-        f"{_release_root(version=release_version, test=test, data_type='joint')}/gnomad.v{release_version}_three_false_dup_genes_liftover.ht"
-    )
+    return f"{_release_root(version=release_version, test=test, data_type='joint')}/gnomad.v{release_version}_three_false_dup_genes_liftover.ht"

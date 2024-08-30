@@ -1,4 +1,5 @@
 """Script to assign global ancestry labels to samples using known v3 population labels or TGP and HGDP labels."""
+
 import argparse
 import json
 import logging

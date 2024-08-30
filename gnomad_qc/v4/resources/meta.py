@@ -1,4 +1,5 @@
 """Script containing metadata related resources."""
+
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.resource_utils import check_resource_existence

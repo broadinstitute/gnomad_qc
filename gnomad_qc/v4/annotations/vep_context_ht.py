@@ -1,4 +1,5 @@
 """Script to add VEP annotations to the GRCh38 context Table."""
+
 import argparse
 import logging
 import os

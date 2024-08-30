@@ -1,4 +1,5 @@
 """Generic gnomAD QC resource utils."""
+
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 

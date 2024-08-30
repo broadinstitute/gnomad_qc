@@ -102,9 +102,7 @@ def get_transmitted_singleton_vcf_path(
     :param version: Version of transmitted singleton VCF path to return
     :return:
     """
-    return (
-        f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
-    )
+    return f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
 
 
 last_END_position = VersionedTableResource(
@@ -266,9 +264,7 @@ def get_freq_comparison(
             f" are: {versions}"
         )
 
-    ht_path = (
-        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
-    )
+    ht_path = f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
     if version1 in RELEASES:
         ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:

@@ -979,9 +979,7 @@ def main(args):  # noqa: D103
 
             logger.info(f"Exporting chromosome {chromosome}....")
             if args.test:
-                output_path = (
-                    f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_tgp_subset' if hgdp_tgp else ''}.vcf.bgz"
-                )
+                output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_tgp_subset' if hgdp_tgp else ''}.vcf.bgz"
             else:
                 output_path = release_vcf_path(
                     contig=chromosome,
