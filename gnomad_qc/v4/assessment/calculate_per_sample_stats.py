@@ -248,8 +248,7 @@ def process_test_args(
             )
         if err_msg:
             raise ValueError(
-                err_msg
-                + " For a quick test of both --create-filter-group-ht and "
+                err_msg + " For a quick test of both --create-filter-group-ht and "
                 "--create-per-sample-counts-ht, use '--test-gene --test-dataset'. "
                 "The full run of the --create-filter-group-ht step is relatively "
                 "quick and once tests are complete on the filter group creation, "
