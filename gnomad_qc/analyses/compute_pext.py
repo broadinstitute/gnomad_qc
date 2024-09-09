@@ -12,9 +12,9 @@ from gnomad.resources.grch38.gnomad import public_release as gnomad_release_grch
 from gnomad.utils.reference_genome import get_reference_genome
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.transcript_annotation import (
-    TISSUES_TO_EXCLUDE,
     clean_tissue_name_for_browser,
     create_tx_annotation_by_region,
+    get_tissues_to_exclude,
     perform_tx_annotation_pipeline,
     summarize_transcript_expression,
 )
@@ -206,6 +206,7 @@ def main(args):
     test = args.test
     gtex_version = args.gtex_version
     overwrite = args.overwrite
+    min_samples = args.min_samples
     annotation_level = ["annotation_level"] if args.annotation_level else []
     annotation_level += ["gnomad_exomes"] if args.gnomad_exomes_ht else []
     annotation_level += ["gnomad_genomes"] if args.gnomad_genomes_ht else []
@@ -223,6 +224,20 @@ def main(args):
     # reducing the number of partitions to 5K helped reduce the run time.
     ht = pext_res.context_ht.ht().naive_coalesce(5000)
     tx_mt = pext_res.tx_mt.mt()
+
+    # Any tissue below 50 samples will NOT get shown on website in overall pext or as
+    # individual tissue.
+    # Exclude testes and cell lines from overall pext but keep in display as
+    # individual tissues (agreed to take a look at the per tissue pext values to make
+    # sure this makes sense).
+    tissues_to_exclude = get_tissues_to_exclude(
+        tx_mt, reproductive=False, cell_lines=False, min_samples=min_samples
+    )
+    tissues_to_exclude_from_mean = (
+        get_tissues_to_exclude(tx_mt, min_samples=None) + tissues_to_exclude
+    )
+    if args.keep_tissues_under_min_samples:
+        tissues_to_exclude = []
 
     if test:
         ht, tx_mt = filter_to_test(ht, tx_mt)
@@ -251,7 +266,8 @@ def main(args):
                     else getattr(res, f"{dataset}_ht").ht()
                 ),
                 tx_ht,
-                tissues_to_exclude_from_mean=TISSUES_TO_EXCLUDE[gtex_version],
+                tissues_to_exclude=tissues_to_exclude,
+                tissues_to_exclude_from_mean=tissues_to_exclude_from_mean,
             ).write(getattr(res, f"{dataset}_pext_ht").path, overwrite=overwrite)
 
     if args.base_level:
@@ -263,7 +279,8 @@ def main(args):
             ht,
             tx_ht,
             additional_group_by=["gene_symbol"],
-            tissues_to_exclude_from_mean=TISSUES_TO_EXCLUDE[gtex_version],
+            tissues_to_exclude=tissues_to_exclude,
+            tissues_to_exclude_from_mean=tissues_to_exclude_from_mean,
         ).write(res.base_pext_ht.path, overwrite=overwrite)
 
     if args.browser_ht:
@@ -304,6 +321,24 @@ if __name__ == "__main__":
         help="GTEx version to use for pext scores.",
         default="v10",
         choices=["v7", "v10"],
+    )
+    parser.add_argument(
+        "--min-samples",
+        help=(
+            "Minimum number of samples to include a tissue in the overall mean pext. "
+            "If keep-tissues-under-min-samples is not set, these tissues will also be "
+            "excluded from the individual tissue pext values."
+        ),
+        type=int,
+        default=50,
+    )
+    parser.add_argument(
+        "--keep-tissues-under-min-samples",
+        help=(
+            "Keep tissues under the min-samples threshold in the individual tissue "
+            "pext values."
+        ),
+        action="store_true",
     )
     parser.add_argument(
         "--annotation-level",
