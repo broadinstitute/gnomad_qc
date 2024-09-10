@@ -207,6 +207,13 @@ def main(args):
     gtex_version = args.gtex_version
     overwrite = args.overwrite
     min_samples = args.min_samples
+    browser_min_samples = args.browser_min_samples
+    if browser_min_samples < min_samples:
+        raise ValueError(
+            "The --browser-min-samples threshold must be greater than or equal to the "
+            "--min-samples threshold."
+        )
+
     annotation_level = ["annotation_level"] if args.annotation_level else []
     annotation_level += ["gnomad_exomes"] if args.gnomad_exomes_ht else []
     annotation_level += ["gnomad_genomes"] if args.gnomad_genomes_ht else []
@@ -298,12 +305,33 @@ def main(args):
         tissue_map = {
             t: clean_tissue_name_for_browser(t) for t in hl.eval(base_pext_ht.tissues)
         }
+
+        browser_tissues_to_exclude = []
+        if browser_min_samples > min_samples:
+            # Get tissues that have less than `browser_min_samples` samples and should
+            # not be displayed as a tissue pext track on the browser.
+            browser_tissues_to_exclude = get_tissues_to_exclude(
+                tx_mt,
+                reproductive=False,
+                cell_lines=False,
+                min_samples=browser_min_samples,
+            )
+            logger.info(
+                "Excluding tissues with less than %d samples from the browser: %s",
+                browser_min_samples,
+                ", ".join(
+                    list(set(browser_tissues_to_exclude) - set(tissues_to_exclude))
+                ),
+            )
+
         base_pext_ht = base_pext_ht.annotate(
             **{k: base_pext_ht[k].expression_proportion for k in tissue_map}
         )
         base_pext_ht = base_pext_ht.rename(tissue_map)
         base_pext_ht = base_pext_ht.annotate_globals(
-            tissues=base_pext_ht.tissues.map(lambda x: hl.literal(tissue_map).get(x))
+            tissues=base_pext_ht.tissues.filter(
+                lambda x: ~hl.literal(browser_tissues_to_exclude).contains(x)
+            ).map(lambda x: hl.literal(tissue_map).get(x))
         )
         create_tx_annotation_by_region(base_pext_ht).write(
             res.browser_pext_ht.path, overwrite=overwrite
@@ -368,6 +396,15 @@ if __name__ == "__main__":
         "--browser-ht",
         help="Get pext Table for browser loading.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--browser-min-samples",
+        help=(
+            "Minimum number of samples to include a tissue in the individual tissue "
+            "pext values displayed as a track on the browser."
+        ),
+        type=int,
+        default=100,
     )
 
     args = parser.parse_args()
