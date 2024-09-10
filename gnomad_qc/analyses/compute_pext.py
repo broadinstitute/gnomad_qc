@@ -225,17 +225,23 @@ def main(args):
     ht = pext_res.context_ht.ht().naive_coalesce(5000)
     tx_mt = pext_res.tx_mt.mt()
 
-    # Any tissue below 50 samples will NOT get shown on website in overall pext or as
-    # individual tissue.
-    # Exclude testes and cell lines from overall pext but keep in display as
-    # individual tissues (agreed to take a look at the per tissue pext values to make
-    # sure this makes sense).
+    # Get tissues to completely exclude from the pext calculations. These are tissues
+    # that have less than `min_samples` samples and should not be included in the
+    # individual tissue pext values or in the overall pext.
     tissues_to_exclude = get_tissues_to_exclude(
         tx_mt, reproductive=False, cell_lines=False, min_samples=min_samples
     )
+
+    # Get tissues to exclude from the overall mean pext calculation. This includes
+    # reproductive tissues and cell lines, as well as any tissues that have less than
+    # `min_samples` samples (`tissues_to_exclude`).
     tissues_to_exclude_from_mean = (
         get_tissues_to_exclude(tx_mt, min_samples=None) + tissues_to_exclude
     )
+
+    # If `keep_tissues_under_min_samples` is set, tissues that have less than
+    # `min_samples` samples will be excluded from the overall mean pext calculation,
+    # but will still be included in the individual tissue pext values.
     if args.keep_tissues_under_min_samples:
         tissues_to_exclude = []
 
