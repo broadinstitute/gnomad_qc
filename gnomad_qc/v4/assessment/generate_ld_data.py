@@ -5,17 +5,20 @@ import gnomad.resources.grch37.gnomad_ld as ld_resources
 from gnomad.utils.slack import slack_notifications
 from hail.linalg import BlockMatrix
 from hail.utils import new_temp_file
-# from hail.utils.java import Env 
+
+# from hail.utils.java import Env
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import *
 from gnomad_qc.v3.resources.release import hgdp_tgp_subset
+
 # this includes ld_resources
 
 HGDP_TGP_RELEASES
 
 COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
+
 
 def get_pop_and_subpop_counters(mt):
     cut_dict = {
@@ -41,8 +44,8 @@ def filter_mt_for_ld(
         .find(lambda f: (f[1].get(label) == pop))
         .collect()[0][0]
     )
-    # No support for SV datasets in gnomAD v4 Production team code 
-    # Have to re-do callstats when noted frequencies don't 100% reflect what you are calculating on 
+    # No support for SV datasets in gnomAD v4 Production team code
+    # Have to re-do callstats when noted frequencies don't 100% reflect what you are calculating on
     # This is for test sets or 1kg_tdpg
     if re_call_stats:
         call_stats = hl.agg.call_stats(pop_mt.GT, pop_mt.alleles)
@@ -122,9 +125,6 @@ def generate_ld_matrix(
             )
 
 
-
-
-
 def generate_ld_scores_from_ld_matrix(
     pop_data,
     data_type,
@@ -160,9 +160,6 @@ def generate_ld_scores_from_ld_matrix(
             compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite)
 
 
-
-
-
 def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite):
     starts_and_stops = hl.linalg.utils.locus_windows(ht.locus, radius, _localize=False)
     r2_adj = r2_adj._sparsify_row_intervals_expr(starts_and_stops, blocks_only=False)
@@ -184,47 +181,34 @@ def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite):
 
 
 def main(args):
-    hl.init(log="/ld_annotations.log",tmp_dir="gs://gnomad-tmp-4day/ld_tmp/")
+    hl.init(log="/ld_annotations.log", tmp_dir="gs://gnomad-tmp-4day/ld_tmp/")
     hl._set_flags(use_new_shuffle="1")
 
-    # Only run on genomes so far, no choice to run on exomes, too sparse 
-    data_type = "genomes" 
+    # Only run on genomes so far, no choice to run on exomes, too sparse
+    data_type = "genomes"
     if args.exomes:
-        raise NotImplementedError(
-            "LD Code does not work for exomes yet. Too sparse:("
-        )
-
-
+        raise NotImplementedError("LD Code does not work for exomes yet. Too sparse:(")
 
     if args.hgdp_subset:
-        mt = hgdp_tgp_subset(dense=True,public=True).mt()
+        mt = hgdp_tgp_subset(dense=True, public=True).mt()
         if args.test:
-            mt = mt.filter_rows(mt.locus.contig=="chr22")
+            mt = mt.filter_rows(mt.locus.contig == "chr22")
         mt = mt.annotate_globals(
-            freq_meta = mt.hgdp_tgp_freq_meta,
-            freq_index_dict = mt.hgdp_tgp_freq_index_dict
+            freq_meta=mt.hgdp_tgp_freq_meta, freq_index_dict=mt.hgdp_tgp_freq_index_dict
         )
 
-        mt = mt.annotate_rows(
-            freq = mt.hgdp_tgp_freq
-        )
+        mt = mt.annotate_rows(freq=mt.hgdp_tgp_freq)
 
-        mt = mt.annotate_cols(
-            pop = mt.hgdp_tgp_meta.population
-        )
+        mt = mt.annotate_cols(pop=mt.hgdp_tgp_meta.population)
     else:
         ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
-        vds = basics.get_gnomad_v4_genomes_vds(test=args.test,annotate_meta=True,release_only=True,split=True)
+        vds = basics.get_gnomad_v4_genomes_vds(
+            test=args.test, annotate_meta=True, release_only=True, split=True
+        )
         mt_vds = vds.variant_data
-        mt = mt_vds.annotate(
-            **hl.eval(v4_release_ht.globals)
-        )
+        mt = mt_vds.annotate(**hl.eval(v4_release_ht.globals))
 
-        mt = mt.annotate(
-            pop = mt.meta.population_inference.pop
-        )
-
-
+        mt = mt.annotate(pop=mt.meta.population_inference.pop)
 
     pop_data = get_pop_and_subpop_counters(mt)
 
@@ -319,12 +303,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test",
         help="Use test dataset for whichever callset requested.",
-        action="store_true"
+        action="store_true",
     )
     parser.add_argument(
-        "--hgdp_subset",
-        help="Use hgdp dataset for callset.",
-        action="store_true"
+        "--hgdp_subset", help="Use hgdp dataset for callset.", action="store_true"
     )
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."

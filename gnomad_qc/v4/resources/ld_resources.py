@@ -8,6 +8,7 @@ from gnomad.resources.resource_utils import (
     GnomadPublicTableResource,
 )
 
+
 def ld_matrix_path(
     data_type: str,
     pop: str,
@@ -21,6 +22,7 @@ def ld_matrix_path(
         )
     return f'gs://gnomad-tmp-30day/ld/matrix/gnomad.{data_type}.r{version}.{pop}.{"common." if common_only else ""}{"adj." if adj else ""}ld.bm'
 
+
 def ld_index_path(
     data_type: str,
     pop: str,
@@ -33,7 +35,9 @@ def ld_index_path(
             CURRENT_EXOME_RELEASE if data_type == "exomes" else CURRENT_GENOME_RELEASE
         )
     return f'gs://gnomad-tmp-30day/ld/index/gnomad.{data_type}.r{version}.{pop}.{"common." if common_only else ""}{"adj." if adj else ""}ld.variant_indices.ht'
-# 
+
+
+#
 def ld_scores_path(
     data_type: str, pop: str, adj: bool = True, version: Optional[str] = None
 ):
@@ -46,6 +50,7 @@ def ld_scores_path(
 
 def ld_pruned_path(data_type: str, pop: str, r2: str, version: str = CURRENT_RELEASE):
     return f"gs://gnomad-tmp-30day/ld/pruned/gnomad.{data_type}.r{version}.{pop}.ld.pruned_set.r2_{r2}.ht"
+
 
 def ld_matrix(pop: str) -> GnomadPublicBlockMatrixResource:
     """Get resource for the LD matrix for the given population."""
