@@ -12,9 +12,9 @@ from gnomad.resources.grch38.gnomad import public_release as gnomad_release_grch
 from gnomad.utils.reference_genome import get_reference_genome
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.transcript_annotation import (
-    TISSUES_TO_EXCLUDE,
     clean_tissue_name_for_browser,
     create_tx_annotation_by_region,
+    get_tissues_to_exclude,
     perform_tx_annotation_pipeline,
     summarize_transcript_expression,
 )
@@ -206,6 +206,14 @@ def main(args):
     test = args.test
     gtex_version = args.gtex_version
     overwrite = args.overwrite
+    min_samples = args.min_samples
+    browser_min_samples = args.browser_min_samples
+    if browser_min_samples < min_samples:
+        raise ValueError(
+            "The --browser-min-samples threshold must be greater than or equal to the "
+            "--min-samples threshold."
+        )
+
     annotation_level = ["annotation_level"] if args.annotation_level else []
     annotation_level += ["gnomad_exomes"] if args.gnomad_exomes_ht else []
     annotation_level += ["gnomad_genomes"] if args.gnomad_genomes_ht else []
@@ -223,6 +231,26 @@ def main(args):
     # reducing the number of partitions to 5K helped reduce the run time.
     ht = pext_res.context_ht.ht().naive_coalesce(5000)
     tx_mt = pext_res.tx_mt.mt()
+
+    # Get tissues to completely exclude from the pext calculations. These are tissues
+    # that have less than `min_samples` samples and should not be included in the
+    # individual tissue pext values or in the overall pext.
+    tissues_to_exclude = get_tissues_to_exclude(
+        tx_mt, reproductive=False, cell_lines=False, min_samples=min_samples
+    )
+
+    # Get tissues to exclude from the overall mean pext calculation. This includes
+    # reproductive tissues and cell lines, as well as any tissues that have less than
+    # `min_samples` samples (`tissues_to_exclude`).
+    tissues_to_exclude_from_mean = (
+        get_tissues_to_exclude(tx_mt, min_samples=None) + tissues_to_exclude
+    )
+
+    # If `keep_tissues_under_min_samples` is set, tissues that have less than
+    # `min_samples` samples will be excluded from the overall mean pext calculation,
+    # but will still be included in the individual tissue pext values.
+    if args.keep_tissues_under_min_samples:
+        tissues_to_exclude = []
 
     if test:
         ht, tx_mt = filter_to_test(ht, tx_mt)
@@ -251,7 +279,8 @@ def main(args):
                     else getattr(res, f"{dataset}_ht").ht()
                 ),
                 tx_ht,
-                tissues_to_exclude_from_mean=TISSUES_TO_EXCLUDE[gtex_version],
+                tissues_to_exclude=tissues_to_exclude,
+                tissues_to_exclude_from_mean=tissues_to_exclude_from_mean,
             ).write(getattr(res, f"{dataset}_pext_ht").path, overwrite=overwrite)
 
     if args.base_level:
@@ -263,7 +292,8 @@ def main(args):
             ht,
             tx_ht,
             additional_group_by=["gene_symbol"],
-            tissues_to_exclude_from_mean=TISSUES_TO_EXCLUDE[gtex_version],
+            tissues_to_exclude=tissues_to_exclude,
+            tissues_to_exclude_from_mean=tissues_to_exclude_from_mean,
         ).write(res.base_pext_ht.path, overwrite=overwrite)
 
     if args.browser_ht:
@@ -275,12 +305,33 @@ def main(args):
         tissue_map = {
             t: clean_tissue_name_for_browser(t) for t in hl.eval(base_pext_ht.tissues)
         }
+
+        browser_tissues_to_exclude = []
+        if browser_min_samples > min_samples:
+            # Get tissues that have less than `browser_min_samples` samples and should
+            # not be displayed as a tissue pext track on the browser.
+            browser_tissues_to_exclude = get_tissues_to_exclude(
+                tx_mt,
+                reproductive=False,
+                cell_lines=False,
+                min_samples=browser_min_samples,
+            )
+            logger.info(
+                "Excluding tissues with less than %d samples from the browser: %s",
+                browser_min_samples,
+                ", ".join(
+                    list(set(browser_tissues_to_exclude) - set(tissues_to_exclude))
+                ),
+            )
+
         base_pext_ht = base_pext_ht.annotate(
             **{k: base_pext_ht[k].expression_proportion for k in tissue_map}
         )
         base_pext_ht = base_pext_ht.rename(tissue_map)
         base_pext_ht = base_pext_ht.annotate_globals(
-            tissues=base_pext_ht.tissues.map(lambda x: hl.literal(tissue_map).get(x))
+            tissues=base_pext_ht.tissues.filter(
+                lambda x: ~hl.literal(browser_tissues_to_exclude).contains(x)
+            ).map(lambda x: hl.literal(tissue_map).get(x))
         )
         create_tx_annotation_by_region(base_pext_ht).write(
             res.browser_pext_ht.path, overwrite=overwrite
@@ -306,6 +357,24 @@ if __name__ == "__main__":
         choices=["v7", "v10"],
     )
     parser.add_argument(
+        "--min-samples",
+        help=(
+            "Minimum number of samples to include a tissue in the overall mean pext. "
+            "If keep-tissues-under-min-samples is not set, these tissues will also be "
+            "excluded from the individual tissue pext values."
+        ),
+        type=int,
+        default=50,
+    )
+    parser.add_argument(
+        "--keep-tissues-under-min-samples",
+        help=(
+            "Keep tissues under the min-samples threshold in the individual tissue "
+            "pext values."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
         "--annotation-level",
         help="Get annotation-level pext scores.",
         action="store_true",
@@ -327,6 +396,15 @@ if __name__ == "__main__":
         "--browser-ht",
         help="Get pext Table for browser loading.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--browser-min-samples",
+        help=(
+            "Minimum number of samples to include a tissue in the individual tissue "
+            "pext values displayed as a track on the browser."
+        ),
+        type=int,
+        default=100,
     )
 
     args = parser.parse_args()
