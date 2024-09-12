@@ -50,6 +50,7 @@ def filter_mt_for_ld(
     # Have to re-do callstats when noted frequencies don't 100% reflect what you are calculating on
     # This is for test sets or 1kg_tdpg
     if re_call_stats:
+        logger.info("Regenerating call_stats...")
         call_stats = hl.agg.call_stats(pop_mt.GT, pop_mt.alleles)
         call_stats_bind = hl.bind(
             lambda cs: cs.annotate(
@@ -240,6 +241,10 @@ def main(args):
 
         # it is already in the right place for the gnomAD MT , or whatever
         # mt = mt.annotate(pop=mt.meta.population_inference.pop)
+
+    if args.pop:
+        mt = mt.filter_cols(mt.meta.population_inference.pop==args.pop)
+
     label = 'gen_anc' if not args.hgdp_subset else 'pop'
     pop_data = get_pop_and_subpop_counters(mt,label=label)
 
@@ -337,6 +342,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--re-call-stats", help="Regenerate callstats for LD work. Can be useful for some subsets.", action="store_true"
+    )
+    parser.add_argument(
+        "--pop", help="Filter to, and run on, one individual pop", type=str,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
