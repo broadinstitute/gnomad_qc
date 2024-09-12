@@ -10,6 +10,7 @@ from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import *
+from gnomad_qc.v4.resources.ld_resources import *
 from gnomad_qc.v3.resources.release import hgdp_tgp_subset
 
 # this includes ld_resources
@@ -20,14 +21,15 @@ COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
 
 
-def get_pop_and_subpop_counters(mt):
+def get_pop_and_subpop_counters(mt,label):
     cut_dict = {
-        "pop": hl.agg.filter(
-            hl.is_defined(mt.meta.pop) & (mt.meta.pop != "oth"),
-            hl.agg.counter(mt.meta.pop),
+        f"{label}": hl.agg.filter(
+            hl.is_defined(mt.meta.population_inference.pop) & (mt.meta.population_inference.pop != "oth"),
+            hl.agg.counter(mt.meta.population_inference.pop),
         ),
     }
     cut_data = mt.aggregate_cols(hl.struct(**cut_dict))
+    logger.info(f'Counts: {cut_data}')
     return cut_data
 
 
@@ -38,7 +40,7 @@ def filter_mt_for_ld(
     # At the moment, ld_matrix OOMs above ~30M variants, so filtering all populations to 0.05% to cut down on variants
     # All work on standard machines except AFR
     # Also creating `common_only` ones for most practical uses (above 0.5%)
-    pop_mt = mt.filter_cols(mt.meta[label] == pop)
+    pop_mt = mt.filter_cols(mt.meta.population_inference.pop == pop)
     meta_index = (
         hl.enumerate(pop_mt.freq_meta)
         .find(lambda f: (f[1].get(label) == pop))
@@ -56,12 +58,14 @@ def filter_mt_for_ld(
             call_stats,
         )
         pop_freq = call_stats_bind
+        pop_mt = pop_mt.annotate_rows(pop_freq=pop_freq)
+
     else:
         pop_mt = pop_mt.filter_rows((hl.len(pop_mt.filters) == 0))
         pop_freq = pop_mt.freq[meta_index]
+        pop_mt = pop_mt.annotate_rows(pop_freq=pop_freq)
 
     pop_mt = pop_mt.filter_rows((hl.len(pop_mt.filters) == 0))
-    pop_mt = pop_mt.annotate_rows(pop_freq=pop_freq)
     pop_mt = pop_mt.filter_rows(
         (pop_mt.pop_freq.AC > 1)
         & (pop_mt.pop_freq.AN - pop_mt.pop_freq.AC > 1)
@@ -82,16 +86,25 @@ def generate_ld_pruned_set(
     r2: str = "0.2",
     radius: int = 1000000,
     overwrite: bool = False,
+    re_call_stats: bool = False,
+    version: str = None,
 ):
+
     for label, pops in dict(pop_data).items():
         for pop in pops:
-            pop_mt = filter_mt_for_ld(mt, label, pop)
+            logger.info(f"Filtering for {pop}...")
+            pop_mt = filter_mt_for_ld(mt, label, pop, re_call_stats)
+            logger.info(f"Count after filter_mt_for_ld() : {pop_mt.count()}")
 
             pruned_ht = hl.ld_prune(pop_mt.GT, r2=float(r2), bp_window_size=radius)
 
+            logger.info(f"Count after hl.ld_prune() : {pruned_ht.count()}")
+
             ht = pop_mt.rows().select("pop_freq")
             ht = ht.filter(hl.is_defined(pruned_ht[ht.key]))
-            ht.write(ld_pruned_path(data_type, pop, r2), overwrite)
+            ld_path = ld_pruned_path(data_type, pop, r2, version=version)
+            logger.info(f"Writing pruned ht for {pop} to {ld_path} ...")
+            ht.write(ld_path, overwrite)
 
 
 def generate_ld_matrix(
@@ -102,25 +115,27 @@ def generate_ld_matrix(
     common_only: bool = True,
     adj: bool = False,
     overwrite: bool = False,
+    re_call_stats: bool = False,
+    version: str = None,
 ):
     # Takes about 4 hours on 20 n1-standard-8 nodes (with SSD - not sure if necessary) per population
     # Total of ~37 hours ($400)
+
     for label, pops in dict(pop_data).items():
         for pop in pops:
-            if data_type == "genomes_snv_sv" and pop not in SNV_SV_POPS:
-                continue
+
             pop_mt = filter_mt_for_ld(
-                mt, label, pop, common_only, sv_dataset=data_type == "genomes_snv_sv"
+                mt, label, pop, common_only, re_call_stats
             )
 
             pop_mt.rows().select("pop_freq").add_index().write(
-                ld_resources._ld_index_path(data_type, pop, common_only, adj), overwrite
+                ld_resources._ld_index_path(data_type, pop, common_only, adj, version=version), overwrite
             )
             ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius)
             if data_type != "genomes_snv_sv":
                 ld = ld.sparsify_triangle()
             ld.write(
-                ld_resources._ld_matrix_path(data_type, pop, common_only, adj),
+                ld_resources._ld_matrix_path(data_type, pop, common_only, adj, version=version),
                 overwrite,
             )
 
@@ -132,14 +147,15 @@ def generate_ld_scores_from_ld_matrix(
     call_rate_cutoff=0.8,
     adj: bool = False,
     radius: int = 1000000,
-    overwrite=False,
+    overwrite: bool = False,
+    version: str = None
 ):
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
     # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
     # mins to compute LD scores per population (~$150 total)
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
-            ht = hl.read_table(ld_resources._ld_index_path(data_type, pop, adj=adj))
+            ht = hl.read_table(ld_resources._ld_index_path(data_type, pop, adj=adj, version=version))
             ht = ht.filter(
                 (ht.pop_freq.AF >= min_frequency)
                 & (ht.pop_freq.AF <= 1 - min_frequency)
@@ -150,17 +166,17 @@ def generate_ld_scores_from_ld_matrix(
 
             r2 = BlockMatrix.read(
                 ld_resources._ld_matrix_path(
-                    data_type, pop, min_frequency >= COMMON_FREQ, adj=adj
+                    data_type, pop, min_frequency >= COMMON_FREQ, adj=adj, version=version
                 )
             )
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
-            out_name = ld_resources._ld_scores_path(data_type, pop, adj)
+            out_name = ld_scores_path(data_type, pop, adj,version=version)
             compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite)
 
 
-def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite):
+def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite,version):
     starts_and_stops = hl.linalg.utils.locus_windows(ht.locus, radius, _localize=False)
     r2_adj = r2_adj._sparsify_row_intervals_expr(starts_and_stops, blocks_only=False)
 
@@ -181,7 +197,7 @@ def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite):
 
 
 def main(args):
-    hl.init(log="/ld_annotations.log", tmp_dir="gs://gnomad-tmp-4day/ld_tmp/")
+    hl.init(log="/ld_assessment.log", tmp_dir="gs://gnomad-tmp-4day/ld_tmp/")
     hl._set_flags(use_new_shuffle="1")
 
     # Only run on genomes so far, no choice to run on exomes, too sparse
@@ -191,30 +207,48 @@ def main(args):
 
     if args.hgdp_subset:
         mt = hgdp_tgp_subset(dense=True, public=True).mt()
-        if args.test:
-            mt = mt.filter_rows(mt.locus.contig == "chr22")
         mt = mt.annotate_globals(
-            freq_meta=mt.hgdp_tgp_freq_meta, freq_index_dict=mt.hgdp_tgp_freq_index_dict
+            freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
         )
+        mt = mt.annotate_rows(freq=mt.gnomad_freq)
+        mt = mt.annotate_cols(meta=hl.struct(
+            population_inference = hl.struct(
+                pop=mt.gnomad_population_inference.pop)))
 
-        mt = mt.annotate_rows(freq=mt.hgdp_tgp_freq)
+        if args.test:
+            mt = mt.filter_rows(mt.locus.contig == "chr22").sample_rows(0.1)
+            mt = mt.filter_cols(mt.meta.population_inference.pop == "afr")
 
-        mt = mt.annotate_cols(pop=mt.hgdp_tgp_meta.population)
     else:
         ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
         vds = basics.get_gnomad_v4_genomes_vds(
             test=args.test, annotate_meta=True, release_only=True, split=True
         )
         mt_vds = vds.variant_data
-        mt = mt_vds.annotate(**hl.eval(v4_release_ht.globals))
+        mt = mt_vds.annotate_globals(
+            **hl.eval(ht_release.globals)
+        )
 
-        mt = mt.annotate(pop=mt.meta.population_inference.pop)
+        mt = mt.annotate_rows(
+            freq = ht_release[mt.row_key].freq,
+            filters = ht_release[mt.row_key].filters
+        )
 
-    pop_data = get_pop_and_subpop_counters(mt)
+        if args.test:
+            mt = mt.filter_rows(mt.locus.contig == "chr22").sample_rows(0.1)
+            mt = mt.filter_cols(mt.meta.population_inference.pop == "afr")
+
+        # it is already in the right place for the gnomAD MT , or whatever
+        # mt = mt.annotate(pop=mt.meta.population_inference.pop)
+    label = 'gen_anc' if not args.hgdp_subset else 'pop'
+    pop_data = get_pop_and_subpop_counters(mt,label=label)
+
+    # Version is populated via ld_resources.py if None
+    version = None if not args.hgdp_subset else 'hgdp'
 
     if args.generate_ld_pruned_set:
         generate_ld_pruned_set(
-            mt, pop_data, data_type, args.r2, args.radius, args.overwrite
+            mt, pop_data, data_type, args.r2, args.radius, args.overwrite, re_call_stats=args.re_call_stats, version=version
         )
 
     if args.generate_ld_matrix:
@@ -226,6 +260,8 @@ def main(args):
             args.common_only,
             args.adj,
             args.overwrite,
+            re_call_stats=args.re_call_stats, 
+            version=version
         )
 
     if args.generate_ld_scores:
@@ -238,15 +274,6 @@ def main(args):
             overwrite=args.overwrite,
         )
 
-    if args.cross_pop_ld_scores:
-        generate_all_cross_pop_ld_scores(
-            pop_data,
-            data_type,
-            args.min_frequency,
-            args.min_call_rate,
-            args.adj,
-            overwrite=args.overwrite,
-        )
 
 
 if __name__ == "__main__":
@@ -257,15 +284,15 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--generate_ld_pruned_set",
+        "--generate-ld-pruned-set",
         help="Calculates LD pruned set of variants",
         action="store_true",
     )
     parser.add_argument(
-        "--generate_ld_matrix", help="Calculates LD matrix", action="store_true"
+        "--generate-ld-matrix", help="Calculates LD matrix", action="store_true"
     )
     parser.add_argument(
-        "--common_only",
+        "--common-only",
         help="Calculates LD matrix only on common variants (above 0.5%)",
         action="store_true",
     )
@@ -275,18 +302,18 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--generate_ld_scores",
+        "--generate-ld-scores",
         help="Calculates LD scores from LD matrix",
         action="store_true",
     )
     parser.add_argument(
-        "--min_frequency",
+        "--min-frequency",
         help="Minimum allele frequency to compute LD scores (default 0.01)",
         default=0.01,
         type=float,
     )
     parser.add_argument(
-        "--min_call_rate",
+        "--min-call-rate",
         help="Minimum call rate to compute LD scores (default 0.8)",
         default=0.8,
         type=float,
@@ -306,10 +333,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--hgdp_subset", help="Use hgdp dataset for callset.", action="store_true"
+        "--hgdp-subset", help="Use hgdp dataset for callset.", action="store_true"
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--re-call-stats", help="Regenerate callstats for LD work. Can be useful for some subsets.", action="store_true"
+    )
+    parser.add_argument(
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     args = parser.parse_args()
