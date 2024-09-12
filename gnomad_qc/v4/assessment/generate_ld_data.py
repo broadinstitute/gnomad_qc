@@ -21,15 +21,16 @@ COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
 
 
-def get_pop_and_subpop_counters(mt,label):
+def get_pop_and_subpop_counters(mt, label):
     cut_dict = {
         f"{label}": hl.agg.filter(
-            hl.is_defined(mt.meta.population_inference.pop) & (mt.meta.population_inference.pop != "oth"),
+            hl.is_defined(mt.meta.population_inference.pop)
+            & (mt.meta.population_inference.pop != "oth"),
             hl.agg.counter(mt.meta.population_inference.pop),
         ),
     }
     cut_data = mt.aggregate_cols(hl.struct(**cut_dict))
-    logger.info(f'Counts: {cut_data}')
+    logger.info(f"Counts: {cut_data}")
     return cut_data
 
 
@@ -125,18 +126,21 @@ def generate_ld_matrix(
     for label, pops in dict(pop_data).items():
         for pop in pops:
 
-            pop_mt = filter_mt_for_ld(
-                mt, label, pop, common_only, re_call_stats
-            )
+            pop_mt = filter_mt_for_ld(mt, label, pop, common_only, re_call_stats)
 
             pop_mt.rows().select("pop_freq").add_index().write(
-                ld_resources._ld_index_path(data_type, pop, common_only, adj, version=version), overwrite
+                ld_resources._ld_index_path(
+                    data_type, pop, common_only, adj, version=version
+                ),
+                overwrite,
             )
             ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius)
             if data_type != "genomes_snv_sv":
                 ld = ld.sparsify_triangle()
             ld.write(
-                ld_resources._ld_matrix_path(data_type, pop, common_only, adj, version=version),
+                ld_resources._ld_matrix_path(
+                    data_type, pop, common_only, adj, version=version
+                ),
                 overwrite,
             )
 
@@ -149,14 +153,16 @@ def generate_ld_scores_from_ld_matrix(
     adj: bool = False,
     radius: int = 1000000,
     overwrite: bool = False,
-    version: str = None
+    version: str = None,
 ):
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
     # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
     # mins to compute LD scores per population (~$150 total)
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
-            ht = hl.read_table(ld_resources._ld_index_path(data_type, pop, adj=adj, version=version))
+            ht = hl.read_table(
+                ld_resources._ld_index_path(data_type, pop, adj=adj, version=version)
+            )
             ht = ht.filter(
                 (ht.pop_freq.AF >= min_frequency)
                 & (ht.pop_freq.AF <= 1 - min_frequency)
@@ -167,17 +173,21 @@ def generate_ld_scores_from_ld_matrix(
 
             r2 = BlockMatrix.read(
                 ld_resources._ld_matrix_path(
-                    data_type, pop, min_frequency >= COMMON_FREQ, adj=adj, version=version
+                    data_type,
+                    pop,
+                    min_frequency >= COMMON_FREQ,
+                    adj=adj,
+                    version=version,
                 )
             )
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
-            out_name = ld_scores_path(data_type, pop, adj,version=version)
+            out_name = ld_scores_path(data_type, pop, adj, version=version)
             compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite)
 
 
-def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite,version):
+def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite, version):
     starts_and_stops = hl.linalg.utils.locus_windows(ht.locus, radius, _localize=False)
     r2_adj = r2_adj._sparsify_row_intervals_expr(starts_and_stops, blocks_only=False)
 
@@ -212,9 +222,11 @@ def main(args):
             freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
         )
         mt = mt.annotate_rows(freq=mt.gnomad_freq)
-        mt = mt.annotate_cols(meta=hl.struct(
-            population_inference = hl.struct(
-                pop=mt.gnomad_population_inference.pop)))
+        mt = mt.annotate_cols(
+            meta=hl.struct(
+                population_inference=hl.struct(pop=mt.gnomad_population_inference.pop)
+            )
+        )
 
         if args.test:
             mt = mt.filter_rows(mt.locus.contig == "chr22").sample_rows(0.1)
@@ -226,13 +238,10 @@ def main(args):
             test=args.test, annotate_meta=True, release_only=True, split=True
         )
         mt_vds = vds.variant_data
-        mt = mt_vds.annotate_globals(
-            **hl.eval(ht_release.globals)
-        )
+        mt = mt_vds.annotate_globals(**hl.eval(ht_release.globals))
 
         mt = mt.annotate_rows(
-            freq = ht_release[mt.row_key].freq,
-            filters = ht_release[mt.row_key].filters
+            freq=ht_release[mt.row_key].freq, filters=ht_release[mt.row_key].filters
         )
 
         if args.test:
@@ -243,17 +252,24 @@ def main(args):
         # mt = mt.annotate(pop=mt.meta.population_inference.pop)
 
     if args.pop:
-        mt = mt.filter_cols(mt.meta.population_inference.pop==args.pop)
+        mt = mt.filter_cols(mt.meta.population_inference.pop == args.pop)
 
-    label = 'gen_anc' if not args.hgdp_subset else 'pop'
-    pop_data = get_pop_and_subpop_counters(mt,label=label)
+    label = "gen_anc" if not args.hgdp_subset else "pop"
+    pop_data = get_pop_and_subpop_counters(mt, label=label)
 
     # Version is populated via ld_resources.py if None
-    version = None if not args.hgdp_subset else 'hgdp'
+    version = None if not args.hgdp_subset else "hgdp"
 
     if args.generate_ld_pruned_set:
         generate_ld_pruned_set(
-            mt, pop_data, data_type, args.r2, args.radius, args.overwrite, re_call_stats=args.re_call_stats, version=version
+            mt,
+            pop_data,
+            data_type,
+            args.r2,
+            args.radius,
+            args.overwrite,
+            re_call_stats=args.re_call_stats,
+            version=version,
         )
 
     if args.generate_ld_matrix:
@@ -265,8 +281,8 @@ def main(args):
             args.common_only,
             args.adj,
             args.overwrite,
-            re_call_stats=args.re_call_stats, 
-            version=version
+            re_call_stats=args.re_call_stats,
+            version=version,
         )
 
     if args.generate_ld_scores:
@@ -278,7 +294,6 @@ def main(args):
             args.adj,
             overwrite=args.overwrite,
         )
-
 
 
 if __name__ == "__main__":
@@ -341,10 +356,14 @@ if __name__ == "__main__":
         "--hgdp-subset", help="Use hgdp dataset for callset.", action="store_true"
     )
     parser.add_argument(
-        "--re-call-stats", help="Regenerate callstats for LD work. Can be useful for some subsets.", action="store_true"
+        "--re-call-stats",
+        help="Regenerate callstats for LD work. Can be useful for some subsets.",
+        action="store_true",
     )
     parser.add_argument(
-        "--pop", help="Filter to, and run on, one individual pop", type=str,
+        "--pop",
+        help="Filter to, and run on, one individual pop",
+        type=str,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."

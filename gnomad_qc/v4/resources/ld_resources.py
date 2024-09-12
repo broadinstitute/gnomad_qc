@@ -48,7 +48,9 @@ def ld_scores_path(
     return f'gs://gnomad-tmp-30day/ld/scores/gnomad.{data_type}.r{version}.{pop}.{"adj." if adj else ""}ld_scores.ht'
 
 
-def ld_pruned_path(data_type: str, pop: str, r2: str, version: str = CURRENT_GENOME_RELEASE):
+def ld_pruned_path(
+    data_type: str, pop: str, r2: str, version: str = CURRENT_GENOME_RELEASE
+):
     return f"gs://gnomad-tmp-30day/ld/pruned/gnomad.{data_type}.r{version}.{pop}.ld.pruned_set.r2_{r2}.ht"
 
 
