@@ -223,6 +223,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     hl.default_reference("GRCh37" if gtex_version == "v7" else "GRCh38")
+    hl._set_flags(use_new_shuffle="1")
 
     pext_res = get_pipeline_resources(test, gtex_version, overwrite)
 
@@ -306,7 +307,7 @@ def main(args):
             t: clean_tissue_name_for_browser(t) for t in hl.eval(base_pext_ht.tissues)
         }
 
-        browser_tissues_to_exclude = []
+        browser_tissues_to_exclude = tissues_to_exclude
         if browser_min_samples > min_samples:
             # Get tissues that have less than `browser_min_samples` samples and should
             # not be displayed as a tissue pext track on the browser.
