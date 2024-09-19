@@ -289,11 +289,6 @@ def run_compute_info(
         )
     )
 
-    # correct_mt.write("gs://gnomad-tmp-30day/kristen/intermediate_mt.mt", overwrite=True)
-    correct_mt = correct_mt.checkpoint(
-        "gs://gnomad-tmp-30day/kristen/intermediate_mt.mt", overwrite=True
-    )
-
     ht = correct_mt.select_rows(
         **get_as_info_expr(
             correct_mt,
@@ -1020,7 +1015,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     compute_info_args.add_argument(
         "--retain-cdfs",
         help=(
-            "Whether to retainsthe cumulative distribution functions (CDFs) as an annotation "
+            "Whether to retain the cumulative distribution functions (CDFs) as an annotation "
             "for median_agg_fields. Keeping the CDFs is useful for annotations that require "
             "calculating the median across combined datasets at a later stage."
         ),
