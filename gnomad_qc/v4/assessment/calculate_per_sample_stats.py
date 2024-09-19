@@ -1370,7 +1370,6 @@ def main(args):
             res.check_resource_existence()
 
             ht = res.release_ht.ht()
-            ht.describe()
             ht = ht._filter_partitions(test_partitions) if test_partitions else ht
             ht = hl.filter_intervals(ht, filter_intervals) if test_gene else ht
 
