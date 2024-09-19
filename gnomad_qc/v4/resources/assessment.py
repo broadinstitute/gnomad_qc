@@ -30,6 +30,7 @@ def _assessment_root(
 def get_summary_stats_filtering_groups(
     data_type: str = "exomes",
     test: bool = False,
+    suffix: str = None,
 ) -> VersionedTableResource:
     """
     Get the filtering groups used in the summary stats.
@@ -38,13 +39,19 @@ def get_summary_stats_filtering_groups(
         "genomes".
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
+    :param suffix: Additional name to append, containing some method or filtering
+        information.
     :return: Filtering groups used in the summary stats.
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}"
+                f"/gnomad.{data_type}"
+                f".v{version}"
+                f"{'.'+suffix if suffix else ''}"
+                f".per_sample_filtering_groups.ht"
             )
             for version in RELEASES
         },
