@@ -1195,7 +1195,9 @@ def get_pipeline_resources(
     # Uses `test_gene` instead of just `test` because the filter groups HT will not
     # have the same partitions as the raw VDS, so unless the test is on a specific
     # gene(s), the test will not work as expected.
-    filter_groups_ht = get_summary_stats_filtering_groups(data_type, test=test_gene)
+    filter_groups_ht = get_summary_stats_filtering_groups(
+        data_type, test=test_gene, suffix=custom_suffix
+    )
     create_intermediate = PipelineStepResourceCollection(
         "--create-intermediate-mt-for-sample-counts",
         input_resources={
