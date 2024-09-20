@@ -278,6 +278,7 @@ def run_compute_info(
         },
         n_partitions=None,
         retain_cdfs=retain_cdfs,
+        cdf_k=cdf_k,
     )
     quasi_info_ht = ht.checkpoint(
         hl.utils.new_temp_file("quasi_compute_info", extension="ht")
@@ -302,6 +303,7 @@ def run_compute_info(
             **AS_INFO_AGG_FIELDS,
             treat_fields_as_allele_specific=True,
             retain_cdfs=retain_cdfs,
+            cdf_k=cdf_k,
         )
     ).rows()
     info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
@@ -321,6 +323,7 @@ def run_compute_info(
             array_sum_agg_fields=["AS_SB_TABLE"],
             treat_fields_as_allele_specific=True,
             retain_cdfs=retain_cdfs,
+            cdf_k=cdf_k,
         )
     ).rows()
     ht = ht.checkpoint(
@@ -815,6 +818,7 @@ def main(args):
     transmitted_singletons = args.transmitted_singletons
     sibling_singletons = args.sibling_singletons
     retain_cdfs = args.retain_cdfs
+    cdf_k = args.cdf_k
 
     max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
@@ -869,7 +873,11 @@ def main(args):
                 )
             else:
                 ht = run_compute_info(
-                    mt, max_n_alleles, min_n_alleles, retain_cdfs=retain_cdfs
+                    mt,
+                    max_n_alleles,
+                    min_n_alleles,
+                    retain_cdfs=retain_cdfs,
+                    cdf_k=cdf_k,
                 )
 
             if split_n_alleles is None or combine_compute_info:
@@ -1027,7 +1035,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         action="store_true",
     )
-
+    compute_info_args.add_argument(
+        "--cdf-k",
+        help="Parameter controlling the accuracy vs. memory usage tradeoff when retaining CDFs. A higher "
+        "value of `cdf_k` results in a more accurate CDF approximation but increases memory usage and "
+        "computation time. Default is 200.",
+        default=200,
+        type=int,
+    )
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
