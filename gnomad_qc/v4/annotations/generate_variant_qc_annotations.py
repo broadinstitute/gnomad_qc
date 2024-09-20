@@ -251,9 +251,10 @@ def run_compute_info(
         computations.
     :param min_n_alleles: Minimum number of alleles for the site to be included in
         computations.
-    :param retain_cdfs: If True, retains the cumulative distribution functions (CDFs) as an annotation
-        for median_agg_fields. Keeping the CDFs is useful for annotations that require calculating the median
-        across combined datasets at a later stage. Default is False.
+    :param retain_cdfs: If True, retains the cumulative distribution functions (CDFs)
+        for all info annotations that are computed as a median aggregation. Keeping the
+        CDFs is useful for annotations that require calculating the median across 
+        combined datasets at a later stage. Default is False.
     :return: Table with info annotations.
     """
     if max_n_alleles:
