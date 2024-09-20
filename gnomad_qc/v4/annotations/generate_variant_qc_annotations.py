@@ -225,6 +225,7 @@ def run_compute_info(
     max_n_alleles: Optional[int] = None,
     min_n_alleles: Optional[int] = None,
     retain_cdfs: bool = False,
+    cdf_k: int = 200,
 ) -> hl.Table:
     """
     Run compute info on a MatrixTable.
@@ -253,8 +254,11 @@ def run_compute_info(
         computations.
     :param retain_cdfs: If True, retains the cumulative distribution functions (CDFs)
         for all info annotations that are computed as a median aggregation. Keeping the
-        CDFs is useful for annotations that require calculating the median across 
+        CDFs is useful for annotations that require calculating the median across
         combined datasets at a later stage. Default is False.
+    :param cdf_k: Parameter controlling the accuracy vs. memory usage tradeoff when retaining CDFs. A higher
+        value of `cdf_k` results in a more accurate CDF approximation but increases memory usage and computation
+        time. Default is 200.
     :return: Table with info annotations.
     """
     if max_n_alleles:
