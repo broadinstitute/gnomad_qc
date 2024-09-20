@@ -1015,9 +1015,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     compute_info_args.add_argument(
         "--retain-cdfs",
         help=(
-            "Whether to retain the cumulative distribution functions (CDFs) as an annotation "
-            "for median_agg_fields. Keeping the CDFs is useful for annotations that require "
-            "calculating the median across combined datasets at a later stage."
+            "If True, retains the cumulative distribution functions (CDFs) for all "
+            "info annotations that are computed as a median aggregation. Keeping the "
+            "CDFs is useful for annotations that require calculating the median across"
+            "combined datasets at a later stage. Default is False."
         ),
         action="store_true",
     )
