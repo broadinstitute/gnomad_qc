@@ -256,9 +256,9 @@ def run_compute_info(
         for all info annotations that are computed as a median aggregation. Keeping the
         CDFs is useful for annotations that require calculating the median across
         combined datasets at a later stage. Default is False.
-    :param cdf_k: Parameter controlling the accuracy vs. memory usage tradeoff when retaining CDFs. A higher
-        value of `cdf_k` results in a more accurate CDF approximation but increases memory usage and computation
-        time. Default is 200.
+    :param cdf_k: Parameter controlling the accuracy vs. memory usage tradeoff when 
+        retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF 
+        approximation but increases memory usage and computation time. Default is 200.
     :return: Table with info annotations.
     """
     if max_n_alleles:
