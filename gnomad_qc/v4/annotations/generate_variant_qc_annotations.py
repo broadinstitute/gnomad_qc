@@ -224,6 +224,8 @@ def run_compute_info(
     mt: hl.MatrixTable,
     max_n_alleles: Optional[int] = None,
     min_n_alleles: Optional[int] = None,
+    retain_cdfs: bool = False,
+    cdf_k: int = 200,
 ) -> hl.Table:
     """
     Run compute info on a MatrixTable.
@@ -250,6 +252,13 @@ def run_compute_info(
         computations.
     :param min_n_alleles: Minimum number of alleles for the site to be included in
         computations.
+    :param retain_cdfs: If True, retains the cumulative distribution functions (CDFs)
+        for all info annotations that are computed as a median aggregation. Keeping the
+        CDFs is useful for annotations that require calculating the median across
+        combined datasets at a later stage. Default is False.
+    :param cdf_k: Parameter controlling the accuracy vs. memory usage tradeoff when
+        retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF
+        approximation but increases memory usage and computation time. Default is 200.
     :return: Table with info annotations.
     """
     if max_n_alleles:
@@ -268,6 +277,8 @@ def run_compute_info(
             "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
         },
         n_partitions=None,
+        retain_cdfs=retain_cdfs,
+        cdf_k=cdf_k,
     )
     quasi_info_ht = ht.checkpoint(
         hl.utils.new_temp_file("quasi_compute_info", extension="ht")
@@ -283,6 +294,7 @@ def run_compute_info(
             **correct_as_annotations(mt),
         )
     )
+
     ht = correct_mt.select_rows(
         **get_as_info_expr(
             correct_mt,
@@ -290,6 +302,8 @@ def run_compute_info(
             # median_agg_fields, and array_sum_agg_fields parameters.
             **AS_INFO_AGG_FIELDS,
             treat_fields_as_allele_specific=True,
+            retain_cdfs=retain_cdfs,
+            cdf_k=cdf_k,
         )
     ).rows()
     info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
@@ -308,6 +322,8 @@ def run_compute_info(
             median_agg_fields=["AS_RAW_ReadPosRankSum", "AS_RAW_MQRankSum"],
             array_sum_agg_fields=["AS_SB_TABLE"],
             treat_fields_as_allele_specific=True,
+            retain_cdfs=retain_cdfs,
+            cdf_k=cdf_k,
         )
     ).rows()
     ht = ht.checkpoint(
@@ -801,6 +817,8 @@ def main(args):
     overwrite = args.overwrite
     transmitted_singletons = args.transmitted_singletons
     sibling_singletons = args.sibling_singletons
+    retain_cdfs = args.retain_cdfs
+    cdf_k = args.cdf_k
 
     max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
@@ -854,7 +872,13 @@ def main(args):
                     overwrite=True,
                 )
             else:
-                ht = run_compute_info(mt, max_n_alleles, min_n_alleles)
+                ht = run_compute_info(
+                    mt,
+                    max_n_alleles,
+                    min_n_alleles,
+                    retain_cdfs=retain_cdfs,
+                    cdf_k=cdf_k,
+                )
 
             if split_n_alleles is None or combine_compute_info:
                 ht = ht.naive_coalesce(args.compute_info_n_partitions)
@@ -1001,7 +1025,27 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=5000,
         type=int,
     )
-
+    compute_info_args.add_argument(
+        "--retain-cdfs",
+        help=(
+            "If True, retains the cumulative distribution functions (CDFs) for all "
+            "info annotations that are computed as a median aggregation. Keeping the "
+            "CDFs is useful for annotations that require calculating the median across"
+            "combined datasets at a later stage. Default is False."
+        ),
+        action="store_true",
+    )
+    compute_info_args.add_argument(
+        "--cdf-k",
+        help=(
+            "Parameter controlling the accuracy vs. memory usage tradeoff when "
+            "retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF "
+            "approximation but increases memory usage and computation time. Default is "
+            "200."
+        ),
+        default=200,
+        type=int,
+    )
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
