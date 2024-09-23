@@ -1037,9 +1037,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     compute_info_args.add_argument(
         "--cdf-k",
-        help="Parameter controlling the accuracy vs. memory usage tradeoff when retaining CDFs. A higher "
-        "value of `cdf_k` results in a more accurate CDF approximation but increases memory usage and "
-        "computation time. Default is 200.",
+        help=(
+            "Parameter controlling the accuracy vs. memory usage tradeoff when "
+            "retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF "
+            "approximation but increases memory usage and computation time. Default is "
+            "200."
+        ),
         default=200,
         type=int,
     )
