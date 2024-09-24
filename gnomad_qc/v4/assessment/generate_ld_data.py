@@ -112,6 +112,7 @@ def generate_ld_pruned_set(
     overwrite: bool = False,
     re_call_stats: bool = False,
     version: str = None,
+    test: bool = False,
 ) -> None:
     """
     Generate and write set of variants uncorrelated with eachother. Wrapper for hl.ld_prune()
@@ -124,6 +125,7 @@ def generate_ld_pruned_set(
     :param overwrite: Bool to write over previous outputs or not
     :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
     :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
+    :param test: Filter to test versions and/or write to test paths. 
     """
 
     for label, pops in dict(pop_data).items():
@@ -138,7 +140,7 @@ def generate_ld_pruned_set(
 
             ht = pop_mt.rows().select("pop_freq")
             ht = ht.filter(hl.is_defined(pruned_ht[ht.key]))
-            ld_path = ld_pruned_path(data_type, pop, r2, version=version)
+            ld_path = ld_pruned_path(data_type, pop, r2, version=version, test=test)
             logger.info(f"Writing pruned ht for {pop} to {ld_path} ...")
             ht.write(ld_path, overwrite)
 
@@ -153,6 +155,7 @@ def generate_ld_matrix(
     overwrite: bool = False,
     re_call_stats: bool = False,
     version: str = None,
+    test: bool = False,
 ) -> None:
     """
     Generate and write matrix of LD correlcations as Hail BlockMatrix using hl.ld_matrix. Read by generate_ld_scores_from_ld_matrix()
@@ -166,6 +169,7 @@ def generate_ld_matrix(
     :param overwrite: Bool to write over previous outputs or not
     :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
     :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
+    :param test: Filter to test versions and/or write to test paths. 
     """
     # Takes about 4 hours on 20 n1-standard-8 nodes (with SSD - not sure if necessary) per population
     # Total of ~37 hours ($400)
@@ -182,6 +186,7 @@ def generate_ld_matrix(
                     common_only=common_only,
                     adj=adj,
                     version=version,
+                    test=test,
                 ),
                 overwrite,
             )
@@ -189,7 +194,7 @@ def generate_ld_matrix(
             if data_type != "genomes_snv_sv":
                 ld = ld.sparsify_triangle()
             ld.write(
-                ld_matrix_path(data_type, pop, common_only, adj, version=version),
+                ld_matrix_path(data_type, pop, common_only, adj, version=version, test=test),
                 overwrite,
             )
 
@@ -204,6 +209,7 @@ def generate_ld_scores_from_ld_matrix(
     radius: int = 1000000,
     overwrite: bool = False,
     version: str = None,
+    test: bool = False,
 ) -> None:
     """
     Generate LD scores from Hail BlockMatrix written by generate_ld_scores_from_ld_matrix().
@@ -217,6 +223,7 @@ def generate_ld_scores_from_ld_matrix(
     :param radius: Used for bp_window_size, via Hail: Window size in base pairs (inclusive upper bound).
     :param overwrite: Bool to write over previous outputs or not
     :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
+    :param test: Filter to test versions and/or write to test paths. 
     """
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
     # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
@@ -230,6 +237,7 @@ def generate_ld_scores_from_ld_matrix(
                     common_only=common_only,
                     adj=adj,
                     version=version,
+                    test=test
                 )
             )
             ht = ht.filter(
@@ -247,14 +255,15 @@ def generate_ld_scores_from_ld_matrix(
                     min_frequency >= COMMON_FREQ,
                     adj=adj,
                     version=version,
+                    test=test
                 )
             )
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
-            out_name = ld_scores_path(data_type, pop, adj, version=version)
+            out_name = ld_scores_path(data_type, pop, adj, version=version, test=test)
             compute_and_annotate_ld_score(
-                ht, r2_adj, radius, out_name, overwrite, version=version
+                ht, r2_adj, radius, out_name, overwrite
             )
 
 
@@ -324,8 +333,10 @@ def main(args):
         sample_cols: bool = False,
     ):
         if filter_contig:
+            logger.info('Filtering to chr22...')
             mt = mt.filter_rows(mt.locus.contig == "chr22")
         if sample_cols:
+            logger.info('Downsampling all cols by 0.1...')
             mt = mt.sample_cols(0.1)
 
         return mt
@@ -339,6 +350,7 @@ def main(args):
     ) -> hl.MatrixTable:
 
         if is_hgdp:
+            logger.info('Reading in HGDP_TGP Subset...')
             mt = hgdp_tgp_subset(dense=True, public=True).mt()
             mt = mt.annotate_globals(
                 freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
@@ -353,12 +365,10 @@ def main(args):
             )
 
             if test:
-                logger.info(
-                    "Filter HGDP to Test, to chr22, and downsample cols by 0.1..."
-                )
                 mt = _ld_test_mt(mt, filter_contig=True, sample_cols=True)
 
         else:
+            logger.info('Reading in gnomAD release HT and VDS...')
             ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
             vds = basics.get_gnomad_v4_genomes_vds(
                 test=test, annotate_meta=True, release_only=True, split=True
@@ -389,6 +399,7 @@ def main(args):
     # Read in Hail MatrixTable for analysis
     mt = None
     if args.generate_ld_mt:
+        logger.info('Generating MT for LD with all genetic ancestry groups...')
         mt = _generate_ld_mt(
             version=version, is_hgdp=is_hgdp, test=test, ld_mt_path=ld_mt_path
         )
@@ -396,6 +407,7 @@ def main(args):
         mt = hl.read_matrix_table(ld_mt_path)
 
     if args.pop:
+        logger.info(f'Filtering to {args.pop}...')
         mt = mt.filter_cols(mt.meta.population_inference.pop == args.pop)
         mt = mt.checkpoint(
             ld_mt_checkpoint_path(
@@ -408,6 +420,7 @@ def main(args):
     pop_data = get_pop_counters(mt, label=label)
 
     if args.generate_ld_pruned_set:
+        logger.info('Generating LD Pruned Set of uncorrelated variants, using hl.ld_prune()...')
         generate_ld_pruned_set(
             mt=mt,
             pop_data=pop_data,
@@ -417,9 +430,11 @@ def main(args):
             overwrite=overwrite,
             re_call_stats=args.re_call_stats,
             version=version,
+            test=test,
         )
 
     if args.generate_ld_matrix:
+        logger.info('Generating Hail BlockMatrix of variants correlations to other variants, using hl.ld_matrix()...')
         generate_ld_matrix(
             mt=mt,
             pop_data=pop_data,
@@ -430,9 +445,11 @@ def main(args):
             overwrite=overwrite,
             re_call_stats=args.re_call_stats,
             version=version,
+            test=test
         )
 
     if args.generate_ld_scores:
+        logger.info('Generating in LD scores and annotating onto variant HT...')
         generate_ld_scores_from_ld_matrix(
             pop_data=pop_data,
             data_type=data_type,
@@ -442,6 +459,7 @@ def main(args):
             adj=args.adj,
             version=version,
             overwrite=overwrite,
+            test=test
         )
 
 
