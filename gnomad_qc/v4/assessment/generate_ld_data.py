@@ -1,27 +1,38 @@
+""" 
+Script to generate LD scores for gnomAD v4 Genome SNPs & Indels. Example usage:
+
+hailctl dataproc submit cluster_name generate_ld_data.py --test --overwrite --hgdp-subset --pop afr --re-call-stats \
+    --generate-ld-mt \
+    --generate-ld-pruned-set \
+    --generate-ld-matrix \
+    --generate-ld-scores
+"""
+
 import argparse
 import sys
 
-import gnomad.resources.grch37.gnomad_ld as ld_resources
 from gnomad.utils.slack import slack_notifications
 from hail.linalg import BlockMatrix
 from hail.utils import new_temp_file
 
-# from hail.utils.java import Env
-
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.release import hgdp_tgp_subset
 from gnomad_qc.v4.resources import *
 from gnomad_qc.v4.resources.ld_resources import *
-from gnomad_qc.v3.resources.release import hgdp_tgp_subset
-
-# this includes ld_resources
-
-HGDP_TGP_RELEASES
 
 COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
 
 
-def get_pop_and_subpop_counters(mt, label):
+def get_pop_counters(mt, label) -> dict:
+    """
+    Calculate and return genetic ancestry counts given an mt and column label.
+
+    :param mt: Input MT
+    :param label: Col field containing genetic ancestry information
+    :return: Dict of pop counts
+    """
+
     cut_dict = {
         f"{label}": hl.agg.filter(
             hl.is_defined(mt.meta.population_inference.pop)
@@ -36,7 +47,18 @@ def get_pop_and_subpop_counters(mt, label):
 
 def filter_mt_for_ld(
     mt, label, pop, common_only: bool = True, re_call_stats: bool = False
-):
+) -> hl.MatrixTable:
+    """
+    Filter MT to only variants and samples appropriate for LD analyses
+
+    :param mt: Input MT to filter
+    :param label: Col field containing genetic ancestry information
+    :param pop: Given genetic ancestry group to filter to
+    :param common_only: Bool of whether to filter to only common variants (>0.5%)
+    :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
+    :return: MT filtered to appropriate variants and samples
+    """
+
     frequency = COMMON_FREQ if common_only else RARE_FREQ
     # At the moment, ld_matrix OOMs above ~30M variants, so filtering all populations to 0.05% to cut down on variants
     # All work on standard machines except AFR
@@ -90,7 +112,19 @@ def generate_ld_pruned_set(
     overwrite: bool = False,
     re_call_stats: bool = False,
     version: str = None,
-):
+) -> None:
+    """
+    Generate and write set of variants uncorrelated with eachother. Wrapper for hl.ld_prune()
+
+    :param mt: Input MT to filter
+    :param pop_data: Dict of population counts
+    :param data_type: Genetic data type for exomes or genomes. Exomes are currently too sparse, only runs on genomes.
+    :param r2: via Hail: Squared correlation threshold (exclusive upper bound). Must be in the range [0.0, 1.0].
+    :param radius: Used for bp_window_size, via Hail: Window size in base pairs (inclusive upper bound).
+    :param overwrite: Bool to write over previous outputs or not
+    :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
+    :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
+    """
 
     for label, pops in dict(pop_data).items():
         for pop in pops:
@@ -119,7 +153,20 @@ def generate_ld_matrix(
     overwrite: bool = False,
     re_call_stats: bool = False,
     version: str = None,
-):
+) -> None:
+    """
+    Generate and write matrix of LD correlcations as Hail BlockMatrix using hl.ld_matrix. Read by generate_ld_scores_from_ld_matrix()
+
+    :param mt: Input MT to filter and generate LDs for
+    :param pop_data: Dict of population counts
+    :param data_type: Genetic data type for exomes or genomes. Exomes are currently too sparse, only runs on genomes.
+    :param radius: Used for bp_window_size, via Hail: Window size in base pairs (inclusive upper bound).
+    :param common_only: Bool of whether to filter to only common variants (>0.5%)
+    :param adj: Whether to use adj ("adjusted" or "passing") frequency
+    :param overwrite: Bool to write over previous outputs or not
+    :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
+    :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
+    """
     # Takes about 4 hours on 20 n1-standard-8 nodes (with SSD - not sure if necessary) per population
     # Total of ~37 hours ($400)
 
@@ -129,8 +176,12 @@ def generate_ld_matrix(
             pop_mt = filter_mt_for_ld(mt, label, pop, common_only, re_call_stats)
 
             pop_mt.rows().select("pop_freq").add_index().write(
-                ld_resources._ld_index_path(
-                    data_type, pop, common_only, adj, version=version
+                ld_index_path(
+                    data_type=data_type,
+                    pop=pop,
+                    common_only=common_only,
+                    adj=adj,
+                    version=version,
                 ),
                 overwrite,
             )
@@ -138,9 +189,7 @@ def generate_ld_matrix(
             if data_type != "genomes_snv_sv":
                 ld = ld.sparsify_triangle()
             ld.write(
-                ld_resources._ld_matrix_path(
-                    data_type, pop, common_only, adj, version=version
-                ),
+                ld_matrix_path(data_type, pop, common_only, adj, version=version),
                 overwrite,
             )
 
@@ -150,18 +199,38 @@ def generate_ld_scores_from_ld_matrix(
     data_type,
     min_frequency=0.01,
     call_rate_cutoff=0.8,
+    common_only: bool = True,
     adj: bool = False,
     radius: int = 1000000,
     overwrite: bool = False,
     version: str = None,
-):
+) -> None:
+    """
+    Generate LD scores from Hail BlockMatrix written by generate_ld_scores_from_ld_matrix().
+
+    :param pop_data: Dict of population counts
+    :param data_type: Genetic data type for exomes or genomes. Exomes are currently too sparse, only runs on genomes.
+    :param min_frequency: Lowest frequency for variants to calculate LD scores of.
+    :param call_rate_cutoff: Lowest call rate for variants to calculate LD scores of.
+    :param common_only: Bool of whether to filter to only common variants (>0.5%)
+    :param adj: Whether to use adj ("adjusted" or "passing") frequency
+    :param radius: Used for bp_window_size, via Hail: Window size in base pairs (inclusive upper bound).
+    :param overwrite: Bool to write over previous outputs or not
+    :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
+    """
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
     # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
     # mins to compute LD scores per population (~$150 total)
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
             ht = hl.read_table(
-                ld_resources._ld_index_path(data_type, pop, adj=adj, version=version)
+                ld_index_path(
+                    data_type=data_type,
+                    pop=pop,
+                    common_only=common_only,
+                    adj=adj,
+                    version=version,
+                )
             )
             ht = ht.filter(
                 (ht.pop_freq.AF >= min_frequency)
@@ -172,7 +241,7 @@ def generate_ld_scores_from_ld_matrix(
             indices = ht.idx.collect()
 
             r2 = BlockMatrix.read(
-                ld_resources._ld_matrix_path(
+                ld_matrix_path(
                     data_type,
                     pop,
                     min_frequency >= COMMON_FREQ,
@@ -184,10 +253,21 @@ def generate_ld_scores_from_ld_matrix(
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
             out_name = ld_scores_path(data_type, pop, adj, version=version)
-            compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite)
+            compute_and_annotate_ld_score(
+                ht, r2_adj, radius, out_name, overwrite, version=version
+            )
 
 
-def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite, version):
+def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite) -> None:
+    """
+    Annotate LD scores onto Hail Table containing variants and write to path.
+
+    :param ht: Hail Table of variants and LD indices
+    :param r2: via Hail: Squared correlation threshold (exclusive upper bound). Must be in the range [0.0, 1.0].
+    :param radius: Used for bp_window_size, via Hail: Window size in base pairs (inclusive upper bound).
+    :param out_name: Path to write outputs to. Designed to be output of ld_scores_path()
+    :param overwrite: Bool to write over previous outputs or not
+    """
     starts_and_stops = hl.linalg.utils.locus_windows(ht.locus, radius, _localize=False)
     r2_adj = r2_adj._sparsify_row_intervals_expr(starts_and_stops, blocks_only=False)
 
@@ -208,7 +288,11 @@ def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite, versi
 
 
 def main(args):
-    hl.init(log="/ld_assessment.log", tmp_dir="gs://gnomad-tmp-4day/ld_tmp/")
+    hl.init(
+        log="/ld_assessment.log",
+        tmp_dir="gs://gnomad-tmp-4day/ld_tmp/",
+        gcs_requester_pays_configuration="broad-mpg-gnomad",
+    )
     hl._set_flags(use_new_shuffle="1")
 
     # Only run on genomes so far, no choice to run on exomes, too sparse
@@ -216,83 +300,148 @@ def main(args):
     if args.exomes:
         raise NotImplementedError("LD Code does not work for exomes yet. Too sparse:(")
 
-    if args.hgdp_subset:
-        mt = hgdp_tgp_subset(dense=True, public=True).mt()
-        mt = mt.annotate_globals(
-            freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
+    # Define command line args used more than once
+    test = args.test
+    is_hgdp = args.hgdp_subset
+    overwrite = args.overwrite
+
+    if test and not args.re_call_stats:
+        logger.info(
+            "WARNING: Test subsets without re-called stats may result in None or inaccurate LD scores."
         )
-        mt = mt.annotate_rows(freq=mt.gnomad_freq)
-        mt = mt.annotate_cols(
-            meta=hl.struct(
-                population_inference=hl.struct(pop=mt.gnomad_population_inference.pop)
+
+    # Version is populated via ld_resources.py if None
+    version = None if not is_hgdp else "hgdp"
+
+    # Path for LD MT includes all pops by design
+    ld_mt_path = ld_mt_checkpoint_path(
+        data_type="genomes", pops="all_pops", version=version, test=test
+    )
+
+    def _ld_test_mt(
+        mt: hl.MatrixTable,
+        filter_contig: bool = False,
+        sample_cols: bool = False,
+    ):
+        if filter_contig:
+            mt = mt.filter_rows(mt.locus.contig == "chr22")
+        if sample_cols:
+            mt = mt.sample_cols(0.1)
+
+        return mt
+
+    def _generate_ld_mt(
+        version: str = version,
+        is_hgdp: bool = False,
+        test: bool = False,
+        ld_mt_path: str = ld_mt_path,
+        overwrite=overwrite,
+    ) -> hl.MatrixTable:
+
+        if is_hgdp:
+            mt = hgdp_tgp_subset(dense=True, public=True).mt()
+            mt = mt.annotate_globals(
+                freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
             )
+            mt = mt.annotate_rows(freq=mt.gnomad_freq)
+            mt = mt.annotate_cols(
+                meta=hl.struct(
+                    population_inference=hl.struct(
+                        pop=mt.gnomad_population_inference.pop
+                    )
+                )
+            )
+
+            if test:
+                logger.info(
+                    "Filter HGDP to Test, to chr22, and downsample cols by 0.1..."
+                )
+                mt = _ld_test_mt(mt, filter_contig=True, sample_cols=True)
+
+        else:
+            ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
+            vds = basics.get_gnomad_v4_genomes_vds(
+                test=test, annotate_meta=True, release_only=True, split=True
+            )
+            mt_vds = vds.variant_data
+            mt = mt_vds.annotate_globals(**hl.eval(ht_release.globals))
+
+            if test:
+                logger.info(
+                    "Filter Test VDS to Chr22, do not touch sample level information, then naive coalesce to 1000 partitions..."
+                )
+                mt = _ld_test_mt(mt, filter_contig=True, sample_cols=False)
+                mt = mt.naive_coalesce(1000)
+
+            mt = mt.annotate_rows(
+                freq=ht_release[mt.row_key].freq, filters=ht_release[mt.row_key].filters
+            )
+
+        # Select and checkpoint to speed up calculations
+        mt = mt.select_rows(mt.freq, mt.filters)
+        mt = mt.select_cols(mt.meta)
+
+        logger.info(f"Checkpoint MT to {ld_mt_path} ...")
+        mt = mt.checkpoint(ld_mt_path, overwrite=overwrite)
+
+        return mt
+
+    # Read in Hail MatrixTable for analysis
+    mt = None
+    if args.generate_ld_mt:
+        mt = _generate_ld_mt(
+            version=version, is_hgdp=is_hgdp, test=test, ld_mt_path=ld_mt_path
         )
-
-        if args.test:
-            mt = mt.filter_rows(mt.locus.contig == "chr22").sample_rows(0.1)
-            mt = mt.filter_cols(mt.meta.population_inference.pop == "afr")
-
     else:
-        ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
-        vds = basics.get_gnomad_v4_genomes_vds(
-            test=args.test, annotate_meta=True, release_only=True, split=True
-        )
-        mt_vds = vds.variant_data
-        mt = mt_vds.annotate_globals(**hl.eval(ht_release.globals))
-
-        mt = mt.annotate_rows(
-            freq=ht_release[mt.row_key].freq, filters=ht_release[mt.row_key].filters
-        )
-
-        if args.test:
-            mt = mt.filter_rows(mt.locus.contig == "chr22").sample_rows(0.1)
-            mt = mt.filter_cols(mt.meta.population_inference.pop == "afr")
-
-        # it is already in the right place for the gnomAD MT , or whatever
-        # mt = mt.annotate(pop=mt.meta.population_inference.pop)
+        mt = hl.read_matrix_table(ld_mt_path)
 
     if args.pop:
         mt = mt.filter_cols(mt.meta.population_inference.pop == args.pop)
+        mt = mt.checkpoint(
+            ld_mt_checkpoint_path(
+                data_type="genomes", pops=args.pop, version=version, test=test
+            ),
+            overwrite=overwrite,
+        )
 
-    label = "gen_anc" if not args.hgdp_subset else "pop"
-    pop_data = get_pop_and_subpop_counters(mt, label=label)
-
-    # Version is populated via ld_resources.py if None
-    version = None if not args.hgdp_subset else "hgdp"
+    label = "gen_anc" if not is_hgdp else "pop"
+    pop_data = get_pop_counters(mt, label=label)
 
     if args.generate_ld_pruned_set:
         generate_ld_pruned_set(
-            mt,
-            pop_data,
-            data_type,
-            args.r2,
-            args.radius,
-            args.overwrite,
+            mt=mt,
+            pop_data=pop_data,
+            data_type=data_type,
+            r2=args.r2,
+            radius=args.radius,
+            overwrite=overwrite,
             re_call_stats=args.re_call_stats,
             version=version,
         )
 
     if args.generate_ld_matrix:
         generate_ld_matrix(
-            mt,
-            pop_data,
-            data_type,
-            args.radius,
-            args.common_only,
-            args.adj,
-            args.overwrite,
+            mt=mt,
+            pop_data=pop_data,
+            data_type=data_type,
+            radius=args.radius,
+            common_only=args.common_only,
+            adj=args.adj,
+            overwrite=overwrite,
             re_call_stats=args.re_call_stats,
             version=version,
         )
 
     if args.generate_ld_scores:
         generate_ld_scores_from_ld_matrix(
-            pop_data,
-            data_type,
-            args.min_frequency,
-            args.min_call_rate,
-            args.adj,
-            overwrite=args.overwrite,
+            pop_data=pop_data,
+            data_type=data_type,
+            min_frequency=args.min_frequency,
+            call_rate_cutoff=args.min_call_rate,
+            common_only=args.common_only,
+            adj=args.adj,
+            version=version,
+            overwrite=overwrite,
         )
 
 
@@ -301,6 +450,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--exomes",
         help="Input MT is exomes. One of --exomes or --genomes is required.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-ld-mt",
+        help="Generate Hail MatrixTable of variants and calls to calculate LD for. ",
         action="store_true",
     )
     parser.add_argument(
