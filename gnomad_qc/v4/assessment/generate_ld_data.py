@@ -239,7 +239,7 @@ def generate_ld_scores_from_ld_matrix(
     freq_cutoff = COMMON_FREQ if common_only else RARE_FREQ
 
     logger.info(
-        f'Min frequency of {min_frequency} is {">=" if min_frequency >= my_cutoff else "<"} cutoff of {freq_cutoff}...'
+        f'Min frequency of {min_frequency} is {">=" if min_frequency >= freq_cutoff else "<"} cutoff of {freq_cutoff}...'
     )
 
     for label, pops in dict(pop_data).items():
