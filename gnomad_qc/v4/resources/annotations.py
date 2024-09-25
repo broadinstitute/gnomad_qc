@@ -117,18 +117,22 @@ def validate_vep_path(
     )
 
 
-def get_trio_stats(test: bool = False) -> VersionedTableResource:
+def get_trio_stats(
+    test: bool = False, releasable_only: bool = False
+) -> VersionedTableResource:
     """
     Get the gnomAD v4 trio stats VersionedTableResource.
 
-    :param test: Whether to use a tmp path for testing.
+    :param test: Whether to use a temporary path for testing.
+    :param releasable_only: Whether to use only releasable data.
     :return: gnomAD v4 trio stats VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}."
+                f"{'releasable.' if releasable_only else ''}trio_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
         },

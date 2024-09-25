@@ -446,6 +446,7 @@ def run_generate_trio_stats(
     vds: hl.vds.VariantDataset,
     fam_ped: hl.Pedigree,
     fam_ht: hl.Table,
+    releasable_only: bool = False,
 ) -> hl.Table:
     """
     Generate trio transmission stats from a VariantDataset and pedigree info.
@@ -453,6 +454,7 @@ def run_generate_trio_stats(
     :param vds: VariantDataset to generate trio stats from.
     :param fam_ped: Pedigree containing trio info.
     :param fam_ht: Table containing trio info.
+    :param releasable_only: Whether to only include releasable trios.
     :return: Table containing trio stats.
     """
     # Filter the VDS to autosomes.
@@ -462,6 +464,16 @@ def run_generate_trio_stats(
 
     # Filter the variant data to bi-allelic sites.
     vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
+    if releasable_only:
+        meta = vmt.cols()
+        fam_ht = fam_ht.annotate(
+            id_releasable=meta[fam_ht.key].meta.project_meta.releasable,
+            pat_releasable=meta[fam_ht.pat_id].meta.project_meta.releasable,
+            mat_releasable=meta[fam_ht.mat_id].meta.project_meta.releasable,
+        )
+        fam_ht = fam_ht.filter(
+            fam_ht.id_releasable & fam_ht.pat_releasable & fam_ht.mat_releasable
+        )
 
     # Filter the variant data and reference data to only the trios.
     vmt = filter_mt_to_trios(vmt, fam_ht)
@@ -666,6 +678,7 @@ def get_variant_qc_annotation_resources(
     over_n_alleles: Optional[bool] = None,
     combine_compute_info: bool = False,
     true_positive_type: Optional[str] = None,
+    releasable_only: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
@@ -682,6 +695,7 @@ def get_variant_qc_annotation_resources(
         produced by running --compute-info with --compute-info-split-n-alleles.
     :param true_positive_type: Type of true positive variants to use for true positive
         VCF path resource. Default is None.
+    :param releasable_only: Whether to only include releasable trios in the trio stats.
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
@@ -751,7 +765,9 @@ def get_variant_qc_annotation_resources(
     )
     trio_stats = PipelineStepResourceCollection(
         "--generate-trio-stats",
-        output_resources={"trio_stats_ht": get_trio_stats(test=test)},
+        output_resources={
+            "trio_stats_ht": get_trio_stats(test=test, releasable_only=releasable_only)
+        },
         input_resources={"identify_trios.py --finalize-ped": {"final_ped": pedigree()}},
     )
     sib_stats = PipelineStepResourceCollection(
@@ -819,6 +835,10 @@ def main(args):
     sibling_singletons = args.sibling_singletons
     retain_cdfs = args.retain_cdfs
     cdf_k = args.cdf_k
+    releasable_trios_only = args.releasable_trios_only
+
+    if releasable_trios_only and not args.generate_trio_stats:
+        parser.error("--releasable-trios-only requires --generate-trio-stats")
 
     max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
@@ -844,6 +864,7 @@ def main(args):
         over_n_alleles=over_n_alleles,
         combine_compute_info=combine_compute_info,
         true_positive_type=true_positive_type,
+        releasable_only=releasable_trios_only,
     )
     vds = get_gnomad_v4_vds(
         test=test_dataset,
@@ -926,7 +947,10 @@ def main(args):
             res = vqc_resources.generate_trio_stats
             res.check_resource_existence()
             ht = run_generate_trio_stats(
-                vds, res.final_ped.pedigree(), res.final_ped.ht()
+                vds,
+                res.final_ped.pedigree(),
+                res.final_ped.ht(),
+                releasable_only=args.releasable_trios_only,
             )
             ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
@@ -1071,6 +1095,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--generate-trio-stats", help="Calculates trio stats", action="store_true"
+    )
+    parser.add_argument(
+        "--releasable-trios-only",
+        help="Only include releasable "
+        "trios. This is only valid "
+        "when --generate-trio-stats "
+        "is true",
+        action="store_true",
     )
     parser.add_argument(
         "--generate-sibling-stats",
