@@ -837,9 +837,6 @@ def main(args):
     cdf_k = args.cdf_k
     releasable_trios_only = args.releasable_trios_only
 
-    if releasable_trios_only and not args.generate_trio_stats:
-        parser.error("--releasable-trios-only requires --generate-trio-stats")
-
     max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
         if over_split_n_alleles:
@@ -1106,7 +1103,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Calculate sibling variant sharing stats.",
         action="store_true",
     )
-
     variant_qc_annotation_args = parser.add_argument_group(
         "Variant QC annotation HT parameters"
     )
