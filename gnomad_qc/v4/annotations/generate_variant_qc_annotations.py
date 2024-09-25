@@ -1098,10 +1098,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--releasable-trios-only",
-        help="Only include releasable "
-        "trios. This is only valid "
-        "when --generate-trio-stats "
-        "is true",
+        help="Only include releasable trios. This is only valid when --generate-trio-stats is true",
         action="store_true",
     )
     parser.add_argument(
