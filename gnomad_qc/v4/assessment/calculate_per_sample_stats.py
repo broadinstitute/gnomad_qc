@@ -399,6 +399,12 @@ def get_summary_stats_filter_groups_ht(
         and variant_qc as the common filter groups. Default is False.
     :return: Table containing an ArrayExpression of filter groups for summary stats.
     """
+    if rare_variant_mode and not (rare_variants_afs or rare_variants_grpmax):
+        raise ValueError(
+            "If rare_variant_mode is True, then at least one of rare_variants_afs or "
+            "rare_variants_grpmax must be provided."
+        )
+
     # Filter to only canonical or MANE transcripts if requested and get the most
     # severe consequence for each variant.
     ht = filter_vep_transcript_csqs(
