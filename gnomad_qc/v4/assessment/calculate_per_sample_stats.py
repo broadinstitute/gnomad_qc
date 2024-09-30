@@ -535,7 +535,7 @@ def get_summary_stats_filter_groups_ht(
     # less than the maximum AF in the rare_variants_afs list or a grpmax less than the
     # maximum grpmax in the rare_variants_grpmax list. Variants with a missing AF or
     # grpmax will be also be kept to avoid filtering variants that are found in
-    # non-popmax populations.
+    # non-grpmax genetic ancestry groups.
     if rare_variant_mode:
         idx = [
             ht.filter_group_meta.index({k: str(v)}) for k, v in rare_variant_max.items()
