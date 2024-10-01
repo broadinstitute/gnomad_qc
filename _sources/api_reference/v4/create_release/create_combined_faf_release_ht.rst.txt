@@ -1,0 +1,31 @@
+gnomad_qc.v4.create_release.create_combined_faf_release_ht
+==========================================================
+
+
+Create a joint gnomAD v4 exome and genome frequency and FAF.
+
+Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
+joint frequency, a joint FAF, and the following tests comparing the two frequencies:
+
+    - Hail's contingency table test -- chi-squared or Fisher’s exact test of
+      independence depending on min cell count.
+    - Cochran–Mantel–Haenszel test -- stratified test of independence for 2x2xK
+      contingency tables.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_script_argument_parser
+   :prog: gnomad_qc.v4.create_release.create_combined_faf_release_ht.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.create_combined_faf_release_ht
+
+.. automodule:: gnomad_qc.v4.create_release.create_combined_faf_release_ht
+    :exclude-members: get_script_argument_parser

@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.vqsr &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.vqsr</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.variant_qc.vqsr</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to run VQSR on an AS-annotated Sites VCF.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">import</span> <span class="nn">hailtop.batch</span> <span class="k">as</span> <span class="nn">hb</span>
+<span class="kn">from</span> <span class="nn">hailtop.batch.job</span> <span class="kn">import</span> <span class="n">Job</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_true_positive_vcf_path</span><span class="p">,</span> <span class="n">info_vcf_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">calling_intervals</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">interval_qc_pass</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">VQSR_FEATURES</span><span class="p">,</span> <span class="n">get_variant_qc_result</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.variant_qc.import_variant_qc_vcf</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">import_variant_qc_vcf</span> <span class="k">as</span> <span class="n">import_vqsr</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span>
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<span class="n">SNP_RECALIBRATION_TRANCHE_VALUES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="mf">100.0</span><span class="p">,</span>
+    <span class="mf">99.95</span><span class="p">,</span>
+    <span class="mf">99.9</span><span class="p">,</span>
+    <span class="mf">99.8</span><span class="p">,</span>
+    <span class="mf">99.6</span><span class="p">,</span>
+    <span class="mf">99.5</span><span class="p">,</span>
+    <span class="mf">99.4</span><span class="p">,</span>
+    <span class="mf">99.3</span><span class="p">,</span>
+    <span class="mf">99.0</span><span class="p">,</span>
+    <span class="mf">98.0</span><span class="p">,</span>
+    <span class="mf">97.0</span><span class="p">,</span>
+    <span class="mf">90.0</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">INDEL_RECALIBRATION_TRANCHE_VALUES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="mf">100.0</span><span class="p">,</span>
+    <span class="mf">99.95</span><span class="p">,</span>
+    <span class="mf">99.9</span><span class="p">,</span>
+    <span class="mf">99.5</span><span class="p">,</span>
+    <span class="mf">99.0</span><span class="p">,</span>
+    <span class="mf">97.0</span><span class="p">,</span>
+    <span class="mf">96.0</span><span class="p">,</span>
+    <span class="mf">95.0</span><span class="p">,</span>
+    <span class="mf">94.0</span><span class="p">,</span>
+    <span class="mf">93.5</span><span class="p">,</span>
+    <span class="mf">93.0</span><span class="p">,</span>
+    <span class="mf">92.0</span><span class="p">,</span>
+    <span class="mf">91.0</span><span class="p">,</span>
+    <span class="mf">90.0</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<div class="viewcode-block" id="split_intervals"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.split_intervals">[docs]</a><span class="k">def</span> <span class="nf">split_intervals</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">utils</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">calling_interval_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">scatter_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">interval_padding</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">150</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Split genome into intervals to parallelize VQSR for large sample sizes.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param utils: Dictionary containing resources (file paths and arguments) to be</span>
+<span class="sd">        used to split genome.</span>
+<span class="sd">    :param calling_interval_path: Path to the calling interval list with no padding.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param scatter_count: Number of intervals to split the dataset into for scattering.</span>
+<span class="sd">    :param interval_padding: Number of bases to pad each interval by.</span>
+<span class="sd">    :return: Job object with a single output j.intervals of type ResourceGroup.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;Make </span><span class="si">{</span><span class="n">scatter_count</span><span class="si">}</span><span class="s2"> intervals&quot;&quot;&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">java_mem</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;standard&quot;</span><span class="p">)</span>  <span class="c1"># ~ 4G/core ~ 4G</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;16G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">intervals</span><span class="o">=</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;interval_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="se">{{</span><span class="s2">root</span><span class="se">}}</span><span class="s2">/</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="si">}</span><span class="s2">-scattered.interval_list&quot;</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Modes other than INTERVAL_SUBDIVISION will produce an unpredicted number</span>
+    <span class="c1"># of intervals. But we have to expect exactly the `scatter_count` number of</span>
+    <span class="c1"># output files because our workflow is not dynamic.</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -e</span>
+<span class="s2">    gatk --java-options &quot;-Xms</span><span class="si">{</span><span class="n">java_mem</span><span class="si">}</span><span class="s2">g&quot; SplitIntervals </span><span class="se">\\</span>
+<span class="s2">      -L </span><span class="si">{</span><span class="n">calling_interval_path</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">      --interval-padding </span><span class="si">{</span><span class="n">interval_padding</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">      -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">intervals</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">      -scatter </span><span class="si">{</span><span class="n">scatter_count</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">      -R </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;ref_fasta&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">      --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">      -mode INTERVAL_SUBDIVISION</span>
+<span class="s2">      &quot;&quot;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<span class="c1"># SNPs</span>
+<div class="viewcode-block" id="snps_variant_recalibrator_create_model"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator_create_model">[docs]</a><span class="k">def</span> <span class="nf">snps_variant_recalibrator_create_model</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">utils</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">use_as_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">singletons_resource_vcf</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">evaluation_interval_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">is_small_callset</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">is_large_callset</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">max_gaussians</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">6</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    First step of VQSR for SNPs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.</span>
+
+<span class="sd">    To support cohorts with more than 10,000 WGS samples, the SNP recalibration process</span>
+<span class="sd">    is broken down across genomic regions for parallel processing, and done in 3 steps:</span>
+
+<span class="sd">        - Run the recalibrator with the following additional arguments:</span>
+<span class="sd">          --sample-every-Nth-variant &lt;downsample_factor&gt; --output-model &lt;model_file&gt;</span>
+<span class="sd">        - Apply the resulting model to each genomic interval with, running the</span>
+<span class="sd">          recalibrator with the same base parameters, plus:</span>
+<span class="sd">          --input-model &lt;model-file&gt; --output-tranches-for-scatter</span>
+<span class="sd">        - Collate the resulting per-interval tranches with GatherTranches</span>
+
+<span class="sd">    The --max-gaussians parameter sets the expected number of clusters in modeling.</span>
+<span class="sd">    If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,</span>
+<span class="sd">    then the tool will tell you there is insufficient data with a No data found error</span>
+<span class="sd">    message. In this case, try decrementing the --max-gaussians value.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param sites_only_vcf: Sites only VCF file to be used to build the model.</span>
+<span class="sd">    :param utils: a dictionary containing resources (file paths) to be used to create</span>
+<span class="sd">        the model.</span>
+<span class="sd">    :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param features: List of features to be used in the SNP VQSR model.</span>
+<span class="sd">    :param singletons_resource_vcf: Optional singletons VCF to be used in</span>
+<span class="sd">        building the model.</span>
+<span class="sd">    :param evaluation_interval_path: Optional path to the evaluation interval list.</span>
+<span class="sd">    :param out_bucket: Full path to output bucket to write model and plots to.</span>
+<span class="sd">    :param is_small_callset: Whether the dataset is small. Used to set number of CPUs</span>
+<span class="sd">        for the job.</span>
+<span class="sd">    :param is_large_callset: Whether the dataset is huge. Used to set number of CPUs</span>
+<span class="sd">        for the job.</span>
+<span class="sd">    :param max_gaussians: Maximum number of Gaussians for the positive model.</span>
+<span class="sd">    :return: Job object with 2 outputs: j.model_file and j.snp_rscript_file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="s2">&quot;VQSR: SNPsVariantRecalibratorCreateModel&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;highmem&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">is_small_callset</span><span class="p">:</span>
+        <span class="n">ncpu</span> <span class="o">=</span> <span class="mi">8</span>  <span class="c1"># ~ 8G/core ~ 64G.</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ncpu</span> <span class="o">=</span> <span class="mi">16</span>  <span class="c1"># ~ 8G/core ~ 128G.</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="n">ncpu</span><span class="p">)</span>
+    <span class="n">java_mem</span> <span class="o">=</span> <span class="n">ncpu</span> <span class="o">*</span> <span class="mi">8</span> <span class="o">-</span> <span class="mi">10</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;50G&quot;</span><span class="p">)</span>
+
+    <span class="n">downsample_factor</span> <span class="o">=</span> <span class="mi">75</span> <span class="k">if</span> <span class="n">is_large_callset</span> <span class="k">else</span> <span class="mi">10</span>
+
+    <span class="n">tranche_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;-tranche </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">SNP_RECALIBRATION_TRANCHE_VALUES</span><span class="p">])</span>
+    <span class="n">an_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;-an </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">features</span><span class="p">])</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms</span><span class="si">{</span><span class="n">java_mem</span><span class="si">}</span><span class="s2">g -XX:+UseParallelGC -XX:ParallelGCThreads=</span><span class="si">{</span><span class="n">ncpu</span><span class="o">-</span><span class="mi">2</span><span class="si">}</span><span class="s2">&quot; </span><span class="se">\\</span>
+<span class="s2">          VariantRecalibrator </span><span class="se">\\</span>
+<span class="s2">          -V </span><span class="si">{</span><span class="n">sites_only_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">recalibration</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -L </span><span class="si">{</span><span class="n">evaluation_interval_path</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tranches-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --trust-all-polymorphic </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">tranche_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">an_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -mode SNP </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="s2">&quot;--use-allele-specific-annotations&quot;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">use_as_annotations</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --sample-every-Nth-variant </span><span class="si">{</span><span class="n">downsample_factor</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --output-model </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">model_file</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --max-gaussians </span><span class="si">{</span><span class="n">max_gaussians</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:hapmap,known=false,training=true,truth=true,prior=15 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;hapmap_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:omni,known=false,training=true,truth=true,prior=12 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;omni_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:1000G,known=false,training=true,truth=false,prior=10 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;one_thousand_genomes_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:dbsnp,known=true,training=false,truth=false,prior=7 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;dbsnp_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;-resource:singletons,known=true,training=true,truth=true,prior=10 </span><span class="si">{</span><span class="n">singletons_resource_vcf</span><span class="si">}</span><span class="s1">&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">singletons_resource_vcf</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --rscript-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">snp_rscript</span><span class="si">}</span>
+<span class="s2">          ls $(dirname </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">snp_rscript</span><span class="si">}</span><span class="s2">)</span>
+<span class="s2">          ln </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">snp_rscript</span><span class="si">}</span><span class="s2">.pdf </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">snp_rscript_pdf</span><span class="si">}</span>
+<span class="s2">          ln </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="si">}</span><span class="s2">.pdf </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">tranches_pdf</span><span class="si">}</span>
+<span class="s2">          &quot;&quot;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">out_bucket</span><span class="p">:</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">snp_rscript</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.features.build.RScript&quot;</span>
+        <span class="p">)</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">snp_rscript_pdf</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.features.build.pdf&quot;</span>
+        <span class="p">)</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">tranches_pdf</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.tranches.build.pdf&quot;</span>
+        <span class="p">)</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">model_file</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.model.report&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="snps_variant_recalibrator"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator">[docs]</a><span class="k">def</span> <span class="nf">snps_variant_recalibrator</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">utils</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">use_as_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">interval</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">tranche_idx</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">model_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">singletons_resource_vcf</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">max_gaussians</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Second step of VQSR for SNPs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.</span>
+
+<span class="sd">    To support cohorts with more than 10,000 WGS samples, the SNP recalibration process</span>
+<span class="sd">    is broken down across genomic regions for parallel processing, and done in 3 steps:</span>
+
+<span class="sd">        - Run the recalibrator with the following additional arguments:</span>
+<span class="sd">          --sample-every-Nth-variant &lt;downsample_factor&gt; --output-model &lt;model_file&gt;</span>
+<span class="sd">        - Apply the resulting model to each genomic interval with, running the</span>
+<span class="sd">          recalibrator with the same base parameters, plus:</span>
+<span class="sd">          --input-model &lt;model-file&gt; --output-tranches-for-scatter</span>
+<span class="sd">        - Collate the resulting per-interval tranches with GatherTranches</span>
+
+<span class="sd">    The --max-gaussians parameter sets the expected number of clusters in modeling.</span>
+<span class="sd">    If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,</span>
+<span class="sd">    then the tool will tell you there is insufficient data with a No data found error</span>
+<span class="sd">    message. In this case, try decrementing the --max-gaussians value.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param sites_only_vcf: Sites only VCF file to be used to build the model.</span>
+<span class="sd">    :param model_file: Model file to be applied.</span>
+<span class="sd">    :param utils: Dictionary containing resources (file paths).</span>
+<span class="sd">    :param out_bucket: Full path to output bucket to write model and plots to.</span>
+<span class="sd">    :param tranche_idx: Index for the tranches file.</span>
+<span class="sd">    :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param features: List of features to be used in the SNP VQSR model.</span>
+<span class="sd">    :param singletons_resource_vcf: Optional singletons VCF to include in</span>
+<span class="sd">        VariantRecalibrator.</span>
+<span class="sd">    :param interval: Genomic interval to apply the model to.</span>
+<span class="sd">    :param max_gaussians: Maximum number of Gaussians for the positive model.</span>
+<span class="sd">    :return: Job object with 2 outputs: j.recalibration (ResourceGroup) and j.tranches.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="s2">&quot;VQSR: SNPsVariantRecalibratorScattered&quot;</span><span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">mem_gb</span> <span class="o">=</span> <span class="mi">64</span>  <span class="c1"># ~ twice the sum of all input resources and input VCF sizes.</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mem_gb</span><span class="si">}</span><span class="s2">G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;20G&quot;</span><span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span><span class="n">recalibration</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.idx&quot;</span><span class="p">,</span> <span class="s2">&quot;base&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">&quot;</span><span class="p">})</span>
+
+    <span class="n">tranche_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;-tranche </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">SNP_RECALIBRATION_TRANCHE_VALUES</span><span class="p">])</span>
+    <span class="n">an_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;-an </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">features</span><span class="p">])</span>
+
+    <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms</span><span class="si">{</span><span class="n">mem_gb</span><span class="o">-</span><span class="mi">1</span><span class="si">}</span><span class="s2">g -XX:+UseParallelGC -XX:ParallelGCThreads=3&quot; </span><span class="se">\\</span>
+<span class="s2">          VariantRecalibrator </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -V </span><span class="si">{</span><span class="n">sites_only_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">recalibration</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tranches-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --trust-all-polymorphic </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">tranche_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">an_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -mode SNP </span><span class="se">\\</span>
+<span class="s2">          --max-gaussians </span><span class="si">{</span><span class="n">max_gaussians</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:hapmap,known=false,training=true,truth=true,prior=15 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;hapmap_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:omni,known=false,training=true,truth=true,prior=12 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;omni_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:1000G,known=false,training=true,truth=false,prior=10 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;one_thousand_genomes_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:dbsnp,known=true,training=false,truth=false,prior=7 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;dbsnp_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">interval</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; -L </span><span class="si">{</span><span class="n">interval</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">if</span> <span class="n">use_as_annotations</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="s2">&quot; --use-allele-specific-annotations&quot;</span>
+    <span class="k">if</span> <span class="n">model_file</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; --input-model </span><span class="si">{</span><span class="n">model_file</span><span class="si">}</span><span class="s2"> --output-tranches-for-scatter&quot;</span>
+    <span class="k">if</span> <span class="n">singletons_resource_vcf</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="p">(</span>
+            <span class="s2">&quot; -resource:singletons,known=true,training=true,truth=true,prior=10&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">singletons_resource_vcf</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">out_bucket</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">tranche_idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+                <span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">recalibration/SNPS/snps.</span><span class="si">{</span><span class="n">tranche_idx</span><span class="si">}</span><span class="s2">.tranches&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">recalibration/SNPS/snps.tranches&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<span class="c1"># INDELs</span>
+<div class="viewcode-block" id="indels_variant_recalibrator_create_model"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator_create_model">[docs]</a><span class="k">def</span> <span class="nf">indels_variant_recalibrator_create_model</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">utils</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">use_as_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">singletons_resource_vcf</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">evaluation_interval_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">is_small_callset</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">max_gaussians</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    First step of VQSR for INDELs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.</span>
+
+<span class="sd">    To support cohorts with more than 10,000 WGS samples, the INDEL recalibration</span>
+<span class="sd">    process is broken down across genomic regions for parallel processing, and done in</span>
+<span class="sd">    3 steps:</span>
+
+<span class="sd">        - Run the recalibrator with the following additional arguments:</span>
+<span class="sd">          --sample-every-Nth-variant &lt;downsample_factor&gt; --output-model &lt;model_file&gt;</span>
+<span class="sd">        - Apply the resulting model to each genomic interval with, running the</span>
+<span class="sd">          recalibrator with the same base parameters, plus:</span>
+<span class="sd">          --input-model &lt;model-file&gt; --output-tranches-for-scatter</span>
+<span class="sd">        - Collate the resulting per-interval tranches with GatherTranches</span>
+
+<span class="sd">    The --max-gaussians parameter sets the expected number of clusters in modeling.</span>
+<span class="sd">    If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,</span>
+<span class="sd">    then the tool will tell you there is insufficient data with a No data found error</span>
+<span class="sd">    message. In this case, try decrementing the --max-gaussians value</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param sites_only_vcf: Sites only VCF file to be used to build the model.</span>
+<span class="sd">    :param utils: Dictionary containing resources (file paths).</span>
+<span class="sd">    :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param features: List of features to be used in the INDEL VQSR model.</span>
+<span class="sd">    :param singletons_resource_vcf: Optional singletons VCF to be used in building the</span>
+<span class="sd">        model.</span>
+<span class="sd">    :param evaluation_interval_path: Optional path to the evaluation interval list.</span>
+<span class="sd">    :param out_bucket: Full path to output bucket to write model and plots to.</span>
+<span class="sd">    :param is_small_callset: Whether the dataset is small. Used to set number of CPUs</span>
+<span class="sd">        for the job.</span>
+<span class="sd">    :param max_gaussians: Maximum number of Gaussians for the positive model.</span>
+<span class="sd">    :return: Job object with 2 outputs: j.model_file and j.indel_rscript_file. The</span>
+<span class="sd">        latter is useful to produce the optional tranche plot.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="s2">&quot;VQSR: INDELsVariantRecalibratorCreateModel&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;highmem&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">is_small_callset</span><span class="p">:</span>
+        <span class="n">ncpu</span> <span class="o">=</span> <span class="mi">8</span>  <span class="c1"># ~ 8G/core ~ 64G</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ncpu</span> <span class="o">=</span> <span class="mi">16</span>  <span class="c1"># ~ 8G/core ~ 128G</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="n">ncpu</span><span class="p">)</span>
+    <span class="n">java_mem</span> <span class="o">=</span> <span class="n">ncpu</span> <span class="o">*</span> <span class="mi">8</span> <span class="o">-</span> <span class="mi">10</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;50G&quot;</span><span class="p">)</span>
+
+    <span class="n">downsample_factor</span> <span class="o">=</span> <span class="mi">75</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">is_small_callset</span> <span class="k">else</span> <span class="mi">10</span>
+
+    <span class="n">tranche_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-tranche </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">INDEL_RECALIBRATION_TRANCHE_VALUES</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">an_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;-an </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">features</span><span class="p">])</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms</span><span class="si">{</span><span class="n">java_mem</span><span class="si">}</span><span class="s2">g -XX:+UseParallelGC -XX:ParallelGCThreads=</span><span class="si">{</span><span class="n">ncpu</span><span class="o">-</span><span class="mi">2</span><span class="si">}</span><span class="s2">&quot; </span><span class="se">\\</span>
+<span class="s2">          VariantRecalibrator </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -V </span><span class="si">{</span><span class="n">sites_only_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">recalibration</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -L </span><span class="si">{</span><span class="n">evaluation_interval_path</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tranches-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --trust-all-polymorphic </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">tranche_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">an_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -mode INDEL </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="s2">&quot;--use-allele-specific-annotations&quot;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">use_as_annotations</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --sample-every-Nth-variant </span><span class="si">{</span><span class="n">downsample_factor</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --output-model </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">model_file</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --max-gaussians </span><span class="si">{</span><span class="n">max_gaussians</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:mills,known=false,training=true,truth=true,prior=12 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;mills_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:axiomPoly,known=false,training=true,truth=false,prior=10 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;axiom_poly_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:dbsnp,known=true,training=false,truth=false,prior=2 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;dbsnp_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;-resource:singletons,known=true,training=true,truth=true,prior=10 </span><span class="si">{</span><span class="n">singletons_resource_vcf</span><span class="si">}</span><span class="s1">&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">singletons_resource_vcf</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --rscript-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">indel_rscript</span><span class="si">}</span>
+<span class="s2">          ls $(dirname </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">indel_rscript</span><span class="si">}</span><span class="s2">)</span>
+<span class="s2">          ln </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">indel_rscript</span><span class="si">}</span><span class="s2">.pdf </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">indel_rscript_pdf</span><span class="si">}</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">out_bucket</span><span class="p">:</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">indel_rscript</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/INDELS/indels.features.build.RScript&quot;</span>
+        <span class="p">)</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+            <span class="n">j</span><span class="o">.</span><span class="n">indel_rscript_pdf</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/INDELS/indels.features.build.pdf&quot;</span>
+        <span class="p">)</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">model_file</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/INDELS/indels.model.report&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="indels_variant_recalibrator"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator">[docs]</a><span class="k">def</span> <span class="nf">indels_variant_recalibrator</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">utils</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">use_as_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">interval</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">tranche_idx</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">model_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">singletons_resource_vcf</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">max_gaussians</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Second step of VQSR for INDELs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.</span>
+
+<span class="sd">    To support cohorts with more than 10,000 WGS samples, the SNP recalibration process</span>
+<span class="sd">    is broken down across genomic regions for parallel processing, and done in 3 steps:</span>
+
+<span class="sd">        - Run the recalibrator with the following additional arguments:</span>
+<span class="sd">          --sample-every-Nth-variant &lt;downsample_factor&gt; --output-model &lt;model_file&gt;</span>
+<span class="sd">        - Apply the resulting model to each genomic interval with, running the</span>
+<span class="sd">          recalibrator with the same base parameters, plus:</span>
+<span class="sd">          --input-model &lt;model-file&gt; --output-tranches-for-scatter</span>
+<span class="sd">        - Collate the resulting per-interval tranches with GatherTranches</span>
+
+<span class="sd">    The --max-gaussians parameter sets the expected number of clusters in modeling.</span>
+<span class="sd">    If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,</span>
+<span class="sd">    then the tool will tell you there is insufficient data with a No data found error</span>
+<span class="sd">    message. In this case, try decrementing the --max-gaussians value.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param sites_only_vcf: Sites only VCF file to be used to build the model.</span>
+<span class="sd">    :param model_file: Model file to be applied.</span>
+<span class="sd">    :param utils: Dictionary containing resources (file paths).</span>
+<span class="sd">    :param out_bucket: Full path to output bucket to write model and plots to.</span>
+<span class="sd">    :param tranche_idx: Index for the tranches file.</span>
+<span class="sd">    :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param features: List of features to be used in the INDEL VQSR model.</span>
+<span class="sd">    :param singletons_resource_vcf: Optional singletons VCF to include in</span>
+<span class="sd">        VariantRecalibrator.</span>
+<span class="sd">    :param interval: Genomic interval to apply the model to.</span>
+<span class="sd">    :param max_gaussians: Maximum number of Gaussians for the positive model.</span>
+<span class="sd">    :return: Job object with 2 outputs: j.recalibration (ResourceGroup) and j.tranches.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="s2">&quot;VQSR: INDELsVariantRecalibratorScattered&quot;</span><span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">mem_gb</span> <span class="o">=</span> <span class="mi">64</span>  <span class="c1"># ~ twice the sum of all input resources and input VCF sizes</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mem_gb</span><span class="si">}</span><span class="s2">G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="s2">&quot;20G&quot;</span><span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span><span class="n">recalibration</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.idx&quot;</span><span class="p">,</span> <span class="s2">&quot;base&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">&quot;</span><span class="p">})</span>
+
+    <span class="n">tranche_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;-tranche </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">INDEL_RECALIBRATION_TRANCHE_VALUES</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">an_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;-an </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">features</span><span class="p">])</span>
+
+    <span class="n">cmd</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms</span><span class="si">{</span><span class="n">mem_gb</span><span class="o">-</span><span class="mi">1</span><span class="si">}</span><span class="s2">g -XX:+UseParallelGC -XX:ParallelGCThreads=3&quot; </span><span class="se">\\</span>
+<span class="s2">          VariantRecalibrator </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -V </span><span class="si">{</span><span class="n">sites_only_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">recalibration</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tranches-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --trust-all-polymorphic </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">tranche_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">an_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -mode INDEL </span><span class="se">\\</span>
+<span class="s2">          --max-gaussians </span><span class="si">{</span><span class="n">max_gaussians</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:mills,known=false,training=true,truth=true,prior=12 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;mills_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:axiomPoly,known=false,training=true,truth=false,prior=10 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;axiom_poly_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -resource:dbsnp,known=true,training=false,truth=false,prior=2 </span><span class="si">{</span><span class="n">utils</span><span class="p">[</span><span class="s1">&#39;dbsnp_resource_vcf&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">        &quot;&quot;&quot;</span>
+
+    <span class="k">if</span> <span class="n">interval</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; -L </span><span class="si">{</span><span class="n">interval</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">if</span> <span class="n">use_as_annotations</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="s2">&quot; --use-allele-specific-annotations&quot;</span>
+    <span class="k">if</span> <span class="n">model_file</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; --input-model </span><span class="si">{</span><span class="n">model_file</span><span class="si">}</span><span class="s2"> --output-tranches-for-scatter&quot;</span>
+    <span class="k">if</span> <span class="n">singletons_resource_vcf</span><span class="p">:</span>
+        <span class="n">cmd</span> <span class="o">+=</span> <span class="p">(</span>
+            <span class="s2">&quot; -resource:singletons,known=true,training=true,truth=true,prior=10&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">singletons_resource_vcf</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">out_bucket</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">tranche_idx</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+                <span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">recalibration/INDELS/indels.</span><span class="si">{</span><span class="n">tranche_idx</span><span class="si">}</span><span class="s2">.tranches&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span>
+                <span class="n">j</span><span class="o">.</span><span class="n">tranches</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">recalibration/INDELS/indels.tranches&quot;</span>
+            <span class="p">)</span>
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="gather_tranches"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.gather_tranches">[docs]</a><span class="k">def</span> <span class="nf">gather_tranches</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">tranches</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">],</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">disk_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval tranches outputs.</span>
+
+<span class="sd">    To support cohorts with more than 10,000 WGS samples, the SNP recalibration process</span>
+<span class="sd">    is broken down across genomic regions for parallel processing, and done in 3 steps:</span>
+
+<span class="sd">        - Run the recalibrator with the following additional arguments:</span>
+<span class="sd">          ``--sample-every-Nth-variant &lt;downsample_factor&gt; --output-model &lt;model_file&gt;``</span>
+<span class="sd">        - Apply the resulting model to each genomic interval with, running the</span>
+<span class="sd">          recalibrator with the same base parameters, plus:</span>
+<span class="sd">          ``--input-model &lt;model-file&gt; --output-tranches-for-scatter``</span>
+<span class="sd">        - Collate the resulting per-interval tranches with GatherTranches</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param tranches: Index for the tranches file.</span>
+<span class="sd">    :param mode: Recalibration mode to employ, either SNP or INDEL.</span>
+<span class="sd">    :param disk_size: Disk size to be used for the job.</span>
+<span class="sd">    :return: Job object with one output j.out_tranches.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;VQSR: </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2">GatherTranches&quot;</span><span class="p">)</span>
+    <span class="c1"># TODO: Should this switch to a GATK image?</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span>
+        <span class="s2">&quot;us.gcr.io/broad-dsde-methods/gatk-for-ccdg@sha256:9e9f105ecf3534fbda91a4f2c2816ec3edf775882917813337a8d6e18092c959&quot;</span>
+    <span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;8G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">disk_size</span><span class="si">}</span><span class="s2">G&quot;</span><span class="p">)</span>
+
+    <span class="n">inputs_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;--input </span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tranches</span><span class="p">])</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms6g&quot; </span><span class="se">\\</span>
+<span class="s2">          GatherTranches </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --mode </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">inputs_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --output </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">out_tranches</span><span class="si">}</span><span class="s2">&quot;&quot;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="apply_recalibration"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.apply_recalibration">[docs]</a><span class="k">def</span> <span class="nf">apply_recalibration</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">input_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">out_vcf_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">indels_recalibration</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">,</span>
+    <span class="n">indels_tranches</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">,</span>
+    <span class="n">snps_recalibration</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">,</span>
+    <span class="n">snps_tranches</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">ResourceFile</span><span class="p">,</span>
+    <span class="n">snp_hard_filter</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">indel_hard_filter</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">disk_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">use_as_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">scatter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">interval</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">overlap_skip</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply a score cutoff to filter variants based on a recalibration table.</span>
+
+<span class="sd">    Runs ApplyVQSR twice to apply first indel, then SNP recalibrations.</span>
+
+<span class="sd">    Targets indel_filter_level and snp_filter_level sensitivities. The tool matches</span>
+<span class="sd">    them internally to a VQSLOD score cutoff based on the model&#39;s estimated sensitivity</span>
+<span class="sd">    to a set of true variants.</span>
+
+<span class="sd">    The filter determination is not just a pass/fail process. The tool evaluates for</span>
+<span class="sd">    each variant which &quot;tranche&quot;, or slice of the dataset, it falls into in terms of</span>
+<span class="sd">    sensitivity to the truthset. Variants in tranches that fall below the specified</span>
+<span class="sd">    truth sensitivity filter level have their FILTER field annotated with the</span>
+<span class="sd">    corresponding tranche level. This results in a callset that is filtered to the</span>
+<span class="sd">    desired level but retains the information necessary to increase sensitivity</span>
+<span class="sd">    if needed.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param input_vcf: Sites only VCF file to be used.</span>
+<span class="sd">    :param out_vcf_name: Output vcf filename.</span>
+<span class="sd">    :param indels_recalibration: Input recal file (ResourceGroup) for INDELs.</span>
+<span class="sd">    :param indels_tranches: Input tranches file (ResourceFile) for INDELs.</span>
+<span class="sd">    :param snps_recalibration: Input recal file (ResourceGroup) for SNPs.</span>
+<span class="sd">    :param snps_tranches: Input tranches file (ResourceFile) for SNPs.</span>
+<span class="sd">    :param snp_hard_filter: SNP hard filter level.</span>
+<span class="sd">    :param indel_hard_filter: INDEL hard filter level.</span>
+<span class="sd">    :param disk_size: Disk size to be used for the job.</span>
+<span class="sd">    :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param scatter: Scatter index to be used in output VCF filename if running in</span>
+<span class="sd">        scattered mode.</span>
+<span class="sd">    :param interval: Genomic interval to apply the model to.</span>
+<span class="sd">    :param out_bucket: Full path to output bucket to write output(s) to.</span>
+<span class="sd">    :return: Job object with one ResourceGroup output j.output_vcf, corresponding</span>
+<span class="sd">        to a VCF with tranche annotated in the FILTER field.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">scatter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}</span><span class="s2">_vqsr_recalibrated_</span><span class="si">{</span><span class="n">scatter</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">outpath</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">apply_recalibration/scatter/&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}</span><span class="s2">_vqsr_recalibrated&quot;</span>
+        <span class="n">outpath</span> <span class="o">=</span> <span class="n">out_bucket</span>
+
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="s2">&quot;VQSR: ApplyRecalibration&quot;</span><span class="p">)</span>
+    <span class="c1"># Custom image from Lindo Nkambule with GATK and BCFtools installed</span>
+    <span class="c1"># TODO: follow up on what version and how maintained</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="s2">&quot;docker.io/lindonkambule/vqsr_gatk_bcftools_img:latest&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="s2">&quot;8G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">disk_size</span><span class="si">}</span><span class="s2">G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">output_vcf</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;vcf.gz&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz&quot;</span><span class="p">,</span> <span class="s2">&quot;vcf.gz.tbi&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz.tbi&quot;</span><span class="p">},</span>
+        <span class="n">intermediate_vcf</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;vcf.gz&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz&quot;</span><span class="p">,</span> <span class="s2">&quot;vcf.gz.tbi&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz.tbi&quot;</span><span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        gatk --java-options &quot;-Xms5g&quot; </span><span class="se">\\</span>
+<span class="s2">          ApplyVQSR </span><span class="se">\\</span>
+<span class="s2">          -O tmp.indel.recalibrated.vcf </span><span class="se">\\</span>
+<span class="s2">          -V </span><span class="si">{</span><span class="n">input_vcf</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --recal-file </span><span class="si">{</span><span class="n">indels_recalibration</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tranches-file </span><span class="si">{</span><span class="n">indels_tranches</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --truth-sensitivity-filter-level </span><span class="si">{</span><span class="n">indel_hard_filter</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --create-output-variant-index true </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;-L </span><span class="si">{</span><span class="n">interval</span><span class="si">}</span><span class="s1"> &#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">interval</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="s1">&#39;--use-allele-specific-annotations &#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">use_as_annotations</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -mode INDEL</span>
+
+<span class="s2">        gatk --java-options &quot;-Xms5g&quot; </span><span class="se">\\</span>
+<span class="s2">          ApplyVQSR </span><span class="se">\\</span>
+<span class="s2">          -O </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -V tmp.indel.recalibrated.vcf </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --recal-file </span><span class="si">{</span><span class="n">snps_recalibration</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tranches-file </span><span class="si">{</span><span class="n">snps_tranches</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --truth-sensitivity-filter-level </span><span class="si">{</span><span class="n">snp_hard_filter</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --create-output-variant-index true </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;-L </span><span class="si">{</span><span class="n">interval</span><span class="si">}</span><span class="s1"> &#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">interval</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="s1">&#39;--use-allele-specific-annotations &#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">use_as_annotations</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          -mode SNP&quot;&quot;&quot;</span>
+    <span class="p">)</span>
+
+    <span class="c1"># NOTE: An INDEL at the beginning of a chunk will overlap with the previous chunk</span>
+    <span class="c1">#  and will cause issues when trying to merge. This makes sure the INDEL is ONLY</span>
+    <span class="c1">#  in ONE of two consecutive chunks (not both).</span>
+    <span class="k">if</span> <span class="n">interval</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">overlap_skip</span><span class="p">:</span>
+        <span class="c1"># Overwrite VCF with overlap issue addressed.</span>
+        <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">                cat </span><span class="si">{</span><span class="n">interval</span><span class="si">}</span><span class="s2"> | grep -Ev &quot;^@&quot; &gt; tmp.interval</span>
+<span class="s2">                interval=$(cat tmp.interval | awk &#39;NR == 1 </span><span class="se">{{</span><span class="s2">c=$1; s=$2</span><span class="se">}}</span><span class="s2"> END </span><span class="se">{{</span><span class="s2"> print c&quot;:&quot;s&quot;-&quot;$1&quot;:&quot;$3</span><span class="se">}}</span><span class="s2">&#39;)</span>
+<span class="s2">                bcftools view -t $interval </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> --output-file </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> --output-type z</span>
+<span class="s2">                tabix -f </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span>
+<span class="s2">                df -h; pwd; du -sh $(dirname </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">)</span>
+<span class="s2">            &quot;&quot;&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">out_bucket</span><span class="p">:</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">outpath</span><span class="si">}{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="gather_vcfs"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.gather_vcfs">[docs]</a><span class="k">def</span> <span class="nf">gather_vcfs</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">input_vcfs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">hb</span><span class="o">.</span><span class="n">ResourceGroup</span><span class="p">],</span>
+    <span class="n">out_vcf_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">disk_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Job</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Combine recalibrated VCFs into a single VCF &amp; saves the output VCF to a bucket `out_bucket`.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param input_vcfs: List of VCFs to be gathered.</span>
+<span class="sd">    :param out_vcf_name: Output vcf filename.</span>
+<span class="sd">    :param disk_size: Disk size to be used for the job.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param out_bucket: Full path to output bucket to write the gathered VCF to.</span>
+<span class="sd">    :return: Job object with one ResourceGroup output j.output_vcf.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filename</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_vcf_name</span><span class="si">}</span><span class="s2">_vqsr_recalibrated&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="s2">&quot;VQSR: FinalGatherVcf&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">gatk_image</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;16G&quot;</span><span class="p">)</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">disk_size</span><span class="si">}</span><span class="s2">G&quot;</span><span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">declare_resource_group</span><span class="p">(</span>
+        <span class="n">output_vcf</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;vcf.gz&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz&quot;</span><span class="p">,</span> <span class="s2">&quot;vcf.gz.tbi&quot;</span><span class="p">:</span> <span class="s2">&quot;</span><span class="si">{root}</span><span class="s2">.vcf.gz.tbi&quot;</span><span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="n">input_cmdl</span> <span class="o">=</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s1">&#39;--input </span><span class="si">{</span><span class="n">v</span><span class="p">[</span><span class="s2">&quot;vcf.gz&quot;</span><span class="p">]</span><span class="si">}</span><span class="s1">&#39;</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">input_vcfs</span><span class="p">])</span>
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;&quot;&quot;set -euo pipefail</span>
+<span class="s2">        # --ignore-safety-checks makes a big performance difference so we include it in our invocation.</span>
+<span class="s2">        # This argument disables expensive checks that the file headers contain the same set of</span>
+<span class="s2">        # genotyped samples and that files are in order by position of first record.</span>
+<span class="s2">        cd /io</span>
+<span class="s2">        mkdir tmp/</span>
+<span class="s2">        gatk --java-options &quot;-Xms6g -Djava.io.tmpdir=`pwd`/tmp&quot; </span><span class="se">\\</span>
+<span class="s2">          GatherVcfsCloud </span><span class="se">\\</span>
+<span class="s2">          --gcs-project-for-requester-pays </span><span class="si">{</span><span class="n">gcp_billing_project</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --ignore-safety-checks </span><span class="se">\\</span>
+<span class="s2">          --gather-type BLOCK </span><span class="se">\\</span>
+<span class="s2">          </span><span class="si">{</span><span class="n">input_cmdl</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --output </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2"> </span><span class="se">\\</span>
+<span class="s2">          --tmp-dir `pwd`/tmp</span>
+
+<span class="s2">        tabix </span><span class="si">{</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">[</span><span class="s1">&#39;vcf.gz&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">out_bucket</span><span class="p">:</span>
+        <span class="n">b</span><span class="o">.</span><span class="n">write_output</span><span class="p">(</span><span class="n">j</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="make_vqsr_jobs"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.make_vqsr_jobs">[docs]</a><span class="k">def</span> <span class="nf">make_vqsr_jobs</span><span class="p">(</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">,</span>
+    <span class="n">sites_only_vcf</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">is_small_callset</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">is_large_callset</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">output_vcf_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">utils</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">out_bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">intervals</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+    <span class="n">use_as_annotations</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">gcp_billing_project</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">gatk_image</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">snp_features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">indel_features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">snp_hard_filter</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">indel_hard_filter</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">scatter_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">singleton_vcf_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">evaluation_interval_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">overlap_skip</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add jobs to Batch that perform the allele-specific VQSR variant QC.</span>
+
+<span class="sd">    :param b: Batch object to add jobs to.</span>
+<span class="sd">    :param sites_only_vcf: Path to a sites only VCF created using gnomAD</span>
+<span class="sd">        default_compute_info().</span>
+<span class="sd">    :param is_small_callset: For small callsets, we reduce the resources per job from</span>
+<span class="sd">        our default.</span>
+<span class="sd">    :param is_large_callset: For large callsets, we increase resources per job from</span>
+<span class="sd">        our default and shard our VCF to launch jobs in a scattered mode.</span>
+<span class="sd">    :param output_vcf_name: Name, without extension, to use for the output VCF file(s).</span>
+<span class="sd">    :param utils: Dictionary containing resource files and parameters to be used in VQSR.</span>
+<span class="sd">    :param out_bucket: Path to write, plots, evaluation results, and recalibrated VCF to.</span>
+<span class="sd">    :param intervals: ResourceGroup object with intervals to scatter.</span>
+<span class="sd">    :param use_as_annotations: Whether to use allele-specific annotation for VQSR.</span>
+<span class="sd">    :param gcp_billing_project: GCP billing project for requester-pays buckets.</span>
+<span class="sd">    :param gatk_image: GATK docker image.</span>
+<span class="sd">    :param snp_features: List of features to be used in the SNP VQSR model.</span>
+<span class="sd">    :param indel_features: List of features to be used in the INDEL VQSR model.</span>
+<span class="sd">    :param snp_hard_filter: SNP hard filter level.</span>
+<span class="sd">    :param indel_hard_filter: INDEL hard filter level.</span>
+<span class="sd">    :param scatter_count: Number of intervals to scatter over.</span>
+<span class="sd">    :param singleton_vcf_path: Full path to transmitted and/or sibling singletons VCF</span>
+<span class="sd">        file and its index.</span>
+<span class="sd">    :param evaluation_interval_path: Optional full path to evaluation intervals file.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Scale resources for jobs as appropriate.</span>
+    <span class="k">if</span> <span class="n">is_small_callset</span><span class="p">:</span>
+        <span class="n">small_disk</span> <span class="o">=</span> <span class="mi">50</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">is_large_callset</span><span class="p">:</span>
+        <span class="n">small_disk</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">small_disk</span> <span class="o">=</span> <span class="mi">200</span>
+
+    <span class="k">if</span> <span class="n">is_small_callset</span><span class="p">:</span>
+        <span class="n">huge_disk</span> <span class="o">=</span> <span class="mi">200</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">is_large_callset</span><span class="p">:</span>
+        <span class="n">huge_disk</span> <span class="o">=</span> <span class="mi">500</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">huge_disk</span> <span class="o">=</span> <span class="mi">2000</span>
+
+    <span class="n">snp_max_gaussians</span> <span class="o">=</span> <span class="mi">6</span>
+    <span class="n">indel_max_gaussians</span> <span class="o">=</span> <span class="mi">4</span>
+
+    <span class="c1"># If it is a large callset, run in scatter mode.</span>
+    <span class="k">if</span> <span class="n">is_large_callset</span><span class="p">:</span>
+        <span class="c1"># 1. Run SNP recalibrator in a scattered mode.</span>
+        <span class="c1"># Check if model already exists:</span>
+        <span class="k">if</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.model.report&quot;</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;Found existing model for SNPs:&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.model.report&quot;</span>
+            <span class="p">)</span>
+            <span class="n">snps_model_file</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">read_input</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/SNPS/snps.model.report&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">snps_model_file</span> <span class="o">=</span> <span class="n">snps_variant_recalibrator_create_model</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">singletons_resource_vcf</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+                <span class="n">evaluation_interval_path</span><span class="o">=</span><span class="n">evaluation_interval_path</span><span class="p">,</span>
+                <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+                <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">features</span><span class="o">=</span><span class="n">snp_features</span><span class="p">,</span>
+                <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+                <span class="n">is_small_callset</span><span class="o">=</span><span class="n">is_small_callset</span><span class="p">,</span>
+                <span class="n">is_large_callset</span><span class="o">=</span><span class="n">is_large_callset</span><span class="p">,</span>
+                <span class="n">max_gaussians</span><span class="o">=</span><span class="n">snp_max_gaussians</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">model_file</span>
+
+        <span class="n">snps_recalibrator_jobs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">snps_variant_recalibrator</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+                <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+                <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">features</span><span class="o">=</span><span class="n">snp_features</span><span class="p">,</span>
+                <span class="n">interval</span><span class="o">=</span><span class="n">intervals</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;interval_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+                <span class="n">tranche_idx</span><span class="o">=</span><span class="n">idx</span><span class="p">,</span>
+                <span class="n">model_file</span><span class="o">=</span><span class="n">snps_model_file</span><span class="p">,</span>
+                <span class="n">singletons_resource_vcf</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+                <span class="n">max_gaussians</span><span class="o">=</span><span class="n">snp_max_gaussians</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="n">snps_recalibrations</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span><span class="o">.</span><span class="n">recalibration</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">snps_recalibrator_jobs</span><span class="p">]</span>
+        <span class="n">snps_tranches</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">snps_recalibrator_jobs</span><span class="p">]</span>
+        <span class="n">snps_gathered_tranches</span> <span class="o">=</span> <span class="n">gather_tranches</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">tranches</span><span class="o">=</span><span class="n">snps_tranches</span><span class="p">,</span>
+            <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;SNP&quot;</span><span class="p">,</span>
+            <span class="n">disk_size</span><span class="o">=</span><span class="n">small_disk</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">out_tranches</span>
+
+        <span class="c1"># 2. Run INDEL recalibrator in a scattered mode.</span>
+        <span class="k">if</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_exists</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/INDELS/indels.model.report&quot;</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span>
+                <span class="s2">&quot;Found existing model for INDELs:&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/INDELS/indels.model.report&quot;</span>
+            <span class="p">)</span>
+            <span class="n">indels_model_file</span> <span class="o">=</span> <span class="n">b</span><span class="o">.</span><span class="n">read_input</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">model/INDELS/indels.model.report&quot;</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">indels_model_file</span> <span class="o">=</span> <span class="n">indels_variant_recalibrator_create_model</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">singletons_resource_vcf</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+                <span class="n">evaluation_interval_path</span><span class="o">=</span><span class="n">evaluation_interval_path</span><span class="p">,</span>
+                <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+                <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">features</span><span class="o">=</span><span class="n">indel_features</span><span class="p">,</span>
+                <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+                <span class="n">is_small_callset</span><span class="o">=</span><span class="n">is_small_callset</span><span class="p">,</span>
+                <span class="n">max_gaussians</span><span class="o">=</span><span class="n">indel_max_gaussians</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">model_file</span>
+
+        <span class="n">indels_recalibrator_jobs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">indels_variant_recalibrator</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+                <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+                <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+                <span class="n">features</span><span class="o">=</span><span class="n">indel_features</span><span class="p">,</span>
+                <span class="n">interval</span><span class="o">=</span><span class="n">intervals</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;interval_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+                <span class="n">tranche_idx</span><span class="o">=</span><span class="n">idx</span><span class="p">,</span>
+                <span class="n">model_file</span><span class="o">=</span><span class="n">indels_model_file</span><span class="p">,</span>
+                <span class="n">singletons_resource_vcf</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+                <span class="n">max_gaussians</span><span class="o">=</span><span class="n">indel_max_gaussians</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="n">indels_recalibrations</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span><span class="o">.</span><span class="n">recalibration</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">indels_recalibrator_jobs</span><span class="p">]</span>
+        <span class="n">indels_tranches</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span><span class="o">.</span><span class="n">tranches</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">indels_recalibrator_jobs</span><span class="p">]</span>
+        <span class="n">indels_gathered_tranches</span> <span class="o">=</span> <span class="n">gather_tranches</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">tranches</span><span class="o">=</span><span class="n">indels_tranches</span><span class="p">,</span>
+            <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;INDEL&quot;</span><span class="p">,</span>
+            <span class="n">disk_size</span><span class="o">=</span><span class="n">small_disk</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">out_tranches</span>
+
+        <span class="c1"># 3. Apply recalibration.</span>
+        <span class="c1"># Doesn&#39;t require too much storage in scatter mode (&lt;500MB on gnomad VCF</span>
+        <span class="c1"># for each scatter), use small_disk.</span>
+        <span class="n">scattered_vcfs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">apply_recalibration</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">input_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+                <span class="n">out_vcf_name</span><span class="o">=</span><span class="n">output_vcf_name</span><span class="p">,</span>
+                <span class="n">indels_recalibration</span><span class="o">=</span><span class="n">indels_recalibrations</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span>
+                <span class="n">indels_tranches</span><span class="o">=</span><span class="n">indels_gathered_tranches</span><span class="p">,</span>
+                <span class="n">snps_recalibration</span><span class="o">=</span><span class="n">snps_recalibrations</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span>
+                <span class="n">snps_tranches</span><span class="o">=</span><span class="n">snps_gathered_tranches</span><span class="p">,</span>
+                <span class="n">snp_hard_filter</span><span class="o">=</span><span class="n">snp_hard_filter</span><span class="p">,</span>
+                <span class="n">indel_hard_filter</span><span class="o">=</span><span class="n">indel_hard_filter</span><span class="p">,</span>
+                <span class="n">disk_size</span><span class="o">=</span><span class="n">small_disk</span><span class="p">,</span>
+                <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">scatter</span><span class="o">=</span><span class="n">idx</span><span class="p">,</span>
+                <span class="n">interval</span><span class="o">=</span><span class="n">intervals</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;interval_</span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+                <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+                <span class="n">overlap_skip</span><span class="o">=</span><span class="n">overlap_skip</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">output_vcf</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">scatter_count</span><span class="p">)</span>
+        <span class="p">]</span>
+
+        <span class="c1"># 4. Gather VCFs.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">overlap_skip</span><span class="p">:</span>
+            <span class="n">gather_vcfs</span><span class="p">(</span>
+                <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+                <span class="n">input_vcfs</span><span class="o">=</span><span class="n">scattered_vcfs</span><span class="p">,</span>
+                <span class="n">out_vcf_name</span><span class="o">=</span><span class="n">output_vcf_name</span><span class="p">,</span>
+                <span class="n">disk_size</span><span class="o">=</span><span class="n">huge_disk</span><span class="p">,</span>
+                <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+                <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+                <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Read VCF from shards. Remember to check for duplicates.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># If not is_large_callset, no need to run as scattered.</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">snps_recalibrator_job</span> <span class="o">=</span> <span class="n">snps_variant_recalibrator</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+            <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+            <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+            <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+            <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+            <span class="n">features</span><span class="o">=</span><span class="n">snp_features</span><span class="p">,</span>
+            <span class="n">singletons_resource_vcf</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+            <span class="n">max_gaussians</span><span class="o">=</span><span class="n">snp_max_gaussians</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">snps_recalibration</span> <span class="o">=</span> <span class="n">snps_recalibrator_job</span><span class="o">.</span><span class="n">recalibration</span>
+        <span class="n">snps_tranches</span> <span class="o">=</span> <span class="n">snps_recalibrator_job</span><span class="o">.</span><span class="n">tranches</span>
+
+        <span class="n">indels_variant_recalibrator_job</span> <span class="o">=</span> <span class="n">indels_variant_recalibrator</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+            <span class="n">singletons_resource_vcf</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+            <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+            <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+            <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+            <span class="n">gatk_image</span><span class="o">=</span><span class="n">gatk_image</span><span class="p">,</span>
+            <span class="n">features</span><span class="o">=</span><span class="n">indel_features</span><span class="p">,</span>
+            <span class="n">max_gaussians</span><span class="o">=</span><span class="n">indel_max_gaussians</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">indels_recalibration</span> <span class="o">=</span> <span class="n">indels_variant_recalibrator_job</span><span class="o">.</span><span class="n">recalibration</span>
+        <span class="n">indels_tranches</span> <span class="o">=</span> <span class="n">indels_variant_recalibrator_job</span><span class="o">.</span><span class="n">tranches</span>
+
+        <span class="n">apply_recalibration</span><span class="p">(</span>
+            <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+            <span class="n">input_vcf</span><span class="o">=</span><span class="n">sites_only_vcf</span><span class="p">,</span>
+            <span class="n">out_vcf_name</span><span class="o">=</span><span class="n">output_vcf_name</span><span class="p">,</span>
+            <span class="n">indels_recalibration</span><span class="o">=</span><span class="n">indels_recalibration</span><span class="p">,</span>
+            <span class="n">indels_tranches</span><span class="o">=</span><span class="n">indels_tranches</span><span class="p">,</span>
+            <span class="n">snps_recalibration</span><span class="o">=</span><span class="n">snps_recalibration</span><span class="p">,</span>
+            <span class="n">snps_tranches</span><span class="o">=</span><span class="n">snps_tranches</span><span class="p">,</span>
+            <span class="n">snp_hard_filter</span><span class="o">=</span><span class="n">snp_hard_filter</span><span class="p">,</span>
+            <span class="n">indel_hard_filter</span><span class="o">=</span><span class="n">indel_hard_filter</span><span class="p">,</span>
+            <span class="n">disk_size</span><span class="o">=</span><span class="n">huge_disk</span><span class="p">,</span>
+            <span class="n">use_as_annotations</span><span class="o">=</span><span class="n">use_as_annotations</span><span class="p">,</span>
+            <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+            <span class="n">out_bucket</span><span class="o">=</span><span class="n">out_bucket</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/vqsr.html#gnomad_qc.v4.variant_qc.vqsr.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run VQSR variant qc workflow.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">backend</span><span class="o">=</span><span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+        <span class="n">gcs_requester_pays_configuration</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">regions</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;us-central1&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">scatter_count</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">scatter_count</span>
+    <span class="n">n_partitions</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span>
+    <span class="n">transmitted_singletons</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span>
+    <span class="n">sibling_singletons</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span>
+    <span class="n">snp_hard_filter</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">snp_hard_filter</span>
+    <span class="n">indel_hard_filter</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">indel_hard_filter</span>
+    <span class="n">true_positive_type</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">overlap_skip</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overlap_skip</span>
+    <span class="k">if</span> <span class="n">transmitted_singletons</span> <span class="ow">and</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton.sibling_singleton&quot;</span>
+    <span class="k">elif</span> <span class="n">transmitted_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton&quot;</span>
+    <span class="k">elif</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">true_positive_type</span> <span class="o">=</span> <span class="s2">&quot;sibling_singleton&quot;</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Batch billing project as: </span><span class="si">%s</span><span class="s2">, and GCP billing project as: </span><span class="si">%s</span><span class="s2">}&quot;</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">batch_billing_project</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Run entire vqsr workflow, including generating and applying models.</span>
+    <span class="n">tmp_vqsr_bucket</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">out_bucket</span><span class="si">}</span><span class="s2">/&quot;</span>
+
+    <span class="n">backend</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">ServiceBackend</span><span class="p">(</span>
+        <span class="n">billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_billing_project</span><span class="p">,</span>
+        <span class="n">remote_tmpdir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day/&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">resources</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">utils</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Starting hail Batch with the project </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">batch_billing_project</span><span class="si">}</span><span class="s2">, &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;bucket </span><span class="si">{</span><span class="n">tmp_vqsr_bucket</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">calling_interval_ht</span> <span class="o">=</span> <span class="n">calling_intervals</span><span class="p">(</span>
+        <span class="n">interval_name</span><span class="o">=</span><span class="s2">&quot;union&quot;</span><span class="p">,</span>
+        <span class="n">calling_interval_padding</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">interval_qc_filter</span><span class="p">:</span>
+        <span class="n">evaluation_interval_ht</span> <span class="o">=</span> <span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">evaluation_interval_ht</span> <span class="o">=</span> <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">pass_interval_qc</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">calling_interval_filter</span><span class="p">:</span>
+        <span class="n">evaluation_interval_ht</span> <span class="o">=</span> <span class="n">calling_intervals</span><span class="p">(</span>
+            <span class="n">interval_name</span><span class="o">=</span><span class="s2">&quot;intersection&quot;</span><span class="p">,</span>
+            <span class="n">calling_interval_padding</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">evaluation_interval_ht</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">n_partitions</span> <span class="o">=</span> <span class="mi">10</span>
+        <span class="n">scatter_count</span> <span class="o">=</span> <span class="mi">10</span>
+        <span class="n">snp_hard_filter</span> <span class="o">=</span> <span class="mf">90.0</span>
+        <span class="n">indel_hard_filter</span> <span class="o">=</span> <span class="mf">90.0</span>
+        <span class="n">calling_interval_ht</span> <span class="o">=</span> <span class="n">calling_interval_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">calling_interval_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span> <span class="o">==</span> <span class="s2">&quot;chr22&quot;</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">evaluation_interval_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">evaluation_interval_ht</span> <span class="o">=</span> <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span> <span class="o">==</span> <span class="s2">&quot;chr22&quot;</span>
+            <span class="p">)</span>
+
+    <span class="c1"># Write out intervals to a temp text file.</span>
+    <span class="n">calling_interval_path</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;calling_intervals&quot;</span><span class="p">,</span> <span class="s2">&quot;intervals&quot;</span><span class="p">)</span>
+    <span class="n">int_expr</span> <span class="o">=</span> <span class="n">calling_interval_ht</span><span class="o">.</span><span class="n">interval</span>
+    <span class="n">calling_interval_ht</span> <span class="o">=</span> <span class="n">calling_interval_ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+        <span class="n">interval</span><span class="o">=</span><span class="n">int_expr</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span>
+        <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
+        <span class="o">+</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">int_expr</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+        <span class="o">+</span> <span class="s2">&quot;-&quot;</span>
+        <span class="o">+</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">int_expr</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+    <span class="n">calling_interval_ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">calling_interval_path</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">evaluation_interval_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">evaluation_interval_path</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span>
+            <span class="s2">&quot;evaluation_intervals&quot;</span><span class="p">,</span> <span class="s2">&quot;intervals&quot;</span>
+        <span class="p">)</span>
+        <span class="n">int_expr</span> <span class="o">=</span> <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">interval</span>
+        <span class="n">evaluation_interval_ht</span> <span class="o">=</span> <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+            <span class="n">interval</span><span class="o">=</span><span class="n">int_expr</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">contig</span>
+            <span class="o">+</span> <span class="s2">&quot;:&quot;</span>
+            <span class="o">+</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">int_expr</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+            <span class="o">+</span> <span class="s2">&quot;-&quot;</span>
+            <span class="o">+</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">int_expr</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+        <span class="n">evaluation_interval_ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">evaluation_interval_path</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">evaluation_interval_path</span> <span class="o">=</span> <span class="n">calling_interval_path</span>
+
+    <span class="n">singleton_vcf_path</span> <span class="o">=</span> <span class="n">get_true_positive_vcf_path</span><span class="p">(</span>
+        <span class="n">adj</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+        <span class="n">true_positive_type</span><span class="o">=</span><span class="n">true_positive_type</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">b</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;VQSR pipeline </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">batch_suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Split passed intervals into value specified in resources json.</span>
+    <span class="c1"># These are used for scattered jobs, if required.</span>
+    <span class="n">intervals_j</span> <span class="o">=</span> <span class="n">split_intervals</span><span class="p">(</span>
+        <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+        <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+        <span class="n">calling_interval_path</span><span class="o">=</span><span class="n">calling_interval_path</span><span class="p">,</span>
+        <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="n">gatk_image</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gatk_image</span><span class="p">,</span>
+        <span class="n">scatter_count</span><span class="o">=</span><span class="n">scatter_count</span><span class="p">,</span>
+        <span class="n">interval_padding</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Converts run_mode into the two booleans used later in the code.</span>
+    <span class="n">is_small_callset</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">is_large_callset</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_mode</span> <span class="o">==</span> <span class="s2">&quot;small&quot;</span><span class="p">:</span>
+        <span class="n">is_small_callset</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">run_mode</span> <span class="o">==</span> <span class="s2">&quot;large&quot;</span><span class="p">:</span>
+        <span class="n">is_large_callset</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="c1"># Configure all VQSR jobs.</span>
+    <span class="n">make_vqsr_jobs</span><span class="p">(</span>
+        <span class="n">b</span><span class="o">=</span><span class="n">b</span><span class="p">,</span>
+        <span class="n">sites_only_vcf</span><span class="o">=</span><span class="n">info_vcf_path</span><span class="p">(</span><span class="n">info_method</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">compute_info_method</span><span class="p">),</span>
+        <span class="n">is_small_callset</span><span class="o">=</span><span class="n">is_small_callset</span><span class="p">,</span>
+        <span class="n">is_large_callset</span><span class="o">=</span><span class="n">is_large_callset</span><span class="p">,</span>
+        <span class="n">output_vcf_name</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">out_vcf_name</span><span class="p">,</span>
+        <span class="n">scatter_count</span><span class="o">=</span><span class="n">scatter_count</span><span class="p">,</span>
+        <span class="n">utils</span><span class="o">=</span><span class="n">utils</span><span class="p">,</span>
+        <span class="n">out_bucket</span><span class="o">=</span><span class="n">tmp_vqsr_bucket</span><span class="p">,</span>
+        <span class="n">intervals</span><span class="o">=</span><span class="n">intervals_j</span><span class="o">.</span><span class="n">intervals</span><span class="p">,</span>
+        <span class="n">use_as_annotations</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">gcp_billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="n">gatk_image</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gatk_image</span><span class="p">,</span>
+        <span class="n">snp_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">snp_features</span><span class="p">,</span>
+        <span class="n">indel_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">indel_features</span><span class="p">,</span>
+        <span class="n">snp_hard_filter</span><span class="o">=</span><span class="n">snp_hard_filter</span><span class="p">,</span>
+        <span class="n">indel_hard_filter</span><span class="o">=</span><span class="n">indel_hard_filter</span><span class="p">,</span>
+        <span class="n">singleton_vcf_path</span><span class="o">=</span><span class="n">singleton_vcf_path</span><span class="p">,</span>
+        <span class="n">evaluation_interval_path</span><span class="o">=</span><span class="n">evaluation_interval_path</span><span class="p">,</span>
+        <span class="n">overlap_skip</span><span class="o">=</span><span class="n">overlap_skip</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Run all jobs, as loaded into the Batch b.</span>
+    <span class="n">b</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;VQSR Batch jobs executed successfully&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">load_vqsr</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">is_large_callset</span> <span class="ow">and</span> <span class="n">overlap_skip</span><span class="p">:</span>
+            <span class="n">outpath</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tmp_vqsr_bucket</span><span class="si">}</span><span class="s2">apply_recalibration/scatter/</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">out_vcf_name</span><span class="si">}</span><span class="s2">_vqsr_recalibrated_*.vcf.gz&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">outpath</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">tmp_vqsr_bucket</span><span class="si">}{</span><span class="n">args</span><span class="o">.</span><span class="n">out_vcf_name</span><span class="si">}</span><span class="s2">_vqsr_recalibrated.vcf.gz&quot;</span>
+
+        <span class="n">hts</span> <span class="o">=</span> <span class="n">import_vqsr</span><span class="p">(</span>
+            <span class="n">outpath</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span>
+            <span class="n">n_partitions</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">header_path</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">array_elements_required</span><span class="p">,</span>
+            <span class="n">is_split</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">deduplicate_check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">ht</span><span class="p">,</span> <span class="n">split</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">hts</span><span class="p">,</span> <span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">]):</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">transmitted_singletons</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span><span class="p">,</span>
+                <span class="n">sibling_singletons</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span><span class="p">,</span>
+                <span class="n">adj</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+                <span class="n">interval_qc_filter</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">interval_qc_filter</span><span class="p">,</span>
+                <span class="n">calling_interval_filter</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">calling_interval_filter</span><span class="p">,</span>
+                <span class="n">compute_info_method</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">compute_info_method</span><span class="p">,</span>
+                <span class="n">indel_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">indel_features</span><span class="p">,</span>
+                <span class="n">snp_features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">snp_features</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                <span class="n">get_variant_qc_result</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="n">split</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to overwrite data already present in the output Table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;If the dataset should be filtered to chr22 for testing.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--out-bucket&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Bucket to store VQSR outputs in.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--out-vcf-name&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Required prefix for VQSR outputs.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--model-id&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Model ID for the variant QC result HT.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--header-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Optional path to a header file to use for importing the variant QC result&quot;</span>
+            <span class="s2">&quot; VCF.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of desired partitions for output Table.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--array-elements-required&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Pass if you would like array elements required in import_vcf to be true.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gatk-image&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;us.gcr.io/broad-gatk/gatk:4.2.6.1&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;GATK Image.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--resources&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Path to .json file containing paths and information for the VQSR pipeline.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--scatter-count&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of intervals to scatter across.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--snp-hard-filter&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">99.7</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Hard filter cutoff for SNPs.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--indel-hard-filter&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">99.0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Hard filter cutoff for INDELs.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-mode&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;standard&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;small&quot;</span><span class="p">,</span> <span class="s2">&quot;standard&quot;</span><span class="p">,</span> <span class="s2">&quot;large&quot;</span><span class="p">],</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Option to pass so that the mode/resources fit the size of the database.&quot;</span>
+            <span class="s2">&quot; This affects the size of the clusters and, if --large is set, will run in&quot;</span>
+            <span class="s2">&quot; a scattered mode (one job for each partition).&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--batch-billing-project&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Hail Batch billing project.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gcp-billing-project&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Google Cloud billing project for reading requester pays buckets.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info-method&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Method of computing the INFO score to use for the variant QC features. &quot;</span>
+            <span class="s2">&quot;Default is &#39;AS&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;quasi&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;AS&quot;</span><span class="p">,</span> <span class="s2">&quot;quasi&quot;</span><span class="p">,</span> <span class="s2">&quot;set_long_AS_missing&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--adj&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use adj genotypes for transmitted/sibling singletons.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--transmitted-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Include transmitted singletons in training.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sibling-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Include sibling singletons in training.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--interval-qc-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether interval QC should be applied for training.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--calling-interval-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to filter to the intersection of Broad/DSP calling intervals with &quot;</span>
+            <span class="s2">&quot;50 bp of padding for training.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--snp-features&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Features to use in the SNP VQSR model.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">VQSR_FEATURES</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">][</span><span class="s2">&quot;snv&quot;</span><span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--indel-features&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Features to use in the indel VQSR model.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">VQSR_FEATURES</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">][</span><span class="s2">&quot;indel&quot;</span><span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overlap-skip&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Skip code to address overlaps, output sharded VCF.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--batch-suffix&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;String to add to end of batch name.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--load-vqsr&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run import_variant_qc_vcf() to load VQSR VCFs as HT&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

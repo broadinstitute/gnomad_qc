@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Script to create sample QC metadata HT for genomes.</span>
+
+<span class="sd">The main updates from v3.1 to v4.0 are due to the following updates in the HGDP + TGP</span>
+<span class="sd">subset meta:</span>
+
+<span class="sd">    - 169 samples added</span>
+<span class="sd">    - 110 samples removed</span>
+
+<span class="sd">The 169 samples added were diverse HGDP/TGP samples in v3.1 that were unintentionally</span>
+<span class="sd">removed during sample outlier detection.</span>
+
+<span class="sd">The 110 samples were removed due to the following reasons:</span>
+
+<span class="sd">    - Contamination flagged by CHARR (CHARR score stored in `freemix` column).</span>
+<span class="sd">    - Subcontinental PCA outliers within the subset.</span>
+<span class="sd">    - Updated relatedness results within the subset, re-evaluation of relatedness</span>
+<span class="sd">      inference of the subset to the rest of gnomAD release samples, and removal of any</span>
+<span class="sd">      samples that are duplicates of v4.0 exomes release samples.</span>
+
+<span class="sd">All samples impacted (169 added, 110 released) are releasable; the updates we made here</span>
+<span class="sd">were to their sample QC status (high quality vs filtered).</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">TableResource</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v3.resources.basics</span> <span class="kn">import</span> <span class="n">meta</span> <span class="k">as</span> <span class="n">v3_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta</span> <span class="k">as</span> <span class="n">v4_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta_tsv_path</span> <span class="k">as</span> <span class="n">v4_meta_tsv_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">hgdp_tgp_meta_updated</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;create_v4_genomes_sample_meta&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">N_DIFF_SAMPLES</span> <span class="o">=</span> <span class="mi">169</span> <span class="o">-</span> <span class="mi">110</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">The number of samples that have been updated between v3.1 and v4.0.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="import_updated_annotations"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht_genomes.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.import_updated_annotations">[docs]</a><span class="k">def</span> <span class="nf">import_updated_annotations</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">subset_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Import updated annotations from HGDP/TGP subset meta HT and annotate full meta HT.</span>
+
+<span class="sd">    :param ht: v3.1 genomes meta HT</span>
+<span class="sd">    :param subset_ht: Updated HGDP + TGP subset meta HT</span>
+<span class="sd">    :return: Updated v4.0 genomes meta HT</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Some HGDP/TGP samples in v3.1 meta HT have a prefix of &quot;v3.1::&quot; in the key &#39;s&#39;,</span>
+    <span class="c1"># but the project_meta.sample_id field does not have this prefix. This is used as</span>
+    <span class="c1"># a temp key to join the subset meta HT.</span>
+    <span class="n">release_v3</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">release</span><span class="p">)</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="n">ht1</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">subsets</span><span class="o">.</span><span class="n">hgdp</span> <span class="o">|</span> <span class="n">ht</span><span class="o">.</span><span class="n">subsets</span><span class="o">.</span><span class="n">tgp</span><span class="p">)</span>
+    <span class="n">ht1</span> <span class="o">=</span> <span class="n">ht1</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;genomes_meta&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">subsets</span><span class="o">.</span><span class="n">hgdp</span> <span class="o">|</span> <span class="n">ht</span><span class="o">.</span><span class="n">subsets</span><span class="o">.</span><span class="n">tgp</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;genomes_meta&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="n">ht1</span> <span class="o">=</span> <span class="n">ht1</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="n">ht1</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">sample_id</span><span class="p">)</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">subset_ht</span><span class="p">[</span><span class="n">ht1</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">subpop</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">hgdp_tgp_meta</span><span class="o">.</span><span class="n">population</span>
+    <span class="n">freemix</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">bam_metrics</span><span class="o">.</span><span class="n">freemix</span>
+    <span class="n">hard_filters</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">gnomad_sample_filters</span><span class="o">.</span><span class="n">hard_filters</span>
+    <span class="n">hard_filtered</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">gnomad_sample_filters</span><span class="o">.</span><span class="n">hard_filtered</span>
+    <span class="n">release_related</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">annot</span><span class="o">.</span><span class="n">relatedness_inference</span><span class="o">.</span><span class="n">related</span>
+        <span class="o">|</span> <span class="n">annot</span><span class="o">.</span><span class="n">gnomad_sample_filters</span><span class="o">.</span><span class="n">related_to_nonsubset</span>
+        <span class="o">|</span> <span class="n">annot</span><span class="o">.</span><span class="n">gnomad_sample_filters</span><span class="o">.</span><span class="n">v4_exome_duplicate</span>
+    <span class="p">)</span>
+    <span class="n">high_quality</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">high_quality</span>
+    <span class="n">release</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">gnomad_release</span>
+
+    <span class="n">ht1</span> <span class="o">=</span> <span class="n">ht1</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">project_meta</span><span class="o">=</span><span class="n">ht1</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">project_subpop</span><span class="o">=</span><span class="n">subpop</span><span class="p">),</span>
+        <span class="n">bam_metrics</span><span class="o">=</span><span class="n">ht1</span><span class="o">.</span><span class="n">bam_metrics</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">freemix</span><span class="o">=</span><span class="n">freemix</span><span class="p">),</span>
+        <span class="n">sample_filters</span><span class="o">=</span><span class="n">ht1</span><span class="o">.</span><span class="n">sample_filters</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">hard_filters</span><span class="o">=</span><span class="n">hard_filters</span><span class="p">,</span>
+            <span class="n">hard_filtered</span><span class="o">=</span><span class="n">hard_filtered</span><span class="p">,</span>
+            <span class="n">release_related</span><span class="o">=</span><span class="n">release_related</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">high_quality</span><span class="o">=</span><span class="n">high_quality</span><span class="p">,</span>
+        <span class="n">release</span><span class="o">=</span><span class="n">release</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht1</span> <span class="o">=</span> <span class="n">ht1</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;s&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;sample_id&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht1</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+    <span class="c1"># Update gnomAD inferred population &#39;oth&#39; to be &#39;remaining&#39;.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">population_inference</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">population_inference</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">pop</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+                <span class="n">ht</span><span class="o">.</span><span class="n">population_inference</span><span class="o">.</span><span class="n">pop</span> <span class="o">==</span> <span class="s2">&quot;oth&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;remaining&quot;</span><span class="p">,</span>
+                <span class="n">ht</span><span class="o">.</span><span class="n">population_inference</span><span class="o">.</span><span class="n">pop</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">release_v4</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">release</span><span class="p">)</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Number of genome release samples will change from </span><span class="si">%s</span><span class="s2"> in v3.1 to </span><span class="si">%s</span><span class="s2"> in v4.0&quot;</span><span class="p">,</span>
+        <span class="n">release_v3</span><span class="p">,</span>
+        <span class="n">release_v4</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">release_v4</span> <span class="o">&lt;=</span> <span class="n">release_v3</span> <span class="ow">or</span> <span class="n">release_v4</span> <span class="o">!=</span> <span class="n">release_v3</span> <span class="o">+</span> <span class="n">N_DIFF_SAMPLES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Number of release samples in v4.0 is not as expected.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/create_sample_qc_metadata_ht_genomes.html#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create updated v4 genomes sample QC metadata HT.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/create_v4_genomes_meta.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Importing v3.1 genomes meta HT...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">v3_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Importing updated HGDP + TGP meta HT...&quot;</span><span class="p">)</span>
+    <span class="n">subset_ht</span> <span class="o">=</span> <span class="n">hgdp_tgp_meta_updated</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Updating annotations...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">import_updated_annotations</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">subset_ht</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing HT and exporting TSV...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+        <span class="n">v4_meta</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">v4_meta_tsv_path</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">),</span> <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;This script is used to create the sample QC metadata HT for genomes.&quot;&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite the existing meta HT.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

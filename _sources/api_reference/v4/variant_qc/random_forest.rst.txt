@@ -1,0 +1,21 @@
+gnomad_qc.v4.variant_qc.random_forest
+=====================================
+
+Script for running random forest model on gnomAD v4 variant QC data.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.variant_qc.random_forest.get_script_argument_parser
+   :prog: gnomad_qc.v4.variant_qc.random_forest.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.variant_qc.random_forest
+
+.. automodule:: gnomad_qc.v4.variant_qc.random_forest
+    :exclude-members: get_script_argument_parser
