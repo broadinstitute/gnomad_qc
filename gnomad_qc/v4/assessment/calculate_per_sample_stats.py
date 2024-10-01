@@ -239,12 +239,13 @@ def process_test_args(
                 "for testing per-sample counts, we recommend using only --test-gene to "
                 "test that --create-filter-group-ht is working as expected."
             )
-        if test_dataset and not create_per_sample_counts:
+        if test_dataset and not (create_per_sample_counts or create_intermediate):
             err_msg = (
                 "The use of the test VDS (--test-dataset) is only relevant when also"
-                " testing per-sample counts (--create-per-sample-counts-ht), we "
-                "recommend using only --test-gene to test that --create-filter-group-ht"
-                " is working as expected."
+                " testing per-sample counts (--create-intermediate-mt-for-sample-counts"
+                "and/or --create-per-sample-counts-ht), we recommend using only "
+                "--test-gene to test that --create-filter-group-ht is working as "
+                "expected."
             )
         if err_msg:
             raise ValueError(
@@ -360,7 +361,9 @@ def get_summary_stats_filter_groups_ht(
     capture_regions: bool = False,
     vep_canonical: bool = True,
     vep_mane: bool = False,
-    rare_variants_afs: Optional[list[float]] = None,
+    rare_variants_afs: Optional[List[float]] = None,
+    rare_variants_grpmax: Optional[List[float]] = None,
+    rare_variant_mode: bool = False,
 ) -> hl.Table:
     """
     Create Table annotated with an array of booleans indicating whether a variant belongs to certain filter groups.
@@ -390,8 +393,18 @@ def get_summary_stats_filter_groups_ht(
     :param vep_mane: Whether to filter to only MANE transcripts. Default is False.
     :param rare_variants_afs: Optional list of allele frequency thresholds to use for
         rare variant filtering.
+    :param rare_variants_grpmax: Optional list of grpmax thresholds to use for rare
+        variant filtering.
+    :param rare_variant_mode: Whether to only include the rare variant filter groups
+        and variant_qc as the common filter groups. Default is False.
     :return: Table containing an ArrayExpression of filter groups for summary stats.
     """
+    if rare_variant_mode and not (rare_variants_afs or rare_variants_grpmax):
+        raise ValueError(
+            "If rare_variant_mode is True, then at least one of rare_variants_afs or "
+            "rare_variants_grpmax must be provided."
+        )
+
     # Filter to only canonical or MANE transcripts if requested and get the most
     # severe consequence for each variant.
     ht = filter_vep_transcript_csqs(
@@ -419,6 +432,8 @@ def get_summary_stats_filter_groups_ht(
 
     # Create filter expressions for LCR, variant QC filters, and rare variant AFs if
     # requested.
+    grpmax_expr = ht.grpmax
+    grpmax_expr = grpmax_expr.gnomad.AF if "gnomad" in grpmax_expr else grpmax_expr.AF
     filter_exprs = {
         "all_variants": hl.literal(True),
         **(get_capture_filter_exprs(ht) if capture_regions else {}),
@@ -427,18 +442,40 @@ def get_summary_stats_filter_groups_ht(
             filter_lcr=True,
             filter_expr=ht.filters,
             freq_expr=ht.freq[0].AF,
+            grpmax_expr=grpmax_expr,
             max_af=rare_variants_afs,
+            max_grpmax=rare_variants_grpmax,
         ),
         **csq_filter_expr,
     }
 
     # Create the metadata for all requested filter groups.
     ss_filters = deepcopy(SUM_STAT_FILTERS)
-    ss_filters["max_af"] = rare_variants_afs
+    if rare_variants_afs:
+        ss_filters["max_af"] = rare_variants_afs
+    if rare_variants_grpmax:
+        ss_filters["max_grpmax"] = rare_variants_grpmax
+
+    # If rare_variant_mode is True, then only include the rare variant filter groups
+    # and variant_qc as the common filter groups.
+    common_filters = deepcopy(COMMON_FILTERS)
+    common_filter_combos = deepcopy(COMMON_FILTER_COMBOS)
+    if rare_variant_mode:
+        common_filter_combos = []
+        rare_variant_max = {}
+        if rare_variants_afs:
+            rare_variant_max["max_af"] = max(rare_variants_afs)
+            common_filters["max_af"] = rare_variants_afs
+            common_filter_combos.append(["variant_qc", "max_af"])
+        if rare_variants_grpmax:
+            rare_variant_max["max_grpmax"] = max(rare_variants_grpmax)
+            common_filters["max_grpmax"] = rare_variants_grpmax
+            common_filter_combos.append(["variant_qc", "max_grpmax"])
+
     filter_group_meta = get_summary_stats_filter_group_meta(
         ss_filters,
-        common_filter_combos=COMMON_FILTER_COMBOS,
-        common_filter_override=COMMON_FILTERS,
+        common_filter_combos=common_filter_combos,
+        common_filter_override=common_filters,
         lof_filter_combos=LOF_FILTER_COMBOS,
         lof_filter_override=LOF_FILTERS_FOR_COMBO,
         filter_key_rename=MAP_FILTER_FIELD_TO_META,
@@ -498,7 +535,20 @@ def get_summary_stats_filter_groups_ht(
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
     # Filter to only variants that are not in low confidence regions.
-    return ht.filter(ht._no_lcr).drop("_no_lcr")
+    ht.filter(ht._no_lcr).drop("_no_lcr")
+
+    # If rare_variant_mode is True, then filter to only the variants that have an AF
+    # less than the maximum AF in the rare_variants_afs list or a grpmax less than the
+    # maximum grpmax in the rare_variants_grpmax list. Variants with a missing AF or
+    # grpmax will be also be kept to avoid filtering variants that are found in
+    # non-grpmax genetic ancestry groups.
+    if rare_variant_mode:
+        idx = [
+            ht.filter_group_meta.index({k: str(v)}) for k, v in rare_variant_max.items()
+        ]
+        ht = ht.filter(hl.any(lambda i: hl.or_else(ht.filter_groups[i], True), idx))
+
+    return ht
 
 
 def load_mt_for_sample_counts(
@@ -1144,16 +1194,16 @@ def get_pipeline_resources(
             "v4 release HT": {"release_ht": release_sites(data_type=data_type)}
         },
         output_resources={
-            "filter_groups_ht": get_summary_stats_filtering_groups(
-                data_type=data_type, test=test
-            )
+            "filter_groups_ht": get_summary_stats_filtering_groups(**res_base_args)
         },
     )
 
     # Uses `test_gene` instead of just `test` because the filter groups HT will not
     # have the same partitions as the raw VDS, so unless the test is on a specific
     # gene(s), the test will not work as expected.
-    filter_groups_ht = get_summary_stats_filtering_groups(data_type, test=test_gene)
+    filter_groups_ht = get_summary_stats_filtering_groups(
+        data_type, test=test_gene, suffix=custom_suffix
+    )
     create_intermediate = PipelineStepResourceCollection(
         "--create-intermediate-mt-for-sample-counts",
         input_resources={
@@ -1248,6 +1298,20 @@ def main(args):
     sex_chr_only = args.sex_chr_only_stats
     exomes = data_type == "exomes"
     rare_variants_afs = args.rare_variants_afs
+    rare_variants_grpmax = args.rare_variants_grpmax
+    run_rare_variant_mode = args.run_rare_variant_mode
+    custom_suffix = args.custom_suffix
+    if custom_suffix or run_rare_variant_mode:
+        custom_suffix = ("rare_variants" if run_rare_variant_mode else "") + (
+            f".{custom_suffix}" if custom_suffix else ""
+        )
+    if run_rare_variant_mode and (
+        create_per_sample_counts or combine_chr_stats or aggregate_stats
+    ):
+        raise NotImplementedError(
+            "Running rare variant mode with create_per_sample_counts, "
+            "combine_chr_stats, or aggregate_stats is not implemented yet."
+        )
 
     if autosomes_only and sex_chr_only:
         raise ValueError(
@@ -1292,7 +1356,7 @@ def main(args):
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
         overwrite=overwrite,
-        custom_suffix=args.custom_suffix,
+        custom_suffix=custom_suffix,
     )
     meta_ht = per_sample_stats_resources.meta_ht.ht()
 
@@ -1323,6 +1387,8 @@ def main(args):
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
                 rare_variants_afs=rare_variants_afs,
+                rare_variants_grpmax=rare_variants_grpmax,
+                rare_variant_mode=run_rare_variant_mode,
             ).write(res.filter_groups_ht.path, overwrite=overwrite)
 
         if create_intermediate:
@@ -1478,6 +1544,17 @@ if __name__ == "__main__":
         help="Data type (exomes or genomes) to produce summary stats for.",
     )
     parser.add_argument(
+        "--run-rare-variant-mode",
+        help=(
+            "Run in rare variant mode. This will filter to variants with "
+            "AF < max(--rare-variants-afs) or grpmax < max(--rare-variants-grpmax)."
+            "It also uses the max AFs and max grpmax cutoffs as common filters in the "
+            "filter groups to get all filtering stratifications by AF and grpmax "
+            "cutoff."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
         "--create-filter-group-ht",
         help="Create Table of filter groups for summary stats.",
         action="store_true",
@@ -1534,9 +1611,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--rare-variants-afs",
+        nargs="+",
         type=float,
         default=SUM_STAT_FILTERS["max_af"],
         help="The allele frequency threshold to use for rare variants.",
+    )
+    parser.add_argument(
+        "--rare-variants-grpmax",
+        type=float,
+        nargs="+",
+        help="The genetic ancestry group max allele frequency threshold to use for rare variants.",
     )
     parser.add_argument(
         "--vep-canonical",
