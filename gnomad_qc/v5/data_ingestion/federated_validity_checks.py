@@ -6,9 +6,7 @@ import logging
 import hail as hl
 from gnomad.assessment.validity_checks import summarize_variants
 from gnomad.resources.grch38.gnomad import public_release
-
 from gnomad_qc.v5.resources.basics import get_logging_path
-
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("federated_validity_checks")
