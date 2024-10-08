@@ -1,6 +1,7 @@
 """Script containing generic resources."""
 
 from gnomad.resources.resource_utils import VariantDatasetResource
+from gnomad_qc.v5.resources.constants import CURRENT_VERSION
 
 # v5 DRAGEN TGP test VDS.
 dragen_tgp_vds = VariantDatasetResource(
@@ -8,8 +9,7 @@ dragen_tgp_vds = VariantDatasetResource(
 )
 
 
-# TODO: Change default to CURRENT_VERSION.
-def qc_temp_prefix(version: str = "5.0") -> str:
+def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     """
     Return path to temporary QC bucket.
 
@@ -19,8 +19,7 @@ def qc_temp_prefix(version: str = "5.0") -> str:
     return f"gs://gnomad-tmp/gnomad.genomes.v{version}.qc_data/"
 
 
-# TODO: Change default to CURRENT_VERSION.
-def get_logging_path(name: str, version: str = "5.0") -> str:
+def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
     """
     Create a path for Hail log files.
 

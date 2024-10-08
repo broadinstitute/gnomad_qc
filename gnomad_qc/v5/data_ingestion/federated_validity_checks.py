@@ -28,6 +28,7 @@ def main(args):
         ht = public_release(data_type="exomes").ht()
 
         if test_n_partitions:
+            logger.info("Filtering to %d partitions.", test_n_partitions)
             ht = ht._filter_partitions(range(test_n_partitions))
 
         expected_contigs = [
