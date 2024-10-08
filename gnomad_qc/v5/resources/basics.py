@@ -1,6 +1,7 @@
 """Script containing generic resources."""
 
 from gnomad.resources.resource_utils import VariantDatasetResource
+
 from gnomad_qc.v5.resources.constants import CURRENT_VERSION
 
 # v5 DRAGEN TGP test VDS.
