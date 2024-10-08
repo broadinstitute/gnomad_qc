@@ -4,7 +4,6 @@ import argparse
 import logging
 
 import hail as hl
-
 from gnomad.assessment.validity_checks import summarize_variants
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad_qc.v5.resources.basics import get_logging_path
