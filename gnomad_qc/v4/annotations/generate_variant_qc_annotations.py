@@ -23,6 +23,7 @@ from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad.variant_qc.random_forest import median_impute_features
+from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
@@ -481,6 +482,7 @@ def run_generate_trio_stats(
     rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
 
     mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
+    mt = mt.checkpoint(hl.utils.new_temp_file("trio_stats_dense", "mt"), overwrite=True)
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
