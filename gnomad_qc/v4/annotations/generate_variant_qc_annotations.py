@@ -23,7 +23,6 @@ from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad.variant_qc.random_forest import median_impute_features
-from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
