@@ -557,7 +557,7 @@ def create_variant_qc_annotation_ht(
             m_info_ht = ht.select("variant_type", **ht[m])
             m_info_ht = median_impute_features(
                 m_info_ht, {"variant_type": m_info_ht.variant_type}
-            ).checkpoint(hl.utils.new_temp_file("median_impute"), overwrite=True)
+            ).checkpoint(hl.utils.new_temp_file("median_impute", "ht"))
             feature_imputed[m] = m_info_ht[ht.key]
             feature_medians[m] = hl.eval(m_info_ht.feature_medians)
 
@@ -617,9 +617,7 @@ def create_variant_qc_annotation_ht(
     )
 
     ht = ht.repartition(n_partitions, shuffle=False)
-    ht = ht.checkpoint(
-        hl.utils.new_temp_file("variant_qc_annotations", "ht"), overwrite=True
-    )
+    ht = ht.checkpoint(hl.utils.new_temp_file("variant_qc_annotations", "ht"))
     ht.describe()
 
     summary = ht.group_by(
@@ -662,7 +660,6 @@ def get_tp_ht_for_vcf_export(
         filtered_ht = ht.filter(filter_expr).select().select_globals()
         filtered_ht = filtered_ht.checkpoint(
             hl.utils.new_temp_file("true_positive_variants", "ht"),
-            overwrite=True,
         )
         logger.info(
             "True positive %s Table for VCF export contains %d variants",
