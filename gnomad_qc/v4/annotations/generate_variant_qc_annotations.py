@@ -481,7 +481,7 @@ def run_generate_trio_stats(
     rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
 
     mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
-    mt = mt.checkpoint(hl.utils.new_temp_file("trio_stats_dense", "mt"), overwrite=True)
+    mt = mt.checkpoint(hl.utils.new_temp_file("trios_dense", "mt"))
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
