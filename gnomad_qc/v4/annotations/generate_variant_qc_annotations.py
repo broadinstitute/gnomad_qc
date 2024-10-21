@@ -479,9 +479,11 @@ def run_generate_trio_stats(
     # Filter the variant data and reference data to only the trios.
     vmt = filter_mt_to_trios(vmt, fam_ht)
     rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
+    vds = hl.vds.VariantDataset(reference_data=rmt, variant_data=vmt).checkpoint(
+        hl.utils.new_temp_file("trios", "vds")
+    )
 
-    mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
-    mt = mt.checkpoint(hl.utils.new_temp_file("trios_dense", "mt"))
+    mt = hl.vds.to_dense_mt(vds)
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
