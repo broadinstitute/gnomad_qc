@@ -154,7 +154,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--missingness-threshold",
         help=(
-            "Upper cutoff for allowed amount of missingness. MIssingness above this value will be flagged as 'FAILED'. Default is 0.50."
+            "Upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'. Default is 0.50."
         ),
         type=float,
         default=0.50,
