@@ -53,7 +53,8 @@ def check_missingness(
     # missingness_dict.update(check_array_struct_missingness(ht))
     missingness_dict.update(check_array_struct_missingness(ht))
 
-    # Report whether or not each metric pass or fails the missingness check based on the missingness_threshold.
+    # Report whether or not each metric pass or fails the missingness check
+    # based on the missingness_threshold.
     for field, missingness in missingness_dict.items():
         if missingness > missingness_threshold:
             logger.info(
