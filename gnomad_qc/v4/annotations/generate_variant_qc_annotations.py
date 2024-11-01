@@ -9,7 +9,7 @@ from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_i
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.resources.resource_utils import TableResource
-from gnomad.sample_qc.relatedness import filter_vds_to_trios
+from gnomad.sample_qc.relatedness import filter_to_trios
 from gnomad.utils.annotations import annotate_adj, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -473,7 +473,7 @@ def run_generate_trio_stats(
         )
 
     # Filter the variant data and reference data to only the trios.
-    vds = filter_vds_to_trios(vds, fam_ht)
+    vds = filter_to_trios(vds, fam_ht)
 
     vmt = vds.variant_data
     rmt = vds.reference_data
