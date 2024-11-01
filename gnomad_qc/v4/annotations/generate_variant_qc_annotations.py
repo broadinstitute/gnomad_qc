@@ -9,7 +9,7 @@ from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_i
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.resources.resource_utils import TableResource
-from gnomad.sample_qc.relatedness import filter_mt_to_trios
+from gnomad.sample_qc.relatedness import filter_to_trios
 from gnomad.utils.annotations import annotate_adj, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -459,14 +459,10 @@ def run_generate_trio_stats(
     """
     # Filter the VDS to autosomes.
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
-    vmt = vds.variant_data
-    rmt = vds.reference_data
 
-    # Filter the variant data to bi-allelic sites.
-    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
     if releasable_only:
         logger.info("Filtering to only releasable trios...")
-        meta = vmt.cols()
+        meta = vds.variant_data.cols()
         fam_ht = fam_ht.annotate(
             id_releasable=meta[fam_ht.key].meta.project_meta.releasable,
             pat_releasable=meta[fam_ht.pat_id].meta.project_meta.releasable,
@@ -477,11 +473,18 @@ def run_generate_trio_stats(
         )
 
     # Filter the variant data and reference data to only the trios.
-    vmt = filter_mt_to_trios(vmt, fam_ht)
-    rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
+    vds = filter_to_trios(vds, fam_ht)
 
-    mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
-    mt = mt.checkpoint(hl.utils.new_temp_file("trios_dense", "mt"))
+    vmt = vds.variant_data
+    rmt = vds.reference_data
+
+    # Filter the variant data to bi-allelic sites.
+    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
+
+    vds = hl.vds.VariantDataset(reference_data=rmt, variant_data=vmt)
+
+    mt = hl.vds.to_dense_mt(vds)
+
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
