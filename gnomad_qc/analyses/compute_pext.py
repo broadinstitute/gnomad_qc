@@ -151,14 +151,14 @@ def get_pipeline_resources(
         "--annotation-level",
         output_resources={
             "annotation_level_pext_ht": get_pext(
-                "annotation_level", gtex_version, test
+                "annotation_level", gtex_version, test=test
             ),
         },
     )
     base_level = PipelineStepResourceCollection(
         "--base-level",
         output_resources={
-            "base_pext_ht": get_pext("base_level", gtex_version, test),
+            "base_pext_ht": get_pext("base_level", gtex_version, test=test),
         },
     )
     gnomad_exomes = PipelineStepResourceCollection(
@@ -167,7 +167,7 @@ def get_pipeline_resources(
             "gnomad exomes HT": {"gnomad_exomes_ht": gnomad_exomes},
         },
         output_resources={
-            "gnomad_exomes_pext_ht": get_pext("exomes", gtex_version, test),
+            "gnomad_exomes_pext_ht": get_pext("exomes", gtex_version, test=test),
         },
     )
     gnomad_genomes = PipelineStepResourceCollection(
@@ -176,14 +176,26 @@ def get_pipeline_resources(
             "gnomad genomes HT": {"gnomad_genomes_ht": gnomad_genomes},
         },
         output_resources={
-            "gnomad_genomes_pext_ht": get_pext("genomes", gtex_version, test),
+            "gnomad_genomes_pext_ht": get_pext("genomes", gtex_version, test=test),
         },
     )
     browser_ht = PipelineStepResourceCollection(
         "--browser-ht",
         pipeline_input_steps=[base_level],
         output_resources={
-            "browser_pext_ht": get_pext("browser", gtex_version, test),
+            "browser_pext_ht": get_pext("browser", gtex_version, test=test),
+        },
+    )
+    export_tsv = PipelineStepResourceCollection(
+        "--export-tsv",
+        pipeline_input_steps=[annotation_level, base_level],
+        output_resources={
+            "pext_base_tsv": get_pext(
+                "base_level", gtex_version, suffix="tsv.gz", test=test
+            ),
+            "pext_annotation_tsv": get_pext(
+                "annotation_level", gtex_version, suffix="tsv.gz", test=test
+            ),
         },
     )
 
@@ -195,6 +207,7 @@ def get_pipeline_resources(
             "gnomad_exomes": gnomad_exomes,
             "gnomad_genomes": gnomad_genomes,
             "browser_ht": browser_ht,
+            "export_tsv": export_tsv,
         }
     )
 
@@ -256,13 +269,14 @@ def main(args):
     if test:
         ht, tx_mt = filter_to_test(ht, tx_mt)
 
-    logger.info(
-        "Summarizing transcript expression for GTEx version %s...",
-        gtex_version,
-    )
-    tx_ht = summarize_transcript_expression(tx_mt).checkpoint(
-        new_temp_file(f"{f'test_' if test else ''}tx_ht", "ht"), overwrite=overwrite
-    )
+    if annotation_level or args.base_level:
+        logger.info(
+            "Summarizing transcript expression for GTEx version %s...",
+            gtex_version,
+        )
+        tx_ht = summarize_transcript_expression(tx_mt).checkpoint(
+            new_temp_file(f"{f'test_' if test else ''}tx_ht", "ht"), overwrite=overwrite
+        )
 
     if annotation_level:
         logger.info("Creating annotation-level pext scores...")
@@ -338,6 +352,15 @@ def main(args):
             res.browser_pext_ht.path, overwrite=overwrite
         )
 
+    if args.export_tsv:
+        logger.info("Exporting pext Hail Tables to TSVs...")
+        res = pext_res.export_tsv
+        res.check_resource_existence()
+
+        for ht in [res.base_pext_ht.ht(), res.annotation_level_pext_ht.ht()]:
+            ht = ht.annotate(**{k: ht[k].expression_proportion for k in ht.tissues})
+            ht.export(res.pext_base_tsv)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -406,6 +429,11 @@ if __name__ == "__main__":
         ),
         type=int,
         default=100,
+    )
+    parser.add_argument(
+        "--export-tsv",
+        help="Export pext Hail Tables to TSVs.",
+        action="store_true",
     )
 
     args = parser.parse_args()

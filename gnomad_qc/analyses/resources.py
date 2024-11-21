@@ -1,7 +1,7 @@
 """Script containing gnomAD analysis resources."""
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 from gnomad.resources.resource_utils import TableResource
 
@@ -35,8 +35,9 @@ def _analysis_root(
 def get_pext(
     name: str = "base_level",
     gtex_version: str = "v10",
+    suffix: str = "ht",
     test: bool = False,
-) -> TableResource:
+) -> Union[TableResource, str]:
     """
     Get pext annotation file.
 
@@ -44,13 +45,17 @@ def get_pext(
         Must be one of ["annotation_level", "base_level", "exomes", "genomes",
         "browser"].
     :param gtex_version: GTEx version. Default is "v10".
+    :param suffix: Suffix of the pext annotation file. Default is "ht".
     :param test: Whether to use a tmp path for analysis of the test dataset instead of
         the full dataset. Default is False.
-    :return: Pext annotation file.
+    :return: Pext annotation path or TableResource.
     """
     version = f"gtex_{gtex_version}"
-    return TableResource(
-        path=(
-            f"{_analysis_root('pext', version=version, test=test)}/gnomad.pext.{version}.{name}.ht"
-        )
+    path = (
+        f"{_analysis_root('pext', version=version, test=test)}/gnomad.pext."
+        f"{version}.{name}.{suffix}"
     )
+    if suffix == "ht":
+        return TableResource(path=path)
+    else:
+        return path
