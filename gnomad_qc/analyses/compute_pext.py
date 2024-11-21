@@ -358,7 +358,9 @@ def main(args):
         res.check_resource_existence()
 
         for ht in [res.base_pext_ht.ht(), res.annotation_level_pext_ht.ht()]:
-            ht = ht.annotate(**{k: ht[k].expression_proportion for k in ht.tissues})
+            ht = ht.annotate(
+                **{k: ht[k].expression_proportion for k in hl.eval(ht.tissues)}
+            )
             ht.export(res.pext_base_tsv)
 
 
