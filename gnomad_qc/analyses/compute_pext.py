@@ -357,11 +357,16 @@ def main(args):
         res = pext_res.export_tsv
         res.check_resource_existence()
 
-        for ht in [res.base_pext_ht.ht(), res.annotation_level_pext_ht.ht()]:
+        hts = [
+            (res.base_pext_ht.ht(), res.pext_base_tsv),
+            (res.annotation_level_pext_ht.ht(), res.pext_annotation_tsv),
+        ]
+
+        for ht, tsv_path in hts:
             ht = ht.annotate(
                 **{k: ht[k].expression_proportion for k in hl.eval(ht.tissues)}
             )
-            ht.export(res.pext_base_tsv)
+            ht.export(tsv_path)
 
 
 if __name__ == "__main__":
