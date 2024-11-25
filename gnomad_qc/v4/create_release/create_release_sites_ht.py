@@ -6,7 +6,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import SUBSETS
@@ -21,6 +21,7 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
+from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_info as get_info_v3
@@ -335,7 +336,9 @@ def custom_joint_faf_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
+def custom_freq_select(
+    ht: hl.Table, data_type: str, **_
+) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from both 'gnomad' and 'non_ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
 
@@ -387,7 +390,7 @@ def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
 
 
 def custom_region_flags_select(
-    ht: hl.Table, data_type: str
+    ht: hl.Table, data_type: str, **_
 ) -> Dict[str, hl.expr.Expression]:
     """
     Select region flags for release.
@@ -470,7 +473,9 @@ def custom_filters_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]
     return selects
 
 
-def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
+def custom_info_select(
+    ht: hl.Table, data_type: str, config
+) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
 
@@ -483,7 +488,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     :return: Select expression dict.
     """
     # Create a dict of the fields from the filters HT that we want to add to the info.
-    filters_ht = get_config(data_type=data_type).get("filters")["ht"]
+    filters_ht = config.get("filters")["ht"]
 
     if data_type == "exomes":
         # For more information on the selected compute_info_method, please see the
@@ -510,7 +515,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
     # Create a dict of the fields from the freq HT that we want to add to the info.
-    freq_ht = get_config(data_type=data_type).get("freq")["ht"]
+    freq_ht = config.get("freq")["ht"]
     # TODO: will change back to 'inbreeding_coeff' once we have the new freq_ht
     if data_type == "exomes":
         freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
@@ -571,9 +576,10 @@ def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
+# TODO: Move all below functions to create_release_utils.py after approval.
 def get_select_global_fields(
     ht: hl.Table,
-    data_type: str,
+    config: Dict[str, Dict[str, Any]],
     tables_for_join: List[str] = TABLES_FOR_RELEASE,
 ) -> Dict[str, hl.expr.Expression]:
     """
@@ -586,24 +592,27 @@ def get_select_global_fields(
         only custom_select_globals.
 
     :param ht: Final joined HT with globals.
-    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
+    :param config: Dictionary with configuration options for each dataset. Expects the
+        dataset name (matching values in `tables_for_join`) as the key and a dictionary
+        of options as the value, where the options include any of the following keys:
+        'select_globals', 'custom_globals_select', 'global_name'.
     :param tables_for_join: List of tables to join into final release HT.
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
     select_globals = {}
     for t in tables_for_join:
-        config = get_config(data_type=data_type).get(t)
-        if "select_globals" in config:
-            select_globals = get_select_fields(config["select_globals"], ht)
-        if "custom_globals_select" in config:
-            custom_globals_select_fn = config["custom_globals_select"]
+        t_config = config.get(t)
+        if "select_globals" in t_config:
+            select_globals = get_select_fields(t_config["select_globals"], ht)
+        if "custom_globals_select" in t_config:
+            custom_globals_select_fn = t_config["custom_globals_select"]
             select_globals = {
                 **select_globals,
                 **custom_globals_select_fn(ht),
             }
-        if "global_name" in config:
-            global_name = config.get("global_name")
+        if "global_name" in t_config:
+            global_name = t_config.get("global_name")
             select_globals = {global_name: hl.struct(**select_globals)}
         t_globals.append(select_globals)
 
@@ -636,66 +645,80 @@ def get_select_fields(
     return select_fields
 
 
-def get_final_ht_fields(ht: hl.Table) -> Dict[str, List[str]]:
+def get_final_ht_fields(
+    ht: hl.Table,
+    schema: Dict[str, List[str]] = FINALIZED_SCHEMA,
+) -> Dict[str, List[str]]:
     """
     Get the final fields for the release HT.
 
-    Create a dictionary of lists of fields that are in the FINALIZED_SCHEMA and are
+    Create a dictionary of lists of fields that are in the `schema` and are
     present in the HT. If a field is not present in the HT, log a warning.
 
     :param ht: Hail Table.
+    :param schema: Schema for the release HT.
     :return: Dict of final fields for the release HT.
     """
     final_fields = {"rows": [], "globals": []}
-    for field in FINALIZED_SCHEMA["rows"]:
+    for field in schema["rows"]:
         if field in ht.row:
             final_fields["rows"].append(field)
         else:
-            logger.warning(f"Field {field} from FINALIZED_SCHEMA not found in HT.")
-    for field in FINALIZED_SCHEMA["globals"]:
+            logger.warning(f"Field {field} from schema not found in HT.")
+    for field in schema["globals"]:
         if field in ht.globals:
             final_fields["globals"].append(field)
         else:
-            logger.warning(f"Global {field} from FINALIZED_SCHEMA not found in HT.")
+            logger.warning(f"Global {field} from schema not found in HT.")
 
     return final_fields
 
 
 def get_ht(
     dataset: str,
-    _intervals: nullable(sequenceof(anytype)),
     data_type: str,
-    test: bool,
-    release_exists: bool,
+    config: Dict[str, Dict[str, Any]],
+    use_config_ht: bool = False,
+    checkpoint: bool = False,
+    test: bool = False,
+    _intervals: Optional[nullable(sequenceof(anytype))] = None,
+    base_ht_filter: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Return the appropriate Hail table with selects applied.
 
     :param dataset: Hail Table to join.
-    :param _intervals: Intervals for reading in hail Table. Used to optimize join.
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
-    :param test: Whether call is for a test run.
-    :param release_exists: Whether the release HT already exists.
+    :param config: Dictionary with configuration options for each dataset. Expects the
+        dataset name as the key and a dictionary of options as the value, where the
+        options include some of the following: 'ht', 'path', 'select', 'field_name',
+        'custom_select'.
+    :param use_config_ht: Whether to use the 'ht' in the dataset config instead of
+        reading in `path`. Default is False.
+    :param checkpoint: Whether to checkpoint the Hail Table. Default is False.
+    :param test: Whether call is for a test run. If True, the dataset will be filtered
+        to PCSK9. Default is False.
+    :param _intervals: Intervals for reading in hail Table. Used to optimize join.
+    :param base_ht_filter: Optional Hail Table to filter on before joining. Default is
+        None.
     :return: Hail Table with fields to select.
     """
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
-    config = get_config(data_type=data_type, release_exists=release_exists)[dataset]
+    dataset_config = config[dataset]
 
-    # There is no single path for insilico predictors, so we need to handle this case
-    # separately.
-    if dataset == "in_silico":
-        base_ht = config["ht"]
+    if use_config_ht:
+        ht = dataset_config["ht"]
     else:
-        ht_path = config["path"]
         logger.info("Reading in %s", dataset)
-        base_ht = hl.read_table(ht_path, _intervals=_intervals)
-        if dataset == "freq" and data_type == "genomes":
-            base_ht = drop_v3_subsets(base_ht)
+        ht = hl.read_table(dataset_config["path"], _intervals=_intervals)
+
+    if dataset == "freq" and data_type == "genomes":
+        ht = drop_v3_subsets(ht)
 
     if test:
         # Keep only PCSK9.
-        base_ht = hl.filter_intervals(
-            base_ht,
+        ht = hl.filter_intervals(
+            ht,
             [
                 hl.parse_locus_interval(
                     "chr1:55039447-55064852", reference_genome="GRCh38"
@@ -703,119 +726,163 @@ def get_ht(
             ],
         )
 
-    select_fields = get_select_fields(config.get("select"), base_ht)
+    select_fields = get_select_fields(dataset_config.get("select"), ht)
 
-    if "custom_select" in config:
-        custom_select_fn = config["custom_select"]
+    if "custom_select" in dataset_config:
+        custom_select_fn = dataset_config["custom_select"]
         select_fields = {
             **select_fields,
-            **custom_select_fn(base_ht, data_type=data_type),
+            **custom_select_fn(ht, data_type=data_type, config=config),
         }
 
-    if "field_name" in config:
-        field_name = config.get("field_name")
+    if "field_name" in dataset_config:
+        field_name = dataset_config.get("field_name")
         select_query = {field_name: hl.struct(**select_fields)}
     else:
         select_query = select_fields
 
-    return base_ht.select(**select_query)
+    ht = ht.select(**select_query)
+
+    if base_ht_filter:
+        ht_key = list(ht.key)
+        if list(base_ht_filter.key) != ht_key:
+            base_ht_filter = base_ht_filter.key_by(*ht_key)
+        ht = ht.semi_join(base_ht_filter)
+
+    if checkpoint:
+        ht = ht.checkpoint(new_temp_file(f"{dataset}.for_release", "ht"))
+
+    return ht
 
 
 def join_hts(
-    base_table: hl.Table,
+    base_table: str,
     tables: List[str],
-    new_partition_percent: float,
-    test: bool,
     data_type: str,
-    release_exists: bool,
+    config: Dict[str, Dict[str, Any]],
     version: str,
+    new_partition_percent: Optional[float] = None,
+    new_n_partitions: Optional[float] = None,
+    checkpoint_tables: bool = False,
+    track_included_datasets: bool = False,
+    use_annotate: bool = False,
+    test: bool = False,
 ) -> hl.Table:
     """
     Outer join a list of Hail Tables.
 
     :param base_table: Dataset to use for interval partitioning.
     :param tables: List of tables to join.
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
+    :param config: Dictionary with configuration options for each dataset. Expects the
+        dataset name (matching values in `tables`) as the key and a dictionary of
+        options as the value, where the options include some of the following: 'ht',
+        'path', 'select', 'field_name', 'custom_select', 'select_globals',
+        'custom_globals_select', 'global_name'.
+    :param version: Release version.
     :param new_partition_percent: Percent of base_table partitions used for final
         release Hail Table.
-    :param test: Whether this is for a test run.
-    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
-    :param release_exists: Whether the release HT already exists.
-    :param version: Release version.
+    :param new_n_partitions: Number of partitions for final release Hail Table.
+    :param checkpoint_tables: Whether to checkpoint the tables before join. Default is
+        False.
+    :param track_included_datasets: Whether to track the datasets included in the
+        release. This is used to update the included_datasets json file. Default is
+        False.
+    :param use_annotate: Whether to use annotate instead of join. Default is False.
+    :param test: Whether this is for a test run. Default is False.
     :return: Hail Table with datasets joined.
     """
-    if base_table not in tables:
-        raise ValueError(f"Base table {base_table} must be in tables to join: {tables}")
-
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
     )
-    base_ht_path = get_config(data_type=data_type)[base_table]["path"]
-    base_ht = hl.read_table(base_ht_path)
-    if test:
-        # Filter to PCSK9 for testing.
-        base_ht = hl.filter_intervals(
-            base_ht,
-            [
-                hl.parse_locus_interval(
-                    "chr1:55039447-55064852", reference_genome="GRCh38"
-                )
-            ],
+
+    partition_intervals = None
+    if new_n_partitions or new_partition_percent:
+        base_ht = get_ht(
+            base_table,
+            data_type,
+            config,
+            use_config_ht=True,
+            test=test,
         )
-    partition_intervals = base_ht._calculate_new_partitions(
-        base_ht.n_partitions() * new_partition_percent
+        new_n_partitions = new_n_partitions or base_ht.n_partitions()
+        if new_partition_percent:
+            new_n_partitions = int(base_ht.n_partitions() * new_partition_percent)
+
+        partition_intervals = base_ht._calculate_new_partitions(new_n_partitions)
+
+    base_ht = get_ht(
+        base_table,
+        data_type,
+        config,
+        checkpoint=checkpoint_tables,
+        _intervals=partition_intervals,
+        test=test,
     )
 
-    # Reorg list so base table is first.
-    tables.remove(base_table)
-    tables.insert(0, base_table)
+    # Remove base_table from tables if it is in the list and add it to the front.
+    if base_table in tables:
+        tables.remove(base_table)
 
     logger.info("Joining datasets: %s...", tables)
-    hts = [
+    hts = [base_ht] + [
         get_ht(
             table,
+            data_type,
+            config,
+            # There is no single path for insilico predictors, so we need to handle
+            # this case separately.
+            use_config_ht=True if table in ["in_silico", "exomes_an"] else False,
+            checkpoint=checkpoint_tables,
             _intervals=partition_intervals,
             test=test,
-            data_type=data_type,
-            release_exists=release_exists,
+            base_ht_filter=base_ht.select(),
         )
         for table in tables
     ]
-    joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
+
+    if use_annotate:
+        joined_ht = reduce(
+            lambda joined_ht, ht: joined_ht.annotate(
+                **ht[*[joined_ht[k] for k in list(ht.key)]]
+            ),
+            hts,
+        )
+        hts = [g_ht.index_globals() for g_ht in hts]
+        global_struct = reduce(lambda g, ann_g: g.annotate(**ann_g), hts)
+        joined_ht = joined_ht.select_globals(**global_struct)
+    else:
+        joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     joined_ht = joined_ht.select_globals(
-        **get_select_global_fields(joined_ht, data_type, tables)
+        **get_select_global_fields(joined_ht, config, [base_table] + tables)
     )
 
-    # Track the datasets we've added as well as the source paths.
-    # If release HT is included in tables, read in the included datasets json
-    # and update the keys to the path for any new tables
-    included_datasets = {}
-    if "release" in tables:
+    if track_included_datasets:
+        # Track the datasets we've added as well as the source paths.
+        # If release HT is included in tables, read in the included datasets json
+        # and update the keys to the path for any new tables
+        included_datasets = {}
+        if "release" in tables:
+            with hl.utils.hadoop_open(
+                included_datasets_json_path(
+                    data_type=data_type,
+                    test=test,
+                    release_version=hl.eval(config["release"]["ht"].version),
+                )
+            ) as f:
+                included_datasets = json.loads(f.read())
+
+        included_datasets.update({t: config[t]["path"] for t in tables})
+
         with hl.utils.hadoop_open(
             included_datasets_json_path(
-                data_type=data_type,
-                test=test,
-                release_version=hl.eval(
-                    get_config(data_type=data_type)["release"]["ht"].version
-                ),
-            )
+                data_type=data_type, test=test, release_version=version
+            ),
+            "w",
         ) as f:
-            included_datasets = json.loads(f.read())
-
-    included_datasets.update(
-        {
-            t: get_config(data_type=data_type, release_exists=release_exists)[t]["path"]
-            for t in tables
-        }
-    )
-    with hl.utils.hadoop_open(
-        included_datasets_json_path(
-            data_type=data_type, test=test, release_version=version
-        ),
-        "w",
-    ) as f:
-        f.write(hl.eval(hl.json(included_datasets)))
+            f.write(hl.eval(hl.json(included_datasets)))
 
     return joined_ht
 
@@ -857,11 +924,12 @@ def main(args):
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
-        args.new_partition_percent,
-        args.test,
         data_type,
-        args.release_exists,
+        config,
         args.version,
+        new_partition_percent=args.new_partition_percent,
+        track_included_datasets=True,
+        test=args.test,
     )
 
     # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT
