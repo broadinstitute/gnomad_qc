@@ -232,6 +232,7 @@ def main(args):
     )
     data_type = "exomes"
     config = get_config(data_type="exomes")
+    # config['filters'].update
     config["info"].update(
         {
             "select": ["was_split", "a_index"],
