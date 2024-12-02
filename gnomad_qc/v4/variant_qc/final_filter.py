@@ -18,7 +18,6 @@ from gnomad_qc.v4.resources.annotations import get_freq, get_info
 from gnomad_qc.v4.resources.variant_qc import (
     VQSR_FEATURES,
     final_filter,
-    final_filter_simplified,
     get_score_bins,
 )
 
@@ -544,7 +543,7 @@ def main(args):
         # Write out simplified final filtered table to path defined above in resources.
         ht = ht.select("filters")
         ht = ht.checkpoint(
-            final_filter_simplified(test=test).path, overwrite=args.overwrite
+            final_filter(test=test, simplified=True).path, overwrite=args.overwrite
         )
     else:
         # Write out final filtered table to path defined above in resources.
