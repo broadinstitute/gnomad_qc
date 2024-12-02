@@ -18,6 +18,7 @@ from gnomad_qc.v4.resources.annotations import get_freq, get_info
 from gnomad_qc.v4.resources.variant_qc import (
     VQSR_FEATURES,
     final_filter,
+    final_filter_simplified,
     get_score_bins,
 )
 
@@ -477,10 +478,17 @@ def main(args):
     if test:
         bin_ht = bin_ht._filter_partitions(range(5))
 
-    # Filter out AS_lowqual variants and variants not in the release.
-    bin_ht = bin_ht.filter(
-        ~res.info_ht.ht()[bin_ht.key].AS_lowqual & (freq_ht[bin_ht.key].freq[1].AC > 0)
-    )
+    # Note: For de novo variants release, we need to get "filters" for variants that
+    # are not in the release, so we write out another simplified final filter table.
+    if args.include_variants_not_in_release:
+        # Filter out AS_lowqual variants and variants not in the release.
+        bin_ht = bin_ht.filter(~res.info_ht.ht()[bin_ht.key].AS_lowqual)
+    else:
+        # Filter out AS_lowqual variants and variants not in the release.
+        bin_ht = bin_ht.filter(
+            ~res.info_ht.ht()[bin_ht.key].AS_lowqual
+            & (freq_ht[bin_ht.key].freq[1].AC > 0)
+        )
 
     # Name filter and score annotations based on model.
     if args.model_id.startswith("vqsr_"):
@@ -532,8 +540,15 @@ def main(args):
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
 
-    # Write out final filtered table to path defined above in resources.
-    ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
+    if args.include_variants_not_in_release:
+        # Write out simplified final filtered table to path defined above in resources.
+        ht = ht.select("filters")
+        ht = ht.checkpoint(
+            final_filter_simplified(test=test).path, overwrite=args.overwrite
+        )
+    else:
+        # Write out final filtered table to path defined above in resources.
+        ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
 
     # Print out counts of variants in each filter group.
     logger.info("Counts of variants in each filter group:")
@@ -629,6 +644,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Whether the '--indel-bin-cutoff' should be applied to the calling interval"
             " bin instead of overall bin."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--include-variants-not-in-release",
+        help=(
+            "Whether to include variants not in the release in the final filter Table."
         ),
         action="store_true",
     )

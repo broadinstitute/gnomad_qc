@@ -314,3 +314,30 @@ def final_filter(
             for version in VARIANT_QC_RESULT_VERSIONS[data_type]
         },
     )
+
+
+def final_filter_simplified(
+    data_type: str = "exomes", test: bool = False
+) -> VersionedTableResource:
+    """
+    Get finalized variant QC filtering Table.
+
+    .. note::
+
+        This Table is simplified version of the final_filter Table, but including
+        varints that are not in the release, in order to get filters for de novo
+        variants release. It contains only "filters" fields.
+
+    :param data_type: Whether to return 'exomes' or 'genomes' data. Default is exomes.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: VersionedTableResource for final variant QC data.
+    """
+    return VersionedTableResource(
+        CURRENT_VARIANT_QC_RESULT_VERSION[data_type],
+        {
+            version: TableResource(
+                f"{_variant_qc_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.final_filter.simplified.ht"
+            )
+            for version in VARIANT_QC_RESULT_VERSIONS[data_type]
+        },
+    )
