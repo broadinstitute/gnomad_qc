@@ -84,6 +84,7 @@ TABLES_FOR_RELEASE = [
 
 
 def custom_de_novo_select(ht, **_):
+    """Select fields from de novo stats Table."""
     return {
         f"de_novo_stats{'' if g == 'adj' else '_raw'}": hl.struct(
             n_de_novo=ht[f"n_de_novos_{g}"],
@@ -101,6 +102,12 @@ def custom_de_novo_select(ht, **_):
 
 
 def custom_joint_freq_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
+    """
+    Select joint freq fields for release.
+
+    :param ht: Joint freq Hail Table.
+    :return: Select expression dict.
+    """
     selects = {
         f"{data_type}_freq": ht[data_type].freq
         for data_type in ["exomes", "genomes", "joint"]
@@ -111,6 +118,12 @@ def custom_joint_freq_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]
 
 
 def custom_joint_freq_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Select joint freq globals for release.
+
+    :param ht: Joint freq Hail Table.
+    :return: Select expression dict
+    """
     return {
         f"{data_type}_freq_globals": ht[f"{data_type}_globals"].select(
             "freq_meta", "freq_index_dict", "freq_meta_sample_count"
@@ -131,9 +144,9 @@ def custom_info_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
 
 def custom_an_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
-    Select region flags for release.
+    Select AN for release.
 
-    :param ht: Hail Table.
+    :param ht: Hail Table with AN.
     :return: Select expression dict.
     """
     selects = {"exomes_an": ht.AN, **custom_region_flags_select(ht, data_type="")}
@@ -145,6 +158,12 @@ def custom_an_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
 
 
 def custom_an_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Select AN Table globals for release.
+
+    :param ht: Hail Table with AN.
+    :return: Select expression dict.
+    """
     return {
         "exomes_an_globals": hl.struct(
             meta=ht.strata_meta,
@@ -240,9 +259,9 @@ def main(args):
             },
             "de_novo_gts": {
                 "ht": hl.read_table(
-                    "gs://gnomad-tmp-4day/julia/denovo/denovo_genotypes.ht"
+                    "gs://gnomad-tmp-30day/qin/denovo/denovo_genotypes.ht"
                 ),
-                "path": "gs://gnomad-tmp-4day/julia/denovo/denovo_genotypes.ht",
+                "path": "gs://gnomad-tmp-30day/qin/denovo/denovo_genotypes.ht",
                 "custom_select": custom_de_novo_gt_select,
             },
         }
