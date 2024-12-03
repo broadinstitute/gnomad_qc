@@ -72,7 +72,6 @@ FINALIZED_SCHEMA = {
 
 TABLES_FOR_RELEASE = [
     "de_novos",
-    "de_novo_gts",
     "dbsnp",
     "filters",
     "info",
@@ -172,16 +171,6 @@ def custom_an_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     }
 
 
-def custom_de_novo_gt_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
-    """
-    Select de novo genotype info for release.
-
-    :param ht: Hail Table.
-    :return: Select expression dict.
-    """
-    return {"de_novo_genotype_info": ht.denovo_gt_info}
-
-
 def restructure_for_tsv(ht: hl.Table) -> hl.Table:
     """
     Restructure the de novo release HT for TSV export.
@@ -194,7 +183,6 @@ def restructure_for_tsv(ht: hl.Table) -> hl.Table:
     return (
         ht.select(
             "de_novo_stats",
-            "de_novo_genotype_info",
             exomes=ht.exomes_freq[0],
             genomes=ht.genomes_freq[0],
             joint=ht.joint_freq[0],
@@ -257,13 +245,6 @@ def main(args):
                 "path": all_sites_an("exomes").path,
                 "custom_select": custom_an_select,
                 "custom_globals_select": custom_an_select_globals,
-            },
-            "de_novo_gts": {
-                "ht": hl.read_table(
-                    "gs://gnomad-tmp-30day/qin/denovo/denovo_genotypes.ht"
-                ),
-                "path": "gs://gnomad-tmp-30day/qin/denovo/denovo_genotypes.ht",
-                "custom_select": custom_de_novo_gt_select,
             },
         }
     )
