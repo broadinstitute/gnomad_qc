@@ -296,20 +296,31 @@ def get_variant_qc_result(
 
 
 def final_filter(
-    data_type: str = "exomes", test: bool = False
+    data_type: str = "exomes",
+    all_variants: bool = False,
+    only_filters: bool = False,
+    test: bool = False,
 ) -> VersionedTableResource:
     """
     Get finalized variant QC filtering Table.
 
     :param data_type: Whether to return 'exomes' or 'genomes' data. Default is exomes.
-    :param test: Whether to use a tmp path for variant QC tests.
+    :param all_variants: Whether to return the Table with all variants. Default is
+        False.
+    :param only_filters: Whether to return the Table with only the 'filters' field.
+        Default is False.
+    :param test: Whether to use a tmp path for variant QC tests. Default is False.
     :return: VersionedTableResource for final variant QC data.
     """
+    suffix = (
+        f".final_filter{'.all_variants' if all_variants else ''}"
+        f"{'.only_filters' if only_filters else ''}"
+    )
     return VersionedTableResource(
         CURRENT_VARIANT_QC_RESULT_VERSION[data_type],
         {
             version: TableResource(
-                f"{_variant_qc_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.final_filter.ht"
+                f"{_variant_qc_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}{suffix}.ht"
             )
             for version in VARIANT_QC_RESULT_VERSIONS[data_type]
         },
