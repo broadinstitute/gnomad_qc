@@ -407,6 +407,8 @@ def get_final_variant_qc_resources(
     test: bool,
     overwrite: bool,
     model_id: str,
+    all_variants: bool = False,
+    only_filters: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.
@@ -414,6 +416,9 @@ def get_final_variant_qc_resources(
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
     :param model_id: Model ID to use for final variant QC.
+    :param all_variants: Whether to get the final filter resource for all variants.
+    :param only_filters: Whether to get the final filter resource with only the
+        'filters' field.
     :return: PipelineResourceCollection containing resources for all steps of finalizing
         variant QC pipeline.
     """
@@ -441,7 +446,13 @@ def get_final_variant_qc_resources(
     finalize_variant_qc = PipelineStepResourceCollection(
         "final_filter.py",
         input_resources=input_resources,
-        output_resources={"final_ht": final_filter(test=test)},
+        output_resources={
+            "final_ht": final_filter(
+                all_variants=all_variants,
+                only_filters=only_filters,
+                test=test,
+            )
+        },
     )
 
     # Add all steps to the finalizing variant QC pipeline resource collection.
@@ -459,12 +470,16 @@ def main(args):
     )
     test = args.test
     overwrite = args.overwrite
+    all_variants = args.all_variants
+    only_filters = args.only_filters
 
     # Call method to return final VQC resources from evaluation runs.
     final_vqc_resources = get_final_variant_qc_resources(
         test=test,
         overwrite=overwrite,
         model_id=args.model_id,
+        all_variants=all_variants,
+        only_filters=only_filters,
     )
     res = final_vqc_resources.finalize_variant_qc
     res.check_resource_existence()
@@ -477,10 +492,15 @@ def main(args):
     if test:
         bin_ht = bin_ht._filter_partitions(range(5))
 
-    # Filter out AS_lowqual variants and variants not in the release.
-    bin_ht = bin_ht.filter(
-        ~res.info_ht.ht()[bin_ht.key].AS_lowqual & (freq_ht[bin_ht.key].freq[1].AC > 0)
-    )
+    # Filter out AS_lowqual variants.
+    filter_expr = ~res.info_ht.ht()[bin_ht.key].AS_lowqual
+
+    # Note: For the de novo variants release, we need to get "filters" for variants
+    # that are not in the release, but otherwise we filter them out.
+    if not all_variants:
+        filter_expr &= freq_ht[bin_ht.key].freq[1].AC > 0
+
+    bin_ht = bin_ht.filter(filter_expr)
 
     # Name filter and score annotations based on model.
     if args.model_id.startswith("vqsr_"):
@@ -531,6 +551,10 @@ def main(args):
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
+
+    # Select only the filters field if requested.
+    if only_filters:
+        ht = ht.select("filters")
 
     # Write out final filtered table to path defined above in resources.
     ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
@@ -629,6 +653,22 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Whether the '--indel-bin-cutoff' should be applied to the calling interval"
             " bin instead of overall bin."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--all-variants",
+        help=(
+            "Whether to write out a version of the final filter Table with all "
+            "variants, including those not in the release."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--only-filters",
+        help=(
+            "Whether to write out a version of the final filter Table with only the "
+            "'filters' field."
         ),
         action="store_true",
     )
