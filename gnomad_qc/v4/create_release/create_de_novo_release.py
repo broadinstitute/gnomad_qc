@@ -28,6 +28,7 @@ from gnomad_qc.v4.create_release.create_release_utils import (
 )
 from gnomad_qc.v4.resources.annotations import get_trio_stats
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -53,7 +54,6 @@ FINALIZED_SCHEMA = {
     "rows": [
         "de_novo_stats",
         "de_novo_stats_raw",
-        "de_novo_genotype_info",
         "exomes_freq",
         "genomes_freq",
         "joint_freq",
@@ -197,7 +197,6 @@ def restructure_for_tsv(ht: hl.Table) -> hl.Table:
             ),
             **ht.in_silico_predictors,
         )
-        .explode("de_novo_genotype_info")
         .flatten()
         .rename(
             {
@@ -220,15 +219,16 @@ def main(args):
     )
     data_type = "exomes"
     config = get_config(data_type="exomes")
-    # config['filters'].update
-    config["info"].update(
-        {
-            "select": ["was_split", "a_index"],
-            "custom_select": custom_info_select,
-        }
-    )
     config.update(
         {
+            "filters": {
+                "ht": final_filter(all_variants=True, only_filters=True).ht(),
+                "path": final_filter(all_variants=True, only_filters=True).path,
+            },
+            "info": {
+                "select": ["was_split", "a_index"],
+                "custom_select": custom_info_select,
+            },
             "de_novos": {
                 "ht": get_trio_stats(releasable_only=True).ht(),
                 "path": get_trio_stats(releasable_only=True).path,
