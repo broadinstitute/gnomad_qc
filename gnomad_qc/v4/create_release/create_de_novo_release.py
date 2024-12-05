@@ -28,8 +28,9 @@ from gnomad_qc.v4.create_release.create_release_utils import (
     SIFT_VERSION,
 )
 from gnomad_qc.v4.resources.annotations import get_info, get_trio_stats
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.sample_qc import pedigree
+from gnomad_qc.v4.resources.sample_qc import get_releasable_de_novos_mt_path, pedigree
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -268,107 +269,124 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
-    data_type = "exomes"
-    config = get_config(data_type="exomes")
-    config["info"].update(
-        {
-            "select": ["was_split", "a_index"],
-            "custom_select": custom_info_select,
-        }
-    )
-    config.update(
-        {
-            "filters": {
-                "ht": final_filter(all_variants=True, only_filters=True).ht(),
-                "path": final_filter(all_variants=True, only_filters=True).path,
-                "select": ["filters"],
-            },
-            "de_novos": {
-                "ht": get_trio_stats(releasable_only=True).ht(),
-                "path": get_trio_stats(releasable_only=True).path,
-                "custom_select": custom_de_novo_select,
-            },
-            "joint_freq": {
-                "ht": public_release("joint").ht(),
-                "path": public_release("joint").path,
-                "custom_select": custom_joint_freq_select,
-                "custom_globals_select": custom_joint_freq_select_globals,
-            },
-            "exomes_an": {
-                "ht": all_sites_an("exomes").ht(),
-                "path": all_sites_an("exomes").path,
-                "custom_select": custom_an_select,
-                "custom_globals_select": custom_an_select_globals,
-            },
-        }
-    )
-    ht = join_hts(
-        "de_novos",
-        TABLES_FOR_RELEASE,
-        "exomes",
-        config,
-        version=args.version,
-        new_n_partitions=5 if args.test else 1000,
-        checkpoint_tables=True,
-        track_included_datasets=False,
-        use_annotate=True,
-        test=args.test,
-    )
-    ht.describe()
+    test = args.test
+    if args.generate_dense_mt:
+        ht = get_trio_stats(releasable_only=True).ht()
+        vds = get_gnomad_v4_vds(
+            high_quality_only=True,
+            annotate_meta=True,
+        )
+        if test:
+            logger.info("Filtering to chr20...")
+            vds = hl.vds.filter_chromosomes(vds, keep="chr20")
+            ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chr20")])
+        ht = filter_de_novos(ht)
+        ht = ht.checkpoint(hl.utils.new_temp_file("de_novo_filtered", "ht"))
+        mt = densify_releasable_trios_mt(vds, pedigree().ht(), ht)
+        mt.checkpoint(get_releasable_de_novos_mt_path(), overwrite=args.overwrite)
 
-    # Filter out chrM, AS_lowqual, alt is '*' sites (these sites are dropped in the
-    # final_filters HT so will not have information in `filters`)
-    logger.info("Filtering out chrM, AS_lowqual and alt is '*'...")
-    ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(hl.is_defined(ht.filters))
+    if args.generate_final_ht:
+        data_type = "exomes"
+        config = get_config(data_type="exomes")
+        config["info"].update(
+            {
+                "select": ["was_split", "a_index"],
+                "custom_select": custom_info_select,
+            }
+        )
+        config.update(
+            {
+                "filters": {
+                    "ht": final_filter(all_variants=True, only_filters=True).ht(),
+                    "path": final_filter(all_variants=True, only_filters=True).path,
+                    "select": ["filters"],
+                },
+                "de_novos": {
+                    "ht": get_trio_stats(releasable_only=True).ht(),
+                    "path": get_trio_stats(releasable_only=True).path,
+                    "custom_select": custom_de_novo_select,
+                },
+                "joint_freq": {
+                    "ht": public_release("joint").ht(),
+                    "path": public_release("joint").path,
+                    "custom_select": custom_joint_freq_select,
+                    "custom_globals_select": custom_joint_freq_select_globals,
+                },
+                "exomes_an": {
+                    "ht": all_sites_an("exomes").ht(),
+                    "path": all_sites_an("exomes").path,
+                    "custom_select": custom_an_select,
+                    "custom_globals_select": custom_an_select_globals,
+                },
+            }
+        )
+        ht = join_hts(
+            "de_novos",
+            TABLES_FOR_RELEASE,
+            "exomes",
+            config,
+            version=args.version,
+            new_n_partitions=5 if args.test else 1000,
+            checkpoint_tables=True,
+            track_included_datasets=False,
+            use_annotate=True,
+            test=args.test,
+        )
+        ht.describe()
 
-    logger.info("Finalizing the release HT global and row fields...")
-    # Add additional globals that were not present on the joined HTs.
-    ht = ht.annotate_globals(
-        vep_globals=ht.vep_globals.annotate(
-            gencode_version=GENCODE_VERSION,
-            mane_select_version=MANE_SELECT_VERSION,
-        ),
-        tool_versions=ht.tool_versions.annotate(
-            dbsnp_version=DBSNP_VERSION,
-            sift_version=SIFT_VERSION,
-            polyphen_version=POLYPHEN_VERSION,
-        ),
-        date=datetime.now().isoformat(),
-        version=CURRENT_RELEASE,
-        frequency_README=get_freq_array_readme(data_type="exomes"),
-    )
+        # Filter out chrM, AS_lowqual, alt is '*' sites (these sites are dropped in the
+        # final_filters HT so will not have information in `filters`)
+        logger.info("Filtering out chrM, AS_lowqual and alt is '*'...")
+        ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
+        ht = ht.filter(hl.is_defined(ht.filters))
 
-    # Organize the fields in the release HT to match the order of FINALIZED_SCHEMA when
-    # the fields are present in the HT.
-    final_fields = get_final_ht_fields(ht, schema=FINALIZED_SCHEMA)
-    ht = ht.select(*final_fields["rows"]).select_globals(*final_fields["globals"])
+        logger.info("Finalizing the release HT global and row fields...")
+        # Add additional globals that were not present on the joined HTs.
+        ht = ht.annotate_globals(
+            vep_globals=ht.vep_globals.annotate(
+                gencode_version=GENCODE_VERSION,
+                mane_select_version=MANE_SELECT_VERSION,
+            ),
+            tool_versions=ht.tool_versions.annotate(
+                dbsnp_version=DBSNP_VERSION,
+                sift_version=SIFT_VERSION,
+                polyphen_version=POLYPHEN_VERSION,
+            ),
+            date=datetime.now().isoformat(),
+            version=CURRENT_RELEASE,
+            frequency_README=get_freq_array_readme(data_type="exomes"),
+        )
 
-    ht = ht.checkpoint(
-        "gs://gnomad-tmp-4day/julia/denovo/denovo_releasable_only.release.intermediate.ht",
-        # _read_if_exists=True,
-        overwrite=True,
-    )
+        # Organize the fields in the release HT to match the order of FINALIZED_SCHEMA when
+        # the fields are present in the HT.
+        final_fields = get_final_ht_fields(ht, schema=FINALIZED_SCHEMA)
+        ht = ht.select(*final_fields["rows"]).select_globals(*final_fields["globals"])
 
-    output_path = f"{qc_temp_prefix(data_type=data_type)}release/gnomad.exomes.de_novo.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
-    logger.info(f"Writing out de novo release HT to %s", output_path)
-    ht = ht.naive_coalesce(args.n_partitions).checkpoint(
-        output_path,
-        args.overwrite,
-    )
+        ht = ht.checkpoint(
+            "gs://gnomad-tmp-4day/julia/denovo/denovo_releasable_only.release.intermediate.ht",
+            # _read_if_exists=True,
+            overwrite=True,
+        )
 
-    logger.info("Final de novo release HT schema:")
-    ht.describe()
+        output_path = f"{qc_temp_prefix(data_type=data_type)}release/gnomad.exomes.de_novo.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
+        logger.info(f"Writing out de novo release HT to %s", output_path)
+        ht = ht.naive_coalesce(args.n_partitions).checkpoint(
+            output_path,
+            args.overwrite,
+        )
 
-    logger.info("Final de novo count: %d", ht.count())
+        logger.info("Final de novo release HT schema:")
+        ht.describe()
 
-    ht = restructure_for_tsv(ht)
-    ht.describe()
-    ht.export(
-        f"{output_path.replace('.ht', '.tsv.bgz')}",
-        header=True,
-        delimiter="\t",
-    )
+        logger.info("Final de novo count: %d", ht.count())
+
+        ht = restructure_for_tsv(ht)
+        ht.describe()
+        ht.export(
+            f"{output_path.replace('.ht', '.tsv.bgz')}",
+            header=True,
+            delimiter="\t",
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -390,6 +408,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate-dense-mt",
         help="Generate a dense MT for releasable trios with the de novo variants.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-final-ht",
+        help="Generate the final HT for de novo release.",
         action="store_true",
     )
     parser.add_argument(
