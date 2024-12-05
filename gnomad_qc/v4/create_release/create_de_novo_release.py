@@ -3,6 +3,7 @@
 import argparse
 import logging
 from datetime import datetime
+from os.path import split
 from typing import Dict
 
 import hail as hl
@@ -28,9 +29,10 @@ from gnomad_qc.v4.create_release.create_release_utils import (
     SIFT_VERSION,
 )
 from gnomad_qc.v4.resources.annotations import get_info, get_trio_stats
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import gnomad_v4_genotypes
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.sample_qc import get_releasable_de_novos_mt_path, pedigree
+from gnomad_qc.v4.resources.meta import meta
+from gnomad_qc.v4.resources.sample_qc import get_de_novos_dense_mt_path, pedigree
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -95,23 +97,23 @@ def filter_de_novos(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def densify_releasable_trios_mt(
-    vds: hl.vds.VariantDataset, fam_ht: hl.Table, var_ht: hl.Table
+def get_de_novo_dense_mt(
+    vds: hl.vds.VariantDataset, meta_ht: hl.Table, fam_ht: hl.Table, var_ht: hl.Table
 ) -> hl.matrixtable:
     """
-    Densify the releasable trios MT with a selected set of variants.
+    Get dense MT with de novo variants in releasable trios.
 
     :param vds: Variant Dataset.
+    :param meta_ht: Table containing sample metadata.
     :param fam_ht: Table containing family information.
     :param var_ht: Table containing variants to be densified.
-    :return: Densified MT.
+    :return: Dense MT.
     """
     # Filter the family table to only the releasable trios.
-    meta = vds.variant_data.cols()
     fam_ht = fam_ht.annotate(
-        id_releasable=meta[fam_ht.key].meta.project_meta.releasable,
-        pat_releasable=meta[fam_ht.pat_id].meta.project_meta.releasable,
-        mat_releasable=meta[fam_ht.mat_id].meta.project_meta.releasable,
+        id_releasable=meta_ht[fam_ht.key].project_meta.releasable,
+        pat_releasable=meta_ht[fam_ht.pat_id].project_meta.releasable,
+        mat_releasable=meta_ht[fam_ht.mat_id].project_meta.releasable,
     )
     fam_ht = fam_ht.filter(
         fam_ht.id_releasable & fam_ht.pat_releasable & fam_ht.mat_releasable
@@ -272,18 +274,15 @@ def main(args):
     test = args.test
     if args.generate_dense_mt:
         ht = get_trio_stats(releasable_only=True).ht()
-        vds = get_gnomad_v4_vds(
-            high_quality_only=True,
-            annotate_meta=True,
-        )
+        vds = gnomad_v4_genotypes.vds()
         if test:
             logger.info("Filtering to chr20...")
             vds = hl.vds.filter_chromosomes(vds, keep="chr20")
             ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chr20")])
         ht = filter_de_novos(ht)
         ht = ht.checkpoint(hl.utils.new_temp_file("de_novo_filtered", "ht"))
-        mt = densify_releasable_trios_mt(vds, pedigree().ht(), ht)
-        mt.checkpoint(get_releasable_de_novos_mt_path(), overwrite=args.overwrite)
+        mt = get_de_novo_dense_mt(vds, meta().ht(), pedigree().ht(), ht)
+        mt.checkpoint(get_de_novos_dense_mt_path(), overwrite=args.overwrite)
 
     if args.generate_final_ht:
         data_type = "exomes"

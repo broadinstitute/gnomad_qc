@@ -1071,7 +1071,7 @@ hgdp_tgp_relatedness = TableResource(
 )
 
 
-def get_releasable_de_novos_mt_path(
+def get_de_novos_dense_mt_path(
     version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
 ) -> str:
     """
