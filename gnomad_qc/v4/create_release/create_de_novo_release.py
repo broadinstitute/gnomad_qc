@@ -7,6 +7,7 @@ from typing import Dict
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import all_sites_an, public_release
+from gnomad.sample_qc.relatedness import filter_to_trios
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import process_consequences
 
@@ -26,8 +27,9 @@ from gnomad_qc.v4.create_release.create_release_utils import (
     POLYPHEN_VERSION,
     SIFT_VERSION,
 )
-from gnomad_qc.v4.resources.annotations import get_trio_stats
+from gnomad_qc.v4.resources.annotations import get_info, get_trio_stats
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v4.resources.sample_qc import pedigree
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -82,8 +84,57 @@ TABLES_FOR_RELEASE = [
 ]
 
 
+def filter_de_novos(ht: hl.Table) -> hl.Table:
+    """Filter de novo stats Table."""
+    ht = ht.filter(
+        (ht.n_de_novos_raw > 0)
+        & ~get_info().ht()[ht.key].AS_lowqual
+        & (ht.alleles[1] != "*")
+    )
+    return ht
+
+
+def densify_releasable_trios_mt(
+    vds: hl.vds.VariantDataset, fam_ht: hl.Table, var_ht: hl.Table
+) -> hl.matrixtable:
+    """
+    Densify the releasable trios MT with a selected set of variants.
+
+    :param vds: Variant Dataset.
+    :param fam_ht: Table containing family information.
+    :param var_ht: Table containing variants to be densified.
+    :return: Densified MT.
+    """
+    # Filter the family table to only the releasable trios.
+    meta = vds.variant_data.cols()
+    fam_ht = fam_ht.annotate(
+        id_releasable=meta[fam_ht.key].meta.project_meta.releasable,
+        pat_releasable=meta[fam_ht.pat_id].meta.project_meta.releasable,
+        mat_releasable=meta[fam_ht.mat_id].meta.project_meta.releasable,
+    )
+    fam_ht = fam_ht.filter(
+        fam_ht.id_releasable & fam_ht.pat_releasable & fam_ht.mat_releasable
+    )
+
+    # Filter the variant data and reference data to only the trios.
+    vds = filter_to_trios(vds, fam_ht)
+
+    mt = vds.variant_data
+    mt = mt.filter_rows(hl.is_defined(var_ht.key_by("locus")[mt.locus]))
+    mt = mt.checkpoint(hl.utils.new_temp_file("de_novo", "mt"))
+    mt = hl.experimental.sparse_split_multi(mt)
+    mt = mt.semi_join_rows(var_ht)
+    mt = mt.checkpoint(hl.utils.new_temp_file("de_novo.split", "mt"))
+    vds = hl.vds.VariantDataset(vds.reference_data, mt)
+    mt = hl.vds.to_dense_mt(vds).naive_coalesce(100)
+
+    return mt
+
+
 def custom_de_novo_select(ht, **_):
     """Select fields from de novo stats Table."""
+    # Filter out sites with n_de_novo_raw == 0.
+    ht = ht.filter(ht.n_de_novo_raw > 0)
     return {
         f"de_novo_stats{'' if g == 'adj' else '_raw'}": hl.struct(
             n_de_novo=ht[f"n_de_novos_{g}"],
@@ -219,15 +270,18 @@ def main(args):
     )
     data_type = "exomes"
     config = get_config(data_type="exomes")
+    config["info"].update(
+        {
+            "select": ["was_split", "a_index"],
+            "custom_select": custom_info_select,
+        }
+    )
     config.update(
         {
             "filters": {
                 "ht": final_filter(all_variants=True, only_filters=True).ht(),
                 "path": final_filter(all_variants=True, only_filters=True).path,
-            },
-            "info": {
-                "select": ["was_split", "a_index"],
-                "custom_select": custom_info_select,
+                "select": ["filters"],
             },
             "de_novos": {
                 "ht": get_trio_stats(releasable_only=True).ht(),
@@ -262,11 +316,11 @@ def main(args):
     )
     ht.describe()
 
-    # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT
-    # so will not have information in `filters`) and n_de_novo_raw == 0.
-    logger.info("Filtering out chrM, AS_lowqual, and n_de_novo_raw == 0 sites...")
+    # Filter out chrM, AS_lowqual, alt is '*' sites (these sites are dropped in the
+    # final_filters HT so will not have information in `filters`)
+    logger.info("Filtering out chrM, AS_lowqual and alt is '*'...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(hl.is_defined(ht.filters) & (ht.de_novo_stats_raw.n_de_novo > 0))
+    ht = ht.filter(hl.is_defined(ht.filters))
 
     logger.info("Finalizing the release HT global and row fields...")
     # Add additional globals that were not present on the joined HTs.
@@ -330,7 +384,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-t",
         "--test",
-        help="Runs a test on PCSK9 region, chr1:55039447-55064852",
+        help="Runs a test on chr20",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-dense-mt",
+        help="Generate a dense MT for releasable trios with the de novo variants.",
         action="store_true",
     )
     parser.add_argument(

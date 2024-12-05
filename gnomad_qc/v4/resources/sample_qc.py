@@ -1069,3 +1069,22 @@ hgdp_tgp_duplicated_to_exomes = TableResource(
 hgdp_tgp_relatedness = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_relatedness.ht",
 )
+
+
+def get_releasable_de_novos_mt_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
+) -> str:
+    """
+    Get path to dense MatrixTable containing de novo variants for the indicated gnomAD version.
+
+    :param version: Version of the MatrixTable to return.
+    :param test: Whether to use a tmp path for a test MatrixTable.
+    :return: Path to de novo variants MatrixTable.
+    """
+    if test:
+        return f"{qc_temp_prefix(version)}de_novos.test.dense.mt"
+    else:
+        return (
+            f"{get_sample_qc_root(version)}/de_novos/gnomad.exomes.v"
+            f"{version}.de_novos.dense.mt"
+        )
