@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_de_novo_release &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_de_novo_release</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.create_de_novo_release</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to create release de novo HT for v4 exomes.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="n">all_sites_an</span><span class="p">,</span> <span class="n">public_release</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.relatedness</span> <span class="kn">import</span> <span class="n">filter_to_trios</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vep</span> <span class="kn">import</span> <span class="n">process_consequences</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.create_release.create_release_sites_ht</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">custom_region_flags_select</span><span class="p">,</span>
+    <span class="n">get_config</span><span class="p">,</span>
+    <span class="n">get_final_ht_fields</span><span class="p">,</span>
+    <span class="n">get_freq_array_readme</span><span class="p">,</span>
+    <span class="n">join_hts</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.create_release.create_release_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DBSNP_VERSION</span><span class="p">,</span>
+    <span class="n">GENCODE_VERSION</span><span class="p">,</span>
+    <span class="n">MANE_SELECT_VERSION</span><span class="p">,</span>
+    <span class="n">POLYPHEN_VERSION</span><span class="p">,</span>
+    <span class="n">SIFT_VERSION</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_info</span><span class="p">,</span> <span class="n">get_trio_stats</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">get_gnomad_v4_vds</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="n">CURRENT_RELEASE</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="n">release_de_novo</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">de_novo_mt</span><span class="p">,</span> <span class="n">pedigree</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">final_filter</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;create_de_novo_release_ht&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">FINALIZED_SCHEMA</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;globals&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">&quot;exomes_freq_globals&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;genomes_freq_globals&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_freq_globals&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;exomes_an_globals&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;filtering_model&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;inbreeding_coeff_cutoff&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tool_versions&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vep_globals&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;frequency_README&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;date&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;version&quot;</span><span class="p">,</span>
+    <span class="p">],</span>
+    <span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">&quot;de_novo_stats&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;de_novo_stats_raw&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;exomes_freq&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;genomes_freq&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_freq&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;exomes_an&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;a_index&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;was_split&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;rsid&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;filters&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vep&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;region_flags&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;allele_info&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;exomes_qual_hists&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;in_silico_predictors&quot;</span><span class="p">,</span>
+    <span class="p">],</span>
+<span class="p">}</span>
+
+<span class="n">TABLES_FOR_RELEASE</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;de_novos&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;dbsnp&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;filters&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;info&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;in_silico&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;vep&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;joint_freq&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;exomes_an&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<div class="viewcode-block" id="filter_de_novos"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.filter_de_novos">[docs]</a><span class="k">def</span> <span class="nf">filter_de_novos</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter the trio stats Table to de novo variants.</span>
+
+<span class="sd">    Removes variants that are not de novo, AS_lowqual, and &#39;*&#39; alleles.</span>
+
+<span class="sd">    :param ht: Trio stats Table.</span>
+<span class="sd">    :return: Filtered Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">n_de_novos_raw</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="o">&amp;</span> <span class="o">~</span><span class="n">get_info</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">AS_lowqual</span>
+        <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;*&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_releasable_trios_dense_mt"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_trios_dense_mt">[docs]</a><span class="k">def</span> <span class="nf">get_releasable_trios_dense_mt</span><span class="p">(</span>
+    <span class="n">fam_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">var_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">matrixtable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Densify the VDS to only the releasable trios.</span>
+
+<span class="sd">    :param fam_ht: Table containing family information.</span>
+<span class="sd">    :param var_ht: Table containing trio stats.</span>
+<span class="sd">    :param test: Whether to filter to chr20 for testing. Default is False.</span>
+<span class="sd">    :return: Dense MatrixTable with de novo variants in releasable trios.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering trio stats to chr20 for testing...&quot;</span><span class="p">)</span>
+        <span class="n">var_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">var_ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chr20&quot;</span><span class="p">)])</span>
+
+    <span class="c1"># Filter the trio stats Table to de novo variants.</span>
+    <span class="n">var_ht</span> <span class="o">=</span> <span class="n">filter_de_novos</span><span class="p">(</span><span class="n">var_ht</span><span class="p">)</span>
+    <span class="n">var_ht</span> <span class="o">=</span> <span class="n">var_ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;de_novo_filtered&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Filter the metadata table to only samples in high quality and releasable trios.</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">high_quality</span> <span class="o">&amp;</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span><span class="p">)</span>
+    <span class="n">fam_ht</span> <span class="o">=</span> <span class="n">fam_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">id</span><span class="p">])</span>
+        <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">pat_id</span><span class="p">])</span>
+        <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">mat_id</span><span class="p">])</span>
+    <span class="p">)</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">filter_to_trios</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">,</span> <span class="n">fam_ht</span><span class="p">)</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;releasable_trios&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Get the split gnomAD VDS filtered to high quality releasable trios and de novo</span>
+    <span class="c1"># variants.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+        <span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">high_quality_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">chrom</span><span class="o">=</span><span class="s2">&quot;chr20&quot;</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">filter_samples_ht</span><span class="o">=</span><span class="n">meta_ht</span><span class="p">,</span>
+        <span class="n">filter_variant_ht</span><span class="o">=</span><span class="n">var_ht</span><span class="p">,</span>
+        <span class="n">checkpoint_variant_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span></div>
+
+
+<span class="c1"># TODO: Change when we decide on the final de novo data to release.</span>
+<div class="viewcode-block" id="custom_de_novo_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.custom_de_novo_select">[docs]</a><span class="k">def</span> <span class="nf">custom_de_novo_select</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Select fields from de novo stats Table.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;de_novo_stats</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;adj&#39;</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;_raw&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">n_de_novo</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;n_de_novos_</span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+            <span class="n">parents</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="n">AC</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;ac_parents_</span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+                <span class="n">AN</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;an_parents_</span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+            <span class="p">),</span>
+            <span class="n">children</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="n">AC</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;ac_children_</span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+                <span class="n">AN</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;an_children_</span><span class="si">{</span><span class="n">g</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;adj&quot;</span><span class="p">,</span> <span class="s2">&quot;raw&quot;</span><span class="p">]</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="custom_joint_freq_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.custom_joint_freq_select">[docs]</a><span class="k">def</span> <span class="nf">custom_joint_freq_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select joint freq fields for release.</span>
+
+<span class="sd">    :param ht: Joint freq Hail Table.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_freq&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span><span class="o">.</span><span class="n">freq</span>
+        <span class="k">for</span> <span class="n">data_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="s2">&quot;joint&quot;</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;exomes_qual_hists&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">exomes</span><span class="o">.</span><span class="n">histograms</span><span class="o">.</span><span class="n">qual_hists</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_joint_freq_select_globals"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.custom_joint_freq_select_globals">[docs]</a><span class="k">def</span> <span class="nf">custom_joint_freq_select_globals</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select joint freq globals for release.</span>
+
+<span class="sd">    :param ht: Joint freq Hail Table.</span>
+<span class="sd">    :return: Select expression dict</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_freq_globals&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_globals&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="s2">&quot;freq_meta&quot;</span><span class="p">,</span> <span class="s2">&quot;freq_index_dict&quot;</span><span class="p">,</span> <span class="s2">&quot;freq_meta_sample_count&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">data_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="s2">&quot;joint&quot;</span><span class="p">]</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="custom_info_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.custom_info_select">[docs]</a><span class="k">def</span> <span class="nf">custom_info_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select fields for info Hail Table annotation in de novo release.</span>
+
+<span class="sd">    :param ht: Info Hail Table.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;allele_info&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">allele_info</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;nonsplit_alleles&quot;</span><span class="p">)}</span></div>
+
+
+<div class="viewcode-block" id="custom_an_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.custom_an_select">[docs]</a><span class="k">def</span> <span class="nf">custom_an_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select AN for release.</span>
+
+<span class="sd">    :param ht: Hail Table with AN.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;exomes_an&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">AN</span><span class="p">,</span> <span class="o">**</span><span class="n">custom_region_flags_select</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)}</span>
+    <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;region_flags&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;region_flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">r</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">r</span><span class="p">]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">row_value</span> <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_region&quot;</span><span class="p">)}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_an_select_globals"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.custom_an_select_globals">[docs]</a><span class="k">def</span> <span class="nf">custom_an_select_globals</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select AN Table globals for release.</span>
+
+<span class="sd">    :param ht: Hail Table with AN.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;exomes_an_globals&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">meta</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">strata_meta</span><span class="p">,</span>
+            <span class="n">sample_count</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">strata_sample_count</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">}</span></div>
+
+
+<div class="viewcode-block" id="get_de_novo_config"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.get_de_novo_config">[docs]</a><span class="k">def</span> <span class="nf">get_de_novo_config</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get de novo release config.</span>
+
+<span class="sd">    :return: Config dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">get_config</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span>
+    <span class="n">config</span><span class="p">[</span><span class="s2">&quot;info&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;was_split&quot;</span><span class="p">,</span> <span class="s2">&quot;a_index&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_info_select</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;filters&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">all_variants</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">only_filters</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">all_variants</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">only_filters</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">],</span>
+            <span class="p">},</span>
+            <span class="c1"># TODO: Change when we decide on the final de novo data to release.</span>
+            <span class="s2">&quot;de_novos&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">get_trio_stats</span><span class="p">(</span><span class="n">releasable_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">get_trio_stats</span><span class="p">(</span><span class="n">releasable_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_de_novo_select</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;joint_freq&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">public_release</span><span class="p">(</span><span class="s2">&quot;joint&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">public_release</span><span class="p">(</span><span class="s2">&quot;joint&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_joint_freq_select</span><span class="p">,</span>
+                <span class="s2">&quot;custom_globals_select&quot;</span><span class="p">:</span> <span class="n">custom_joint_freq_select_globals</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;exomes_an&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">all_sites_an</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">all_sites_an</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_an_select</span><span class="p">,</span>
+                <span class="s2">&quot;custom_globals_select&quot;</span><span class="p">:</span> <span class="n">custom_an_select_globals</span><span class="p">,</span>
+            <span class="p">},</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">config</span></div>
+
+
+<div class="viewcode-block" id="get_de_novo_release_ht"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.get_de_novo_release_ht">[docs]</a><span class="k">def</span> <span class="nf">get_de_novo_release_ht</span><span class="p">(</span>
+    <span class="n">tables_for_join</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">version</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get de novo release HT.</span>
+
+<span class="sd">    :param tables_for_join: Tables to join for release.</span>
+<span class="sd">    :param version: Version of gnomAD.</span>
+<span class="sd">    :param test: Run test on chr20. Default is False.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">get_de_novo_config</span><span class="p">()</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">join_hts</span><span class="p">(</span>
+        <span class="s2">&quot;de_novos&quot;</span><span class="p">,</span>
+        <span class="n">tables_for_join</span><span class="p">,</span>
+        <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+        <span class="n">config</span><span class="p">,</span>
+        <span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span>
+        <span class="n">new_n_partitions</span><span class="o">=</span><span class="mi">5</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="mi">1000</span><span class="p">,</span>
+        <span class="n">checkpoint_tables</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">track_included_datasets</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">use_annotate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Filter out chrM, AS_lowqual, alt is &#39;*&#39; sites (these sites are dropped in the</span>
+    <span class="c1"># final_filters HT so will not have information in `filters`).</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering out chrM, AS_lowqual and alt is &#39;*&#39;...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chrM&quot;</span><span class="p">)],</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">filters</span><span class="p">))</span>
+
+    <span class="c1"># TODO: Change when we decide on the final de novo data to release.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_stats_raw</span><span class="o">.</span><span class="n">n_de_novo</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Finalizing the release HT global and row fields...&quot;</span><span class="p">)</span>
+    <span class="c1"># Add additional globals that were not present on the joined HTs.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">vep_globals</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep_globals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">gencode_version</span><span class="o">=</span><span class="n">GENCODE_VERSION</span><span class="p">,</span>
+            <span class="n">mane_select_version</span><span class="o">=</span><span class="n">MANE_SELECT_VERSION</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">tool_versions</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">tool_versions</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">dbsnp_version</span><span class="o">=</span><span class="n">DBSNP_VERSION</span><span class="p">,</span>
+            <span class="n">sift_version</span><span class="o">=</span><span class="n">SIFT_VERSION</span><span class="p">,</span>
+            <span class="n">polyphen_version</span><span class="o">=</span><span class="n">POLYPHEN_VERSION</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">date</span><span class="o">=</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+        <span class="n">version</span><span class="o">=</span><span class="n">CURRENT_RELEASE</span><span class="p">,</span>
+        <span class="n">frequency_README</span><span class="o">=</span><span class="n">get_freq_array_readme</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Organize the fields in the release HT to match the order of FINALIZED_SCHEMA when</span>
+    <span class="c1"># the fields are present in the HT.</span>
+    <span class="n">final_fields</span> <span class="o">=</span> <span class="n">get_final_ht_fields</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">FINALIZED_SCHEMA</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">final_fields</span><span class="p">[</span><span class="s2">&quot;rows&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">*</span><span class="n">final_fields</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">])</span></div>
+
+
+<div class="viewcode-block" id="restructure_for_tsv"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv">[docs]</a><span class="k">def</span> <span class="nf">restructure_for_tsv</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Restructure the de novo release HT for TSV export.</span>
+
+<span class="sd">    :param ht: De novo release HT.</span>
+<span class="sd">    :return: Restructured HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># TODO: Change when we decide on the final de novo data to release.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">((</span><span class="n">ht</span><span class="o">.</span><span class="n">filters</span><span class="o">.</span><span class="n">length</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_stats</span><span class="o">.</span><span class="n">n_de_novo</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">process_consequences</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">penalize_flags</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">has_polyphen</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+            <span class="s2">&quot;de_novo_stats&quot;</span><span class="p">,</span>
+            <span class="n">exomes</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">genomes</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">joint</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">joint_freq</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">worst_csq_for_variant_canonical</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">worst_csq_for_variant_canonical</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                <span class="s2">&quot;most_severe_consequence&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;transcript_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;gene_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;gene_symbol&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;mane_select&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;lof&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;hgnc_id&quot;</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">in_silico_predictors</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">rename</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;de_novo_stats.n_de_novo&quot;</span><span class="p">:</span> <span class="s2">&quot;n_de_novo&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;de_novo_stats.parents.AC&quot;</span><span class="p">:</span> <span class="s2">&quot;trio_parents.AC&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;de_novo_stats.parents.AN&quot;</span><span class="p">:</span> <span class="s2">&quot;trio_parents.AN&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;de_novo_stats.children.AC&quot;</span><span class="p">:</span> <span class="s2">&quot;trio_children.AC&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;de_novo_stats.children.AN&quot;</span><span class="p">:</span> <span class="s2">&quot;trio_children.AN&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create de novo release ht.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;/create_de_novo_release_ht.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+        <span class="c1"># TODO: Change to be set outside init, used this to run with hail 0.2.122.</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_dense_mt</span><span class="p">:</span>
+        <span class="n">get_releasable_trios_dense_mt</span><span class="p">(</span>
+            <span class="n">pedigree</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">get_trio_stats</span><span class="p">(</span><span class="n">releasable_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">de_novo_n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">de_novo_mt</span><span class="p">(</span><span class="n">releasable</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_final_ht</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">get_de_novo_release_ht</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">tables_for_join</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final de novo release HT schema:&quot;</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;de_novo_release&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+        <span class="n">output_path</span> <span class="o">=</span> <span class="n">release_de_novo</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing out de novo release HT to %s&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final de novo count: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_final_tsv</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">release_de_novo</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">restructure_for_tsv</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span>
+            <span class="n">release_de_novo</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.ht&quot;</span><span class="p">,</span> <span class="s2">&quot;.tsv.bgz&quot;</span><span class="p">),</span>
+            <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite data&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-v&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--version&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;The version of gnomAD.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">CURRENT_RELEASE</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-t&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Runs a test on chr20&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-dense-mt&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generate a dense MT for releasable trios with the de novo variants.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--de-novo-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of partitions to naive coalesce the de novo dense MT to.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-final-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generate the final HT for de novo release.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-j&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--tables-for-join&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Tables to join for release&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">TABLES_FOR_RELEASE</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of partitions to naive coalesce the release Table to.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-final-tsv&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generate the final TSV for de novo release.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
