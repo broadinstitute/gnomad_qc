@@ -681,7 +681,7 @@ def get_ht(
     use_config_ht: bool = False,
     checkpoint: bool = False,
     test: bool = False,
-    _intervals: Optional[nullable(sequenceof(anytype))] = None,
+    _intervals: Optional[Any] = None,
     base_ht_filter: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
@@ -845,7 +845,7 @@ def join_hts(
     if use_annotate:
         joined_ht = reduce(
             lambda joined_ht, ht: joined_ht.annotate(
-                **ht[*[joined_ht[k] for k in list(ht.key)]]
+                **ht.index([*[joined_ht[k] for k in list(ht.key)]])
             ),
             hts,
         )
