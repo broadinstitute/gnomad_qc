@@ -386,8 +386,9 @@ def main(args):
     hl.init(
         log=f"/create_de_novo_release_ht.log",
         tmp_dir="gs://gnomad-tmp-4day",
-        default_reference="GRCh38",
     )
+    hl.default_reference("GRCh38")
+
     test = args.test
     overwrite = args.overwrite
 
@@ -397,7 +398,7 @@ def main(args):
             get_trio_stats(releasable_only=True).ht(),
             test=test,
         ).naive_coalesce(args.de_novo_n_partitions).write(
-            de_novo_mt(releasable=True).path, overwrite=overwrite
+            de_novo_mt(releasable=True, test=test).path, overwrite=overwrite
         )
 
     if args.generate_final_ht:
