@@ -1071,20 +1071,26 @@ hgdp_tgp_relatedness = TableResource(
 )
 
 
-def get_releasable_de_novos_mt_path(
-    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
-) -> str:
+def de_novo_mt(
+    releasable: bool = True,
+    test: bool = False,
+) -> VersionedMatrixTableResource:
     """
-    Get path to dense MatrixTable containing de novo variants for the indicated gnomAD version.
+    Get the VersionedMatrixTableResource for the dense de novo variants MatrixTable.
 
-    :param version: Version of the MatrixTable to return.
-    :param test: Whether to use a tmp path for a test MatrixTable.
-    :return: Path to de novo variants MatrixTable.
+    :param releasable: Whether to get the resource for the releasable trios only.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource of dense de novo variants MatrixTable.
     """
-    if test:
-        return f"{qc_temp_prefix(version)}de_novos.test.dense.mt"
-    else:
-        return (
-            f"{get_sample_qc_root(version)}/de_novos/gnomad.exomes.v"
-            f"{version}.de_novos.dense.mt"
-        )
+    data_type = "exomes"
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.de_novo"
+                f"{'.releasable' if releasable else ''}.dense.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )

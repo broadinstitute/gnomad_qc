@@ -45,3 +45,6 @@ CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1", "genomes": "4.1"}
 
 HGDP_TGP_RELEASES = ["4.0"]
 CURRENT_HGDP_TGP_RELEASE = "4.0"
+
+DE_NOVO_RELEASES = {"exomes": ["4.1"], "genomes": ["4.1"]}
+CURRENT_DE_NOVO_RELEASE = {"exomes": "4.1", "genomes": "4.1"}
