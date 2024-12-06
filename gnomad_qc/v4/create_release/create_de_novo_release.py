@@ -392,7 +392,7 @@ def main(args):
     overwrite = args.overwrite
 
     if args.generate_dense_mt:
-        get_dense_releasable_trios_mt(
+        get_releasable_trios_dense_mt(
             pedigree().ht(),
             get_trio_stats(releasable_only=True).ht(),
             test=test,
