@@ -142,6 +142,7 @@ def get_releasable_trios_dense_mt(
     # variants.
     vds = get_gnomad_v4_vds(
         split=True,
+        high_quality_only=True,
         chrom="chr20" if test else None,
         filter_samples_ht=meta_ht,
         filter_variant_ht=var_ht,

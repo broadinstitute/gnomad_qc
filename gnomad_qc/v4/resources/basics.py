@@ -498,7 +498,6 @@ def _split_and_filter_variant_data_for_loading(
         )
         mt = mt.filter_rows(hl.is_defined(filter_locus_ht[mt.locus]))
 
-    logger.info("Splitting multiallelics...")
     mt = mt.annotate_rows(
         n_unsplit_alleles=hl.len(mt.alleles),
         mixed_site=(hl.len(mt.alleles) > 2)
@@ -509,6 +508,7 @@ def _split_and_filter_variant_data_for_loading(
     if checkpoint_before_split:
         mt = mt.checkpoint(new_temp_file("variant_data.before_split", "mt"))
 
+    logger.info("Splitting multiallelics...")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     if filter_variant_ht is not None:
