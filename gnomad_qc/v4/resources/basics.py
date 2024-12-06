@@ -10,6 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
     VersionedVariantDatasetResource,
 )
+from hail.utils import new_temp_file
 
 import gnomad_qc.v3.resources.basics as v3_basics
 from gnomad_qc.v4.resources.constants import (
@@ -36,6 +37,7 @@ def get_gnomad_v4_vds(
     keep_controls: bool = False,
     release_only: bool = False,
     controls_only: bool = False,
+    filter_samples_ht: Optional[hl.Table] = None,
     test: bool = False,
     n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
@@ -49,6 +51,7 @@ def get_gnomad_v4_vds(
     annotate_meta: bool = False,
     entries_to_keep: Optional[List[str]] = None,
     annotate_het_non_ref: bool = False,
+    checkpoint_variant_data: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 data with desired filtering and metadata annotations.
@@ -67,6 +70,7 @@ def get_gnomad_v4_vds(
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param controls_only: Whether to filter the VDS to only control samples.
+    :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :param test: Whether to use the test VDS instead of the full v4 VDS.
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
@@ -90,6 +94,8 @@ def get_gnomad_v4_vds(
         of the local entries (e.g. 'LGT') to keep.
     :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
         '_het_non_ref') to the variant data. Default is False.
+    :param checkpoint_variant_data: Whether to checkpoint the variant data MT after
+        splitting and filtering. Default is False.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
@@ -211,9 +217,15 @@ def get_gnomad_v4_vds(
         return mt
 
     dup_ids = hl.literal(dup_ids)
-    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
-    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
-    vds = hl.vds.VariantDataset(rd, vd)
+
+    # We don't need to filter out the UKB samples with exact duplicate names if they are
+    # not in the requested sample HT.
+    if filter_samples_ht is None or (
+        filter_samples_ht.aggregate(hl.agg.any(dup_ids.contains(filter_samples_ht.s)))
+    ):
+        vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
+        rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
+        vds = hl.vds.VariantDataset(rd, vd)
 
     # We don't need to do the UKB withdrawn and pharma remove list sample removal if
     # we're only keeping high quality or release samples since they will not be in
@@ -257,6 +269,7 @@ def get_gnomad_v4_vds(
         high_quality_only
         or remove_hard_filtered_samples
         or remove_hard_filtered_samples_no_sex
+        or filter_samples_ht
     ) and not (release_only or controls_only):
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
@@ -287,6 +300,7 @@ def get_gnomad_v4_vds(
                 hard_filtered_samples_no_sex,
             )
 
+            filter_ht = None
             keep_samples = False
             if high_quality_only:
                 logger.info("Filtering VDS to high quality samples only...")
@@ -299,9 +313,22 @@ def get_gnomad_v4_vds(
                     " filtering) only..."
                 )
                 filter_ht = hard_filtered_samples.ht()
-            else:
+            elif remove_hard_filtered_samples_no_sex:
                 logger.info("Filtering VDS to hard filtered samples only...")
                 filter_ht = hard_filtered_samples_no_sex.ht()
+
+            if filter_samples_ht is not None:
+                if filter_ht is None:
+                    filter_ht = filter_samples_ht
+                elif keep_samples:
+                    filter_ht = filter_samples_ht.semi_join(filter_ht)
+                else:
+                    filter_ht = filter_samples_ht.anti_join(filter_ht)
+                logger.info(
+                    "Filtering VDS to %d samples in provided Table...",
+                    filter_ht.count(),
+                )
+                keep_samples = True
 
             filter_s = filter_ht.s.collect()
             if keep_controls:
@@ -343,11 +370,14 @@ def get_gnomad_v4_vds(
 
     if split:
         vmt = _split_and_filter_variant_data_for_loading(
-            vmt, filter_variant_ht, entries_to_keep
+            vmt, filter_variant_ht, entries_to_keep, checkpoint_variant_data
         )
 
     if entries_to_keep is not None:
         vmt = vmt.select_entries(*entries_to_keep)
+
+    if checkpoint_variant_data:
+        vmt = vmt.checkpoint(new_temp_file("vds_loading.variant_data", "mt"))
 
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
@@ -439,6 +469,7 @@ def _split_and_filter_variant_data_for_loading(
     mt: hl.MatrixTable,
     filter_variant_ht: hl.Table = None,
     entries_to_keep: Optional[List[str]] = None,
+    checkpoint_before_split: bool = False,
 ) -> hl.MatrixTable:
     """
     Split and filter a VDS variant data MT to a set of variants and entries fields.
@@ -449,6 +480,8 @@ def _split_and_filter_variant_data_for_loading(
     :param entries_to_keep: Optional argument to keep only specific entries in the
         returned MT. Use the global entries (e.g. 'GT') instead of the local entries
         (e.g. 'LGT') to keep.
+    :param checkpoint_before_split: Whether to checkpoint the mt before splitting.
+        Default is False.
     :return: Split and filtered VDS variant data MT.
     """
     if entries_to_keep is not None:
@@ -472,10 +505,14 @@ def _split_and_filter_variant_data_for_loading(
         & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
         & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
     )
+
+    if checkpoint_before_split:
+        mt = mt.checkpoint(new_temp_file("variant_data.before_split", "mt"))
+
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     if filter_variant_ht is not None:
-        mt = mt.filter_rows(hl.is_defined(filter_variant_ht[mt.row_key]))
+        mt = mt.semi_join_rows(filter_variant_ht)
 
     return mt
 

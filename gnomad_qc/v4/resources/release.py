@@ -1,6 +1,7 @@
 """Script containing release related resources."""
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from gnomad.resources.grch38.gnomad import all_sites_an, coverage, public_release
@@ -16,7 +17,9 @@ from gnomad_qc.v4.resources.constants import (
     COVERAGE_RELEASES,
     CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
+    CURRENT_DE_NOVO_RELEASE,
     CURRENT_RELEASE,
+    DE_NOVO_RELEASES,
     RELEASES,
 )
 
@@ -389,6 +392,29 @@ def release_all_sites_an(
                 )
             )
             for release in ALL_SITES_AN_RELEASES[data_type]
+        },
+    )
+
+
+def release_de_novo(test: bool = False) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for exomes de novo release Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: De novo release Table.
+    """
+    data_type = "exomes"
+    postfix = f".{datetime.today().strftime('%Y-%m-%d')}" if test else ""
+    return VersionedTableResource(
+        default_version=CURRENT_DE_NOVO_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=(
+                    f"{_release_root(version=release, test=test, data_type=data_type)}"
+                    f"/gnomad.{data_type}.v{release}.de_novo{postfix}.ht"
+                )
+            )
+            for release in DE_NOVO_RELEASES[data_type]
         },
     )
 
