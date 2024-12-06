@@ -398,7 +398,7 @@ def main(args):
             get_trio_stats(releasable_only=True).ht(),
             test=test,
         ).naive_coalesce(args.de_novo_n_partitions).write(
-            de_novo_mt(releasable=True).path, overwrite=overwrite
+            de_novo_mt(releasable=True, test=test).path, overwrite=overwrite
         )
 
     if args.generate_final_ht:
