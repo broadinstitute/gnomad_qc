@@ -104,7 +104,7 @@ def filter_de_novos(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def get_dense_releasable_trios_mt(
+def get_releasable_trios_dense_mt(
     fam_ht: hl.Table,
     var_ht: hl.Table,
     test: bool = False,

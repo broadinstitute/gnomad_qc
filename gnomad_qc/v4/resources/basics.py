@@ -318,13 +318,13 @@ def get_gnomad_v4_vds(
                 filter_ht = hard_filtered_samples_no_sex.ht()
 
             if filter_samples_ht is not None:
-                logger.info("Filtering VDS to samples in provided Table...")
                 if filter_ht is None:
                     filter_ht = filter_samples_ht
                 elif keep_samples:
                     filter_ht = filter_samples_ht.semi_join(filter_ht)
                 else:
                     filter_ht = filter_samples_ht.anti_join(filter_ht)
+                logger.info("Filtering VDS to %d samples in provided Table...", filter_ht.count()) 
                 keep_samples = True
 
             filter_s = filter_ht.s.collect()
