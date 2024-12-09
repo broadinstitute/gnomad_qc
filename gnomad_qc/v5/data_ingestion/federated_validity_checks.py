@@ -30,12 +30,12 @@ def check_missingness(
     },
 ) -> None:
     """
-    Check for fraction of missing data in the Table
+    Check for fraction of missing data in the Table.
 
     :param ht: Input Table.
     :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
-    :param struct_annotations: List of struct annotations to check for missingness. Default is  ['grpmax', 'fafmax', 'histograms'].
-    :param indexed_array_annotations: Dictionary of indexed arrays annotations to check for missingnes, where keys are the names of the annotation, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
+    :param struct_annotations: List of struct annotations to check for missingness. Default is ['grpmax', 'fafmax', 'histograms'].
+    :param indexed_array_annotations: Dictionary of indexed arrays annotations to check for missingness, where keys are the names of the annotation, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
     :return: None
     """
 
@@ -70,7 +70,7 @@ def check_missingness(
             )
 
     logger.info("Checking for missingness of info and non-info fields...")
-    # Gather info and non-info metrics (or if doesn't exists, set to an empty list).
+    # Gather info and non-info metrics (or if doesn't exist, set to an empty list).
     # substract missingness dict
     # info_metrics = list(ht.row.info) - missingness_dict.keys() or []
     # non_info_metrics = list(ht.row).remove("info") - missingness_dict.keys() or []
@@ -86,7 +86,7 @@ def check_missingness(
 
 def validate_federated_data(ht, missingness_threshold: float = 0.50) -> None:
     """
-    Perform validity checks on federated data..
+    Perform validity checks on federated data.
 
     :param ht: Input Table.
     :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
