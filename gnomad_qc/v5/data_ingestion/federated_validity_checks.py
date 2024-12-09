@@ -50,7 +50,6 @@ def check_missingness(
 
     logger.info("Checking for missingness within indexed array annotations...")
     # Determine missingness of each indexed array annotation.
-    # missingness_dict.update(check_array_struct_missingness(ht))
     missingness_dict.update(check_array_struct_missingness(ht))
 
     # Report whether or not each metric pass or fails the missingness check
@@ -74,7 +73,9 @@ def check_missingness(
     # substract missingness dict
     # info_metrics = list(ht.row.info) - missingness_dict.keys() or []
     # non_info_metrics = list(ht.row).remove("info") - missingness_dict.keys() or []
-    info_metrics = set(ht.row.info) - missingness_dict.keys()
+    info_metrics = (
+        set(ht.row.info) - missingness_dict.keys() if "info" in ht.row else []
+    )
     non_info_metrics = set(ht.row) - {"info"} - missingness_dict.keys()
     n_sites = ht.count()
     logger.info("Info metrics are %s", info_metrics)
@@ -108,7 +109,7 @@ def validate_federated_data(ht, missingness_threshold: float = 0.50) -> None:
         ht, missingness_threshold, struct_annotations=["grpmax", "fafmax", "histograms"]
     )
 
-    # TODO: consider adding check_global_and_row_annot_lengths
+    # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
 def main(args):
