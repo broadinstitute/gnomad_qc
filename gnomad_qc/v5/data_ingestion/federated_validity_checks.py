@@ -35,7 +35,7 @@ def check_missingness(
     :param ht: Input Table.
     :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
     :param struct_annotations: List of struct annotations to check for missingness. Default is ['grpmax', 'fafmax', 'histograms'].
-    :param indexed_array_annotations: Dictionary of indexed arrays annotations to check for missingness, where keys are the names of the annotation, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
+    :param indexed_array_annotations: Dictionary of indexed array struct annotations to check for missingness, where keys are the names of the annotation, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
     :return: None
     """
 
