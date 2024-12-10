@@ -69,8 +69,8 @@ def check_missingness(
             )
 
     logger.info("Checking for missingness of info and non-info fields...")
-    # Gather info and non-info metrics (or if doesn't exist, set to an empty list).
-    # substract missingness dict.
+    # Gather info and non-info metrics (or if doesn't exist, set to an empty list)
+    # and substract missingness dict.
     info_metrics = (
         set(ht.row.info) - missingness_dict.keys() if "info" in ht.row else []
     )
