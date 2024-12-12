@@ -52,6 +52,7 @@ def get_gnomad_v4_vds(
     entries_to_keep: Optional[List[str]] = None,
     annotate_het_non_ref: bool = False,
     checkpoint_variant_data: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 data with desired filtering and metadata annotations.
@@ -96,6 +97,8 @@ def get_gnomad_v4_vds(
         '_het_non_ref') to the variant data. Default is False.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after
         splitting and filtering. Default is False.
+    :param naive_coalesce_partitions: Optional argument to coalesce the VDS to a
+        specific number of partitions using naive coalesce.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
@@ -157,6 +160,12 @@ def get_gnomad_v4_vds(
         if chrom:
             logger.info("Filtering to chromosome %s...", chrom)
             vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+
+    if naive_coalesce_partitions:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
+            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
+        )
 
     if filter_partitions:
         logger.info("Filtering to %s partitions...", len(filter_partitions))

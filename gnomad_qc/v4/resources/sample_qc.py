@@ -997,6 +997,31 @@ def ped_filter_param_json_path(
     return f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.exomes.v{version}.ped_filters.json"
 
 
+def dense_trio_mt(
+    releasable: bool = True,
+    test: bool = False,
+) -> VersionedMatrixTableResource:
+    """
+    Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+
+    :param releasable: Whether to get the resource for the releasable trios only.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource of dense trio MatrixTable.
+    """
+    data_type = "exomes"
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.trios"
+                f"{'.releasable' if releasable else ''}.dense.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Other resources
 ######################################################################
