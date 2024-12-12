@@ -633,7 +633,7 @@ def main(args):
         res = trio_resources.create_dense_trio_mt
         res.check_resource_existence()
         create_dense_trio_mt(
-            res.pedigree.ht(),
+            res.final_ped.ht(),
             res.meta_ht.ht(),
             args.releasable_only,
             test,
