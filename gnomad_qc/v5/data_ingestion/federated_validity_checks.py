@@ -72,7 +72,7 @@ def check_missingness(
     # Gather info and non-info metrics (or if doesn't exist, set to an empty list)
     # and substract missingness dict.
     info_metrics = (
-        set(ht.row.info) - missingness_dict.keys() if "info" in ht.row else []
+        set(ht.row.info) - missingness_dict.keys() if "info" in ht.row else set()
     )
     non_info_metrics = set(ht.row) - {"info"} - missingness_dict.keys()
     n_sites = ht.count()
