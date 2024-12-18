@@ -420,6 +420,8 @@ def create_dense_trio_mt(
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
     # Get the gnomAD VDS filtered to high quality releasable trios.
+    # Using 'entries_to_keep' to keep all entries that are not `gvcf_info` because it
+    # is likely not needed, and removal will reduce the size of the dense MatrixTable.
     vds = get_gnomad_v4_vds(
         high_quality_only=True,
         chrom="chr20" if test else None,
