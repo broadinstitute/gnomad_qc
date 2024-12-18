@@ -1,0 +1,30 @@
+gnomad_qc.v4.annotations.generate_freq
+======================================
+
+
+Script to generate the frequency data annotations across v4 exomes.
+
+This script first splits the v4 VDS into multiples VDSs based which are then densified
+and annotated with frequency data and histograms. The VDSs are then merged back together
+in a hail Table. Next the script corrects for the high AB heterozygous GATK artifact in
+existing annotations when given the AF threshold using a high AB het array. The script
+then computes the inbreeding coefficient using the raw call stats. Finally, it computes
+the filtering allele frequency and grpmax with the AB-adjusted frequencies.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.annotations.generate_freq.get_script_argument_parser
+   :prog: gnomad_qc.v4.annotations.generate_freq.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.generate_freq
+
+.. automodule:: gnomad_qc.v4.annotations.generate_freq
+    :exclude-members: get_script_argument_parser

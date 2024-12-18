@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.random_forest &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.random_forest</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.variant_qc.random_forest</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script for running random forest model on gnomAD v4 variant QC data.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">uuid</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="n">telomeres_and_centromeres</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.pipeline</span> <span class="kn">import</span> <span class="n">train_rf_model</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.random_forest</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">apply_rf_model</span><span class="p">,</span>
+    <span class="n">get_rf_runs</span><span class="p">,</span>
+    <span class="n">get_run_data</span><span class="p">,</span>
+    <span class="n">load_model</span><span class="p">,</span>
+    <span class="n">pretty_print_runs</span><span class="p">,</span>
+    <span class="n">save_model</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_variant_qc_annotations</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">interval_qc_pass</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_rf_model_path</span><span class="p">,</span>
+    <span class="n">get_rf_run_path</span><span class="p">,</span>
+    <span class="n">get_rf_training</span><span class="p">,</span>
+    <span class="n">get_variant_qc_result</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;variant_qc_random_forest&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">FEATURES</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_pab_max&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_QD&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;allele_type&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;has_star&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;n_alt_alleles&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;variant_type&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+<span class="n">LABEL_COL</span> <span class="o">=</span> <span class="s2">&quot;rf_label&quot;</span>
+<span class="n">PREDICTION_COL</span> <span class="o">=</span> <span class="s2">&quot;rf_prediction&quot;</span>
+<span class="n">PROBABILITY_COL</span> <span class="o">=</span> <span class="s2">&quot;rf_probability&quot;</span>
+<span class="n">TRAIN_COL</span> <span class="o">=</span> <span class="s2">&quot;rf_train&quot;</span>
+
+
+<div class="viewcode-block" id="train_rf"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/random_forest.html#gnomad_qc.v4.variant_qc.random_forest.train_rf">[docs]</a><span class="k">def</span> <span class="nf">train_rf</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">features</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">fp_to_tp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">num_trees</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">,</span>
+    <span class="n">max_depth</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="n">transmitted_singletons</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">sibling_singletons</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">adj</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_centromere_telomere</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test_intervals</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="s2">&quot;chr20&quot;</span><span class="p">,</span>
+    <span class="n">interval_qc_pass_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train random forest model using `train_rf_model`.</span>
+
+<span class="sd">    :param ht: Table containing annotations needed for RF training.</span>
+<span class="sd">    :param test: Whether to filter the input Table to chr20 and `test_intervals` for</span>
+<span class="sd">        test purposes. Default is False.</span>
+<span class="sd">    :param features: List of features to use in the random forests model. When no</span>
+<span class="sd">        `features` list is provided, the global FEATURES is used.</span>
+<span class="sd">    :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all</span>
+<span class="sd">        training examples are used. Default is 1.0.</span>
+<span class="sd">    :param num_trees: Number of trees in the RF model. Default is 500.</span>
+<span class="sd">    :param max_depth: Maximum tree depth in the RF model. Default is 5.</span>
+<span class="sd">    :param transmitted_singletons: Whether to use transmitted singletons for training.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :param sibling_singletons: Whether to use sibling singletons for training. Default</span>
+<span class="sd">        is False.</span>
+<span class="sd">    :param adj: Whether to use adj genotypes for transmitted/sibling singletons instead</span>
+<span class="sd">        of raw. Default is False and raw is used.</span>
+<span class="sd">    :param filter_centromere_telomere: Filter centromeres and telomeres before training.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :param test_intervals: Specified interval(s) will be held out for testing and</span>
+<span class="sd">        evaluation only. Default is &quot;chr20&quot;.</span>
+<span class="sd">    :param interval_qc_pass_ht: Optional interval QC pass Table that contains an</span>
+<span class="sd">        &#39;interval_qc_pass&#39; annotation indicating whether the interval passes</span>
+<span class="sd">        high-quality criteria. This annotation is used to filter the Table before</span>
+<span class="sd">        running training the RF model. Default is None.</span>
+<span class="sd">    :return: Input `ht` annotated with training information and the RF model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">features</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">features</span> <span class="o">=</span> <span class="n">FEATURES</span>
+
+    <span class="k">if</span> <span class="n">test_intervals</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">test_intervals</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">test_intervals</span> <span class="o">=</span> <span class="p">[</span><span class="n">test_intervals</span><span class="p">]</span>
+        <span class="n">test_intervals</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">test_intervals</span>
+        <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to chr22 and evaluation intervals for testing...&quot;</span><span class="p">)</span>
+        <span class="n">chr22_interval</span> <span class="o">=</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chr22&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)]</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">chr22_interval</span> <span class="o">+</span> <span class="n">test_intervals</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating true positives and false positives in HT...&quot;</span><span class="p">)</span>
+    <span class="n">fp_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">fail_hard_filters</span>
+    <span class="n">tp_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">omni</span> <span class="o">|</span> <span class="n">ht</span><span class="o">.</span><span class="n">mills</span>
+    <span class="n">transmit_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmitted_singleton_raw</span>
+    <span class="n">sibling_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">sibling_singleton_raw</span>
+
+    <span class="k">if</span> <span class="n">adj</span><span class="p">:</span>
+        <span class="n">transmit_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmitted_singleton_adj</span>
+        <span class="n">sibling_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">sibling_singleton_adj</span>
+
+    <span class="k">if</span> <span class="n">transmitted_singletons</span><span class="p">:</span>
+        <span class="n">tp_expr</span> <span class="o">|=</span> <span class="n">transmit_expr</span>
+    <span class="k">if</span> <span class="n">sibling_singletons</span><span class="p">:</span>
+        <span class="n">tp_expr</span> <span class="o">|=</span> <span class="n">sibling_expr</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">tp</span><span class="o">=</span><span class="n">tp_expr</span><span class="p">,</span> <span class="n">fp</span><span class="o">=</span><span class="n">fp_expr</span><span class="p">)</span>
+
+    <span class="n">rf_ht</span> <span class="o">=</span> <span class="n">ht</span>
+    <span class="k">if</span> <span class="n">filter_centromere_telomere</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering centromeres and telomeres from HT...&quot;</span><span class="p">)</span>
+        <span class="n">rf_ht</span> <span class="o">=</span> <span class="n">rf_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">telomeres_and_centromeres</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">locus</span><span class="p">])</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">interval_qc_pass_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to intervals that pass interval QC...&quot;</span><span class="p">)</span>
+        <span class="n">rf_ht</span> <span class="o">=</span> <span class="n">rf_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">interval_qc_pass_ht</span><span class="p">[</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">)</span>
+
+    <span class="n">rf_ht</span><span class="p">,</span> <span class="n">rf_model</span> <span class="o">=</span> <span class="n">train_rf_model</span><span class="p">(</span>
+        <span class="n">rf_ht</span><span class="p">,</span>
+        <span class="n">rf_features</span><span class="o">=</span><span class="n">features</span><span class="p">,</span>
+        <span class="n">tp_expr</span><span class="o">=</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">tp</span><span class="p">,</span>
+        <span class="n">fp_expr</span><span class="o">=</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">fp</span><span class="p">,</span>
+        <span class="n">fp_to_tp</span><span class="o">=</span><span class="n">fp_to_tp</span><span class="p">,</span>
+        <span class="n">num_trees</span><span class="o">=</span><span class="n">num_trees</span><span class="p">,</span>
+        <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span><span class="p">,</span>
+        <span class="n">test_expr</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">test_intervals</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">interval</span><span class="p">:</span> <span class="n">interval</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">locus</span><span class="p">)</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">rf_ht</span> <span class="o">=</span> <span class="n">rf_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">fp_to_tp</span><span class="o">=</span><span class="n">fp_to_tp</span><span class="p">,</span>
+        <span class="n">num_trees</span><span class="o">=</span><span class="n">num_trees</span><span class="p">,</span>
+        <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span><span class="p">,</span>
+        <span class="n">transmitted_singletons</span><span class="o">=</span><span class="n">transmitted_singletons</span><span class="p">,</span>
+        <span class="n">sibling_singletons</span><span class="o">=</span><span class="n">sibling_singletons</span><span class="p">,</span>
+        <span class="n">adj</span><span class="o">=</span><span class="n">adj</span><span class="p">,</span>
+        <span class="n">filter_centromere_telomere</span><span class="o">=</span><span class="n">filter_centromere_telomere</span><span class="p">,</span>
+        <span class="n">interval_qc_filter</span><span class="o">=</span><span class="n">interval_qc_pass_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">test_intervals</span><span class="o">=</span><span class="n">test_intervals</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;tp&quot;</span><span class="p">,</span> <span class="s2">&quot;fp&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">rf_ht</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;left&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span><span class="p">,</span> <span class="n">rf_model</span></div>
+
+
+<div class="viewcode-block" id="add_model_to_run_list"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/random_forest.html#gnomad_qc.v4.variant_qc.random_forest.add_model_to_run_list">[docs]</a><span class="k">def</span> <span class="nf">add_model_to_run_list</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">rf_runs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">rf_run_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add RF model run to RF run list.</span>
+
+<span class="sd">    :param ht: Table containing RF model run information as globals.</span>
+<span class="sd">    :param model_id: ID of RF model run.</span>
+<span class="sd">    :param rf_runs: Dictionary containing current RF run information.</span>
+<span class="sd">    :param rf_run_path: Path to RF run list.</span>
+<span class="sd">    :return: None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding run to RF run list&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">test_intervals</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">test_intervals</span><span class="p">))</span>
+    <span class="n">ht_globals</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">globals</span><span class="p">)</span>
+    <span class="n">input_args</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;compute_info_method&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;transmitted_singletons&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sibling_singletons&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;adj&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;filter_centromere_telomere&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;interval_qc_filter&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="n">rf_output</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;test_intervals&quot;</span><span class="p">,</span> <span class="s2">&quot;features_importance&quot;</span><span class="p">,</span> <span class="s2">&quot;test_results&quot;</span><span class="p">]</span>
+    <span class="n">rf_runs</span><span class="p">[</span><span class="n">model_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_run_data</span><span class="p">(</span>
+        <span class="n">input_args</span><span class="o">=</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">ht_globals</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">input_args</span><span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">ht_globals</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">rf_output</span><span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">rf_run_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">rf_runs</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_variant_qc_resources"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/random_forest.html#gnomad_qc.v4.variant_qc.random_forest.get_variant_qc_resources">[docs]</a><span class="k">def</span> <span class="nf">get_variant_qc_resources</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">model_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the variant QC pipeline.</span>
+
+<span class="sd">    :param test: Whether to gather all resources for testing.</span>
+<span class="sd">    :param overwrite: Whether to overwrite resources if they exist.</span>
+<span class="sd">    :param model_id: Model ID to use for RF model. If not provided, a new model ID will</span>
+<span class="sd">        be generated.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        variant QC pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># If no model ID is supplied, generate one and make sure it doesn&#39;t already exist.</span>
+    <span class="n">rf_run_path</span> <span class="o">=</span> <span class="n">get_rf_run_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+    <span class="n">rf_runs</span> <span class="o">=</span> <span class="n">get_rf_runs</span><span class="p">(</span><span class="n">rf_run_path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">model_id</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">model_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;rf_</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())[:</span><span class="mi">8</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">while</span> <span class="n">model_id</span> <span class="ow">in</span> <span class="n">rf_runs</span><span class="p">:</span>
+            <span class="n">model_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;rf_</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">())[:</span><span class="mi">8</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="c1"># Initialize variant QC pipeline resource collection.</span>
+    <span class="n">variant_qc_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;variant_qc&quot;</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">pipeline_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;RF models&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;rf_run_path&quot;</span><span class="p">:</span> <span class="n">rf_run_path</span><span class="p">,</span>
+                <span class="s2">&quot;model_id&quot;</span><span class="p">:</span> <span class="n">model_id</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;vqc_annotation_ht&quot;</span><span class="p">:</span> <span class="n">get_variant_qc_annotations</span><span class="p">()</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="c1"># Create resource collection for each step of the variant QC pipeline.</span>
+    <span class="n">train_random_forest</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--train-rf&quot;</span><span class="p">,</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;interval_qc.py --generate-interval-qc-pass-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;interval_qc_pass_ht&quot;</span><span class="p">:</span> <span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;rf_training_ht&quot;</span><span class="p">:</span> <span class="n">get_rf_training</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+            <span class="s2">&quot;rf_model_path&quot;</span><span class="p">:</span> <span class="n">get_rf_model_path</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">apply_random_forest</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-rf&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;rf_result_ht&quot;</span><span class="p">:</span> <span class="n">get_variant_qc_result</span><span class="p">(</span><span class="n">model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">train_random_forest</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the variant QC pipeline resource collection.</span>
+    <span class="n">variant_qc_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;train_rf&quot;</span><span class="p">:</span> <span class="n">train_random_forest</span><span class="p">,</span>
+            <span class="s2">&quot;apply_rf&quot;</span><span class="p">:</span> <span class="n">apply_random_forest</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">variant_qc_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/variant_qc/random_forest.html#gnomad_qc.v4.variant_qc.random_forest.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run random forest variant QC pipeline.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/variant_qc_random_forest.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">compute_info_method</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">compute_info_method</span>
+
+    <span class="n">variant_qc_resources</span> <span class="o">=</span> <span class="n">get_variant_qc_resources</span><span class="p">(</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">model_id</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">model_id</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">rf_run_path</span> <span class="o">=</span> <span class="n">variant_qc_resources</span><span class="o">.</span><span class="n">rf_run_path</span>
+    <span class="n">model_id</span> <span class="o">=</span> <span class="n">variant_qc_resources</span><span class="o">.</span><span class="n">model_id</span>
+    <span class="n">vqc_annotation_ht</span> <span class="o">=</span> <span class="n">variant_qc_resources</span><span class="o">.</span><span class="n">vqc_annotation_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">list_rf_runs</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;RF runs:&quot;</span><span class="p">)</span>
+        <span class="n">pretty_print_runs</span><span class="p">(</span><span class="n">get_rf_runs</span><span class="p">(</span><span class="n">rf_run_path</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">train_rf</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">variant_qc_resources</span><span class="o">.</span><span class="n">train_rf</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">vqc_annotation_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="n">vqc_annotation_ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">compute_info_method</span><span class="si">}</span><span class="s2">_info&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">interval_qc_filter</span><span class="p">:</span>
+            <span class="n">interval_qc_pass_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">interval_qc_pass_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">interval_qc_pass_ht</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="n">rf_model</span> <span class="o">=</span> <span class="n">train_rf</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="n">features</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">features</span><span class="p">,</span>
+            <span class="n">fp_to_tp</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">fp_to_tp</span><span class="p">,</span>
+            <span class="n">num_trees</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_trees</span><span class="p">,</span>
+            <span class="n">max_depth</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_depth</span><span class="p">,</span>
+            <span class="n">transmitted_singletons</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">transmitted_singletons</span><span class="p">,</span>
+            <span class="n">sibling_singletons</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">sibling_singletons</span><span class="p">,</span>
+            <span class="n">adj</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+            <span class="n">filter_centromere_telomere</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">filter_centromere_telomere</span><span class="p">,</span>
+            <span class="n">test_intervals</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test_intervals</span><span class="p">,</span>
+            <span class="n">interval_qc_pass_ht</span><span class="o">=</span><span class="n">interval_qc_pass_ht</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">compute_info_method</span><span class="o">=</span><span class="n">compute_info_method</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">rf_training_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding run to RF run list&quot;</span><span class="p">)</span>
+        <span class="n">add_model_to_run_list</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">model_id</span><span class="p">,</span> <span class="n">get_rf_runs</span><span class="p">(</span><span class="n">rf_run_path</span><span class="p">),</span> <span class="n">rf_run_path</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Saving RF model&quot;</span><span class="p">)</span>
+        <span class="n">save_model</span><span class="p">(</span><span class="n">rf_model</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">rf_model_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_rf</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">variant_qc_resources</span><span class="o">.</span><span class="n">apply_rf</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Applying RF model </span><span class="si">{</span><span class="n">model_id</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+        <span class="n">rf_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">rf_training_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">rf_features</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">features</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">vqc_annotation_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="n">vqc_annotation_ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">compute_info_method</span><span class="p">)</span><span class="si">}</span><span class="s2">_info&quot;</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">rf_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="p">[</span><span class="n">rf_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">rf_features</span><span class="p">))</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_rf_model</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">rf_model</span><span class="o">=</span><span class="n">load_model</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">rf_model_path</span><span class="p">),</span>
+            <span class="n">features</span><span class="o">=</span><span class="n">rf_features</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Finished applying RF model...&quot;</span><span class="p">)</span>
+        <span class="n">summary_cols</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;tp&quot;</span><span class="p">,</span> <span class="s2">&quot;fp&quot;</span><span class="p">,</span> <span class="n">TRAIN_COL</span><span class="p">,</span> <span class="n">LABEL_COL</span><span class="p">,</span> <span class="n">PREDICTION_COL</span><span class="p">]</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">summary_cols</span><span class="p">,</span> <span class="n">PROBABILITY_COL</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">rf_model_id</span><span class="o">=</span><span class="n">model_id</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">rf_result_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="o">*</span><span class="n">summary_cols</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">())</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack_channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all data from this subset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;If the dataset should be filtered to chr22 for testing (also filtered to &quot;</span>
+            <span class="s2">&quot;evaluation interval specified by --test-intervals).&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--model-id&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Model ID. Created by --train-rf and only needed for --apply-rf without&quot;</span>
+            <span class="s2">&quot; running --train-rf.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">actions</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Actions&quot;</span><span class="p">)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--list-rf-runs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Lists all previous RF runs, along with their model ID, parameters and&quot;</span>
+            <span class="s2">&quot; testing results.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--train-rf&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Trains RF model.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">actions</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-rf&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Applies RF model to the data.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">rf_params</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Random Forest parameters&quot;</span><span class="p">)</span>
+    <span class="n">rf_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--compute-info-method&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Method of computing the INFO score to use for the variant QC features. &quot;</span>
+            <span class="s2">&quot;Default is &#39;AS&#39;.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;AS&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;AS&quot;</span><span class="p">,</span> <span class="s2">&quot;quasi&quot;</span><span class="p">,</span> <span class="s2">&quot;set_long_AS_missing&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">rf_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--features&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Features to use in the random forests model.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">FEATURES</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">rf_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fp-to-tp&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Ratio of FPs to TPs for training the RF model. If 0, all training examples&quot;</span>
+            <span class="s2">&quot; are used. Default is 1.0.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">rf_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-intervals&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;The specified interval(s) will be held out for testing and evaluation&quot;</span>
+            <span class="s1">&#39; only. Default is &quot;chr20&quot;.&#39;</span>
+        <span class="p">),</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;chr20&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">rf_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--num-trees&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of trees in the RF model. Default is 500.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">rf_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-depth&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Maxmimum tree depth in the RF model. Default is 5.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">training_params</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Training data parameters&quot;</span><span class="p">)</span>
+    <span class="n">training_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--adj&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use adj genotypes for transmitted/sibling singletons.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--transmitted-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Include transmitted singletons in training.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--sibling-singletons&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Include sibling singletons in training.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--filter-centromere-telomere&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Train RF without centromeres and telomeres.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">training_params</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--interval-qc-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether interval QC should be applied for RF training.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">model_id</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">train_rf</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_rf</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span>
+            <span class="s2">&quot;Error: --model_id is required when running --apply-rf without running&quot;</span>
+            <span class="s2">&quot; --train-rf too.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">model_id</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">train_rf</span><span class="p">:</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span>
+            <span class="s2">&quot;Error: --model_id and --train-rf are mutually exclusive. --train-rf will&quot;</span>
+            <span class="s2">&quot; generate a run model ID.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
