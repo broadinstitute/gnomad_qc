@@ -10,6 +10,7 @@ from typing import Dict, Optional, Tuple
 import hail as hl
 from gnomad.sample_qc.relatedness import (
     create_fake_pedigree,
+    filter_to_trios,
     get_duplicated_samples,
     get_duplicated_samples_ht,
     infer_families,
@@ -24,8 +25,9 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.meta import project_meta
+from gnomad_qc.v4.resources.meta import meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    dense_trio_mt,
     duplicates,
     finalized_outlier_filtering,
     interval_qc_pass,
@@ -385,12 +387,64 @@ def filter_ped(
     return hl.Pedigree([trio for trio in ped.trios if trio.s in trios]), cutoffs
 
 
-def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollection:
+def create_dense_trio_mt(
+    fam_ht: hl.Table,
+    meta_ht: hl.Table,
+    releasable_only: bool = True,
+    test: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+) -> hl.MatrixTable:
+    """
+    Create a dense MatrixTable for high quality trios.
+
+    :param fam_ht: Table with family information.
+    :param meta_ht: Table with metadata information.
+    :param releasable_only: Whether to only include trios that are releasable. Default
+        is True.
+    :param test: Whether to filter to chr20 for testing. Default is False.
+    :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
+        to. Default is None.
+    :return: Dense MatrixTable with high quality trios.
+    """
+    filter_expr = meta_ht.high_quality
+    if releasable_only:
+        filter_expr &= meta_ht.project_meta.releasable
+
+    # Filter the metadata table to only samples in high quality and releasable trios.
+    meta_ht = meta_ht.filter(filter_expr)
+    fam_ht = fam_ht.filter(
+        hl.is_defined(meta_ht[fam_ht.id])
+        & hl.is_defined(meta_ht[fam_ht.pat_id])
+        & hl.is_defined(meta_ht[fam_ht.mat_id])
+    )
+    meta_ht = filter_to_trios(meta_ht, fam_ht)
+
+    # Get the gnomAD VDS filtered to high quality releasable trios.
+    # Using 'entries_to_keep' to keep all entries that are not `gvcf_info` because it
+    # is likely not needed, and removal will reduce the size of the dense MatrixTable.
+    vds = get_gnomad_v4_vds(
+        high_quality_only=True,
+        chrom="chr20" if test else None,
+        filter_samples_ht=meta_ht,
+        entries_to_keep=["LA", "LGT", "LAD", "LPGT", "LPL", "DP", "GQ", "SB"],
+        naive_coalesce_partitions=naive_coalesce_partitions,
+    )
+
+    return hl.vds.to_dense_mt(vds)
+
+
+def get_trio_resources(
+    overwrite: bool,
+    test: bool,
+    dense_trio_mt_releasable_only: bool = True,
+) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the trio identification pipeline.
 
     :param overwrite: Whether to overwrite existing resources.
     :param test: Whether to use test resources.
+    :param dense_trio_mt_releasable_only: Whether to only include trios that are
+        releasable in the dense trio MT. Default is True.
     :return: PipelineResourceCollection containing resources for all steps of the
         trio identification pipeline.
     """
@@ -457,6 +511,16 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
         },
         pipeline_input_steps=[infer_families, run_mendel_errors],
     )
+    create_dense_trio_mt = PipelineStepResourceCollection(
+        "--create-dense-trio-mt",
+        output_resources={
+            "dense_trio_mt": dense_trio_mt(
+                releasable=dense_trio_mt_releasable_only, test=test
+            )
+        },
+        pipeline_input_steps=[finalize_ped],
+        add_input_resources={"Finalized metadata HT": {"meta_ht": meta()}},
+    )
 
     # Add all steps to the trio identification pipeline resource collection.
     trio_pipeline.add_steps(
@@ -466,6 +530,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
             "create_fake_pedigree": create_fake_pedigree,
             "run_mendel_errors": run_mendel_errors,
             "finalize_ped": finalize_ped,
+            "create_dense_trio_mt": create_dense_trio_mt,
         }
     )
 
@@ -565,6 +630,17 @@ def main(args):
         )
         with hl.hadoop_open(res.filter_json, "w") as d:
             d.write(json.dumps(filters))
+
+    if args.create_dense_trio_mt:
+        res = trio_resources.create_dense_trio_mt
+        res.check_resource_existence()
+        create_dense_trio_mt(
+            res.final_ped.ht(),
+            res.meta_ht.ht(),
+            args.releasable_only,
+            test,
+            naive_coalesce_partitions=args.naive_coalesce_partitions,
+        ).write(res.dense_trio_mt.path, overwrite=args.overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -723,6 +799,23 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         type=int,
         default=24,
+    )
+    dense_trio_mt_args = parser.add_argument_group("Create dense trio MT.")
+    dense_trio_mt_args.add_argument(
+        "--create-dense-trio-mt",
+        help=("Create a dense MT for high quality trios."),
+        action="store_true",
+    )
+    dense_trio_mt_args.add_argument(
+        "--releasable-only",
+        help=("Only include trios that are releasable."),
+        action="store_true",
+    )
+    dense_trio_mt_args.add_argument(
+        "--naive-coalesce-partitions",
+        help=("Number of partitions to coalesce the VDS to."),
+        type=int,
+        default=5000,
     )
 
     return parser
