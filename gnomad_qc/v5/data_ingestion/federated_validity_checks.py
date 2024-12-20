@@ -23,8 +23,8 @@ logger.setLevel(logging.INFO)
 def check_missingness(
     ht,
     missingness_threshold: float = 0.5,
-    struct_annotations: list = ["grpmax", "fafmax", "histograms"],
-    indexed_array_annotations: dict = {
+    struct_annotations: List[str] = ["grpmax", "fafmax", "histograms"],
+    indexed_array_annotations: Dict[str, str] = {
         "faf": "faf_index_dict",
         "freq": "freq_index_dict",
     },
