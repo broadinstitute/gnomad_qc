@@ -14,6 +14,7 @@ from gnomad.assessment.validity_checks import (
 from gnomad.resources.grch38.gnomad import public_release
 
 from gnomad_qc.v5.resources.basics import get_logging_path
+from typing import Dict, List
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("federated_validity_checks")
