@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+from typing import Dict, List
 
 import hail as hl
 from gnomad.assessment.validity_checks import (
@@ -13,10 +14,8 @@ from gnomad.assessment.validity_checks import (
 )
 from gnomad.resources.grch38.gnomad import public_release
 
-from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.assessment import get_indexed_array_for_missingness_path
-
-from typing import Dict, List
+from gnomad_qc.v5.resources.basics import get_logging_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("federated_validity_checks")
