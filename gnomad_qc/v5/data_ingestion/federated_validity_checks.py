@@ -14,11 +14,25 @@ from gnomad.assessment.validity_checks import (
 from gnomad.resources.grch38.gnomad import public_release
 
 from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v5.resources.assessment import get_indexed_array_for_missingness_path
+
 from typing import Dict, List
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("federated_validity_checks")
 logger.setLevel(logging.INFO)
+
+
+def read_file_to_dict(file_path):
+    """
+    Read in a file of key:value pairs and convert it to a dictionary.
+
+    :param file_path: Path to file to process. The file should have two columns, the first column is the keys and the second column is the values. File should not contain a header.
+    """
+    ht = hl.import_table(file_path, no_header=True)
+    file_dict = dict(hl.tuple([ht.f0, ht.f1]).collect())
+    logger.info("Input file converted to the following dictionary: %s.", file_dict)
+    return file_dict
 
 
 def check_missingness(
@@ -41,6 +55,7 @@ def check_missingness(
     """
 
     logger.info("Checking for missingness within struct annotations...")
+    logger.info("Struct annotations being checked: %s.", struct_annotations)
     # Determine missingness of each struct annotation.
     metric_missingness = {}
     for metric in struct_annotations:
@@ -50,8 +65,13 @@ def check_missingness(
     missingness_dict = flatten_missingness_struct(missingness_struct)
 
     logger.info("Checking for missingness within indexed array annotations...")
+    logger.info(
+        "Indexed array annotations being checked: %s.", indexed_array_annotations
+    )
     # Determine missingness of each indexed array annotation.
-    missingness_dict.update(check_array_struct_missingness(ht))
+    missingness_dict.update(
+        check_array_struct_missingness(ht, indexed_array_annotations)
+    )
 
     # Report whether or not each metric pass or fails the missingness check
     # based on the missingness_threshold.
@@ -84,13 +104,22 @@ def check_missingness(
     )
 
 
-def validate_federated_data(ht, missingness_threshold: float = 0.50) -> None:
+def validate_federated_data(
+    ht,
+    missingness_threshold: float = 0.50,
+    struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
+    indexed_array_annotations_for_missingness_dict: Dict[str, str] = {
+        "faf": "faf_index_dict",
+        "freq": "freq_index_dict",
+    },
+) -> None:
     """
     Perform validity checks on federated data.
 
     :param ht: Input Table.
     :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
-    :param struct_annotations: List of struct annotations to check for missingness. Default is  ['grpmax', 'fafmax', 'histograms'].
+    :param struct_annotations_for_missingness: List of struct annotations to check for missingness. Default is ['grpmax', 'fafmax', 'histograms'].
+    :param indexed_array_annotations_for_missingness_dict: Dictionary of indexed array struct annotations to check for missingness, where keys are the names of the annotation, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
     :return: None
     """
 
@@ -104,8 +133,12 @@ def validate_federated_data(ht, missingness_threshold: float = 0.50) -> None:
     summarize_variants(ht, expected_contigs=expected_contigs)
 
     # Check for missingness.
+    logger.info("Checking for missingness...")
     check_missingness(
-        ht, missingness_threshold, struct_annotations=["grpmax", "fafmax", "histograms"]
+        ht,
+        missingness_threshold,
+        struct_annotations=struct_annotations_for_missingness,
+        indexed_array_annotations=indexed_array_annotations_for_missingness_dict,
     )
 
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
@@ -120,6 +153,12 @@ def main(args):
     hl.default_reference("GRCh38")
     test_n_partitions = args.test_n_partitions
     missingness_threshold = args.missingness_threshold
+    struct_annotations_for_missingness = args.struct_annotations_for_missingness
+    indexed_array_annotations_for_missingness_dict = read_file_to_dict(
+        args.indexed_array_annotations_for_missingness_dict
+    )
+
+    # indexed_array_annotations_for_missingness_dict=convert_argparse_to_dict(args.indexed_array_annotations_for_missingness_dict)
 
     try:
         # TODO: Add resources to intake federated data once obtained.
@@ -129,8 +168,12 @@ def main(args):
             logger.info("Filtering to %d partitions.", test_n_partitions)
             ht = ht._filter_partitions(range(test_n_partitions))
 
-        # logger.info("Checking for missingness...")
-        validate_federated_data(ht, args.missingness_threshold)
+        validate_federated_data(
+            ht,
+            missingness_threshold,
+            struct_annotations_for_missingness,
+            indexed_array_annotations_for_missingness_dict,
+        )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -158,6 +201,22 @@ if __name__ == "__main__":
         ),
         type=float,
         default=0.50,
+    )
+    parser.add_argument(
+        "--struct-annotations-for-missingness",
+        help="List of Struct annotation for which to check for missingness. Provided values should be separated by a space, example: 'grpmax fafmax histograms'.",
+        type=str,
+        nargs="+",
+        default=["grpmax", "fafmax", "histograms"],
+    )
+    parser.add_argument(
+        "--indexed-array-annotations-for-missingness-dict",
+        help="File containing indexed array annotations for which to check for missingness. This file should not contain a header. "
+        "The first column should contain the keys (names of the array annotations), and the second column should contain the values (names of the globals containing "
+        "the mapping of group name to index for that key).",
+        type=str,
+        nargs="+",
+        default=get_indexed_array_for_missingness_path(),
     )
 
     args = parser.parse_args()
