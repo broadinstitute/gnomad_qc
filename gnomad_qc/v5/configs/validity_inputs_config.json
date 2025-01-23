@@ -1,0 +1,12 @@
+{
+  "missingness_threshold": 0.5,
+  "indexed_array_annotations": {"faf": "faf_index_dict", "freq": "freq_index_dict"},
+  "struct_annotations_for_missingness": ["grpmax", "fafmax"],
+  "indexed_array_annotations_for_missingness_dict": {"faf": "faf_index_dict"},
+  "meta_expr_for_summations": "ht.freq_meta",
+  "meta_indexed_expr_for_summations": "{'freq': ht.freq}",
+  "meta_indexed_dict_for_summations": "ht.freq_index_dict",
+  "annotations_to_sum": ["AC", "AN"],
+  "primary_groupings_for_summations": {"group": "adj"},
+  "secondary_groupings_for_summations": ["gen_anc", "sex"]
+}
