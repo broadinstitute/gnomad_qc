@@ -133,18 +133,6 @@ def filter_meta_array(
 ## DELETE
 
 
-def read_file_to_dict(file_path):
-    """
-    Read in a file of key:value pairs and convert it to a dictionary.
-
-    :param file_path: Path to file to process. The file should have two columns, the first column is the keys and the second column is the values. File should not contain a header.
-    """
-    ht = hl.import_table(file_path, no_header=True)
-    file_dict = dict(hl.tuple([ht.f0, ht.f1]).collect())
-    logger.info("Input file converted to the following dictionary: %s.", file_dict)
-    return file_dict
-
-
 def check_missingness(
     ht,
     missingness_threshold: float = 0.5,
@@ -283,7 +271,7 @@ def generate_dict_for_sum_comparisons_from_arrays(
         a 'freq' array (example: ht.freq_meta).
     :param meta_indexed_expr: Dictionary where the keys are the expression name
         and the values are the expressions indexed by the `meta_expr` such as a 'freq'
-        array (example: 'freq': ht.freq}).
+        array (example: 'freq': ht.freq).
     :param meta_indexed_dict: Dictionary depicting the unfurled meta_expr names as keys, and their index in `meta_expr` as values. (example: ht.freq_index_dict).
     :param annotations_to_sum: List of annotation fields withing `meta_expr` to sum. Default is ['AC', 'AN']).
     :param primary_groupings: Dictionary containing primary grouping keys and the corresponding values to filter to. Default is {'group': 'adj'}.
@@ -310,7 +298,7 @@ def generate_dict_for_sum_comparisons_from_arrays(
                     [f"{key}_{value}" for key, value in primary_grouping_dict.items()]
                 )
 
-                # Filter the Table to only data relevant to the primary grouping.
+                # Filter Table metadata to only data relevant to the primary grouping.
                 meta = filter_meta_array(
                     meta_expr=meta_expr,
                     key_value_pairs_to_keep=primary_grouping_dict,
@@ -339,18 +327,11 @@ def generate_dict_for_sum_comparisons_from_arrays(
                             f"{primary_grouping_name}_{'_'.join(secondary_combination)}"
                         )
 
-                        # Generate filter fields to pass to filter_arrays_by_meta function.
-                        items_to_filter = {
-                            key: {"values": [value], "keep": True}
-                            for key, value in primary_grouping_dict.items()
-                        }
-                        for secondary_group in secondary_combination:
-                            items_to_filter[secondary_group] = {"keep": True}
-
                         # Filter arrays by the grouping combinations.
                         logger.info(
-                            f"Applying filtering criteria: %s to find fields to sum for '%s' annotation",
-                            items_to_filter,
+                            f"Applying filtering criteria: %s and %s to find fields to sum for '%s' annotation",
+                            primary_grouping_dict,
+                            secondary_combination,
                             grouping_combination_name,
                         )
                         meta = filter_meta_array(
@@ -372,10 +353,10 @@ def generate_dict_for_sum_comparisons_from_arrays(
                                 # Obtain the name of the annotation that corresponds to the index value in meta_indexed_dict.
                                 secondary_key_name = reversed_index_dict[index_in_meta]
 
-                                # For each annotation to sum, add to the comparison_groups dict a list of the names of the field to be
+                                # For each annotation to sum, add to the comparison_groups dict a list of the names of the fields to be
                                 # summed within 'values_to_sum' dict.
                                 # Note that the formatting is based on the table structure after running unfurl_array_annotations, where the metric name
-                                # will precedes the annotation name.
+                                # will precede the annotation name.
                                 for annotation in annotations_to_sum:
                                     secondary_metric_name = (
                                         f"{annotation}_{secondary_key_name}"
@@ -495,6 +476,7 @@ def main(args):
             logger.info("Filtering to %d partitions.", test_n_partitions)
             ht = ht._filter_partitions(range(test_n_partitions))
 
+        # Read in parameters from config file.
         with hl.hadoop_open(config_path, "r") as f:
             config = json.load(f)
 
@@ -507,12 +489,10 @@ def main(args):
             "indexed_array_annotations_for_missingness_dict"
         ]
         # TODO: Allow more than one array for summations
-        meta_expr_for_summations = eval(
-            config["meta_expr_for_summations"]
-        )  # Resolves "ht.freq_meta"
-        meta_indexed_expr_for_summations = {
-            k: v for k, v in eval(config["meta_indexed_expr_for_summations"]).items()
-        }
+        meta_expr_for_summations = eval(config["meta_expr_for_summations"])
+        meta_indexed_expr_for_summations = eval(
+            config["meta_indexed_expr_for_summations"]
+        )
         meta_indexed_dict_for_summations = eval(
             config["meta_indexed_dict_for_summations"]
         )
@@ -522,7 +502,7 @@ def main(args):
             "secondary_groupings_for_summations"
         ]
 
-        # Create row annotations for each element of the arrays and their structs.
+        # Create row annotations for each element of the indexed arrays and their structs.
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(**annotations)
 
@@ -561,20 +541,18 @@ if __name__ == "__main__":
         "--config-path",
         help=(
             "Path to JSON config file for defining parameters. Paramters to define are as follows:"
-            "missingness_threshold: Float definging upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'."
-            "indexed_array_annotations: Dictionary of indexed array annotations. Example: {'faf': 'faf_index_dict', 'freq': 'freq_index_dict'}."
+            "missingness_threshold: Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'."
+            "indexed_array_annotations: Dictionary of indexed array annotations which will be unfurled. Example: {'faf': 'faf_index_dict', 'freq': 'freq_index_dict'}."
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
             "indexed_array_annotations_for_missingness_dict: Dictionary of indexed array struct annotations to check for missingness, where keys"
             "are the names of the annotations, and values are the names of the globals containing the mapping of group name to index for that key."
             "Example: {'faf':'faf_index_dict', 'freq':'freq_index_dict'}."
-            "meta_expr_for_summations: Metadata expression that contains the values of the elements in"
-            "`meta_indexed_expr`. The most often used expression is `freq_meta` to index into"
-            "a 'freq' array. Example: ht.freq_meta."
-            "meta_indexed_expr_for_summations: Dictionary where the keys are the expression name"
-            "and the values are the expressions indexed by the `meta_expr` such as a 'freq'"
-            "array. Example: 'freq': ht.freq."
+            "meta_expr_for_summations: Metadata expression that contains the values of the elements in `meta_indexed_expr`. The most often used expression"
+            "is `freq_meta` to index into a 'freq' array. Example: ht.freq_meta."
+            "meta_indexed_expr_for_summations: Dictionary where the keys are the expression name and the values are the expressions indexed by the `meta_expr`"
+            "such as a 'freq' array. Example: 'freq': ht.freq."
             "meta_indexed_dict_for_summations: Dictionary depicting the unfurled meta_expr names as keys, and their index in `meta_expr` as values. Example: ht.freq_index_dict."
-            "annotations_to_sum: List of annotation fields withing `meta_expr` to sum. Example: ['AC', 'AN']."
+            "annotations_to_sum: List of annotation fields within `meta_expr` to sum. Example: ['AC', 'AN']."
             "primary_groupings_for_summations: Dictionary containing primary grouping keys and the corresponding values to filter to for the summation check. Example: {'group': 'adj'}."
             "secondary_groupings_for_summations: List of secondary grouping keys to filter to for the summation check. All relevant combinations of these values will be summed. Example: ['gen_anc', 'sex']."
         ),
