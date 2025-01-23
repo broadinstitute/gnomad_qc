@@ -18,8 +18,6 @@ from gnomad.assessment.validity_checks import (
     unfurl_array_annotations,
 )
 from gnomad.resources.grch38.gnomad import public_release
-
-from gnomad_qc.v5.resources.assessment import get_indexed_array_for_missingness_path
 from gnomad_qc.v5.resources.basics import get_logging_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -151,7 +149,6 @@ def check_missingness(
     :param indexed_array_annotations: Dictionary of indexed array struct annotations to check for missingness, where keys are the names of the annotations, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
     :return: None
     """
-
     logger.info("Checking for missingness within struct annotations...")
     logger.info("Struct annotations being checked: %s.", struct_annotations)
     # Determine missingness of each struct annotation.
@@ -411,7 +408,7 @@ def validate_federated_data(
                 within the 'sex' split, and all values split by both 'gen_anc' and 'sex' if that combination is present in the table. Default is ['gen_anc', 'sex'].
     :return: None
     """
-    # Summarize variants and check that all contig exist.
+    # Summarize variants and check that all contigs exist.
     expected_contigs = [
         i
         for i in hl.get_reference("GRCh38").contigs
@@ -429,7 +426,7 @@ def validate_federated_data(
         indexed_array_annotations=indexed_array_annotations_for_missingness_dict,
     )
 
-    # Check that subset total sum to expected totals.
+    # Check that subset totals sum to expected totals.
     logger.info("Checking summations...")
     comparison_groups = generate_dict_for_sum_comparisons_from_arrays(
         ht=ht,
