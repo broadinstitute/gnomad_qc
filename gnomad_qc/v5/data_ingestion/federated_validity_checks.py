@@ -52,7 +52,6 @@ def check_missingness(
     :param indexed_array_annotations: Dictionary of indexed array struct annotations to check for missingness, where keys are the names of the annotations, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
     :return: None
     """
-
     logger.info("Checking for missingness within struct annotations...")
     logger.info("Struct annotations being checked: %s.", struct_annotations)
     # Determine missingness of each struct annotation.
@@ -121,7 +120,6 @@ def validate_federated_data(
     :param indexed_array_annotations_for_missingness_dict: Dictionary of indexed array struct annotations to check for missingness, where keys are the names of the annotations, and values are the names of the globals containing the mapping of group name to index for that key. Default is {'faf':'faf_index_dict', 'freq':'freq_index_dict'}.
     :return: None
     """
-
     # Summarize variant and check that all contig exist.
     expected_contigs = [
         i
@@ -156,9 +154,6 @@ def main(args):
     indexed_array_annotations_for_missingness_dict = read_file_to_dict(
         args.indexed_array_annotations_for_missingness_dict
     )
-
-    # indexed_array_annotations_for_missingness_dict=convert_argparse_to_dict(args.indexed_array_annotations_for_missingness_dict)
-
     try:
         # TODO: Add resources to intake federated data once obtained.
         ht = public_release(data_type="exomes").ht()
