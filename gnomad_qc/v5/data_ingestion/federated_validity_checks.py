@@ -323,7 +323,8 @@ def generate_dict_for_sum_comparisons_from_arrays(
                     for secondary_combination in itertools.combinations(
                         secondary_groupings, n_secondary_combination
                     ):
-                        # Generate name for the primary + secondary grouping combination.
+                        # Generate name for the primary + secondary grouping
+                        # combination.
                         grouping_combination_name = (
                             f"{primary_grouping_name}_{'_'.join(secondary_combination)}"
                         )
@@ -369,7 +370,9 @@ def generate_dict_for_sum_comparisons_from_arrays(
                                         f"{annotation}_{grouping_combination_name}"
                                     ]["values_to_sum"].append(secondary_metric_name)
 
-                        # For each annotation to sum, add to the comparison_groups dict the name of the annotation to which the sums should total within the 'expected_total' dict.
+                        # For each annotation to sum, add to the comparison_groups dict
+                        # the name of the annotation to which the sums should total
+                        # within the 'expected_total' dict.
                         for annotation in annotations_to_sum:
                             comparison_groups[
                                 f"{annotation}_{grouping_combination_name}"
