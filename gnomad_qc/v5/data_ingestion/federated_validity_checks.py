@@ -11,13 +11,14 @@ import hail as hl
 from gnomad.assessment.validity_checks import (
     check_array_struct_missingness,
     check_missingness_of_struct,
-    compute_missingness,
     compute_and_check_summations,
+    compute_missingness,
     flatten_missingness_struct,
     summarize_variants,
     unfurl_array_annotations,
 )
 from gnomad.resources.grch38.gnomad import public_release
+
 from gnomad_qc.v5.resources.basics import get_logging_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
