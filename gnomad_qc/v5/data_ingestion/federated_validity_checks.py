@@ -5,7 +5,7 @@ import itertools
 import json
 import logging
 from collections import defaultdict
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import hail as hl
 from gnomad.assessment.validity_checks import (
@@ -27,7 +27,6 @@ logger.setLevel(logging.INFO)
 
 
 ### DELETE
-
 from typing import Tuple
 
 
@@ -279,7 +278,8 @@ def generate_dict_for_sum_comparisons_from_arrays(
     :return: Dictionary with annotation names as keys, and expressions of annotations to compute the sums for those annotations as values.
     """
     comparison_groups = defaultdict(lambda: {"values_to_sum": []})
-    # Reverse meta_indexed_dict so that the indices are the keys and the annotation names are the values.
+    # Reverse meta_indexed_dict so that the indices are the keys and the
+    # annotation names are the values.
     reversed_index_dict = {
         value: key for key, value in hl.eval(meta_indexed_dict).items()
     }
@@ -290,7 +290,8 @@ def generate_dict_for_sum_comparisons_from_arrays(
             primary_groupings.items(), n_primary_combination
         ):
             if primary_combination:
-                # Generate name and dictionary for each of the primary grouping combinations.
+                # Generate name and dictionary for each of the primary grouping
+                # combinations.
                 primary_grouping_dict = dict(primary_combination)
                 primary_grouping_name = "_".join(
                     [f"{key}_{value}" for key, value in primary_grouping_dict.items()]
@@ -312,11 +313,13 @@ def generate_dict_for_sum_comparisons_from_arrays(
                 for group_meta in hl.eval(meta):
                     # Obtain the index of the specified grouping in the meta_expr array.
                     index_in_meta = hl.eval(meta_expr.index(group_meta))
-                    # Obtain the name of the annotation that corresponds to the index value in meta_indexed_dict.
+                    # Obtain the name of the annotation that corresponds to the index
+                    # value in meta_indexed_dict.
                     primary_group_annotation = reversed_index_dict[index_in_meta]
 
                 for n_secondary_combination in range(1, len(secondary_groupings) + 1):
-                    # Iterate through each of the possible combinations of the secondary groupings.
+                    # Iterate through each of the possible combinations of the secondary
+                    # groupings.
                     for secondary_combination in itertools.combinations(
                         secondary_groupings, n_secondary_combination
                     ):
@@ -346,12 +349,15 @@ def generate_dict_for_sum_comparisons_from_arrays(
                             )
                         else:
                             for m in hl.eval(meta):
-                                # Obtain the index of the specified grouping in the meta_expr array.
+                                # Obtain the index of the specified grouping in the
+                                # meta_expr array.
                                 index_in_meta = hl.eval(meta_expr.index(m))
-                                # Obtain the name of the annotation that corresponds to the index value in meta_indexed_dict.
+                                # Obtain the name of the annotation that corresponds to
+                                # the index value in meta_indexed_dict.
                                 secondary_key_name = reversed_index_dict[index_in_meta]
 
-                                # For each annotation to sum, add to the comparison_groups dict a list of the names of the fields to be
+                                # For each annotation to sum, add to the comparison_groups dict
+                                # a list of the names of the fields to be
                                 # summed within 'values_to_sum' dict.
                                 # Note that the formatting is based on the table structure after running unfurl_array_annotations, where the metric name
                                 # will precede the annotation name.
@@ -500,7 +506,8 @@ def main(args):
             "secondary_groupings_for_summations"
         ]
 
-        # Create row annotations for each element of the indexed arrays and their structs.
+        # Create row annotations for each element of the indexed arrays and their
+        # structs.
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(**annotations)
 
