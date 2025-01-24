@@ -26,10 +26,7 @@ logger = logging.getLogger("federated_validity_checks")
 logger.setLevel(logging.INFO)
 
 
-### DELETE
-from typing import Tuple
-
-
+# DELETE
 def filter_meta_array(
     meta_expr: hl.expr.ArrayExpression,
     keys_to_keep: List[str] = None,
@@ -128,7 +125,7 @@ def filter_meta_array(
     return meta_expr.filter(lambda m: _get_filter(m))
 
 
-## DELETE
+# DELETE
 
 
 def check_missingness(
