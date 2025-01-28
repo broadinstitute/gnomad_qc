@@ -7,9 +7,11 @@ from typing import Dict
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import all_sites_an, public_release
-from gnomad.sample_qc.relatedness import filter_to_trios
+from gnomad.sample_qc.relatedness import filter_to_trios, get_de_novo_expr
+from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import process_consequences
+from hail.methods.family_methods import trio_matrix
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
@@ -32,7 +34,7 @@ from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_de_novo
-from gnomad_qc.v4.resources.sample_qc import de_novo_mt, pedigree
+from gnomad_qc.v4.resources.sample_qc import de_novo_calls_ht, de_novo_mt, pedigree
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -150,6 +152,66 @@ def get_releasable_trios_dense_mt(
     )
 
     return hl.vds.to_dense_mt(vds)
+
+
+def get_releasable_de_novo_calls_ht(
+    mt: hl.MatrixTable, priors_ht: hl.Table, ped_ht: hl.Table, test: bool
+) -> hl.Table:
+    """
+    Get de novo calls Hail Table.
+
+    :param mt: MatrixTable of the releasable trios.
+    :param priors_ht: Table with prior frequencies.
+    :param ped_ht: Table with pedigree information.
+    :param test: Run test on chr20. Default is False.
+    :return: Hail Table with de novo calls.
+    """
+    if test:
+        logger.info("Filtering to chr20 for testing...")
+        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
+
+    mt = mt.annotate_rows(
+        n_unsplit_alleles=hl.len(mt.alleles),
+        mixed_site=(
+            (hl.len(mt.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:])
+        ),
+    )
+    mt = hl.experimental.sparse_split_multi(mt).write(
+        de_novo_mt(releasable=True, split=True, test=test).path, overwrite=overwrite
+    )
+
+    # Approximate the AD and PL fields when missing.
+    mt = mt.annotate_entries(
+        AD=hl.or_else(mt.AD, [mt.DP, 0]),
+        PL=hl.or_else(mt.PL, [0, mt.GQ, 2 * mt.GQ]),
+    )
+    mt = mt.annotate_rows(prior=priors_ht[mt.row_key].freq[0].AF)
+    mt = annotate_adj(mt)
+
+    tm = trio_matrix(mt, ped_ht, complete_trios=True)
+    tm = tm.checkpoint(new_temp_file("trio_matrix", "mt"))
+
+    ht = tm.entries()
+
+    ht = ht.annotate(
+        de_novo_call_info=get_de_novo_expr(
+            locus_expr=ht.locus,
+            alleles_expr=ht.alleles,
+            proband_expr=ht.proband_entry,
+            father_expr=ht.father_entry,
+            mother_expr=ht.mother_entry,
+            is_female_expr=ht.is_female,
+            freq_prior_expr=ht.prior,
+        )
+    )
+
+    ht = ht.checkpoint(new_temp_file("de_novo_calls", "ht"))
+
+    ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(1000)
+
+    return ht
 
 
 # TODO: Change when we decide on the final de novo data to release.
@@ -403,6 +465,18 @@ def main(args):
             de_novo_mt(releasable=True, test=test).path, overwrite=overwrite
         )
 
+    if args.generate_de_novo_calls:
+        mt = de_novo_mt(releasable=True, test=test).mt()
+        priors_ht = public_release("exomes").ht()
+        ped_ht = hl.Pedigree.read(pedigree().path, delimiter="\t")
+
+        logger.info(
+            f"Generating de novo calls for "
+            f"{'chr20' if test else 'all chromosomes'}'..."
+        )
+        ht = get_releasable_de_novo_calls_ht(mt, priors_ht, ped_ht, test)
+        ht.write(de_novo_calls_ht(releasable=True, test=test).path, overwrite=overwrite)
+
     if args.generate_final_ht:
         ht = get_de_novo_release_ht(args.tables_for_join, args.version, test=test)
 
@@ -445,6 +519,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate-dense-mt",
         help="Generate a dense MT for releasable trios with the de novo variants.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-de-novo-calls",
+        help="Generate de novo calls " "HT.",
         action="store_true",
     )
     parser.add_argument(

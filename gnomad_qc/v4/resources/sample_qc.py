@@ -1098,12 +1098,14 @@ hgdp_tgp_relatedness = TableResource(
 
 def de_novo_mt(
     releasable: bool = True,
+    split: bool = False,
     test: bool = False,
 ) -> VersionedMatrixTableResource:
     """
     Get the VersionedMatrixTableResource for the dense de novo variants MatrixTable.
 
     :param releasable: Whether to get the resource for the releasable trios only.
+    :param split: Whether to get the resource for multiallelic split
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedMatrixTableResource of dense de novo variants MatrixTable.
     """
@@ -1114,7 +1116,33 @@ def de_novo_mt(
             version: MatrixTableResource(
                 f"{get_sample_qc_root(version, test, data_type='exomes')}"
                 f"/relatedness/trios/gnomad.{data_type}.v{version}.de_novo"
-                f"{'.releasable' if releasable else ''}.dense.mt"
+                f"{'.releasable' if releasable else ''}.dense"
+                f"{'.split' if split else ''}.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def de_novo_calls_ht(
+    releasable: bool = True,
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for the de novo calls Table.
+
+    :param releasable: Whether to get the resource for the releasable trios only.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource of de novo calls Table.
+    """
+    data_type = "exomes"
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.de_novo"
+                f"{'.releasable' if releasable else ''}.calls.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
