@@ -45,6 +45,55 @@ def get_pop_counters(mt, label) -> dict:
     return cut_data
 
 
+def _filter_ht_for_ld(
+    ht,
+    label="gen_anc",
+    pop="eas",
+    common_only: bool = True,
+    re_call_stats: bool = False,
+) -> hl.MatrixTable:
+    """
+    Filter HT to only variants appropriate for LD analyses for a given genetic ancestry.
+
+    :param mt: Input HT to filter
+    :param label: Col field containing genetic ancestry information
+    :param pop: Given genetic ancestry group to filter to
+    :param common_only: Bool of whether to filter to only common variants (>0.5%)
+    :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
+    :return: MT filtered to appropriate variants and samples
+    """
+
+    frequency = COMMON_FREQ if common_only else RARE_FREQ
+    # At the moment, ld_matrix OOMs above ~30M variants, so filtering all populations to 0.05% to cut down on variants
+    # All work on standard machines except AFR
+    # Also creating `common_only` ones for most practical uses (above 0.5%)
+    # pop_mt = mt.filter_cols(mt.meta.population_inference.pop == pop) # irrelevant for HT
+    meta_index = (
+        hl.enumerate(ht.freq_meta)
+        .find(lambda f: (f[1].get(label) == pop))
+        .collect()[0][0]
+    )
+    # No support for SV datasets in gnomAD v4 Production team code
+    # Have to re-do callstats when noted frequencies don't 100% reflect what you are calculating on
+    # This is for test sets or 1kg_tdpg
+    # CANNOT re_call stats without GT
+    ht = ht.filter((hl.len(ht.filters) == 0))
+    pop_freq = ht.freq[meta_index]
+    ht = ht.annotate(pop_freq=pop_freq)
+
+    ht = ht.filter(
+        (ht.pop_freq.AC > 1)
+        & (ht.pop_freq.AN - ht.pop_freq.AC > 1)
+        & (ht.pop_freq.AF > frequency)
+        &
+        #  the following filter is needed for "het-only" monomorphic sites
+        #  as otherwise variance is 0, and so, row_correlation errors out
+        ~((ht.pop_freq.AF == 0.5) & (ht.pop_freq.homozygote_count == 0))
+    )
+
+    return ht
+
+
 def filter_mt_for_ld(
     mt, label, pop, common_only: bool = True, re_call_stats: bool = False
 ) -> hl.MatrixTable:
@@ -133,6 +182,14 @@ def generate_ld_pruned_set(
             logger.info(f"Filtering for {pop}...")
             pop_mt = filter_mt_for_ld(mt, label, pop, re_call_stats)
             logger.info(f"Count after filter_mt_for_ld() : {pop_mt.count()}")
+
+            # now we checkpoint
+            # pop_mt = pop_mt.checkpoint(
+            #     ld_mt_checkpoint_path(
+            #         data_type="genomes", pops=pop, version=version, test=test
+            #     ),
+            #     overwrite=overwrite,
+            # )
 
             pruned_ht = hl.ld_prune(pop_mt.GT, r2=float(r2), bp_window_size=radius)
 
@@ -325,6 +382,8 @@ def main(args):
     test = args.test
     is_hgdp = args.hgdp_subset
     overwrite = args.overwrite
+    pop = args.pop
+    chrom = args.chrom
 
     if test and not args.re_call_stats:
         logger.info(
@@ -336,7 +395,7 @@ def main(args):
 
     # Path for LD MT includes all pops by design
     ld_mt_path = ld_mt_checkpoint_path(
-        data_type="genomes", pops="all_pops", version=version, test=test
+        data_type="genomes", pops=pop, version=version, test=test
     )
 
     def _ld_test_mt(
@@ -358,6 +417,7 @@ def main(args):
         is_hgdp: bool = False,
         test: bool = False,
         ld_mt_path: str = ld_mt_path,
+        pop: str = "eas",
         overwrite=overwrite,
     ) -> hl.MatrixTable:
 
@@ -376,61 +436,88 @@ def main(args):
                 )
             )
 
+            mt = mt.filter_cols(mt.meta.population_inference.pop == "pop")
+
             if test:
                 mt = _ld_test_mt(mt, filter_contig=True, sample_cols=True)
 
+            mt = mt.checkpoint(
+                ld_mt_path,
+                overwrite=overwrite,
+            )
+
         else:
             logger.info("Reading in gnomAD release HT and VDS...")
-            ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
-            vds = basics.get_gnomad_v4_genomes_vds(
-                test=test, annotate_meta=True, release_only=True, split=True
-            )
-            mt_vds = vds.variant_data
-            mt = mt_vds.annotate_globals(**hl.eval(ht_release.globals))
-
+            filter_chrom = None
             if test:
-                logger.info(
-                    "Filter Test VDS to Chr22, do not touch sample level information, then naive coalesce to 1000 partitions..."
-                )
-                mt = _ld_test_mt(mt, filter_contig=True, sample_cols=False)
-                mt = mt.naive_coalesce(1000)
+                filter_chrom = "chr22"
+            elif chrom:
+                filter_chrom = chrom
 
-            mt = mt.annotate_rows(
-                freq=ht_release[mt.row_key].freq, filters=ht_release[mt.row_key].filters
+            ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
+            ht_filter = _filter_ht_for_ld(ht_release,label='gen_anc',pop=pop)
+            if filter_chrom:
+                ht_filter = ht_filter.filter(ht_filter.locus.contig==filter_chrom)
+
+            ht_filter = ht_filter.select('freq','filters').checkpoint(new_temp_file())
+
+            vds = basics.get_gnomad_v4_genomes_vds(
+                test=test,
+                annotate_meta=True,
+                release_only=True,
+                split=True,
+                chrom=filter_chrom,
+                filter_variant_ht=ht_filter,
+                entries_to_keep=["GT"],
             )
+
+            if test or chrom:
+                logger.info(
+                    f"Due to Test or Chrom behavior, only working on {filter_chrom} - do naive coalesce to 1,000 partitions"
+                )
+                mt = vds.variant_data.naive_coalesce(1000)
+            else:
+                mt = vds.variant_data.naive_coalesce(9800)
+
+            logger.info(
+                f"Filtering to relevant cols - only meta - and no VDS/MT rows..."
+            )
+            mt = mt.select_cols(mt.meta)
+            mt = mt.select_rows()
+            logger.info(f"Filtering to {args.pop}...")
+            mt = mt.filter_cols(mt.meta.population_inference.pop == pop)
+
+            # NOTE: QUESTION IF THIS SHOULD BE RAN OR NOT
+            logger.info(f"Checkpointing {pop} on {chrom if chrom else default_str}")
+            mt = mt.checkpoint(new_temp_file())
+
+            # This part begins potential performance concerns - what is up here?
+            # Ideally, would checkpoint both of these beforehand.
+            # Is very slow if MT isn't checkpointed
+            # Checkpointing said MT is also very slow...
+            mt = mt.annotate_rows(
+                freq=ht_filter[mt.row_key].freq, filters=ht_filter[mt.row_key].filters
+            )
+            mt = mt.annotate_globals(**hl.eval(ht_filter.globals))
 
         # Select and checkpoint to speed up calculations
-        mt = mt.select_rows(mt.freq, mt.filters)
-        mt = mt.select_cols(mt.meta)
 
-        logger.info(f"Checkpoint MT to {ld_mt_path} ...")
-        mt = mt.checkpoint(ld_mt_path, overwrite=overwrite)
+        # logger.info(f"DO NOT Checkpoint MT to {ld_mt_path} ...")
+        # mt = mt.checkpoint(ld_mt_path, overwrite=overwrite)
 
         return mt
 
-    # Read in Hail MatrixTable for analysis
-    mt = None
-    if args.generate_ld_mt:
-        logger.info("Generating MT for LD with all genetic ancestry groups...")
-        mt = _generate_ld_mt(
-            version=version, is_hgdp=is_hgdp, test=test, ld_mt_path=ld_mt_path
-        )
-    else:
-        mt = hl.read_matrix_table(ld_mt_path)
+    mt = _generate_ld_mt(
+        version=version, is_hgdp=is_hgdp, test=test, ld_mt_path=ld_mt_path
+    )
 
-    if args.pop:
-        logger.info(f"Filtering to {args.pop}...")
-        mt = mt.filter_cols(mt.meta.population_inference.pop == args.pop)
-        mt = mt.checkpoint(
-            ld_mt_checkpoint_path(
-                data_type="genomes", pops=args.pop, version=version, test=test
-            ),
-            overwrite=overwrite,
-        )
+    # Something needs checkpointed before heading into generate_ld_pruned_set()
+    mt = mt.checkpoint(new_temp_file()) # skip if prior step is being checkpointed
 
     label = "gen_anc" if not is_hgdp else "pop"
     pop_data = get_pop_counters(mt, label=label)
 
+    # Previously established that THIS needs a checkpoint to have been ran to work effectively
     if args.generate_ld_pruned_set:
         logger.info(
             "Generating LD Pruned Set of uncorrelated variants, using hl.ld_prune()..."
@@ -550,8 +637,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop",
-        help="Filter to, and run on, one individual pop",
+        help="Which individual pop to run LD on",
         type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--chrom",
+        help="Which individual chromosome to run LD on",
+        type=str,
+        required=False,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
