@@ -18,7 +18,8 @@ schema = {
         "freq_sort_order": {
             "type": "array",
             "items": {"type": "string"}
-        }
+        },
+        "nhomalt_metric": {"type": "string"},
     },
     "required": [
         "missingness_threshold",
@@ -26,7 +27,8 @@ schema = {
         "struct_annotations_for_missingness",
         "freq_meta_expr",
         "freq_annotations_to_sum",
-        "freq_sort_order"
+        "freq_sort_order",
+        "nhomalt_metric"
     ],
     "additionalProperties": False
 }

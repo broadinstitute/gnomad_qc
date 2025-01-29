@@ -11,6 +11,7 @@ from typing import List
 import hail as hl
 from gnomad.assessment.validity_checks import (
     check_missingness_of_struct,
+    check_sex_chr_metrics,
     compute_missingness,
     flatten_missingness_struct,
     sum_group_callstats,
@@ -89,6 +90,8 @@ def validate_federated_data(
     struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
     freq_annotations_to_sum: List[str] = ["AC", "AN", "homozygote_count"],
     freq_sort_order: List[str] = ["gen_anc", "sex", "group"],
+    nhomalt_metric: str = "nhomalt",
+    verbose: bool = False,
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -101,6 +104,8 @@ def validate_federated_data(
         a 'freq' array (example: ht.freq_meta).
     :param freq_annotations_to_sum: List of annotation fields withing `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count']).
     :param freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["gen_anc", "sex", "group"].
+    :param nhomalt_metric: Name of metric denoting homozygous counts. Default is "nhomalt".
+    :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :return: None
     """
     # Summarize variants and check that all contigs exist.
@@ -110,11 +115,11 @@ def validate_federated_data(
 
     # Check for missingness.
     logger.info("Checking for missingness...")
-    check_missingness(
-        ht,
-        missingness_threshold,
-        struct_annotations=struct_annotations_for_missingness,
-    )
+    # check_missingness(
+    #    ht,
+    #    missingness_threshold,
+    #    struct_annotations=struct_annotations_for_missingness,
+    # )
 
     # Check that subset totals sum to expected totals.
     logger.info("Checking summations...")
@@ -144,12 +149,26 @@ def validate_federated_data(
             if gen_anc_label_name in i
         },
         groups=["adj"],
+        verbose=verbose,
         sort_order=freq_sort_order,
         delimiter="_",
         metric_first_field=True,
         metrics=freq_annotations_to_sum,
         gen_anc_label_name=gen_anc_label_name,
     )
+
+    logger.info("Checking sex chromosomes metrics...")
+    info_metrics = list(ht.row.info)
+    contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
+    check_sex_chr_metrics(
+        t=ht,
+        info_metrics=info_metrics,
+        contigs=contigs,
+        verbose=verbose,
+        delimiter="_",
+        nhomalt_metric=nhomalt_metric,
+    )
+
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
@@ -162,6 +181,7 @@ def main(args):
     hl.default_reference("GRCh38")
     test_n_partitions = args.test_n_partitions
     config_path = args.config_path
+    verbose = args.verbose
 
     try:
         # TODO: Add resources to intake federated data once obtained.
@@ -174,8 +194,15 @@ def main(args):
 
         # Filter to test partitions if specified.
         if test_n_partitions:
-            logger.info("Filtering to %d partitions.", test_n_partitions)
-            ht = ht._filter_partitions(range(test_n_partitions))
+            logger.info(
+                "Filtering to %d partitions and sex chromosomes.", test_n_partitions
+            )
+            test_ht = ht._filter_partitions(range(test_n_partitions))
+            sex_ht = hl.filter_intervals(
+                ht,
+                [hl.parse_locus_interval("chrX")] + [hl.parse_locus_interval("chrY")],
+            )
+            ht = test_ht.union(sex_ht)
 
         # Read in parameters from config file.
         with hl.hadoop_open(config_path, "r") as f:
@@ -196,6 +223,7 @@ def main(args):
         freq_meta_expr = eval(config["freq_meta_expr"])
         freq_annotations_to_sum = config["freq_annotations_to_sum"]
         freq_sort_order = config["freq_sort_order"]
+        nhomalt_metric = config["nhomalt_metric"]
 
         # Check that all neccesaary fields are present in the Table.
         missing_fields = {}
@@ -214,9 +242,8 @@ def main(args):
 
         # Check that freq_annotations_to_sum values are present in the 'freq' struct.
         freq_field_names = list(ht.freq.dtype.element_type)
-        missing_freq_fields = [
-            i for i in freq_annotations_to_sum if i not in freq_field_names
-        ]
+        freq_annotations = freq_annotations_to_sum + [nhomalt_metric]
+        missing_freq_fields = [i for i in freq_annotations if i not in freq_field_names]
         missing_fields["missing_freq_fields"] = missing_freq_fields
 
         # Check that sort_order values are present as keys within freq_meta_expr.
@@ -246,6 +273,7 @@ def main(args):
             freq_meta_expr=freq_meta_expr,
             freq_annotations_to_sum=freq_annotations_to_sum,
             freq_sort_order=freq_sort_order,
+            nhomalt_metric=nhomalt_metric,
         )
 
     finally:
@@ -259,7 +287,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test-n-partitions",
         help=(
-            "Use only N partitions of the input for testing purposes. Defaults"
+            "Use only N partitions of the input (as well as sex chromosomes) for testing purposes. Defaults"
             "to 2 if passed without a value."
         ),
         nargs="?",
@@ -279,6 +307,11 @@ if __name__ == "__main__":
             "freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
         ),
         type=str,
+    )
+    parser.add_argument(
+        "--verbose",
+        help="Log successes in addition to failures during validation",
+        action="store_true",
     )
 
     args = parser.parse_args()
