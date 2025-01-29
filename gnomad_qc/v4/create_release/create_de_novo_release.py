@@ -34,7 +34,7 @@ from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_de_novo
-from gnomad_qc.v4.resources.sample_qc import de_novo_calls_ht, de_novo_mt, pedigree
+from gnomad_qc.v4.resources.sample_qc import dense_trio_mt, pedigree, trio_denovo_ht
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -106,63 +106,15 @@ def filter_de_novos(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def get_releasable_trios_dense_mt(
-    fam_ht: hl.Table,
-    var_ht: hl.Table,
-    test: bool = False,
-) -> hl.matrixtable:
-    """
-    Densify the VDS to only the releasable trios.
-
-    :param fam_ht: Table containing family information.
-    :param var_ht: Table containing trio stats.
-    :param test: Whether to filter to chr20 for testing. Default is False.
-    :return: Dense MatrixTable with de novo variants in releasable trios.
-    """
-    if test:
-        logger.info("Filtering trio stats to chr20 for testing...")
-        var_ht = hl.filter_intervals(var_ht, [hl.parse_locus_interval("chr20")])
-
-    # Filter the trio stats Table to de novo variants.
-    var_ht = filter_de_novos(var_ht)
-    var_ht = var_ht.repartition(100).checkpoint(new_temp_file("de_novo_filtered", "ht"))
-
-    # Filter the metadata table to only samples in high quality and releasable trios.
-    meta_ht = meta().ht()
-    meta_ht = meta_ht.filter(meta_ht.high_quality & meta_ht.project_meta.releasable)
-    fam_ht = fam_ht.filter(
-        hl.is_defined(meta_ht[fam_ht.id])
-        & hl.is_defined(meta_ht[fam_ht.pat_id])
-        & hl.is_defined(meta_ht[fam_ht.mat_id])
-    )
-    meta_ht = filter_to_trios(meta_ht, fam_ht)
-    meta_ht = meta_ht.repartition(100).checkpoint(
-        new_temp_file("releasable_trios", "ht")
-    )
-
-    # Get the split gnomAD VDS filtered to high quality releasable trios and de novo
-    # variants.
-    vds = get_gnomad_v4_vds(
-        split=True,
-        high_quality_only=True,
-        chrom="chr20" if test else None,
-        filter_samples_ht=meta_ht,
-        filter_variant_ht=var_ht,
-        checkpoint_variant_data=True,
-    )
-
-    return hl.vds.to_dense_mt(vds)
-
-
 def get_releasable_de_novo_calls_ht(
-    mt: hl.MatrixTable, priors_ht: hl.Table, ped_ht: hl.Table, test: bool
+    mt: hl.MatrixTable, priors_ht: hl.Table, ped: hl.Pedigree, test: bool
 ) -> hl.Table:
     """
     Get de novo calls Hail Table.
 
-    :param mt: MatrixTable of the releasable trios.
+    :param mt: Dense MatrixTable of the releasable trios.
     :param priors_ht: Table with prior frequencies.
-    :param ped_ht: Table with pedigree information.
+    :param ped: Pedigree.
     :param test: Run test on chr20. Default is False.
     :return: Hail Table with de novo calls.
     """
@@ -178,9 +130,10 @@ def get_releasable_de_novo_calls_ht(
             & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:])
         ),
     )
-    mt = hl.experimental.sparse_split_multi(mt).write(
-        de_novo_mt(releasable=True, split=True, test=test).path, overwrite=overwrite
+    mt = hl.experimental.sparse_split_multi(mt).checkpoint(
+        dense_trio_mt(releasable=True, split=True, test=test).path, _read_if_exists=True
     )
+    mt = annotate_adj(mt)
 
     # Approximate the AD and PL fields when missing.
     mt = mt.annotate_entries(
@@ -188,9 +141,8 @@ def get_releasable_de_novo_calls_ht(
         PL=hl.or_else(mt.PL, [0, mt.GQ, 2 * mt.GQ]),
     )
     mt = mt.annotate_rows(prior=priors_ht[mt.row_key].freq[0].AF)
-    mt = annotate_adj(mt)
 
-    tm = trio_matrix(mt, ped_ht, complete_trios=True)
+    tm = trio_matrix(mt, ped, complete_trios=True)
     tm = tm.checkpoint(new_temp_file("trio_matrix", "mt"))
 
     ht = tm.entries()
@@ -456,26 +408,13 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
-    if args.generate_dense_mt:
-        get_releasable_trios_dense_mt(
-            pedigree().ht(),
-            get_trio_stats(releasable_only=True).ht(),
-            test=test,
-        ).naive_coalesce(args.de_novo_n_partitions).write(
-            de_novo_mt(releasable=True, test=test).path, overwrite=overwrite
-        )
-
     if args.generate_de_novo_calls:
-        mt = de_novo_mt(releasable=True, test=test).mt()
+        mt = dense_trio_mt(releasable=True).mt()
         priors_ht = public_release("exomes").ht()
-        ped_ht = hl.Pedigree.read(pedigree().path, delimiter="\t")
+        ped = hl.Pedigree.read(pedigree().path, delimiter="\t")
 
-        logger.info(
-            f"Generating de novo calls for "
-            f"{'chr20' if test else 'all chromosomes'}'..."
-        )
-        ht = get_releasable_de_novo_calls_ht(mt, priors_ht, ped_ht, test)
-        ht.write(de_novo_calls_ht(releasable=True, test=test).path, overwrite=overwrite)
+        ht = get_releasable_de_novo_calls_ht(mt, priors_ht, ped, test)
+        ht.write(trio_denovo_ht(releasable=True, test=test).path, overwrite=overwrite)
 
     if args.generate_final_ht:
         ht = get_de_novo_release_ht(args.tables_for_join, args.version, test=test)
@@ -514,11 +453,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "-t",
         "--test",
         help="Runs a test on chr20",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--generate-dense-mt",
-        help="Generate a dense MT for releasable trios with the de novo variants.",
         action="store_true",
     )
     parser.add_argument(
