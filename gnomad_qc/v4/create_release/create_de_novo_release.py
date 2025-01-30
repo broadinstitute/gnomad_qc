@@ -7,11 +7,10 @@ from typing import Dict
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import all_sites_an, public_release
-from gnomad.sample_qc.relatedness import filter_to_trios, get_de_novo_expr
+from gnomad.sample_qc.relatedness import get_de_novo_expr
 from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import process_consequences
-from hail.methods.family_methods import trio_matrix
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
@@ -30,9 +29,7 @@ from gnomad_qc.v4.create_release.create_release_utils import (
     SIFT_VERSION,
 )
 from gnomad_qc.v4.resources.annotations import get_info, get_trio_stats
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_de_novo
 from gnomad_qc.v4.resources.sample_qc import dense_trio_mt, pedigree, trio_denovo_ht
 from gnomad_qc.v4.resources.variant_qc import final_filter
@@ -113,7 +110,7 @@ def get_releasable_de_novo_calls_ht(
     Get de novo calls Hail Table.
 
     :param mt: Dense MatrixTable of the releasable trios.
-    :param priors_ht: Table with prior frequencies.
+    :param priors_ht: Table with AFs used as population frequency priors in de novo calculations.
     :param ped: Pedigree.
     :param test: Run test on chr20. Default is False.
     :return: Hail Table with de novo calls.
@@ -135,14 +132,16 @@ def get_releasable_de_novo_calls_ht(
     )
     mt = annotate_adj(mt)
 
-    # Approximate the AD and PL fields when missing.
+    # Many of our larger datasets have the PL and AD fields for homref genotypes
+    # intentionally removed to save storage space and costs. We need to approximate the
+    # AD and PL fields when missing.
     mt = mt.annotate_entries(
         AD=hl.or_else(mt.AD, [mt.DP, 0]),
         PL=hl.or_else(mt.PL, [0, mt.GQ, 2 * mt.GQ]),
     )
     mt = mt.annotate_rows(prior=priors_ht[mt.row_key].freq[0].AF)
 
-    tm = trio_matrix(mt, ped, complete_trios=True)
+    tm = hl.trio_matrix(mt, ped, complete_trios=True)
     tm = tm.checkpoint(new_temp_file("trio_matrix", "mt"))
 
     ht = tm.entries()
