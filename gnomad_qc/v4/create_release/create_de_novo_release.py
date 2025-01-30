@@ -112,7 +112,7 @@ def get_releasable_de_novo_calls_ht(
     :param mt: Dense MatrixTable of the releasable trios.
     :param priors_ht: Table with AFs used as population frequency priors in de novo calculations.
     :param ped: Pedigree.
-    :param test: Run test on chr20. Default is False.
+    :param test: Whether to filter to chr20 for testing. Default is False.
     :return: Hail Table with de novo calls.
     """
     if test:
@@ -456,7 +456,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--generate-de-novo-calls",
-        help="Generate de novo calls " "HT.",
+        help="Generate de novo calls HT.",
         action="store_true",
     )
     parser.add_argument(
