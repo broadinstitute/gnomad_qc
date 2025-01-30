@@ -126,7 +126,8 @@ def get_gnomad_v3_vds(
             keep=False,
         )
 
-    # NOTE: Missing much of the special cases surrounding this in gnomAD v4 Exomes VDS code.
+    # NOTE: Missing much of the special cases surrounding this in gnomAD v4
+    # Exomes VDS code.
     if filter_samples_ht:
         logger.info(
             "Filtering VDS to %d samples in provided Table...",
