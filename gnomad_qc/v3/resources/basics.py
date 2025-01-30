@@ -94,7 +94,7 @@ def get_gnomad_v3_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    # From gnomAD v4 Exomes VDS code. 
+    # From gnomAD v4 Exomes VDS code.
     if naive_coalesce_partitions:
         vds = hl.vds.VariantDataset(
             vds.reference_data.naive_coalesce(naive_coalesce_partitions),
@@ -126,7 +126,7 @@ def get_gnomad_v3_vds(
             keep=False,
         )
 
-    # NOTE: Missing much of the special cases surrounding this in gnomAD v4 Exomes VDS code. 
+    # NOTE: Missing much of the special cases surrounding this in gnomAD v4 Exomes VDS code.
     if filter_samples_ht:
         logger.info(
             "Filtering VDS to %d samples in provided Table...",
