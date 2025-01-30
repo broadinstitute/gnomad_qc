@@ -115,11 +115,11 @@ def validate_federated_data(
 
     # Check for missingness.
     logger.info("Checking for missingness...")
-    # check_missingness(
-    #    ht,
-    #    missingness_threshold,
-    #    struct_annotations=struct_annotations_for_missingness,
-    # )
+    check_missingness(
+        ht,
+        missingness_threshold,
+        struct_annotations=struct_annotations_for_missingness,
+    )
 
     # Check that subset totals sum to expected totals.
     logger.info("Checking summations...")
