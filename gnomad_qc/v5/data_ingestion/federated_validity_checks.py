@@ -3,9 +3,6 @@
 import argparse
 import json
 import logging
-from jsonschema import validate
-from jsonschema.exceptions import ValidationError
-
 from typing import List
 
 import hail as hl
@@ -20,9 +17,11 @@ from gnomad.assessment.validity_checks import (
 )
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
+from jsonschema import validate
+from jsonschema.exceptions import ValidationError
 
-from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
+from gnomad_qc.v5.resources.basics import get_logging_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("federated_validity_checks")
