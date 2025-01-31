@@ -104,7 +104,10 @@ def filter_de_novos(ht: hl.Table) -> hl.Table:
 
 
 def get_releasable_de_novo_calls_ht(
-    mt: hl.MatrixTable, priors_ht: hl.Table, ped: hl.Pedigree, test: bool
+    mt: hl.MatrixTable,
+    priors_ht: hl.Table,
+    ped: hl.Pedigree,
+    test: bool = False,
 ) -> hl.Table:
     """
     Get de novo calls Hail Table.
@@ -147,20 +150,32 @@ def get_releasable_de_novo_calls_ht(
     ht = tm.entries()
 
     ht = ht.annotate(
+        is_de_novo=call_de_novo(
+            ht.locus,
+            ht.proband_entry,
+            ht.father_entry,
+            ht.mother_entry,
+            is_xx_expr=ht.is_female,
+        )
+    )
+
+    ht = (
+        ht.filter(ht.is_de_novo)
+        .naive_coalesce(1000)
+        .checkpoint(new_temp_file("de_novo_calls", "ht"))
+    )
+
+    ht = ht.annotate(
         de_novo_call_info=get_de_novo_expr(
             locus_expr=ht.locus,
             alleles_expr=ht.alleles,
             proband_expr=ht.proband_entry,
             father_expr=ht.father_entry,
             mother_expr=ht.mother_entry,
-            is_female_expr=ht.is_female,
+            is_xx_expr=ht.is_female,
             freq_prior_expr=ht.prior,
         )
     )
-
-    ht = ht.checkpoint(new_temp_file("de_novo_calls", "ht"))
-
-    ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(1000)
 
     return ht
 
