@@ -7,7 +7,7 @@ from typing import Dict
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import all_sites_an, public_release
-from gnomad.sample_qc.relatedness import get_de_novo_expr
+from gnomad.sample_qc.relatedness import call_de_novo, get_de_novo_expr
 from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import process_consequences
