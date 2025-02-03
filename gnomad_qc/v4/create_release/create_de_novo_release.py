@@ -143,8 +143,10 @@ def get_releasable_de_novo_calls_ht(
         PL=hl.or_else(mt.PL, [0, mt.GQ, 2 * mt.GQ]),
     )
     mt = mt.annotate_rows(prior=priors_ht[mt.row_key].freq[0].AF)
+    mt = mt.select_entries("GT", "AD", "DP", "GQ", "PL", "adj")
 
     tm = hl.trio_matrix(mt, ped, complete_trios=True)
+    tm = tm.transmute_cols(is_xx=tm.is_female)
     tm = tm.checkpoint(new_temp_file("trio_matrix", "mt"))
 
     ht = tm.entries()
@@ -155,7 +157,7 @@ def get_releasable_de_novo_calls_ht(
             ht.proband_entry,
             ht.father_entry,
             ht.mother_entry,
-            is_xx_expr=ht.is_female,
+            is_xx_expr=ht.is_xx,
         )
     )
 
@@ -172,7 +174,7 @@ def get_releasable_de_novo_calls_ht(
             proband_expr=ht.proband_entry,
             father_expr=ht.father_entry,
             mother_expr=ht.mother_entry,
-            is_xx_expr=ht.is_female,
+            is_xx_expr=ht.is_xx,
             freq_prior_expr=ht.prior,
         )
     )
