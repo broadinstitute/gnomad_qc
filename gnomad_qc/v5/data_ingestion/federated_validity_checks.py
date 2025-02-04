@@ -3,7 +3,7 @@
 import argparse
 import json
 import logging
-from typing import List
+from typing import Any, Dict, List
 
 import hail as hl
 from gnomad.assessment.validity_checks import (
@@ -26,6 +26,70 @@ from gnomad_qc.v5.resources.basics import get_logging_path
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("federated_validity_checks")
 logger.setLevel(logging.INFO)
+
+
+def validate_config(
+    ht: hl.Table, config_path: str, schema: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Validate JSON config and check for missing fields in a Hail Table.
+
+    :param ht: Hail Table.
+    :param config_path: Path to the JSON configuration file.
+    :param schema: JSON schema to sue for validation.
+    :return: Config.
+    """
+    # Read in parameters from config file.
+    with hl.hadoop_open(config_path, "r") as f:
+        config = json.load(f)
+
+    # Validate config file against schema.
+    try:
+        validate(instance=config, schema=schema)
+        logger.info("JSON is valid.")
+    except ValidationError as e:
+        raise ValueError(f"JSON validation error: %s, {e.message}")
+
+    missingness_threshold = config["missingness_threshold"]
+    indexed_array_annotations = config["indexed_array_annotations"]
+    struct_annotations_for_missingness = config["struct_annotations_for_missingness"]
+    freq_meta_expr = eval(config["freq_meta_expr"])
+    freq_annotations_to_sum = config["freq_annotations_to_sum"]
+    freq_sort_order = config["freq_sort_order"]
+    nhomalt_metric = config["nhomalt_metric"]
+
+    # Check that all neccesaary fields are present in the Table.
+    missing_fields = {}
+
+    # Check that specified global annotations are present.
+    global_fields = [i for i in indexed_array_annotations.values()]
+    missing_global_fields = [i for i in global_fields if i not in ht.globals]
+    missing_fields["globals"] = missing_global_fields
+
+    # Check that specified row annotations are present.
+    row_fields = [
+        i for i in indexed_array_annotations.keys()
+    ] + struct_annotations_for_missingness
+    missing_row_fields = [i for i in row_fields if i not in ht.row]
+    missing_fields["rows"] = missing_row_fields
+
+    # Check that freq_annotations_to_sum values are present in the 'freq' struct.
+    freq_field_names = list(ht.freq.dtype.element_type)
+    freq_annotations = freq_annotations_to_sum + [nhomalt_metric]
+    missing_freq_fields = [i for i in freq_annotations if i not in freq_field_names]
+    missing_fields["missing_freq_fields"] = missing_freq_fields
+
+    # Check that sort_order values are present as keys within freq_meta_expr.
+    freq_meta_keys = set(key for item in hl.eval(freq_meta_expr) for key in item.keys())
+    missing_sort_order_keys = [i for i in freq_sort_order if i not in freq_meta_keys]
+    missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
+
+    if any(missing_fields.values()):
+        error_message = "Validation failed. Missing fields:\n" + "\n".join(
+            f"{key}: {value}" for key, value in missing_fields.items() if value
+        )
+        raise ValueError(error_message)
+
+    return config
 
 
 def check_missingness(
@@ -96,8 +160,6 @@ def validate_federated_data(
     Perform validity checks on federated data.
 
     :param ht: Input Table.
-    :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
-    :param struct_annotations_for_missingness: List of struct annotations to check for missingness. Default is ['grpmax', 'fafmax', 'histograms'].
     :param freq_meta_expr: Metadata expression that contains the values of the elements in
         `meta_indexed_expr`. The most often used expression is `freq_meta` to index into
         a 'freq' array (example: ht.freq_meta).
@@ -197,22 +259,19 @@ def main(args):
                 "Filtering to %d partitions and sex chromosomes.", test_n_partitions
             )
             test_ht = ht._filter_partitions(range(test_n_partitions))
-            sex_ht = hl.filter_intervals(
-                ht,
-                [hl.parse_locus_interval("chrX")] + [hl.parse_locus_interval("chrY")],
-            )
-            ht = test_ht.union(sex_ht)
 
-        # Read in parameters from config file.
-        with hl.hadoop_open(config_path, "r") as f:
-            config = json.load(f)
+            x_ht = hl.filter_intervals(
+                ht, [hl.parse_locus_interval("chrX")]
+            )._filter_partitions(range(test_n_partitions))
+
+            y_ht = hl.filter_intervals(
+                ht, [hl.parse_locus_interval("chrY")]
+            )._filter_partitions(range(test_n_partitions))
+
+            ht = test_ht.union(x_ht, y_ht)
 
         # Validate config file against schema.
-        try:
-            validate(instance=config, schema=schema)
-            logger.info("JSON is valid.")
-        except ValidationError as e:
-            raise ValueError(f"JSON validation error: %s, {e.message}")
+        config = validate_config(ht=ht, config_path=config_path, schema=schema)
 
         missingness_threshold = config["missingness_threshold"]
         indexed_array_annotations = config["indexed_array_annotations"]
@@ -223,42 +282,6 @@ def main(args):
         freq_annotations_to_sum = config["freq_annotations_to_sum"]
         freq_sort_order = config["freq_sort_order"]
         nhomalt_metric = config["nhomalt_metric"]
-
-        # Check that all neccesaary fields are present in the Table.
-        missing_fields = {}
-
-        # Check that specified global annotations are present.
-        global_fields = [i for i in indexed_array_annotations.values()]
-        missing_global_fields = [i for i in global_fields if i not in ht.globals]
-        missing_fields["globals"] = missing_global_fields
-
-        # Check that specified row annotations are present.
-        row_fields = [
-            i for i in indexed_array_annotations.keys()
-        ] + struct_annotations_for_missingness
-        missing_row_fields = [i for i in row_fields if i not in ht.row]
-        missing_fields["rows"] = missing_row_fields
-
-        # Check that freq_annotations_to_sum values are present in the 'freq' struct.
-        freq_field_names = list(ht.freq.dtype.element_type)
-        freq_annotations = freq_annotations_to_sum + [nhomalt_metric]
-        missing_freq_fields = [i for i in freq_annotations if i not in freq_field_names]
-        missing_fields["missing_freq_fields"] = missing_freq_fields
-
-        # Check that sort_order values are present as keys within freq_meta_expr.
-        freq_meta_keys = set(
-            key for item in hl.eval(freq_meta_expr) for key in item.keys()
-        )
-        missing_sort_order_keys = [
-            i for i in freq_sort_order if i not in freq_meta_keys
-        ]
-        missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
-
-        if any(missing_fields.values()):
-            error_message = "Validation failed. Missing fields:\n" + "\n".join(
-                f"{key}: {value}" for key, value in missing_fields.items() if value
-            )
-            raise ValueError(error_message)
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
