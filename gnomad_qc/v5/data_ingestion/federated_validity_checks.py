@@ -103,7 +103,7 @@ def validate_federated_data(
         a 'freq' array (example: ht.freq_meta).
     :param freq_annotations_to_sum: List of annotation fields within `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count']).
     :param freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["gen_anc", "sex", "group"].
-    :param nhomalt_metric: Name of metric denoting homozygous counts. Default is "nhomalt".
+    :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :return: None
     """
