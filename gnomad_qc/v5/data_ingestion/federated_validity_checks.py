@@ -135,7 +135,7 @@ def validate_federated_data(
         gen_anc_label_name = "pop"
     else:
         raise ValueError(
-            "Neither 'gen_anc' nor 'pop' labels found within freq_meta_expr! One label can be used."
+            "Neither 'gen_anc' nor 'pop' labels found within freq_meta_expr! One label must be used."
         )
 
     sum_group_callstats(
