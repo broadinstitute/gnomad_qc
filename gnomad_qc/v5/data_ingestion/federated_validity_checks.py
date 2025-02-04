@@ -83,7 +83,7 @@ def check_missingness(
 
 
 def validate_federated_data(
-    ht,
+    ht: hl.Table,
     freq_meta_expr: hl.expr.ArrayExpression,
     missingness_threshold: float = 0.50,
     struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
