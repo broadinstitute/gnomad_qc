@@ -49,13 +49,7 @@ def validate_config(
     except ValidationError as e:
         raise ValueError(f"JSON validation error: %s, {e.message}")
 
-    missingness_threshold = config["missingness_threshold"]
     indexed_array_annotations = config["indexed_array_annotations"]
-    struct_annotations_for_missingness = config["struct_annotations_for_missingness"]
-    freq_meta_expr = eval(config["freq_meta_expr"])
-    freq_annotations_to_sum = config["freq_annotations_to_sum"]
-    freq_sort_order = config["freq_sort_order"]
-    nhomalt_metric = config["nhomalt_metric"]
 
     # Check that all neccesaary fields are present in the Table.
     missing_fields = {}
@@ -66,21 +60,25 @@ def validate_config(
     missing_fields["globals"] = missing_global_fields
 
     # Check that specified row annotations are present.
-    row_fields = [
-        i for i in indexed_array_annotations.keys()
-    ] + struct_annotations_for_missingness
+    row_fields = [i for i in indexed_array_annotations.keys()] + config[
+        "struct_annotations_for_missingness"
+    ]
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
 
     # Check that freq_annotations_to_sum values are present in the 'freq' struct.
     freq_field_names = list(ht.freq.dtype.element_type)
-    freq_annotations = freq_annotations_to_sum + [nhomalt_metric]
+    freq_annotations = config["freq_annotations_to_sum"] + [config["nhomalt_metric"]]
     missing_freq_fields = [i for i in freq_annotations if i not in freq_field_names]
     missing_fields["missing_freq_fields"] = missing_freq_fields
 
     # Check that sort_order values are present as keys within freq_meta_expr.
-    freq_meta_keys = set(key for item in hl.eval(freq_meta_expr) for key in item.keys())
-    missing_sort_order_keys = [i for i in freq_sort_order if i not in freq_meta_keys]
+    freq_meta_keys = set(
+        key for item in hl.eval(eval(config["freq_meta_expr"])) for key in item.keys()
+    )
+    missing_sort_order_keys = [
+        i for i in config["freq_sort_order"] if i not in freq_meta_keys
+    ]
     missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
 
     if any(missing_fields.values()):
@@ -273,29 +271,21 @@ def main(args):
         # Validate config file against schema.
         config = validate_config(ht=ht, config_path=config_path, schema=schema)
 
-        missingness_threshold = config["missingness_threshold"]
-        indexed_array_annotations = config["indexed_array_annotations"]
-        struct_annotations_for_missingness = config[
-            "struct_annotations_for_missingness"
-        ]
-        freq_meta_expr = eval(config["freq_meta_expr"])
-        freq_annotations_to_sum = config["freq_annotations_to_sum"]
-        freq_sort_order = config["freq_sort_order"]
-        nhomalt_metric = config["nhomalt_metric"]
-
         # Create row annotations for each element of the indexed arrays and their
         # structs.
-        annotations = unfurl_array_annotations(ht, indexed_array_annotations)
+        annotations = unfurl_array_annotations(ht, config["indexed_array_annotations"])
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
         validate_federated_data(
             ht=ht,
-            missingness_threshold=missingness_threshold,
-            struct_annotations_for_missingness=struct_annotations_for_missingness,
-            freq_meta_expr=freq_meta_expr,
-            freq_annotations_to_sum=freq_annotations_to_sum,
-            freq_sort_order=freq_sort_order,
-            nhomalt_metric=nhomalt_metric,
+            missingness_threshold=config["missingness_threshold"],
+            struct_annotations_for_missingness=config[
+                "struct_annotations_for_missingness"
+            ],
+            freq_meta_expr=eval(config["freq_meta_expr"]),
+            freq_annotations_to_sum=config["freq_annotations_to_sum"],
+            freq_sort_order=config["freq_sort_order"],
+            nhomalt_metric=config["nhomalt_metric"],
         )
 
     finally:
