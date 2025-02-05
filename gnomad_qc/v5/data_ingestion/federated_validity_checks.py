@@ -28,20 +28,13 @@ logger = logging.getLogger("federated_validity_checks")
 logger.setLevel(logging.INFO)
 
 
-def validate_config(
-    ht: hl.Table, config_path: str, schema: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Validate JSON config and check for missing fields in a Hail Table.
+def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
+    """Validate JSON config inputs.
 
-    :param ht: Hail Table.
-    :param config_path: Path to the JSON configuration file.
-    :param schema: JSON schema to sue for validation.
-    :return: Config.
+    :param config: JSON configuration for parameter inputs.
+    :param schema: JSON schema to use for validation.
+    :return: None.
     """
-    # Read in parameters from config file.
-    with hl.hadoop_open(config_path, "r") as f:
-        config = json.load(f)
-
     # Validate config file against schema.
     try:
         validate(instance=config, schema=schema)
@@ -49,6 +42,14 @@ def validate_config(
     except ValidationError as e:
         raise ValueError(f"JSON validation error: %s, {e.message}")
 
+
+def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
+    """Check that necessary fields defined in the JSON config are present in the Hail Table.
+
+    :param ht: Hail Table.
+    :param config: JSON configuration for parameter inputs.
+    :return: None.
+    """
     indexed_array_annotations = config["indexed_array_annotations"]
 
     # Check that all neccesaary fields are present in the Table.
@@ -86,8 +87,8 @@ def validate_config(
             f"{key}: {value}" for key, value in missing_fields.items() if value
         )
         raise ValueError(error_message)
-
-    return config
+    else:
+        logger.info("Validated presence of config fields in the Table.")
 
 
 def check_missingness(
@@ -243,8 +244,17 @@ def main(args):
     verbose = args.verbose
 
     try:
+        # Read in config file and validate.
+        with hl.hadoop_open(config_path, "r") as f:
+            config = json.load(f)
+
+        validate_config(config, schema)
+
         # TODO: Add resources to intake federated data once obtained.
         ht = public_release(data_type="exomes").ht()
+
+        # Check that fields specified in the config are present in the Table.
+        validate_ht_fields(ht=ht, config=config)
 
         # Confirm Table is using build GRCh38.
         build = get_reference_genome(ht.locus).name
@@ -267,9 +277,6 @@ def main(args):
             )._filter_partitions(range(test_n_partitions))
 
             ht = test_ht.union(x_ht, y_ht)
-
-        # Validate config file against schema.
-        config = validate_config(ht=ht, config_path=config_path, schema=schema)
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
