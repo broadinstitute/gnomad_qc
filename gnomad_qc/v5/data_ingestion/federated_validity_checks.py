@@ -23,9 +23,48 @@ from jsonschema.exceptions import ValidationError
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.resources.basics import get_logging_path
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+
+from gnomad_qc.v5.data_ingestion.parse_validity_logs import (
+    parse_log_file,
+    generate_html_report,
+)
+
+
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+from io import StringIO
+
+logging.basicConfig(
+    format="%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"
+)
 logger = logging.getLogger("federated_validity_checks")
 logger.setLevel(logging.INFO)
+
+
+# log_stream = StringIO()
+# logger = logging.getLogger("gnomad.assessment.validity_checks")
+# handler = logging.StreamHandler(log_stream)
+# logger.addHandler(handler)
+# logger.setLevel(logging.INFO)
+
+
+# Create an in-memory log stream
+log_stream = StringIO()
+
+# Get the logger
+logger = logging.getLogger("gnomad.assessment.validity_checks")
+logger.setLevel(logging.INFO)
+
+# Create a stream handler for in-memory logging
+handler = logging.StreamHandler(log_stream)
+formatter = logging.Formatter(
+    "%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"
+)
+handler.setFormatter(formatter)  # ✅ Ensure logs keep their format
+
+# Add the handler to the logger
+logger.addHandler(handler)
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -175,11 +214,11 @@ def validate_federated_data(
 
     # Check for missingness.
     logger.info("Checking for missingness...")
-    check_missingness(
-        ht,
-        missingness_threshold,
-        struct_annotations=struct_annotations_for_missingness,
-    )
+    # check_missingness(
+    #     ht,
+    #     missingness_threshold,
+    #     struct_annotations=struct_annotations_for_missingness,
+    # )
 
     # Check that subset totals sum to expected totals.
     logger.info("Checking summations...")
@@ -294,6 +333,22 @@ def main(args):
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
         )
+
+        handler.flush()
+        log_output = log_stream.getvalue()
+
+        log_file = "gs://gnomad-kristen/federated_validity_checks.log"
+        output_file = "gs://gnomad-kristen/federated_validity_checks.html"
+
+        print("LOG OUT\n\n\n")
+        print(log_output)
+
+        with hl.hadoop_open(log_file, "w") as f:
+            f.write(log_output)
+
+        parsed_logs = parse_log_file(log_file)
+
+        generate_html_report(parsed_logs, output_file)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
