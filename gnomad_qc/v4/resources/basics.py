@@ -408,6 +408,8 @@ def get_gnomad_v4_genomes_vds(
     split_reference_blocks: bool = True,
     entries_to_keep: Optional[List[str]] = None,
     annotate_het_non_ref: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+    filter_samples_ht: Optional[hl.Table] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
@@ -438,6 +440,9 @@ def get_gnomad_v4_genomes_vds(
         of the local entries (e.g. 'LGT') to keep.
     :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
         '_het_non_ref') to the variant data. Default is False.
+    :param naive_coalesce_partitions: Optional argument to coalesce the VDS to a
+        specific number of partitions using naive coalesce.
+    :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
     vds = v3_basics.get_gnomad_v3_vds(
@@ -455,6 +460,8 @@ def get_gnomad_v4_genomes_vds(
         split_reference_blocks=split_reference_blocks,
         entries_to_keep=entries_to_keep,
         annotate_het_non_ref=annotate_het_non_ref,
+        naive_coalesce_partitions=naive_coalesce_partitions,
+        filter_samples_ht=filter_samples_ht,
     )
 
     if annotate_meta or release_only:
