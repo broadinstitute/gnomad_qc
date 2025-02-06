@@ -30,7 +30,7 @@ def parse_log_file(log_file):
 
 
 def generate_html_report(parsed_logs, output_file):
-    """Generates an HTML report with sortable columns for function name, status, and message."""
+    """Generates an HTML report with sortable and filterable columns for function name, status, and message."""
     html_template = """
     <html>
     <head>
@@ -74,10 +74,52 @@ def generate_html_report(parsed_logs, output_file):
                     }
                 }
             }
+            
+            function filterTable(column, value) {
+                var table, tr, td, i;
+                table = document.getElementById("logTable");
+                tr = table.getElementsByTagName("tr");
+                for (i = 1; i < tr.length; i++) {
+                    td = tr[i].getElementsByTagName("td")[column];
+                    if (td) {
+                        if (value === "all" || td.innerHTML.toLowerCase() === value.toLowerCase()) {
+                            tr[i].style.display = "";
+                        } else {
+                            tr[i].style.display = "none";
+                        }
+                    } 
+                }
+            }
         </script>
     </head>
     <body>
         <h2>Log Report</h2>
+        <label for="functionFilter">Filter by Function Name:</label>
+        <select id="functionFilter" onchange="filterTable(0, this.value)">
+            <option value="all">All</option>
+    """
+
+    function_names = set()
+    statuses = set()
+    for function_name, category, message in parsed_logs:
+        function_names.add(function_name)
+        statuses.add(category)
+
+    for function_name in sorted(function_names):
+        html_template += f'<option value="{function_name}">{function_name}</option>'
+
+    html_template += """
+        </select>
+        <label for="statusFilter">Filter by Status:</label>
+        <select id="statusFilter" onchange="filterTable(1, this.value)">
+            <option value="all">All</option>
+    """
+
+    for status in sorted(statuses):
+        html_template += f'<option value="{status}">{status.upper()}</option>'
+
+    html_template += """
+        </select>
         <table id="logTable">
             <tr>
                 <th onclick="sortTable(0)">Function Name</th>
