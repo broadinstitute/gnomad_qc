@@ -239,7 +239,6 @@ def validate_federated_data(
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
     )
-
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
@@ -304,6 +303,7 @@ def main(args):
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
+            verbose=verbose,
         )
 
     finally:
