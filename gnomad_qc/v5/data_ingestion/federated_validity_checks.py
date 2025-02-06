@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import hail as hl
 from gnomad.assessment.validity_checks import (
     check_missingness_of_struct,
+    check_raw_and_adj_callstats,
     check_sex_chr_metrics,
     compute_missingness,
     flatten_missingness_struct,
@@ -229,6 +230,15 @@ def validate_federated_data(
         nhomalt_metric=nhomalt_metric,
     )
 
+    logger.info("Checking raw and adj callstats...")
+    check_raw_and_adj_callstats(
+        t=ht,
+        subsets=[""],
+        verbose=verbose,
+        delimiter="_",
+        metric_first_field=True,
+        nhomalt_metric=nhomalt_metric,
+    )
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
@@ -293,6 +303,7 @@ def main(args):
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
+            verbose=verbose,
         )
 
     finally:
