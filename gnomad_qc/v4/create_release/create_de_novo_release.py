@@ -122,6 +122,7 @@ def get_releasable_de_novo_calls_ht(
         logger.info("Filtering to chr20 for testing...")
         mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
 
+    # The split MT was made by adding these extra annotations .
     mt = mt.annotate_rows(
         n_unsplit_alleles=hl.len(mt.alleles),
         mixed_site=(
@@ -152,22 +153,6 @@ def get_releasable_de_novo_calls_ht(
     ht = tm.entries()
 
     ht = ht.annotate(
-        is_de_novo=call_de_novo(
-            ht.locus,
-            ht.proband_entry,
-            ht.father_entry,
-            ht.mother_entry,
-            is_xx_expr=ht.is_xx,
-        )
-    )
-
-    ht = (
-        ht.filter(ht.is_de_novo)
-        .naive_coalesce(1000)
-        .checkpoint(new_temp_file("de_novo_calls", "ht"))
-    )
-
-    ht = ht.annotate(
         de_novo_call_info=get_de_novo_expr(
             locus_expr=ht.locus,
             alleles_expr=ht.alleles,
@@ -179,6 +164,7 @@ def get_releasable_de_novo_calls_ht(
         )
     )
 
+    ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(1000)
     return ht
 
 
