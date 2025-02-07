@@ -1,12 +1,15 @@
 import re
 import hail as hl
 
+import re
+import hail as hl
+
 
 def parse_log_file(log_file):
     """Parses a log file and categorizes messages for formatting, extracting function names and sources."""
     parsed_logs = []
     log_pattern = re.compile(
-        r"(\w+) \(([^)]+)\.(\w+) (\d+)\): (.*)"
+        r"^(INFO|WARNING|ERROR) \(([^)]+)\.(\w+) (\d+)\): (.*)"
     )  # Extract log level, module, function, line number, and message.
 
     function_mapping = {
@@ -25,7 +28,7 @@ def parse_log_file(log_file):
         for line in f:
             match = log_pattern.match(line)
             if match:
-                level, module, function_name, line_number, message = match.groups()
+                log_level, module, function_name, line_number, message = match.groups()
                 source = (
                     f"{module}.{function_name} {line_number}"  # Create a source column.
                 )
@@ -33,13 +36,22 @@ def parse_log_file(log_file):
                     function_name, function_name
                 )  # Map function names.
 
-                # Determine category based on log message.
-                if "PASSED" in message:
-                    category = "pass"
-                elif "FAILED" in message:
-                    category = "fail"
-                elif "WARNING" in message:
+                # Assign category based on log level and message content
+                message_lower = (
+                    message.lower()
+                )  # Convert to lowercase for case-insensitive matching
+
+                if log_level == "INFO":
+                    if "passed" in message_lower:
+                        category = "pass"
+                    elif "failed" in message_lower or "fail" in message_lower:
+                        category = "fail"
+                    else:
+                        category = "info"
+                elif log_level == "WARNING":
                     category = "warn"
+                elif log_level == "ERROR":
+                    category = "fail"  # Treat errors as failures
                 else:
                     category = "info"
 

@@ -258,6 +258,139 @@ def validate_federated_data(
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
+def create_test_ht():
+    """Creates a test Hail Table formatted before running unfurl_array_annotations()."""
+
+    # Use GRCh38 reference genome
+    grch38 = hl.get_reference("GRCh38")
+
+    # Define sample rows of the Hail Table
+    data = [
+        {
+            "locus": hl.locus("chr1", 100000, reference_genome=grch38),
+            "alleles": ["A", "T"],
+            "info": hl.struct(),
+            "freq": [
+                {"AC": 5, "AF": 0.1, "AN": 20, "homozygote_count": 3},
+                {"AC": 10, "AF": 0.05, "AN": 5, "homozygote_count": None},
+                {"AC": 15, "AF": 0.07, "AN": 10, "homozygote_count": 2},
+                {"AC": 20, "AF": 0.09, "AN": 15, "homozygote_count": 1},
+                {"AC": 25, "AF": 0.11, "AN": 18, "homozygote_count": 2},
+                {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
+            ],
+            "faf": [
+                hl.struct(faf95=0.001, faf99=0.002),
+                hl.struct(faf95=0.0009, faf99=0.0018),
+            ],
+            "filters": hl.empty_set(hl.tstr),
+        },
+        {
+            "locus": hl.locus("chr1", 200000, reference_genome=grch38),
+            "alleles": ["C", "G"],
+            "info": hl.struct(),
+            "freq": [
+                {"AC": 6, "AF": 0.08, "AN": 60, "homozygote_count": 4},
+                {"AC": 8, "AF": 0.50, "AN": 90, "homozygote_count": 5},
+                {"AC": 12, "AF": 0.15, "AN": 50, "homozygote_count": 2},
+                {"AC": 18, "AF": 0.18, "AN": 70, "homozygote_count": 3},
+                {"AC": 22, "AF": 0.20, "AN": 85, "homozygote_count": 6},
+                {"AC": 28, "AF": 0.25, "AN": 95, "homozygote_count": 7},
+            ],
+            "faf": [
+                hl.struct(faf95=0.001, faf99=0.002),
+                hl.struct(faf95=0.0009, faf99=0.0018),
+            ],
+            "filters": hl.empty_set(hl.tstr),
+        },
+        {
+            "locus": hl.locus("chr1", 300000, reference_genome=grch38),
+            "alleles": ["G", "T"],
+            "info": hl.struct(),
+            "freq": [
+                {"AC": 65, "AF": 0.18, "AN": 200, "homozygote_count": 10},
+                {"AC": 88, "AF": 0.20, "AN": 220, "homozygote_count": 12},
+                {"AC": 75, "AF": 0.17, "AN": 180, "homozygote_count": 8},
+                {"AC": 95, "AF": 0.22, "AN": 250, "homozygote_count": 15},
+                {"AC": 100, "AF": 0.24, "AN": 275, "homozygote_count": 18},
+                {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
+            ],
+            "faf": [
+                hl.struct(faf95=0.001, faf99=0.002),
+                hl.struct(faf95=0.0009, faf99=0.0018),
+            ],
+            "filters": hl.empty_set(hl.tstr),
+        },
+        {
+            "locus": hl.locus("chrX", 400000, reference_genome=grch38),
+            "alleles": ["T", "C"],
+            "info": hl.struct(),
+            "freq": [
+                {"AC": 8, "AF": 0.08, "AN": 30, "homozygote_count": 1},
+                {"AC": 14, "AF": 0.12, "AN": 40, "homozygote_count": 2},
+                {"AC": 22, "AF": 0.14, "AN": 50, "homozygote_count": 4},
+                {"AC": 30, "AF": 0.18, "AN": 60, "homozygote_count": 5},
+                {"AC": 40, "AF": 0.20, "AN": 75, "homozygote_count": 7},
+                {"AC": 50, "AF": 0.25, "AN": 85, "homozygote_count": 9},
+            ],
+            "faf": [
+                hl.struct(faf95=0.001, faf99=0.002),
+                hl.struct(faf95=0.0009, faf99=0.0018),
+            ],
+            "filters": hl.empty_set(hl.tstr),
+        },
+    ]
+
+    # Create Table.
+    ht = hl.Table.parallelize(
+        data,
+        hl.tstruct(
+            locus=hl.tlocus(reference_genome=grch38),
+            alleles=hl.tarray(hl.tstr),
+            info=hl.tstruct(),
+            freq=hl.tarray(
+                hl.tstruct(
+                    AC=hl.tint32,
+                    AF=hl.tfloat64,
+                    AN=hl.tint32,
+                    homozygote_count=hl.tint32,
+                )
+            ),
+            faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
+            filters=hl.tset(hl.tstr),
+        ),
+    )
+
+    # Define global annotation for freq_index_dict.
+    freq_index_dict = {
+        "adj": 0,
+        "raw": 1,
+        "afr_adj": 2,
+        "amr_adj": 3,
+        "adj_XX": 4,
+        "adj_XY": 5,
+    }
+    faf_index_dict = {"adj": 0, "raw": 1}
+
+    freq_meta = [
+        {"group": "adj"},
+        {"group": "raw"},
+        {"gen_anc": "afr", "group": "adj"},
+        {"gen_anc": "amr", "group": "adj"},
+        {"sex": "XX", "group": "adj"},
+        {"sex": "XY", "group": "adj"},
+    ]
+
+    ht = ht.annotate_globals(
+        freq_index_dict=freq_index_dict,
+        faf_index_dict=faf_index_dict,
+        freq_meta=freq_meta,
+    )
+
+    ht = ht.key_by("locus", "alleles")  # Set key fields.
+
+    return ht
+
+
 def main(args):
     """Perform validity checks for federated data."""
     hl.init(
@@ -288,26 +421,30 @@ def main(args):
             raise ValueError(f"Reference genome is {build}, not GRCh38!")
 
         # Filter to test partitions if specified.
-        if test_n_partitions:
-            logger.info(
-                "Filtering to %d partitions and sex chromosomes.", test_n_partitions
-            )
-            test_ht = ht._filter_partitions(range(test_n_partitions))
+        # if test_n_partitions:
+        #    logger.info(
+        #        "Filtering to %d partitions and sex chromosomes.", test_n_partitions
+        #    )
+        #    test_ht = ht._filter_partitions(range(test_n_partitions))
 
-            x_ht = hl.filter_intervals(
-                ht, [hl.parse_locus_interval("chrX")]
-            )._filter_partitions(range(test_n_partitions))
+        #    x_ht = hl.filter_intervals(
+        #        ht, [hl.parse_locus_interval("chrX")]
+        #    )._filter_partitions(range(test_n_partitions))
 
-            y_ht = hl.filter_intervals(
-                ht, [hl.parse_locus_interval("chrY")]
-            )._filter_partitions(range(test_n_partitions))
+        #    y_ht = hl.filter_intervals(
+        #        ht, [hl.parse_locus_interval("chrY")]
+        #    )._filter_partitions(range(test_n_partitions))
 
-            ht = test_ht.union(x_ht, y_ht)
+        #   ht = test_ht.union(x_ht, y_ht)
+
+        ht = create_test_ht()
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
         annotations = unfurl_array_annotations(ht, config["indexed_array_annotations"])
         ht = ht.annotate(info=ht.info.annotate(**annotations))
+
+        ht.show()
 
         validate_federated_data(
             ht=ht,
@@ -333,6 +470,7 @@ def main(args):
         )
 
         print("\n\n\n\n")
+        print(log_output)
 
         # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
