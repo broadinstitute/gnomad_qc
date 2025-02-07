@@ -7,7 +7,7 @@ def parse_log_file(log_file):
     parsed_logs = []
     log_pattern = re.compile(
         r"(\w+) \(([^)]+)\.(\w+) (\d+)\): (.*)"
-    )  # Extract log level, module, function, line number, and message
+    )  # Extract log level, module, function, line number, and message.
 
     function_mapping = {
         "validate_config": "general info",
@@ -27,13 +27,13 @@ def parse_log_file(log_file):
             if match:
                 level, module, function_name, line_number, message = match.groups()
                 source = (
-                    f"{module}.{function_name} {line_number}"  # Create a source column
+                    f"{module}.{function_name} {line_number}"  # Create a source column.
                 )
                 validity_check = function_mapping.get(
                     function_name, function_name
-                )  # Map function names
+                )  # Map function names.
 
-                # Determine category based on log message
+                # Determine category based on log message.
                 if "PASSED" in message:
                     category = "pass"
                 elif "FAILED" in message:
@@ -94,19 +94,21 @@ def generate_html_report(parsed_logs, output_file):
                 }
             }
             
-            function filterTable(column, value) {
-                var table, tr, td, i;
+            function filterTable() {
+                var validityFilter = document.getElementById("functionFilter").value.toLowerCase();
+                var statusFilter = document.getElementById("statusFilter").value.toLowerCase();
+                var table, tr, i;
                 table = document.getElementById("logTable");
                 tr = table.getElementsByTagName("tr");
                 for (i = 1; i < tr.length; i++) {
-                    td = tr[i].getElementsByTagName("td")[column];
-                    if (td) {
-                        if (value === "all" || td.innerHTML.toLowerCase() === value.toLowerCase()) {
-                            tr[i].style.display = "";
-                        } else {
-                            tr[i].style.display = "none";
-                        }
-                    } 
+                    var validityCheck = tr[i].getElementsByTagName("td")[0].innerHTML.toLowerCase();
+                    var status = tr[i].getElementsByTagName("td")[1].innerHTML.toLowerCase();
+                    if ((validityFilter === "all" || validityCheck === validityFilter) && 
+                        (statusFilter === "all" || status === statusFilter)) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
                 }
             }
         </script>
@@ -114,7 +116,7 @@ def generate_html_report(parsed_logs, output_file):
     <body>
         <h2>Log Report</h2>
         <label for="functionFilter">Filter by Validity Check:</label>
-        <select id="functionFilter" onchange="filterTable(0, this.value)">
+        <select id="functionFilter" onchange="filterTable()">
             <option value="all">All</option>
     """
 
@@ -130,7 +132,7 @@ def generate_html_report(parsed_logs, output_file):
     html_template += """
         </select>
         <label for="statusFilter">Filter by Status:</label>
-        <select id="statusFilter" onchange="filterTable(1, this.value)">
+        <select id="statusFilter" onchange="filterTable()">
             <option value="all">All</option>
     """
 

@@ -29,7 +29,6 @@ from gnomad_qc.v5.data_ingestion.parse_validity_logs import (
     generate_html_report,
 )
 
-
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
@@ -41,27 +40,15 @@ logging.basicConfig(
 logger = logging.getLogger("federated_validity_checks")
 logger.setLevel(logging.INFO)
 
-
-# log_stream = StringIO()
-# logger = logging.getLogger("gnomad.assessment.validity_checks")
-# handler = logging.StreamHandler(log_stream)
-# logger.addHandler(handler)
-# logger.setLevel(logging.INFO)
-
-
-# Create an in-memory log stream
+# Create a stream handler for in-memory logging.
 log_stream = StringIO()
-
-# Get the logger
 logger = logging.getLogger("gnomad.assessment.validity_checks")
 logger.setLevel(logging.INFO)
-
-# Create a stream handler for in-memory logging
 handler = logging.StreamHandler(log_stream)
 formatter = logging.Formatter(
     "%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"
 )
-handler.setFormatter(formatter)  # ✅ Ensure logs keep their format
+handler.setFormatter(formatter)
 
 # Add the handler to the logger
 logger.addHandler(handler)
@@ -337,17 +324,21 @@ def main(args):
         handler.flush()
         log_output = log_stream.getvalue()
 
-        log_file = "gs://gnomad-kristen/federated_validity_checks.log"
-        output_file = "gs://gnomad-kristen/federated_validity_checks.html"
+        # TODO: Create resource functions when know organization of federated data.
+        log_file = (
+            "gs://gnomad-tmp/federated_validity_checks/federated_validity_checks.log"
+        )
+        output_file = (
+            "gs://gnomad-tmp/federated_validity_checks/federated_validity_checks.html"
+        )
 
-        print("LOG OUT\n\n\n")
-        print(log_output)
+        print("\n\n\n\n")
 
+        # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
             f.write(log_output)
 
         parsed_logs = parse_log_file(log_file)
-
         generate_html_report(parsed_logs, output_file)
 
     finally:
