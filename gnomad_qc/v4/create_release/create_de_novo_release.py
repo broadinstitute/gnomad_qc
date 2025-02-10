@@ -136,8 +136,8 @@ def get_releasable_de_novo_calls_ht(
     )
     mt = annotate_adj(mt)
 
-    # Many of our larger datasets have the PL and AD fields for homref genotypes
-    # intentionally removed to save storage space and costs. We need to approximate the
+    # V3 and v4 VDS have the PL and AD fields for homref genotypes intentionally
+    # removed to save storage space and costs. We need to approximate the
     # AD and PL fields when missing.
     mt = mt.annotate_entries(
         AD=hl.or_else(mt.AD, [mt.DP, 0]),
