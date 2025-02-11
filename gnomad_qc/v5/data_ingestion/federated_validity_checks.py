@@ -456,6 +456,7 @@ def main(args):
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
+            verbose=verbose,
         )
 
         handler.flush()
