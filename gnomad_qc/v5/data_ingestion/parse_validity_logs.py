@@ -21,7 +21,7 @@ def parse_log_file(log_file):
         "sum_group_callstats": "group summations",
         "make_group_sum_expr_dict": "group summations",
         "check_sex_chr_metrics": "XY check",
-        "generic_field_check": "raw/adj check",
+        "check_raw_and_adj_callstats": "raw/adj check",
     }
 
     with hl.hadoop_open(log_file, "r") as f:
