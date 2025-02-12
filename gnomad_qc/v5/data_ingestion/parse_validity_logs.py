@@ -25,29 +25,39 @@ def parse_log_file(log_file):
     }
 
     with hl.hadoop_open(log_file, "r") as f:
+        current_message = ""
+        current_table = []
+        current_metadata = None  # Stores log metadata before a table appears
+
         for line in f:
             match = log_pattern.match(line)
+
             if match:
+                # Store previous log if it had a table
+                if current_message and current_metadata:
+                    # Remove ASCII table lines from the message part but keep the full table separately
+                    cleaned_message = re.sub(
+                        r"\+\-*\+*\-*", "", current_message
+                    ).strip()
+                    parsed_logs.append(
+                        (
+                            *current_metadata,
+                            cleaned_message,
+                            "\n".join(current_table).strip(),
+                        )
+                    )
+
+                # Start new log message
                 log_level, module, function_name, line_number, message = match.groups()
-                source = (
-                    f"{module}.{function_name} {line_number}"  # Create a source column.
-                )
-                validity_check = function_mapping.get(
-                    function_name, function_name
-                )  # Map function names.
+                source = f"{module}.{function_name} {line_number}"
+                validity_check = function_mapping.get(function_name, function_name)
 
-                # Assign category based on log level and message content
-                message_lower = (
-                    message.lower()
-                )  # Convert to lowercase for case-insensitive matching
-
-                if log_level == "INFO":
-                    if "passed" in message_lower:
-                        category = "pass"
-                    elif "failed" in message_lower or "fail" in message_lower:
-                        category = "fail"
-                    else:
-                        category = "info"
+                # Determine the category
+                message_lower = message.lower()
+                if "passed" in message_lower:
+                    category = "pass"
+                elif "failed" in message_lower or "fail" in message_lower:
+                    category = "fail"
                 elif log_level == "WARNING":
                     category = "warn"
                 elif log_level == "ERROR":
@@ -55,27 +65,82 @@ def parse_log_file(log_file):
                 else:
                     category = "info"
 
-                parsed_logs.append((validity_check, category, source, message))
+                # Reset tracking
+                current_message = message
+                current_table = []
+                current_metadata = (validity_check, category, source)
+
+            elif "+----" in line or "| locus" in line:  # Table start detection
+                current_table.append(line.strip())  # Add table row
+            elif current_table:  # If already collecting a table
+                current_table.append(line.strip())
+
+        # Store last log if it had a table
+        if current_message and current_metadata:
+            cleaned_message = re.sub(r"\+\-+\+|\|.*?\|", "", current_message).strip()
+            parsed_logs.append(
+                (*current_metadata, cleaned_message, "\n".join(current_table).strip())
+            )
 
     return parsed_logs
 
 
 def generate_html_report(parsed_logs, output_file):
-    """Generates an HTML report with sortable and filterable columns for validity check, status, source, and message."""
+    """Generates an HTML report with sortable and filterable columns, with expandable tables for results."""
     html_template = """
     <html>
     <head>
         <style>
             body { font-family: Arial, sans-serif; }
             table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid black; padding: 8px; text-align: left; }
+            th, td { border: 1px solid black; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; cursor: pointer; }
             .pass { color: #6d1faa; }
             .fail { color: #D42736; font-weight: bold; }
             .warn { color: #DAA520; }
             .info { color: black; }
+            .hidden-table { display: none; }
+            .toggle-btn { 
+                cursor: pointer; 
+                color: blue; 
+                text-decoration: underline; 
+                float: right;  /* Moves "View Table" to the right */
+                margin-left: 15px; /* Adds spacing between message and button */
+            }
+            .checkbox-container {
+                display: inline-block;
+                margin-left: 20px;
+            }
+            pre { 
+                text-align: left; 
+                white-space: pre-wrap; 
+                font-family: monospace;
+                background: #f8f8f8; 
+                padding: 10px;
+                border-radius: 5px;
+                overflow-x: auto;
+                width: 100%;
+                display: block;
+                color: black; /* Ensure table text is plain black */
+                font-weight: normal; /* Ensure no bolding */
+            }
         </style>
         <script>
+            function toggleTable(id) {
+                var tableDiv = document.getElementById(id);
+                tableDiv.style.display = (tableDiv.style.display === "none" || tableDiv.style.display === "") ? "block" : "none";
+            }
+
+            function toggleAllTables() {
+                var tables = document.getElementsByClassName("hidden-table");
+                var checkbox = document.getElementById("toggleAll");
+                var showAll = checkbox.checked;
+
+                for (var i = 0; i < tables.length; i++) {
+                    tables[i].style.display = showAll ? "block" : "none";
+                }
+            }
+
             function sortTable(n) {
                 var table, rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
                 table = document.getElementById("logTable");
@@ -105,24 +170,6 @@ def generate_html_report(parsed_logs, output_file):
                     }
                 }
             }
-            
-            function filterTable() {
-                var validityFilter = document.getElementById("functionFilter").value.toLowerCase();
-                var statusFilter = document.getElementById("statusFilter").value.toLowerCase();
-                var table, tr, i;
-                table = document.getElementById("logTable");
-                tr = table.getElementsByTagName("tr");
-                for (i = 1; i < tr.length; i++) {
-                    var validityCheck = tr[i].getElementsByTagName("td")[0].innerHTML.toLowerCase();
-                    var status = tr[i].getElementsByTagName("td")[1].innerHTML.toLowerCase();
-                    if ((validityFilter === "all" || validityCheck === validityFilter) && 
-                        (statusFilter === "all" || status === statusFilter)) {
-                        tr[i].style.display = "";
-                    } else {
-                        tr[i].style.display = "none";
-                    }
-                }
-            }
         </script>
     </head>
     <body>
@@ -134,7 +181,8 @@ def generate_html_report(parsed_logs, output_file):
 
     validity_checks = set()
     statuses = set()
-    for validity_check, category, source, message in parsed_logs:
+
+    for validity_check, category, source, message, table in parsed_logs:
         validity_checks.add(validity_check)
         statuses.add(category)
 
@@ -153,6 +201,13 @@ def generate_html_report(parsed_logs, output_file):
 
     html_template += """
         </select>
+
+        <!-- New checkbox to show/hide all tables -->
+        <span class="checkbox-container">
+            <input type="checkbox" id="toggleAll" onclick="toggleAllTables()">
+            <label for="toggleAll">Show All Tables</label>
+        </span>
+
         <table id="logTable">
             <tr>
                 <th onclick="sortTable(0)">Validity Check</th>
@@ -162,14 +217,30 @@ def generate_html_report(parsed_logs, output_file):
             </tr>
     """
 
-    for validity_check, category, source, message in parsed_logs:
-        html_template += f'<tr class="{category}"><td>{validity_check}</td><td class="{category}">{category.upper()}</td><td>{source}</td><td>{message}</td></tr>'
+    for i, (validity_check, category, source, message, table) in enumerate(parsed_logs):
+        table_id = f"table_{i}"
+        table_button = (
+            f'<span class="toggle-btn" onclick="toggleTable(\'{table_id}\')">View Table</span>'
+            if table
+            else ""
+        )
 
-    html_template += """
-        </table>
-    </body>
-    </html>
-    """
+        html_template += (
+            f'<tr class="{category}">'
+            f"<td>{validity_check}</td>"
+            f'<td class="{category}">{category.upper()}</td>'
+            f"<td>{source}</td>"
+            f"<td>{message} {table_button}"
+        )
+
+        if table:
+            html_template += (
+                f'<div id="{table_id}" class="hidden-table"><pre>{table}</pre></div>'
+            )
+
+        html_template += "</td></tr>"
+
+    html_template += "</table></body></html>"
 
     with hl.hadoop_open(output_file, "w") as f:
         f.write(html_template)
