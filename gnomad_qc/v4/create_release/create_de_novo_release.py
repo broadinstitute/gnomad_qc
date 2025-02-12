@@ -7,7 +7,7 @@ from typing import Dict
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import all_sites_an, public_release
-from gnomad.sample_qc.relatedness import call_de_novo, get_de_novo_expr
+from gnomad.sample_qc.relatedness import default_get_de_novo_expr
 from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import process_consequences
@@ -153,7 +153,7 @@ def get_releasable_de_novo_calls_ht(
     ht = tm.entries()
 
     ht = ht.annotate(
-        de_novo_call_info=get_de_novo_expr(
+        de_novo_call_info=default_get_de_novo_expr(
             locus_expr=ht.locus,
             alleles_expr=ht.alleles,
             proband_expr=ht.proband_entry,
