@@ -175,6 +175,26 @@ def generate_html_report(parsed_logs, output_file):
                     }
                 }
             }
+
+            function filterTable() {
+                var validityFilter = document.getElementById("functionFilter").value.toLowerCase();
+                var statusFilter = document.getElementById("statusFilter").value.toLowerCase();
+                var table, tr, i;
+                table = document.getElementById("logTable");
+                tr = table.getElementsByTagName("tr");
+
+                for (i = 1; i < tr.length; i++) {
+                    var validityCheck = tr[i].getElementsByTagName("td")[0].innerHTML.toLowerCase();
+                    var status = tr[i].getElementsByTagName("td")[1].innerHTML.toLowerCase();
+
+                    if ((validityFilter === "all" || validityCheck === validityFilter) && 
+                        (statusFilter === "all" || status === statusFilter)) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
+                }
+            }
         </script>
     </head>
     <body>
