@@ -258,16 +258,15 @@ def validate_federated_data(
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
-import hail as hl
+def create_logtest_ht() -> hl.Table:
+    """
+    Creates a test Hail Table formatted before running unfurl_array_annotations() with added grpmax field.
 
+    :return: Table to use for testing log output.
+    """
 
-def create_test_ht():
-    """Creates a test Hail Table formatted before running unfurl_array_annotations() with added grpmax field."""
-
-    # Use GRCh38 reference genome
     grch38 = hl.get_reference("GRCh38")
 
-    # Define sample rows of the Hail Table
     data = [
         {
             "locus": hl.locus("chr1", 100000, reference_genome=grch38),
@@ -373,7 +372,6 @@ def create_test_ht():
         },
     ]
 
-    # Create Table.
     ht = hl.Table.parallelize(
         data,
         hl.tstruct(
@@ -394,7 +392,7 @@ def create_test_ht():
         ),
     )
 
-    # Define global annotation for freq_index_dict.
+    # Define global annotation for freq_index_dict, faf_index_dict, and freq_meta.
     freq_index_dict = {
         "adj": 0,
         "raw": 1,
@@ -420,8 +418,7 @@ def create_test_ht():
         freq_meta=freq_meta,
     )
 
-    # Add grpmac and fafmax annotations.
-
+    # Add grpmax and fafmax annotations.
     grpmax = hl.struct(
         gnomad=hl.struct(
             AC=hl.or_missing(hl.rand_bool(0.8), hl.max(ht.freq.AC)),
@@ -502,23 +499,25 @@ def main(args):
             raise ValueError(f"Reference genome is {build}, not GRCh38!")
 
         # Filter to test partitions if specified.
-        # if test_n_partitions:
-        #    logger.info(
-        #        "Filtering to %d partitions and sex chromosomes.", test_n_partitions
-        #    )
-        #    test_ht = ht._filter_partitions(range(test_n_partitions))
+        if test_n_partitions:
+            logger.info(
+                "Filtering to %d partitions and sex chromosomes...", test_n_partitions
+            )
+            test_ht = ht._filter_partitions(range(test_n_partitions))
 
-        #    x_ht = hl.filter_intervals(
-        #        ht, [hl.parse_locus_interval("chrX")]
-        #    )._filter_partitions(range(test_n_partitions))
+            x_ht = hl.filter_intervals(
+                ht, [hl.parse_locus_interval("chrX")]
+            )._filter_partitions(range(test_n_partitions))
 
-        #    y_ht = hl.filter_intervals(
-        #        ht, [hl.parse_locus_interval("chrY")]
-        #    )._filter_partitions(range(test_n_partitions))
+            y_ht = hl.filter_intervals(
+                ht, [hl.parse_locus_interval("chrY")]
+            )._filter_partitions(range(test_n_partitions))
 
-        #   ht = test_ht.union(x_ht, y_ht)
+            ht = test_ht.union(x_ht, y_ht)
 
-        ht = create_test_ht()
+        if args.use_logtest_ht:
+            logger.info("Using logtest ht...")
+            ht = create_logtest_ht()
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
@@ -569,15 +568,23 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
+    # Create a mutually exclusive group for --test-n-partitions and --use-test-ht
+    test_group = parser.add_mutually_exclusive_group()
+
+    test_group.add_argument(
         "--test-n-partitions",
         help=(
             "Use only N partitions of the input (as well as sex chromosomes) for testing purposes. Defaults"
-            "to 2 if passed without a value."
+            "to 2 if passed without a value. Cannot be used if --use-logtest-ht is set."
         ),
         nargs="?",
         const=2,
         type=int,
+    )
+    test_group.add_argument(
+        "--use-logtest-ht",
+        help="Use a pre-defined Hail Table for testing of log output rather than loading data. Cannot be used if --test-n-partitions is set.",
+        action="store_true",
     )
     parser.add_argument(
         "--config-path",
