@@ -19,6 +19,8 @@ def parse_log_file(log_file):
         "validate_federated_data": "general info",
         "summarize_variants": "variant summary",
         "sum_group_callstats": "group summations",
+        "check_missingness": "missingness",
+        "compute_missingness": "missingness",
         "make_group_sum_expr_dict": "group summations",
         "check_sex_chr_metrics": "XY check",
         "check_raw_and_adj_callstats": "raw/adj check",
@@ -54,10 +56,13 @@ def parse_log_file(log_file):
 
                 # Determine the category
                 message_lower = message.lower()
-                if "passed" in message_lower:
-                    category = "pass"
-                elif "failed" in message_lower or "fail" in message_lower:
-                    category = "fail"
+                if log_level == "INFO":
+                    if "passed" in message_lower:
+                        category = "pass"
+                    elif "failed" in message_lower or "fail" in message_lower:
+                        category = "fail"
+                    else:
+                        category = "info"
                 elif log_level == "WARNING":
                     category = "warn"
                 elif log_level == "ERROR":
@@ -202,7 +207,7 @@ def generate_html_report(parsed_logs, output_file):
     html_template += """
         </select>
 
-        <!-- New checkbox to show/hide all tables -->
+        <!-- Checkbox to show/hide all tables -->
         <span class="checkbox-container">
             <input type="checkbox" id="toggleAll" onclick="toggleAllTables()">
             <label for="toggleAll">Show All Tables</label>

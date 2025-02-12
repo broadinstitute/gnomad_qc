@@ -201,11 +201,11 @@ def validate_federated_data(
 
     # Check for missingness.
     logger.info("Checking for missingness...")
-    # check_missingness(
-    #     ht,
-    #     missingness_threshold,
-    #     struct_annotations=struct_annotations_for_missingness,
-    # )
+    check_missingness(
+        ht,
+        missingness_threshold,
+        struct_annotations=struct_annotations_for_missingness,
+    )
 
     # Check that subset totals sum to expected totals.
     logger.info("Checking summations...")
@@ -258,8 +258,11 @@ def validate_federated_data(
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
+import hail as hl
+
+
 def create_test_ht():
-    """Creates a test Hail Table formatted before running unfurl_array_annotations()."""
+    """Creates a test Hail Table formatted before running unfurl_array_annotations() with added grpmax field."""
 
     # Use GRCh38 reference genome
     grch38 = hl.get_reference("GRCh38")
@@ -271,12 +274,42 @@ def create_test_ht():
             "alleles": ["A", "T"],
             "info": hl.struct(),
             "freq": [
-                {"AC": 5, "AF": 0.1, "AN": 20, "homozygote_count": 3},
-                {"AC": 10, "AF": 0.05, "AN": 5, "homozygote_count": None},
-                {"AC": 15, "AF": 0.07, "AN": 10, "homozygote_count": 2},
-                {"AC": 20, "AF": 0.09, "AN": 15, "homozygote_count": 1},
-                {"AC": 25, "AF": 0.11, "AN": 18, "homozygote_count": 2},
-                {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
+                {"AC": 5, "AF": 0.1, "AN": 20, "homozygote_count": 3, "gen_anc": "adj"},
+                {
+                    "AC": 10,
+                    "AF": 0.05,
+                    "AN": 5,
+                    "homozygote_count": None,
+                    "gen_anc": "raw",
+                },
+                {
+                    "AC": 15,
+                    "AF": 0.07,
+                    "AN": 10,
+                    "homozygote_count": 2,
+                    "gen_anc": "afr_adj",
+                },
+                {
+                    "AC": 20,
+                    "AF": 0.09,
+                    "AN": 15,
+                    "homozygote_count": 1,
+                    "gen_anc": "amr_adj",
+                },
+                {
+                    "AC": 25,
+                    "AF": 0.11,
+                    "AN": 18,
+                    "homozygote_count": 2,
+                    "gen_anc": "adj_XX",
+                },
+                {
+                    "AC": 30,
+                    "AF": 0.13,
+                    "AN": 22,
+                    "homozygote_count": 4,
+                    "gen_anc": "adj_XY",
+                },
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -289,48 +322,48 @@ def create_test_ht():
             "alleles": ["C", "G"],
             "info": hl.struct(),
             "freq": [
-                {"AC": 6, "AF": 0.08, "AN": 60, "homozygote_count": 4},
-                {"AC": 8, "AF": 0.50, "AN": 90, "homozygote_count": 5},
-                {"AC": 12, "AF": 0.15, "AN": 50, "homozygote_count": 2},
-                {"AC": 18, "AF": 0.18, "AN": 70, "homozygote_count": 3},
-                {"AC": 22, "AF": 0.20, "AN": 85, "homozygote_count": 6},
-                {"AC": 28, "AF": 0.25, "AN": 95, "homozygote_count": 7},
-            ],
-            "faf": [
-                hl.struct(faf95=0.001, faf99=0.002),
-                hl.struct(faf95=0.0009, faf99=0.0018),
-            ],
-            "filters": hl.empty_set(hl.tstr),
-        },
-        {
-            "locus": hl.locus("chr1", 300000, reference_genome=grch38),
-            "alleles": ["G", "T"],
-            "info": hl.struct(),
-            "freq": [
-                {"AC": 65, "AF": 0.18, "AN": 200, "homozygote_count": 10},
-                {"AC": 88, "AF": 0.20, "AN": 220, "homozygote_count": 12},
-                {"AC": 75, "AF": 0.17, "AN": 180, "homozygote_count": 8},
-                {"AC": 95, "AF": 0.22, "AN": 250, "homozygote_count": 15},
-                {"AC": 100, "AF": 0.24, "AN": 275, "homozygote_count": 18},
-                {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
-            ],
-            "faf": [
-                hl.struct(faf95=0.001, faf99=0.002),
-                hl.struct(faf95=0.0009, faf99=0.0018),
-            ],
-            "filters": hl.empty_set(hl.tstr),
-        },
-        {
-            "locus": hl.locus("chrX", 400000, reference_genome=grch38),
-            "alleles": ["T", "C"],
-            "info": hl.struct(),
-            "freq": [
-                {"AC": 8, "AF": 0.08, "AN": 30, "homozygote_count": 1},
-                {"AC": 14, "AF": 0.12, "AN": 40, "homozygote_count": 2},
-                {"AC": 22, "AF": 0.14, "AN": 50, "homozygote_count": 4},
-                {"AC": 30, "AF": 0.18, "AN": 60, "homozygote_count": 5},
-                {"AC": 40, "AF": 0.20, "AN": 75, "homozygote_count": 7},
-                {"AC": 50, "AF": 0.25, "AN": 85, "homozygote_count": 9},
+                {
+                    "AC": 6,
+                    "AF": 0.08,
+                    "AN": 60,
+                    "homozygote_count": 4,
+                    "gen_anc": "adj",
+                },
+                {
+                    "AC": 8,
+                    "AF": 0.50,
+                    "AN": 90,
+                    "homozygote_count": 5,
+                    "gen_anc": "raw",
+                },
+                {
+                    "AC": 12,
+                    "AF": 0.15,
+                    "AN": 50,
+                    "homozygote_count": 2,
+                    "gen_anc": "afr_adj",
+                },
+                {
+                    "AC": 18,
+                    "AF": 0.18,
+                    "AN": 70,
+                    "homozygote_count": 3,
+                    "gen_anc": "amr_adj",
+                },
+                {
+                    "AC": 22,
+                    "AF": 0.20,
+                    "AN": 85,
+                    "homozygote_count": 6,
+                    "gen_anc": "adj_XX",
+                },
+                {
+                    "AC": 28,
+                    "AF": 0.25,
+                    "AN": 95,
+                    "homozygote_count": 7,
+                    "gen_anc": "adj_XY",
+                },
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -353,6 +386,7 @@ def create_test_ht():
                     AF=hl.tfloat64,
                     AN=hl.tint32,
                     homozygote_count=hl.tint32,
+                    gen_anc=hl.tstr,
                 )
             ),
             faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
@@ -386,7 +420,54 @@ def create_test_ht():
         freq_meta=freq_meta,
     )
 
-    ht = ht.key_by("locus", "alleles")  # Set key fields.
+    # Add grpmac and fafmax annotations.
+
+    grpmax = hl.struct(
+        gnomad=hl.struct(
+            AC=hl.or_missing(hl.rand_bool(0.8), hl.max(ht.freq.AC)),
+            AF=hl.or_missing(hl.rand_bool(0.2), hl.max(ht.freq.AF)),
+            AN=hl.or_missing(hl.rand_bool(0.7), hl.max(ht.freq.AN)),
+            homozygote_count=hl.or_missing(
+                hl.rand_bool(0.3),
+                hl.max(ht.freq.map(lambda x: hl.or_else(x.homozygote_count, 0))),
+            ),
+            gen_anc=hl.or_missing(
+                hl.rand_bool(0.5),
+                hl.dict(
+                    hl.zip(
+                        ht.freq.AC, ht.freq.map(lambda x: x.get("gen_anc", "unknown"))
+                    )
+                ).get(hl.max(ht.freq.AC)),
+            ),
+        )
+    )
+    fafmax = hl.struct(
+        gnomad=hl.struct(
+            faf95_max=hl.or_missing(hl.rand_bool(0.10), hl.max(ht.faf.faf95)),
+            faf95_max_gen_anc=hl.or_missing(
+                hl.rand_bool(0.75),
+                hl.dict(
+                    hl.zip(
+                        ht.faf.faf95,
+                        ht.freq_meta.map(lambda x: x.get("gen_anc", "unknown")),
+                    )
+                ).get(hl.max(ht.faf.faf95)),
+            ),
+            faf99_max=hl.or_missing(hl.rand_bool(0.3), hl.max(ht.faf.faf99)),
+            faf99_max_gen_anc=hl.or_missing(
+                hl.rand_bool(0.5),
+                hl.dict(
+                    hl.zip(
+                        ht.faf.faf99,
+                        ht.freq_meta.map(lambda x: x.get("gen_anc", "unknown")),
+                    )
+                ).get(hl.max(ht.faf.faf99)),
+            ),
+        )
+    )
+
+    ht = ht.annotate(grpmax=grpmax, fafmax=fafmax)
+    ht = ht.key_by("locus", "alleles")
 
     return ht
 
