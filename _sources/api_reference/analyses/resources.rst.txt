@@ -1,0 +1,16 @@
+gnomad_qc.analyses.resources
+============================
+
+Script containing gnomAD analysis resources.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.analyses.resources
+
+.. automodule:: gnomad_qc.analyses.resources
+    :exclude-members: get_script_argument_parser

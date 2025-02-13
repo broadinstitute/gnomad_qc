@@ -1,0 +1,21 @@
+gnomad_qc.v4.create_release.create_release_sites_ht
+===================================================
+
+Script to create release sites HT for v4.0 exomes and genomes.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.create_release.create_release_sites_ht.get_script_argument_parser
+   :prog: gnomad_qc.v4.create_release.create_release_sites_ht.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.create_release_sites_ht
+
+.. automodule:: gnomad_qc.v4.create_release.create_release_sites_ht
+    :exclude-members: get_script_argument_parser
