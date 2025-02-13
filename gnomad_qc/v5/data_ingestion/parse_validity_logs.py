@@ -106,6 +106,7 @@ def generate_html_report(parsed_logs, output_file):
                 text-decoration: underline; 
                 float: right;  /* Moves "View Table" to the right */
                 margin-left: 15px; /* Adds spacing between message and button */
+                font-weight: normal;
             }
             .checkbox-container {
                 display: inline-block;
