@@ -1,9 +1,6 @@
 import re
 import hail as hl
 
-import re
-import hail as hl
-
 
 def parse_log_file(log_file):
     """Parses a log file and categorizes messages for formatting, extracting function names and sources."""
@@ -29,18 +26,16 @@ def parse_log_file(log_file):
     with hl.hadoop_open(log_file, "r") as f:
         current_message = ""
         current_table = []
-        current_metadata = None  # Stores log metadata before a table appears
+        current_metadata = None  # Stores log metadata before a table appears.
 
         for line in f:
             match = log_pattern.match(line)
 
             if match:
-                # Store previous log if it had a table
+                # Store previous log if it had a table.
                 if current_message and current_metadata:
-                    # Remove ASCII table lines from the message part but keep the full table separately
-                    cleaned_message = re.sub(
-                        r"\+\-*\+*\-*", "", current_message
-                    ).strip()
+                    # Remove ASCII table lines from the message part but keep the full table separately.
+                    cleaned_message = re.sub(r"\+\-.*\+$", "", current_message).strip()
                     parsed_logs.append(
                         (
                             *current_metadata,
@@ -49,12 +44,12 @@ def parse_log_file(log_file):
                         )
                     )
 
-                # Start new log message
+                # Start new log message.
                 log_level, module, function_name, line_number, message = match.groups()
                 source = f"{module}.{function_name} {line_number}"
                 validity_check = function_mapping.get(function_name, function_name)
 
-                # Determine the category
+                # Determine the category.
                 message_lower = message.lower()
                 if log_level == "INFO":
                     if "passed" in message_lower:
@@ -66,23 +61,23 @@ def parse_log_file(log_file):
                 elif log_level == "WARNING":
                     category = "warn"
                 elif log_level == "ERROR":
-                    category = "fail"  # Treat errors as failures
+                    category = "fail"
                 else:
                     category = "info"
 
-                # Reset tracking
+                # Reset tracking.
                 current_message = message
                 current_table = []
                 current_metadata = (validity_check, category, source)
 
-            elif "+----" in line or "| locus" in line:  # Table start detection
-                current_table.append(line.strip())  # Add table row
-            elif current_table:  # If already collecting a table
+            elif "+----" in line or "| locus" in line:  # Table start detection.
+                current_table.append(line.strip())  # Add table row.
+            elif current_table:  # If already collecting a table.
                 current_table.append(line.strip())
 
-        # Store last log if it had a table
+        # Store last log if it had a table.
         if current_message and current_metadata:
-            cleaned_message = re.sub(r"\+\-+\+|\|.*?\|", "", current_message).strip()
+            cleaned_message = re.sub(r"\+\-.*\+$", "", current_message).strip()
             parsed_logs.append(
                 (*current_metadata, cleaned_message, "\n".join(current_table).strip())
             )
@@ -100,8 +95,8 @@ def generate_html_report(parsed_logs, output_file):
             table { width: 100%; border-collapse: collapse; }
             th, td { border: 1px solid black; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f2f2f2; cursor: pointer; }
-            .pass { color: #6d1faa; }
-            .fail { color: #D42736; font-weight: bold; }
+            .pass { color: 0d1cb6; }
+            .fail { color: #D42736; font-weight: bold;}
             .warn { color: #DAA520; }
             .info { color: black; }
             .hidden-table { display: none; }

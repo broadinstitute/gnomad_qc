@@ -258,10 +258,11 @@ def validate_federated_data(
     # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
 
 
-def create_logtest_ht() -> hl.Table:
+def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     """
     Creates a test Hail Table formatted before running unfurl_array_annotations() with added grpmax field.
 
+    :param exclude_xnonpar_y: If True, exclude chrX non-pseudoautosomal region and chrY variants when making test data. Default is False.
     :return: Table to use for testing log output.
     """
 
@@ -273,42 +274,12 @@ def create_logtest_ht() -> hl.Table:
             "alleles": ["A", "T"],
             "info": hl.struct(),
             "freq": [
-                {"AC": 5, "AF": 0.1, "AN": 20, "homozygote_count": 3, "gen_anc": "adj"},
-                {
-                    "AC": 10,
-                    "AF": 0.05,
-                    "AN": 5,
-                    "homozygote_count": None,
-                    "gen_anc": "raw",
-                },
-                {
-                    "AC": 15,
-                    "AF": 0.07,
-                    "AN": 10,
-                    "homozygote_count": 2,
-                    "gen_anc": "afr_adj",
-                },
-                {
-                    "AC": 20,
-                    "AF": 0.09,
-                    "AN": 15,
-                    "homozygote_count": 1,
-                    "gen_anc": "amr_adj",
-                },
-                {
-                    "AC": 25,
-                    "AF": 0.11,
-                    "AN": 18,
-                    "homozygote_count": 2,
-                    "gen_anc": "adj_XX",
-                },
-                {
-                    "AC": 30,
-                    "AF": 0.13,
-                    "AN": 22,
-                    "homozygote_count": 4,
-                    "gen_anc": "adj_XY",
-                },
+                {"AC": 5, "AF": 0.1, "AN": 20, "homozygote_count": 3},
+                {"AC": 10, "AF": 0.05, "AN": 5, "homozygote_count": None},
+                {"AC": 15, "AF": 0.07, "AN": 10, "homozygote_count": 2},
+                {"AC": 20, "AF": 0.09, "AN": 15, "homozygote_count": 1},
+                {"AC": 25, "AF": 0.11, "AN": 18, "homozygote_count": 2},
+                {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -321,48 +292,48 @@ def create_logtest_ht() -> hl.Table:
             "alleles": ["C", "G"],
             "info": hl.struct(),
             "freq": [
-                {
-                    "AC": 6,
-                    "AF": 0.08,
-                    "AN": 60,
-                    "homozygote_count": 4,
-                    "gen_anc": "adj",
-                },
-                {
-                    "AC": 8,
-                    "AF": 0.50,
-                    "AN": 90,
-                    "homozygote_count": 5,
-                    "gen_anc": "raw",
-                },
-                {
-                    "AC": 12,
-                    "AF": 0.15,
-                    "AN": 50,
-                    "homozygote_count": 2,
-                    "gen_anc": "afr_adj",
-                },
-                {
-                    "AC": 18,
-                    "AF": 0.18,
-                    "AN": 70,
-                    "homozygote_count": 3,
-                    "gen_anc": "amr_adj",
-                },
-                {
-                    "AC": 22,
-                    "AF": 0.20,
-                    "AN": 85,
-                    "homozygote_count": 6,
-                    "gen_anc": "adj_XX",
-                },
-                {
-                    "AC": 28,
-                    "AF": 0.25,
-                    "AN": 95,
-                    "homozygote_count": 7,
-                    "gen_anc": "adj_XY",
-                },
+                {"AC": 6, "AF": 0.08, "AN": 60, "homozygote_count": 4},
+                {"AC": 8, "AF": 0.50, "AN": 90, "homozygote_count": 5},
+                {"AC": 12, "AF": 0.15, "AN": 50, "homozygote_count": 2},
+                {"AC": 18, "AF": 0.18, "AN": 70, "homozygote_count": 3},
+                {"AC": 22, "AF": 0.20, "AN": 85, "homozygote_count": 6},
+                {"AC": 28, "AF": 0.25, "AN": 95, "homozygote_count": 7},
+            ],
+            "faf": [
+                hl.struct(faf95=0.001, faf99=0.002),
+                hl.struct(faf95=0.0009, faf99=0.0018),
+            ],
+            "filters": hl.empty_set(hl.tstr),
+        },
+        {
+            "locus": hl.locus("chr1", 300000, reference_genome=grch38),
+            "alleles": ["G", "T"],
+            "info": hl.struct(),
+            "freq": [
+                {"AC": 65, "AF": 0.18, "AN": 200, "homozygote_count": 10},
+                {"AC": 88, "AF": 0.20, "AN": 220, "homozygote_count": 12},
+                {"AC": 75, "AF": 0.17, "AN": 180, "homozygote_count": 8},
+                {"AC": 95, "AF": 0.22, "AN": 250, "homozygote_count": 15},
+                {"AC": 100, "AF": 0.24, "AN": 275, "homozygote_count": 18},
+                {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
+            ],
+            "faf": [
+                hl.struct(faf95=0.001, faf99=0.002),
+                hl.struct(faf95=0.0009, faf99=0.0018),
+            ],
+            "filters": hl.empty_set(hl.tstr),
+        },
+        {
+            "locus": hl.locus("chrX", 400000, reference_genome=grch38),
+            "alleles": ["T", "C"],
+            "info": hl.struct(),
+            "freq": [
+                {"AC": 8, "AF": 0.08, "AN": 30, "homozygote_count": 1},
+                {"AC": 14, "AF": 0.12, "AN": 40, "homozygote_count": 2},
+                {"AC": 22, "AF": 0.14, "AN": 50, "homozygote_count": 4},
+                {"AC": 30, "AF": 0.18, "AN": 60, "homozygote_count": 5},
+                {"AC": 40, "AF": 0.20, "AN": 75, "homozygote_count": 7},
+                {"AC": 50, "AF": 0.25, "AN": 85, "homozygote_count": 9},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -371,6 +342,51 @@ def create_logtest_ht() -> hl.Table:
             "filters": hl.empty_set(hl.tstr),
         },
     ]
+
+    if not exclude_xnonpar_y:
+        chry_variant = [
+            {
+                "locus": hl.locus("chrY", 500000, reference_genome=grch38),
+                "alleles": ["G", "A"],
+                "info": hl.struct(),
+                "freq": [
+                    {"AC": 12, "AF": 0.10, "AN": 40, "homozygote_count": 1},
+                    {"AC": 20, "AF": 0.15, "AN": 50, "homozygote_count": None},
+                    {"AC": 35, "AF": 0.18, "AN": 65, "homozygote_count": 3},
+                    {"AC": 42, "AF": 0.22, "AN": 70, "homozygote_count": 6},
+                    {"AC": 55, "AF": 0.27, "AN": 90, "homozygote_count": None},
+                    {"AC": 65, "AF": 0.33, "AN": 100, "homozygote_count": 10},
+                ],
+                "faf": [
+                    hl.struct(faf95=0.0012, faf99=0.0025),
+                    hl.struct(faf95=0.0010, faf99=0.0020),
+                ],
+                "filters": hl.empty_set(hl.tstr),
+            }
+        ]
+
+        chrx_nonpar_variant = [
+            {
+                "locus": hl.locus("chrX", 22234567, reference_genome=grch38),
+                "alleles": ["C", "T"],
+                "info": hl.struct(),
+                "freq": [
+                    {"AC": 15, "AF": 0.12, "AN": 50, "homozygote_count": 2},
+                    {"AC": 25, "AF": 0.18, "AN": 60, "homozygote_count": None},
+                    {"AC": 40, "AF": 0.22, "AN": 80, "homozygote_count": 5},
+                    {"AC": 55, "AF": 0.27, "AN": 100, "homozygote_count": 8},
+                    {"AC": 68, "AF": 0.32, "AN": 120, "homozygote_count": None},
+                    {"AC": 80, "AF": 0.38, "AN": 140, "homozygote_count": 12},
+                ],
+                "faf": [
+                    hl.struct(faf95=0.0013, faf99=0.0027),
+                    hl.struct(faf95=0.0011, faf99=0.0023),
+                ],
+                "filters": hl.empty_set(hl.tstr),
+            }
+        ]
+
+        data.extend(chry_variant + chrx_nonpar_variant)
 
     ht = hl.Table.parallelize(
         data,
@@ -384,7 +400,6 @@ def create_logtest_ht() -> hl.Table:
                     AF=hl.tfloat64,
                     AN=hl.tint32,
                     homozygote_count=hl.tint32,
-                    gen_anc=hl.tstr,
                 )
             ),
             faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
@@ -392,7 +407,7 @@ def create_logtest_ht() -> hl.Table:
         ),
     )
 
-    # Define global annotation for freq_index_dict, faf_index_dict, and freq_meta.
+    # Define global annotation for freq_index_dict.
     freq_index_dict = {
         "adj": 0,
         "raw": 1,
@@ -480,6 +495,11 @@ def main(args):
     config_path = args.config_path
     verbose = args.verbose
 
+    if args.exclude_xnonpar_y_in_logtest and not args.use_logtest_ht:
+        raise ValueError(
+            "exclude_xnonpar_y_in_logtest can only be used with use_logtest_ht."
+        )
+
     try:
         # Read in config file and validate.
         with hl.hadoop_open(config_path, "r") as f:
@@ -517,7 +537,7 @@ def main(args):
 
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
-            ht = create_logtest_ht()
+            ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
@@ -550,9 +570,6 @@ def main(args):
             "gs://gnomad-tmp/federated_validity_checks/federated_validity_checks.html"
         )
 
-        print("\n\n\n\n")
-        print(log_output)
-
         # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
             f.write(log_output)
@@ -568,7 +585,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # Create a mutually exclusive group for --test-n-partitions and --use-test-ht
+    # Create a mutually exclusive group for --test-n-partitions and --use-test-ht.
     test_group = parser.add_mutually_exclusive_group()
 
     test_group.add_argument(
@@ -584,6 +601,11 @@ if __name__ == "__main__":
     test_group.add_argument(
         "--use-logtest-ht",
         help="Use a pre-defined Hail Table for testing of log output rather than loading data. Cannot be used if --test-n-partitions is set.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--exclude-xnonpar-y-in-logtest",
+        help="Exclude chrX non-pseudoautosomal region and chrY variants when using the logtest data.",
         action="store_true",
     )
     parser.add_argument(
