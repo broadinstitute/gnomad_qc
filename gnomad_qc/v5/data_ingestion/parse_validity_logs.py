@@ -104,10 +104,10 @@ def generate_html_report(parsed_logs, output_file):
             .warn { color: #DAA520; }
             .info { color: black; }
             .hidden-table { display: none; }
-            .toggle-btn { 
-                cursor: pointer; 
-                color: blue; 
-                text-decoration: underline; 
+            .toggle-btn {
+                cursor: pointer;
+                color: blue;
+                text-decoration: underline;
                 float: right;  /* Moves "View Table" to the right */
                 margin-left: 15px; /* Adds spacing between message and button */
                 font-weight: normal;
@@ -116,11 +116,11 @@ def generate_html_report(parsed_logs, output_file):
                 display: inline-block;
                 margin-left: 20px;
             }
-            pre { 
-                text-align: left; 
-                white-space: pre-wrap; 
+            pre {
+                text-align: left;
+                white-space: pre-wrap;
                 font-family: monospace;
-                background: #f8f8f8; 
+                background: #f8f8f8;
                 padding: 10px;
                 border-radius: 5px;
                 overflow-x: auto;
@@ -187,7 +187,7 @@ def generate_html_report(parsed_logs, output_file):
                     var validityCheck = tr[i].getElementsByTagName("td")[0].innerHTML.toLowerCase();
                     var status = tr[i].getElementsByTagName("td")[1].innerHTML.toLowerCase();
 
-                    if ((validityFilter === "all" || validityCheck === validityFilter) && 
+                    if ((validityFilter === "all" || validityCheck === validityFilter) &&
                         (statusFilter === "all" || status === statusFilter)) {
                         tr[i].style.display = "";
                     } else {
