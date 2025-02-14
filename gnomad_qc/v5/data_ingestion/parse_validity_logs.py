@@ -6,7 +6,7 @@ import hail as hl
 
 
 def parse_log_file(log_file):
-    """Parses a log file and categorizes messages for formatting, extracting function names and sources."""
+    """Parse a log file and categorizes messages for formatting, extracting function names and sources."""
     parsed_logs = []
     log_pattern = re.compile(
         r"^(INFO|WARNING|ERROR) \(([^)]+)\.(\w+) (\d+)\): (.*)"
@@ -90,7 +90,7 @@ def parse_log_file(log_file):
 
 
 def generate_html_report(parsed_logs, output_file):
-    """Generates an HTML report with sortable and filterable columns, with expandable tables for results."""
+    """Generate an HTML report with sortable and filterable columns, with expandable tables for results."""
     html_template = """
     <html>
     <head>
