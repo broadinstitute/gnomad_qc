@@ -21,13 +21,11 @@ from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
-from gnomad_qc.v5.resources.basics import get_logging_path
-
-
 from gnomad_qc.v5.data_ingestion.parse_validity_logs import (
-    parse_log_file,
     generate_html_report,
+    parse_log_file,
 )
+from gnomad_qc.v5.resources.basics import get_logging_path
 
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
