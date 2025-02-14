@@ -6,6 +6,10 @@ import logging
 from typing import Any, Dict, List
 
 import hail as hl
+from io import StringIO
+from jsonschema import validate
+from jsonschema.exceptions import ValidationError
+
 from gnomad.assessment.validity_checks import (
     check_missingness_of_struct,
     check_sex_chr_metrics,
@@ -17,8 +21,6 @@ from gnomad.assessment.validity_checks import (
 )
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
-from jsonschema import validate
-from jsonschema.exceptions import ValidationError
 
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.data_ingestion.parse_validity_logs import (
@@ -30,7 +32,6 @@ from gnomad_qc.v5.resources.basics import get_logging_path
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
-from io import StringIO
 
 logging.basicConfig(
     format="%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"

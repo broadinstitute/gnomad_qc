@@ -1,5 +1,6 @@
-import re
+"""Script to parse logs from validity check output."""
 
+import re
 import hail as hl
 
 
@@ -35,7 +36,8 @@ def parse_log_file(log_file):
             if match:
                 # Store previous log if it had a table.
                 if current_message and current_metadata:
-                    # Remove ASCII table lines from the message part but keep the full table separately.
+                    # Remove ASCII table lines from the message part but keep the full
+                    #  table separately.
                     cleaned_message = re.sub(r"\+\-.*\+$", "", current_message).strip()
                     parsed_logs.append(
                         (
