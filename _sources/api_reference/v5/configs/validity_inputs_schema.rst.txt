@@ -1,0 +1,16 @@
+gnomad_qc.v5.configs.validity_inputs_schema
+===========================================
+
+Script defining schema for federated validty check input config file.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.configs.validity_inputs_schema
+
+.. automodule:: gnomad_qc.v5.configs.validity_inputs_schema
+    :exclude-members: get_script_argument_parser
