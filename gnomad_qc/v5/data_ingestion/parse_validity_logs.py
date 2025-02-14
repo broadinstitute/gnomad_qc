@@ -1,6 +1,7 @@
 """Script to parse logs from validity check output."""
 
 import re
+
 import hail as hl
 
 
