@@ -3,14 +3,20 @@
 import argparse
 import logging
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import all_sites_an, public_release
 from gnomad.sample_qc.relatedness import default_get_de_novo_expr
-from gnomad.utils.annotations import annotate_adj
+from gnomad.utils.annotations import annotate_adj, get_copy_state_by_sex
+from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vep import process_consequences
+from gnomad.utils.vep import (
+    CSQ_CODING_HIGH_IMPACT,
+    CSQ_CODING_LOW_IMPACT,
+    CSQ_CODING_MEDIUM_IMPACT,
+    process_consequences,
+)
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
@@ -28,7 +34,7 @@ from gnomad_qc.v4.create_release.create_release_utils import (
     POLYPHEN_VERSION,
     SIFT_VERSION,
 )
-from gnomad_qc.v4.resources.annotations import get_info, get_trio_stats
+from gnomad_qc.v4.resources.annotations import get_info, get_trio_stats, get_vep
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import release_de_novo
 from gnomad_qc.v4.resources.sample_qc import dense_trio_mt, pedigree, trio_denovo_ht
@@ -166,6 +172,103 @@ def get_releasable_de_novo_calls_ht(
 
     ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(1000)
     return ht
+
+
+def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
+    """
+    Aggregate and annotate de novo calls.
+
+    This step get two sets of de novo calls:
+       - filtered de novos at all confidence levels
+       - filtered coding de novos at high confidence level
+
+    :param ht: De novo calls Table.
+    :return: Aggregated and annotated Tables.
+    """
+    ht = ht.filter(~hl.is_missing(ht.de_novo_call_info.confidence))
+    logger.info(f"{ht.count()} de novos with a confidence level...")
+
+    ht = filter_low_conf_regions(
+        ht, filter_lcr=True, filter_decoy=False, filter_segdup=True
+    )
+    logger.info(
+        f"{ht.count()} de novos after filtering low complexity regions and "
+        f"segmental duplications..."
+    )
+
+    diploid_expr, hemi_x_expr, hemi_y_expr = get_copy_state_by_sex(
+        ht.locus,
+        ht.is_xx,
+    )
+
+    adj_trio = (
+        hl.case()
+        .when(
+            diploid_expr,
+            ht.proband_entry.adj & ht.father_entry.adj & ht.mother_entry.adj,
+        )
+        .when(hemi_x_expr, ht.proband_entry.adj & ht.mother_entry.adj)
+        .when(hemi_y_expr, ht.proband_entry.adj & ht.father_entry.adj)
+        .or_missing()
+    )
+
+    ht = ht.annotate(adj_trio=adj_trio)
+
+    ht = (
+        ht.group_by("locus", "alleles")
+        .aggregate(
+            AC_all=hl.agg.count(),
+            AC_all_adj=hl.agg.count_where(ht.adj_trio),
+            AC_high_conf=hl.agg.count_where(ht.de_novo_call_info.confidence == "HIGH"),
+            AC_high_conf_adj=hl.agg.count_where(
+                (ht.de_novo_call_info.confidence == "HIGH") & ht.adj_trio
+            ),
+        )
+        .key_by("locus", "alleles")
+    )
+    logger.info(f"{ht.count()} unique de novos after aggregation for AC...")
+
+    ht = ht.checkpoint(new_temp_file("denovo_ac", "ht"))
+
+    logger.info("Annotating de novos...")
+    vep_ht = get_vep(data_type="exomes").ht()
+    filters_ht = final_filter(all_variants=True, only_filters=True).ht()
+    freq_ht = public_release("exomes").ht()
+
+    ht = ht.annotate(
+        alt_is_star=ht.alleles[1] == "*",
+        pass_filters=filters_ht[ht.key]
+        .filters.intersection(hl.set(["AS_VQSR", "InbreedingCoeff"]))
+        .length()
+        == 0,  # AC0 is not used as a criteria in de novos because AC0 was used for
+        # release sites and some of the probands weren't included in the release.
+        most_severe_consequence=vep_ht[ht.key].vep.most_severe_consequence,
+        exomes_AF=freq_ht[ht.key].freq[0],
+    )
+
+    ht = ht.filter(ht.pass_filters & ~ht.alt_is_star).naive_coalesce(500)
+    logger.info(f"{ht.count()} de novos after filters and non-star alt...")
+
+    logger.info("Filtering to high confidence coding de novos...")
+    coding_csqs = (
+        CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT + CSQ_CODING_LOW_IMPACT
+    )
+    remove_csqs = {
+        "splice_polypyrimidine_tract_variant",
+        "splice_donor_5th_base_variant",
+        "splice_region_variant",
+        "splice_donor_region_variant",
+    }
+    coding_csqs = [csq for csq in coding_csqs if csq not in remove_csqs]
+
+    ht_high = ht.filter(
+        hl.literal(coding_csqs).contains(ht.most_severe_consequence)
+        & (ht.AC_high_conf_adj > 0)
+        & (ht.AC_high_conf_adj <= 15)
+        & ((ht.exomes_AF.AF < 0.001) | hl.is_missing(ht.exomes_AF.AF))
+    ).naive_coalesce(100)
+    logger.info(f"Getting {ht_high.count()} high confidence coding de novos...")
+    return ht, ht_high
 
 
 # TODO: Change when we decide on the final de novo data to release.
@@ -418,6 +521,22 @@ def main(args):
         ht = get_releasable_de_novo_calls_ht(mt, priors_ht, ped, test)
         ht.write(trio_denovo_ht(releasable=True, test=test).path, overwrite=overwrite)
 
+    if args.aggregate_and_annotate_de_novos:
+        ht = hl.read_table(trio_denovo_ht(releasable=True, test=test).path)
+        ht, ht_high = aggregate_and_annotate_de_novos(ht)
+        ht.write(
+            trio_denovo_ht(
+                releasable=True, test=test, filtered_by_confidence="all"
+            ).path,
+            overwrite=overwrite,
+        )
+        ht_high.write(
+            trio_denovo_ht(
+                releasable=True, test=test, filtered_by_confidence="high"
+            ).path,
+            overwrite=overwrite,
+        )
+
     if args.generate_final_ht:
         ht = get_de_novo_release_ht(args.tables_for_join, args.version, test=test)
 
@@ -460,6 +579,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate-de-novo-calls",
         help="Generate de novo calls HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--aggregate-and-annotate-de-novos",
+        help="Aggregate and annotate de novo calls.",
         action="store_true",
     )
     parser.add_argument(
