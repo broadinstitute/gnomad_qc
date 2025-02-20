@@ -437,7 +437,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
 
     faf_meta = [{"group": "adj"}, {"group": "raw"}]
 
-    freq_index_sample_count = [10, 20, 3, 4, 5, 6]
+    freq_index_sample_count = [10, 20, 3, 4, 8]
 
     ht = ht.annotate_globals(
         freq_index_dict=freq_index_dict,
@@ -560,13 +560,10 @@ def main(args):
                 config["faf_names"]["faf_meta"],
             ],
         }
-        print("ROW CHECK")
-        print(row_to_globals_check)
+
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
-
-        ht.describe()
 
         logger.info("Check that row and global annotations lengths match...")
         check_global_and_row_annot_lengths(
@@ -585,8 +582,6 @@ def main(args):
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(info=ht.info.annotate(**annotations))
-
-        ht.show()
 
         validate_federated_data(
             ht=ht,
