@@ -218,7 +218,6 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
             "splice_region_variant",
             "splice_donor_region_variant",
             "incomplete_terminal_codon_variant",
-            "coding_sequence_variant",
             "coding_transcript_variant",
         }
     )
