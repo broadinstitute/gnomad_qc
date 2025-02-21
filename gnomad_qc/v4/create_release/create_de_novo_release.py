@@ -179,21 +179,25 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     Aggregate and annotate de novo calls.
 
     This step get two sets of de novo calls:
-       - filtered de novos at all confidence levels
-       - filtered coding de novos at high confidence level
+       - de novos at all confidence levels
+       - filtered high-confidence coding de novos
 
     :param ht: De novo calls Table.
     :return: Aggregated and annotated Tables.
     """
+    # Get needed annotation Tables.
+    filters_ht = final_filter(all_variants=True, only_filters=True).ht()
+    freq_ht = public_release("exomes").ht()
+    vep_ht = get_vep(data_type="exomes").ht()
+
     ht = ht.filter(~hl.is_missing(ht.de_novo_call_info.confidence))
-    logger.info(f"{ht.count()} de novos with a confidence level...")
+    logger.info(f"Getting {ht.count()} de novos with a confidence level...")
 
     ht = filter_low_conf_regions(
         ht, filter_lcr=True, filter_decoy=False, filter_segdup=True
     )
     logger.info(
-        f"{ht.count()} de novos after filtering low complexity regions and "
-        f"segmental duplications..."
+        f"Getting {ht.count()} de novos after removing low confidence regions..."
     )
 
     diploid_expr, hemi_x_expr, hemi_y_expr = get_copy_state_by_sex(
@@ -217,23 +221,27 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     ht = (
         ht.group_by("locus", "alleles")
         .aggregate(
-            AC_all=hl.agg.count(),
-            AC_all_adj=hl.agg.count_where(ht.adj_trio),
-            AC_high_conf=hl.agg.count_where(ht.de_novo_call_info.confidence == "HIGH"),
-            AC_high_conf_adj=hl.agg.count_where(
-                (ht.de_novo_call_info.confidence == "HIGH") & ht.adj_trio
+            de_novo_AC=hl.struct(
+                AC_all=hl.agg.count_where(ht.adj_trio),
+                AC_all_raw=hl.agg.count(),
+                AC_high_conf=hl.agg.count_where(
+                    (ht.de_novo_call_info.confidence == "HIGH") & ht.adj_trio
+                ),
+                AC_medium_conf=hl.agg.count_where(
+                    (ht.de_novo_call_info.confidence == "MEDIUM") & ht.adj_trio
+                ),
+                AC_low_conf=hl.agg.count_where(
+                    (ht.de_novo_call_info.confidence == "LOW") & ht.adj_trio
+                ),
             ),
+            p_de_novo_stats=hl.agg.stats(ht.de_novo_call_info.p_de_novo),
         )
         .key_by("locus", "alleles")
     )
-    logger.info(f"{ht.count()} unique de novos after aggregation for AC...")
-
-    ht = ht.checkpoint(new_temp_file("denovo_ac", "ht"))
-
-    logger.info("Annotating de novos...")
-    vep_ht = get_vep(data_type="exomes").ht()
-    filters_ht = final_filter(all_variants=True, only_filters=True).ht()
-    freq_ht = public_release("exomes").ht()
+    ht = ht.annotate(p_de_novo_stats=ht.p_de_novo_stats.drop("n", "sum")).checkpoint(
+        new_temp_file("denovo_ac", "ht")
+    )
+    logger.info(f"Getting {ht.count()} unique de novo variants after computing AC...")
 
     ht = ht.annotate(
         alt_is_star=ht.alleles[1] == "*",
@@ -242,33 +250,70 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         .length()
         == 0,  # AC0 is not used as a criteria in de novos because AC0 was used for
         # release sites and some of the probands weren't included in the release.
-        most_severe_consequence=vep_ht[ht.key].vep.most_severe_consequence,
-        exomes_AF=freq_ht[ht.key].freq[0],
     )
 
-    ht = ht.filter(ht.pass_filters & ~ht.alt_is_star).naive_coalesce(500)
-    logger.info(f"{ht.count()} de novos after filters and non-star alt...")
+    # Store the de novo calls with all confidence levels.
+    ht_all_conf = ht
 
-    logger.info("Filtering to high confidence coding de novos...")
-    coding_csqs = (
-        CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT + CSQ_CODING_LOW_IMPACT
+    ht = ht.filter(~ht.alt_is_star).checkpoint(new_temp_file("denovo_no_star", "ht"))
+    logger.info(f"Getting {ht.count()} de novos after filtering out '*' alts...")
+
+    ht = ht.filter(ht.pass_filters).checkpoint(
+        new_temp_file("denovo_pass_filters", "ht")
     )
-    remove_csqs = {
-        "splice_polypyrimidine_tract_variant",
-        "splice_donor_5th_base_variant",
-        "splice_region_variant",
-        "splice_donor_region_variant",
-    }
-    coding_csqs = [csq for csq in coding_csqs if csq not in remove_csqs]
+    logger.info(
+        f"Getting {ht.count()} de novos after AS_VQSR and InbreedingCoeff "
+        f"filters..."
+    )
 
-    ht_high = ht.filter(
-        hl.literal(coding_csqs).contains(ht.most_severe_consequence)
-        & (ht.AC_high_conf_adj > 0)
-        & (ht.AC_high_conf_adj <= 15)
-        & ((ht.exomes_AF.AF < 0.001) | hl.is_missing(ht.exomes_AF.AF))
-    ).naive_coalesce(100)
-    logger.info(f"Getting {ht_high.count()} high confidence coding de novos...")
-    return ht, ht_high
+    ht = ht.annotate(vep=vep_ht[ht.key].vep)
+    ht = process_consequences(ht, has_polyphen=False)
+
+    ht = ht.annotate(
+        worst_csq_for_variant=ht.vep.worst_csq_for_variant.most_severe_consequence,
+        gene_id=ht.vep.worst_csq_for_variant.gene_id,
+        transcript_id=ht.vep.worst_csq_for_variant.transcript_id,
+        gnomAD_v4_exomes_AF=freq_ht[ht.key].freq[0].AF,
+    ).drop("vep")
+
+    ht = ht.filter(ht.de_novo_AC.AC_high_conf_adj > 0).checkpoint(
+        new_temp_file("denovo_high_conf", "ht")
+    )
+    logger.info(f"Getting {ht.count()} high confidence de novos...")
+
+    # Get the set of coding variant except for the splice region variants for
+    # calibration.
+    coding_csqs = hl.literal(
+        set(CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT + CSQ_CODING_LOW_IMPACT)
+        - {
+            "splice_polypyrimidine_tract_variant",
+            "splice_donor_5th_base_variant",
+            "splice_region_variant",
+            "splice_donor_region_variant",
+        }
+    )
+    ht = ht.filter(coding_csqs.contains(ht.worst_csq_for_variant)).checkpoint(
+        new_temp_file("denovo_high_coding", "ht")
+    )
+    logger.info(f"Getting {ht.count()} high confidence coding de novos...")
+
+    ht = ht.filter(ht.de_novo_AC.AC_high_conf_adj <= 15).checkpoint(
+        new_temp_file("denovo_high_coding_ac15", "ht")
+    )
+    logger.info(
+        f"Getting {ht.count()} high confidence coding de novos with AC <= 15 in the "
+        f"callset..."
+    )
+
+    ht = ht.filter(
+        (ht.gnomAD_v4_exomes_AF < 0.001) | hl.is_missing(ht.gnomAD_v4_exomes_AF)
+    )
+    logger.info(
+        f"Getting {ht.count()} high confidence coding de novos with AF < 0.001 in "
+        f"gnomAD..."
+    )
+
+    return ht_all_conf, ht
 
 
 # TODO: Change when we decide on the final de novo data to release.
@@ -524,13 +569,13 @@ def main(args):
     if args.aggregate_and_annotate_de_novos:
         ht = hl.read_table(trio_denovo_ht(releasable=True, test=test).path)
         ht, ht_high = aggregate_and_annotate_de_novos(ht)
-        ht.write(
+        ht.naive_coalesce(500).write(
             trio_denovo_ht(
                 releasable=True, test=test, filtered_by_confidence="all"
             ).path,
             overwrite=overwrite,
         )
-        ht_high.write(
+        ht_high.naive_coalesce(20).write(
             trio_denovo_ht(
                 releasable=True, test=test, filtered_by_confidence="high"
             ).path,
