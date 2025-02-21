@@ -396,14 +396,34 @@ def release_all_sites_an(
     )
 
 
-def release_de_novo(test: bool = False) -> VersionedTableResource:
+def release_de_novo(
+    test: bool = False,
+    by_confidence: str = "all",
+) -> VersionedTableResource:
     """
     Retrieve versioned resource for exomes de novo release Table.
 
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param by_confidence: Whether to get the table filtered by confidence level.
+       Options:
+        - "all": Retrieves the table with all confidence levels filtered.
+        - "high": Retrieves the table with only high-confidence variants.
     :return: De novo release Table.
     """
     data_type = "exomes"
+
+    valid_options = {"all", "high"}
+    if by_confidence not in valid_options:
+        raise ValueError(
+            f"Invalid value for by_confidence: '{by_confidence}'. "
+            f"Allowed values are {valid_options}."
+        )
+
+    confidence_suffix = (
+        ".all_confidences.filtered"
+        if by_confidence == "all"
+        else ".high_confidence.filtered"
+    )
     postfix = f".{datetime.today().strftime('%Y-%m-%d')}" if test else ""
     return VersionedTableResource(
         default_version=CURRENT_DE_NOVO_RELEASE[data_type],
@@ -411,7 +431,7 @@ def release_de_novo(test: bool = False) -> VersionedTableResource:
             release: TableResource(
                 path=(
                     f"{_release_root(version=release, test=test, data_type=data_type)}"
-                    f"/gnomad.{data_type}.v{release}.de_novo{postfix}.ht"
+                    f"/gnomad.{data_type}.v{release}.de_novo{confidence_suffix}{postfix}.ht"
                 )
             )
             for release in DE_NOVO_RELEASES[data_type]
