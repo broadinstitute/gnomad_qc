@@ -34,6 +34,8 @@ def get_gnomad_v3_vds(
     split_reference_blocks: bool = True,
     entries_to_keep: Optional[List[str]] = None,
     annotate_het_non_ref: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+    filter_samples_ht: Optional[hl.Table] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD VariantDataset with desired filtering and metadata annotations.
@@ -63,6 +65,9 @@ def get_gnomad_v3_vds(
         of the local entries (e.g. 'LGT') to keep.
     :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
         '_het_non_ref') to the variant data. Default is False.
+    :param naive_coalesce_partitions: Optional argument to coalesce the VDS to a
+        specific number of partitions using naive coalesce.
+    :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v3 dataset with chosen annotations and filters.
     """
     if test:
@@ -89,6 +94,12 @@ def get_gnomad_v3_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
+    if naive_coalesce_partitions:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
+            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
+        )
+
     if filter_partitions:
         logger.info("Filtering to %s partitions...", len(filter_partitions))
         vds = hl.vds.VariantDataset(
@@ -113,6 +124,13 @@ def get_gnomad_v3_vds(
             hard_filtered_samples.ht(),
             keep=False,
         )
+
+    if filter_samples_ht:
+        logger.info(
+            "Filtering VDS to %d samples in provided Table...",
+            filter_samples_ht.count(),
+        )
+        vds = hl.vds.filter_samples(vds, filter_samples_ht)
 
     if samples_meta or release_only:
         meta_ht = meta.ht()
