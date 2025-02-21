@@ -422,14 +422,13 @@ def release_de_novo(
         if by_confidence == "all"
         else ".high_confidence.filtered"
     )
-    postfix = f".{datetime.today().strftime('%Y-%m-%d')}" if test else ""
     return VersionedTableResource(
         default_version=CURRENT_DE_NOVO_RELEASE[data_type],
         versions={
             release: TableResource(
                 path=(
                     f"{_release_root(version=release, test=test, data_type=data_type)}"
-                    f"/gnomad.{data_type}.v{release}.de_novo{confidence_suffix}{postfix}.ht"
+                    f"/gnomad.{data_type}.v{release}.de_novo{confidence_suffix}.ht"
                 )
             )
             for release in DE_NOVO_RELEASES[data_type]
