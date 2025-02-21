@@ -285,16 +285,18 @@ def main(args):
         priors_ht = public_release("exomes").ht()
         ped = hl.Pedigree.read(pedigree().path, delimiter="\t")
 
-        ht = get_releasable_de_novo_calls_ht(mt, priors_ht, ped, test)
+        ht = get_releasable_de_novo_calls_ht(
+            mt, priors_ht, ped, test, n_partitions=args.n_partitions
+        )
         ht.write(
             trio_denovo_ht(
-                releasable=True, test=test, n_partitions=args.n_partitions
+                test=test,
             ).path,
             overwrite=overwrite,
         )
 
     if args.generate_final_hts:
-        ht = hl.read_table(trio_denovo_ht(releasable=True, test=test).path)
+        ht = hl.read_table(trio_denovo_ht(test=test).path)
         ht, ht_high = aggregate_and_annotate_de_novos(ht)
         ht.naive_coalesce(500).write(
             release_de_novo(test=test, by_confidence="all").path,
