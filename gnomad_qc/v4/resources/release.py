@@ -405,9 +405,7 @@ def release_de_novo(
 
     :param test: Whether to use a tmp path for testing. Default is False.
     :param by_confidence: Whether to get the table filtered by confidence level.
-       Options:
-        - "all": Retrieves the table with all confidence levels filtered.
-        - "high": Retrieves the table with only high-confidence variants.
+       Either 'all' or 'high'. Default is 'all'.
     :return: De novo release Table.
     """
     data_type = "exomes"
