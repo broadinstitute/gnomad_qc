@@ -16,6 +16,7 @@ from gnomad.utils.vep import (
     CSQ_CODING_MEDIUM_IMPACT,
     process_consequences,
 )
+from hail.ggplot.utils import n_partitions
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
@@ -37,6 +38,7 @@ def get_releasable_de_novo_calls_ht(
     priors_ht: hl.Table,
     ped: hl.Pedigree,
     test: bool = False,
+    n_partitions: int = 1000,
 ) -> hl.Table:
     """
     Get de novo calls Hail Table.
@@ -45,13 +47,14 @@ def get_releasable_de_novo_calls_ht(
     :param priors_ht: Table with AFs used as population frequency priors in de novo calculations.
     :param ped: Pedigree.
     :param test: Whether to filter to chr20 for testing. Default is False.
+    :param n_partitions: Number of partitions to use for the output Table. Default is 1000.
     :return: Hail Table with de novo calls.
     """
     if test:
         logger.info("Filtering to chr20 for testing...")
         mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
 
-    # The split MT was made by adding these extra annotations .
+    # The split MT was made with these extra annotations.
     mt = mt.annotate_rows(
         n_unsplit_alleles=hl.len(mt.alleles),
         mixed_site=(
@@ -65,7 +68,7 @@ def get_releasable_de_novo_calls_ht(
     )
     mt = annotate_adj(mt)
 
-    # V3 and v4 VDS have the PL and AD fields for homref genotypes intentionally
+    # v3 and v4 VDS have the PL and AD fields for homref genotypes intentionally
     # removed to save storage space and costs. We need to approximate the
     # AD and PL fields when missing.
     mt = mt.annotate_entries(
@@ -92,8 +95,8 @@ def get_releasable_de_novo_calls_ht(
             freq_prior_expr=ht.prior,
         )
     )
-
-    ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(1000)
+    final_partitions = n_partitions / 10 if test else n_partitions
+    ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(final_partitions)
     return ht
 
 
@@ -174,11 +177,12 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         pass_filters=filters_ht[ht.key]
         .filters.intersection(hl.set(["AS_VQSR", "InbreedingCoeff"]))
         .length()
-        == 0,  # AC0 is not used as a criteria in de novos because AC0 was used for
+        == 0,
+        # AC0 is not used as a criteria in de novos because AC0 was used for
         # release sites and some of the probands weren't included in the release.
         worst_csq_for_variant=ht.vep.worst_csq_for_variant.most_severe_consequence,
-        gene_id=ht.vep.worst_csq_for_variant.gene_id,
-        transcript_id=ht.vep.worst_csq_for_variant.transcript_id,
+        worst_csq_gene_id=ht.vep.worst_csq_for_variant.gene_id,
+        worst_csq_transcript_id=ht.vep.worst_csq_for_variant.transcript_id,
         gnomAD_v4_exomes_AF=freq_ht[ht.key].freq[0].AF,
     ).drop("vep")
 
@@ -211,6 +215,9 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
             "splice_donor_5th_base_variant",
             "splice_region_variant",
             "splice_donor_region_variant",
+            "incomplete_terminal_codon_variant",
+            "coding_sequence_variant",
+            "coding_transcript_variant",
         }
     )
     ht = ht.filter(coding_csqs.contains(ht.worst_csq_for_variant)).checkpoint(
@@ -240,6 +247,9 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
 def restructure_for_tsv(ht: hl.Table) -> hl.Table:
     """
     Restructure the de novo release HT for TSV export.
+
+    .. note::
+       This function will only be used for the TSV of high confidence coding de novos.
 
     :param ht: De novo release HT.
     :return: Restructured HT.
@@ -276,7 +286,12 @@ def main(args):
         ped = hl.Pedigree.read(pedigree().path, delimiter="\t")
 
         ht = get_releasable_de_novo_calls_ht(mt, priors_ht, ped, test)
-        ht.write(trio_denovo_ht(releasable=True, test=test).path, overwrite=overwrite)
+        ht.write(
+            trio_denovo_ht(
+                releasable=True, test=test, n_partitions=args.n_partitions
+            ).path,
+            overwrite=overwrite,
+        )
 
     if args.generate_final_hts:
         ht = hl.read_table(trio_denovo_ht(releasable=True, test=test).path)
@@ -313,6 +328,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Runs a test on chr20",
         action="store_true",
+    )
+    parser.add_argument(
+        "--n_partitions",
+        help="Number of partitions to use for the output Table.",
+        type=int,
+        default=1000,
     )
     parser.add_argument(
         "--generate-de-novo-calls",

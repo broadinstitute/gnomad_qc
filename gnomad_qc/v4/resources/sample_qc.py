@@ -1026,13 +1026,11 @@ def dense_trio_mt(
 
 
 def trio_denovo_ht(
-    releasable: bool = True,
     test: bool = False,
 ) -> VersionedTableResource:
     """
     Get the VersionedTableResource for the trio de novo Table.
 
-    :param releasable: Whether to get the resource for the releasable trios only.
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource of trio de novo Table.
     """
@@ -1042,8 +1040,8 @@ def trio_denovo_ht(
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type='exomes')}"
-                f"/relatedness/trios/gnomad.{data_type}.v{version}.trios"
-                f"{'.releasable' if releasable else ''}.denovo.ht"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.trios."
+                f"releasable.denovo.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
