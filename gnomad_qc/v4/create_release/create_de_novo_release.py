@@ -161,6 +161,8 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
                 ),
             ),
             p_de_novo_stats=hl.agg.stats(ht.de_novo_call_info.p_de_novo),
+            mixed_site=hl.agg.collect(ht.mixed_site)[0],
+            # the mixed_site info should stay the same for each variant.
         )
         .key_by("locus", "alleles")
     )
