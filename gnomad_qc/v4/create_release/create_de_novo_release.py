@@ -175,7 +175,6 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     ht = process_consequences(ht, has_polyphen=False)
 
     ht = ht.annotate(
-        alt_is_star=ht.alleles[1] == "*",
         pass_filters=filters_ht[ht.key]
         .filters.intersection(hl.set(["AS_VQSR", "InbreedingCoeff"]))
         .length()
@@ -188,12 +187,14 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         gnomAD_v4_exomes_AF=freq_ht[ht.key].freq[0].AF,
     ).drop("vep")
 
+    ht = ht.filter(~ht.alleles[1] == "*").checkpoint(
+        new_temp_file("denovo_no_star", "ht")
+    )
+    logger.info(f"Getting {ht.count()} de novos after filtering out '*' alts...")
+
     # Store the de novo calls with all confidence levels.
     # TODO: Should this be after non-star filtering or even after pass_filters?
     ht_all_conf = ht
-
-    ht = ht.filter(~ht.alt_is_star).checkpoint(new_temp_file("denovo_no_star", "ht"))
-    logger.info(f"Getting {ht.count()} de novos after filtering out '*' alts...")
 
     ht = ht.filter(ht.pass_filters).checkpoint(
         new_temp_file("denovo_pass_filters", "ht")
