@@ -25,6 +25,7 @@ def parse_log_file(log_file):
         "check_sex_chr_metrics": "XY check",
         "check_raw_and_adj_callstats": "raw/adj check",
         "check_global_and_row_annot_lengths": "global/row lengths",
+        "compare_subset_freqs": "subset freqs",
     }
 
     with hl.hadoop_open(log_file, "r") as f:
