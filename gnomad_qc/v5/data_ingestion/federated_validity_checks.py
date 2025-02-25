@@ -121,7 +121,8 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     ]
     missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
 
-    # Check that specified subests are presents as values within the freq_meta_expr subset key.
+    # Check that specified subests are presents as values within the
+    # freq_meta_expr subset key.
     subset_values = {i["subset"] for i in freq_meta_list if "subset" in i}
     missing_subsets = set(config["subsets"]) - subset_values
     missing_fields["missing_subsets"] = missing_subsets
