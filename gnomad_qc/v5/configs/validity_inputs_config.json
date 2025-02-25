@@ -4,6 +4,7 @@
     "freq_fields": {"freq": "freq", "freq_meta": "freq_meta", "freq_index_dict": "freq_index_dict", "freq_meta_sample_count": "freq_meta_sample_count"},
     "faf_fields": {},
     "freq_annotations_to_sum": ["AC", "AN", "homozygote_count"],
-    "freq_sort_order": ["gen_anc", "sex", "group"],
-    "nhomalt_metric": "homozygote_count"
+    "freq_sort_order": ["subset", "gen_anc", "sex", "group"],
+    "nhomalt_metric": "homozygote_count",
+    "subsets": ["non_ukb"],
 }

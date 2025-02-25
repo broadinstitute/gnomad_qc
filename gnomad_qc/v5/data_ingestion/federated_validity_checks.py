@@ -13,6 +13,7 @@ from gnomad.assessment.validity_checks import (
     check_missingness_of_struct,
     check_raw_and_adj_callstats,
     check_sex_chr_metrics,
+    compare_subset_freqs,
     compute_missingness,
     flatten_missingness_struct,
     sum_group_callstats,
@@ -112,15 +113,18 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["missing_freq_fields"] = missing_freq_fields
 
     # Check that sort_order values are present as keys within freq_meta_expr.
-    freq_meta_keys = set(
-        key
-        for item in hl.eval(ht[config["freq_fields"]["freq_meta"]])
-        for key in item.keys()
-    )
+    freq_meta_list = hl.eval(ht[config["freq_fields"]["freq_meta"]])
+    freq_meta_keys = set(key for item in freq_meta_list for key in item.keys())
+
     missing_sort_order_keys = [
         i for i in config["freq_sort_order"] if i not in freq_meta_keys
     ]
     missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
+
+    # Check that specified subests are presents as values within the freq_meta_expr subset key.
+    subset_values = {i["subset"] for i in freq_meta_list if "subset" in i}
+    missing_subsets = set(config["subsets"]) - subset_values
+    missing_fields["missing_subsets"] = missing_subsets
 
     if any(missing_fields.values()):
         error_message = "Validation failed. Missing fields:\n" + "\n".join(
@@ -194,6 +198,7 @@ def validate_federated_data(
     freq_sort_order: List[str] = ["gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
+    subsets: List[str] = None,
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -206,6 +211,7 @@ def validate_federated_data(
     :param freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
+    :param subsets: List of sample subsets.
     :return: None
     """
     # Summarize variants and check that all contigs exist.
@@ -278,7 +284,17 @@ def validate_federated_data(
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
     )
-    # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
+
+    if subsets:
+        logger.info("Comparing subset frequencies...")
+        compare_subset_freqs(
+            t=ht,
+            subsets=subsets,
+            verbose=verbose,
+            delimiter="_",
+            metric_first_field=True,
+            metrics=freq_annotations_to_sum,
+        )
 
 
 def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
@@ -300,6 +316,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 20, "AF": 0.09, "AN": 15, "homozygote_count": 1},
                 {"AC": 25, "AF": 0.11, "AN": 18, "homozygote_count": 2},
                 {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
+                {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
+                {"AC": 20, "AF": 0.10, "AN": 20, "homozygote_count": 2},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -318,6 +336,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 18, "AF": 0.18, "AN": 70, "homozygote_count": 3},
                 {"AC": 22, "AF": 0.20, "AN": 85, "homozygote_count": 6},
                 {"AC": 28, "AF": 0.25, "AN": 95, "homozygote_count": 7},
+                {"AC": 24, "AF": 0.20, "AN": 90, "homozygote_count": 1},
+                {"AC": 20, "AF": 0.15, "AN": 80, "homozygote_count": 0},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -336,6 +356,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 95, "AF": 0.22, "AN": 250, "homozygote_count": 15},
                 {"AC": 100, "AF": 0.24, "AN": 275, "homozygote_count": 18},
                 {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
+                {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
+                {"AC": 100, "AF": 0.20, "AN": 200, "homozygote_count": 2},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -354,6 +376,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 30, "AF": 0.18, "AN": 60, "homozygote_count": 5},
                 {"AC": 40, "AF": 0.20, "AN": 75, "homozygote_count": 7},
                 {"AC": 50, "AF": 0.25, "AN": 85, "homozygote_count": 9},
+                {"AC": 40, "AF": 0.20, "AN": 80, "homozygote_count": 2},
+                {"AC": 30, "AF": 0.10, "AN": 70, "homozygote_count": 2},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
@@ -376,6 +400,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     {"AC": 42, "AF": 0.22, "AN": 70, "homozygote_count": 6},
                     {"AC": 55, "AF": 0.27, "AN": 90, "homozygote_count": None},
                     {"AC": 65, "AF": 0.33, "AN": 100, "homozygote_count": 10},
+                    {"AC": 45, "AF": 0.23, "AN": 50, "homozygote_count": 1},
+                    {"AC": 40, "AF": 0.20, "AN": 44, "homozygote_count": 2},
                 ],
                 "faf": [
                     hl.struct(faf95=0.0012, faf99=0.0025),
@@ -397,6 +423,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     {"AC": 55, "AF": 0.27, "AN": 100, "homozygote_count": 8},
                     {"AC": 68, "AF": 0.32, "AN": 120, "homozygote_count": None},
                     {"AC": 80, "AF": 0.38, "AN": 140, "homozygote_count": 12},
+                    {"AC": 60, "AF": 0.28, "AN": 120, "homozygote_count": 2},
+                    {"AC": 50, "AF": 0.20, "AN": 10, "homozygote_count": 5},
                 ],
                 "faf": [
                     hl.struct(faf95=0.0013, faf99=0.0027),
@@ -435,6 +463,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         "amr_adj": 3,
         "adj_XX": 4,
         "adj_XY": 5,
+        "non_ukb_adj": 6,
+        "non_ukb_raw": 7,
     }
     faf_index_dict = {"adj": 0, "raw": 1}
 
@@ -445,11 +475,12 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         {"gen_anc": "amr", "group": "adj"},
         {"sex": "XX", "group": "adj"},
         {"sex": "XY", "group": "adj"},
+        {"subset": "non_ukb", "group": "adj"},
     ]
 
     faf_meta = [{"group": "adj"}, {"group": "raw"}]
 
-    freq_index_sample_count = [10, 20, 3, 4, 8]
+    freq_index_sample_count = [10, 20, 3, 4, 8, 12, 14]
 
     ht = ht.annotate_globals(
         freq_index_dict=freq_index_dict,
@@ -618,6 +649,7 @@ def main(args):
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
             verbose=verbose,
+            subsets=config["subsets"],
         )
 
         handler.flush()
