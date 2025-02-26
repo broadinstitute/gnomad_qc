@@ -4,7 +4,7 @@ import argparse
 import logging
 import pickle
 from copy import deepcopy
-from pprint import pprint, pformat
+from pprint import pprint
 from typing import Dict, List, Optional, Set, Tuple
 
 import hail as hl
