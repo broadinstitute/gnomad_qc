@@ -10,6 +10,7 @@ import hail as hl
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
     check_global_and_row_annot_lengths,
+    check_globals_for_retired_terms,
     check_missingness_of_struct,
     check_raw_and_adj_callstats,
     check_sex_chr_metrics,
@@ -25,6 +26,7 @@ from gnomad.utils.reference_genome import get_reference_genome
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
+# from gnomad_qc.v4.create_release.validate_and_export_vcf import check_globals_for_retired_terms
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.resources.basics import get_logging_path
 
@@ -491,6 +493,11 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         freq_meta_sample_count=freq_index_sample_count,
     )
 
+    # Add in retired terms to globals.
+    ht = ht.annotate_globals(
+        test_meta=[{"group": "adj"}, {"group": "adj", "pop": "oth"}]
+    )
+
     # Add grpmax and fafmax annotations.
     grpmax = hl.struct(
         gnomad=hl.struct(
@@ -623,6 +630,7 @@ def main(args):
             row_to_globals_check=row_to_globals_check,
             check_all_rows=not args.check_only_first_rows_to_globals,
         )
+        check_globals_for_retired_terms(ht)
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
@@ -634,7 +642,8 @@ def main(args):
             indexed_array_annotations[config["faf_fields"]["faf"]] = config[
                 "faf_fields"
             ]["faf_index_dict"]
-
+            
+        # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(info=ht.info.annotate(**annotations))
