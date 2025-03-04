@@ -18,15 +18,20 @@ from gnomad.assessment.validity_checks import (
     compute_missingness,
     flatten_missingness_struct,
     sum_group_callstats,
+    summarize_variant_filters,
     summarize_variants,
     unfurl_array_annotations,
 )
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
+
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
-# from gnomad_qc.v4.create_release.validate_and_export_vcf import check_globals_for_retired_terms
+from gnomad_qc.v4.create_release.validate_and_export_vcf import (
+    ALLELE_TYPE_FIELDS,
+    REGION_FLAG_FIELDS,
+)
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.resources.basics import get_logging_path
 
@@ -53,6 +58,9 @@ formatter = logging.Formatter(
 )
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
+
+ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
+REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -202,6 +210,8 @@ def validate_federated_data(
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
     subsets: List[str] = None,
+    variant_filter_field: str = "RF",
+    problematic_regions: List[str] = ["lcr", "non_par", "segdup"],
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -215,12 +225,22 @@ def validate_federated_data(
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
+    :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "RF".
+    :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
     :return: None
     """
     # Summarize variants and check that all contigs exist.
     expected_contigs = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
     logger.info("Summarizing variants and checking contigs...")
     summarize_variants(ht, expected_contigs=expected_contigs)
+
+    logger.info("Summarizing variant filters...")
+    summarize_variant_filters(
+        t=ht,
+        variant_filter_field=variant_filter_field,
+        problematic_regions=problematic_regions,
+        single_filter_count=True,
+    )
 
     # Check for missingness.
     logger.info("Checking for missingness...")
@@ -326,7 +346,9 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
-            "filters": hl.empty_set(hl.tstr),
+            "filters": hl.set(["AS_VQSR"]),
+            "region_flags": hl.struct(lcr=False, non_par=False, segdup=True),
+            "allele_info": hl.struct(allele_type="del", n_alt_alleles=1),
         },
         {
             "locus": hl.locus("chr1", 200000, reference_genome="GRCh38"),
@@ -346,7 +368,9 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
-            "filters": hl.empty_set(hl.tstr),
+            "filters": hl.set(["AC0"]),
+            "region_flags": hl.struct(lcr=False, non_par=False, segdup=False),
+            "allele_info": hl.struct(allele_type="snv", n_alt_alleles=1),
         },
         {
             "locus": hl.locus("chr1", 300000, reference_genome="GRCh38"),
@@ -367,6 +391,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
             "filters": hl.empty_set(hl.tstr),
+            "region_flags": hl.struct(lcr=True, non_par=True, segdup=True),
+            "allele_info": hl.struct(allele_type="snv", n_alt_alleles=1),
         },
         {
             "locus": hl.locus("chrX", 400000, reference_genome="GRCh38"),
@@ -386,7 +412,9 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
-            "filters": hl.empty_set(hl.tstr),
+            "filters": hl.set(["AS_VQSR", "AC0"]),
+            "region_flags": hl.struct(lcr=True, non_par=True, segdup=False),
+            "allele_info": hl.struct(allele_type="snv", n_alt_alleles=1),
         },
     ]
 
@@ -410,7 +438,9 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     hl.struct(faf95=0.0012, faf99=0.0025),
                     hl.struct(faf95=0.0010, faf99=0.0020),
                 ],
-                "filters": hl.empty_set(hl.tstr),
+                "filters": hl.set(["AS_VQSR", "AC0"]),
+                "region_flags": hl.struct(lcr=True, non_par=False, segdup=False),
+                "allele_info": hl.struct(allele_type="del", n_alt_alleles=1),
             }
         ]
 
@@ -433,7 +463,9 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     hl.struct(faf95=0.0013, faf99=0.0027),
                     hl.struct(faf95=0.0011, faf99=0.0023),
                 ],
-                "filters": hl.empty_set(hl.tstr),
+                "filters": hl.set(["AC0"]),
+                "region_flags": hl.struct(lcr=True, non_par=True, segdup=False),
+                "allele_info": hl.struct(allele_type="del", n_alt_alleles=1),
             }
         ]
 
@@ -455,7 +487,18 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
             ),
             faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
             filters=hl.tset(hl.tstr),
+            region_flags=hl.tstruct(lcr=hl.tbool, non_par=hl.tbool, segdup=hl.tbool),
+            allele_info=hl.tstruct(allele_type=hl.tstr, n_alt_alleles=hl.tint32),
         ),
+    )
+
+    ht = ht.annotate(
+        region_flags=ht.region_flags.annotate(
+            fail_interval_qc=False,
+            outside_ukb_capture_region=False,
+            outside_broad_capture_region=False,
+        ),
+        allele_info=ht.allele_info.annotate(variant_type="snv", was_mixed=False),
     )
 
     # Define global annotation for freq_index_dict.
@@ -572,33 +615,39 @@ def main(args):
 
         validate_config(config, schema)
 
-        # TODO: Add resources to intake federated data once obtained.
-        ht = public_release(data_type="exomes").ht()
+        if args.use_logtest_ht:
+            logger.info("Using logtest ht...")
+            ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
-        # Check that fields specified in the config are present in the Table.
-        validate_ht_fields(ht=ht, config=config)
+        else:
+            # TODO: Add resources to intake federated data once obtained.
+            ht = public_release(data_type="exomes").ht()
 
-        # Confirm Table is using build GRCh38.
-        build = get_reference_genome(ht.locus).name
-        if build != "GRCh38":
-            raise ValueError(f"Reference genome is {build}, not GRCh38!")
+            # Check that fields specified in the config are present in the Table.
+            validate_ht_fields(ht=ht, config=config)
 
-        # Filter to test partitions if specified.
-        if test_n_partitions:
-            logger.info(
-                "Filtering to %d partitions and sex chromosomes...", test_n_partitions
-            )
-            test_ht = ht._filter_partitions(range(test_n_partitions))
+            # Confirm Table is using build GRCh38.
+            build = get_reference_genome(ht.locus).name
+            if build != "GRCh38":
+                raise ValueError(f"Reference genome is {build}, not GRCh38!")
 
-            x_ht = hl.filter_intervals(
-                ht, [hl.parse_locus_interval("chrX")]
-            )._filter_partitions(range(test_n_partitions))
+            # Filter to test partitions if specified.
+            if test_n_partitions:
+                logger.info(
+                    "Filtering to %d partitions and sex chromosomes...",
+                    test_n_partitions,
+                )
+                test_ht = ht._filter_partitions(range(test_n_partitions))
 
-            y_ht = hl.filter_intervals(
-                ht, [hl.parse_locus_interval("chrY")]
-            )._filter_partitions(range(test_n_partitions))
+                x_ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval("chrX")]
+                )._filter_partitions(range(test_n_partitions))
 
-            ht = test_ht.union(x_ht, y_ht)
+                y_ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval("chrY")]
+                )._filter_partitions(range(test_n_partitions))
+
+                ht = test_ht.union(x_ht, y_ht)
 
         row_to_globals_check = {
             config["freq_fields"]["freq"]: [
@@ -619,10 +668,6 @@ def main(args):
                 row_to_globals_check[config["faf_fields"]["faf"]].append(
                     config["faf_fields"]["faf_index_dict"]
                 )
-
-        if args.use_logtest_ht:
-            logger.info("Using logtest ht...")
-            ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
         logger.info("Check that row and global annotations lengths match...")
         check_global_and_row_annot_lengths(
@@ -648,6 +693,18 @@ def main(args):
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
+        info_dict = {}
+        if "region_flags" in ht.row:
+            # Add region_flag to info dict.
+            for field in REGION_FLAG_FIELDS:
+                info_dict[field] = ht["region_flags"][f"{field}"]
+        # Add allele_info fields to info dict.
+        if "allele_info" in ht.row:
+            for field in ALLELE_TYPE_FIELDS:
+                info_dict[field] = ht["allele_info"][f"{field}"]
+
+        ht = ht.annotate(info=ht.info.annotate(**info_dict))
+
         validate_federated_data(
             ht=ht,
             missingness_threshold=config["missingness_threshold"],
@@ -660,6 +717,8 @@ def main(args):
             nhomalt_metric=config["nhomalt_metric"],
             verbose=verbose,
             subsets=config["subsets"],
+            variant_filter_field=config["variant_filter_field"],
+            problematic_regions=REGION_FLAG_FIELDS,
         )
 
         handler.flush()
