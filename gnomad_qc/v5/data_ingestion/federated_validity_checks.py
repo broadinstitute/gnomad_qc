@@ -24,7 +24,6 @@ from gnomad.assessment.validity_checks import (
 )
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
-
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
