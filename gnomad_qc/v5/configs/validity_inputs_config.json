@@ -6,6 +6,6 @@
     "freq_annotations_to_sum": ["AC", "AN", "homozygote_count"],
     "freq_sort_order": ["subset", "gen_anc", "sex", "group"],
     "nhomalt_metric": "homozygote_count",
-    "subsets": ["non_ukb"],
+    "subsets": [""],
     "variant_filter_field": "AS_VQSR",
 }
