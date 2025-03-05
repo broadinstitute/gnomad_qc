@@ -187,7 +187,7 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         gnomAD_v4_exomes_AF=freq_ht[ht.key].freq[0].AF,
     ).drop("vep")
 
-    ht = ht.filter(~ht.alleles[1] == "*").checkpoint(
+    ht = ht.filter(ht.alleles[1] != "*").checkpoint(
         new_temp_file("denovo_no_star", "ht")
     )
     logger.info(f"Getting {ht.count()} de novos after filtering out '*' alts...")
