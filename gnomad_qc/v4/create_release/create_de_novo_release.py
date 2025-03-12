@@ -16,7 +16,6 @@ from gnomad.utils.vep import (
     CSQ_CODING_MEDIUM_IMPACT,
     process_consequences,
 )
-from hail.ggplot.utils import n_partitions
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
@@ -95,7 +94,7 @@ def get_releasable_de_novo_calls_ht(
             freq_prior_expr=ht.prior,
         )
     )
-    final_partitions = n_partitions / 10 if test else n_partitions
+    final_partitions = n_partitions // 10 if test else n_partitions
     ht = ht.filter(ht.de_novo_call_info.is_de_novo).naive_coalesce(final_partitions)
     return ht
 
@@ -116,6 +115,7 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     freq_ht = public_release("exomes").ht()
     vep_ht = get_vep(data_type="exomes").ht()
 
+    # Filter to variants with a confidence level
     ht = ht.filter(~hl.is_missing(ht.de_novo_call_info.confidence))
     logger.info(f"Getting {ht.count()} de novos with a confidence level...")
 
@@ -156,6 +156,11 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
                 AC_medium_conf=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "MEDIUM") & ht.adj_trio
                 ),
+                AC_medium_conf_P_0_9=hl.agg.count_where(
+                    (ht.de_novo_call_info.confidence == "MEDIUM")
+                    & (ht.de_novo_call_info.p_de_novo >= 0.9)
+                    & ht.adj_trio
+                ),
                 AC_low_conf=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "LOW") & ht.adj_trio
                 ),
@@ -192,9 +197,8 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     )
     logger.info(f"Getting {ht.count()} de novos after filtering out '*' alts...")
 
-    # Store the de novo calls with all confidence levels.
-    # TODO: Should this be after non-star filtering or even after pass_filters?
-    ht_all_conf = ht
+    # Store all high-quality de novo calls
+    ht_all_hq = ht
 
     ht = ht.filter(ht.pass_filters).checkpoint(
         new_temp_file("denovo_pass_filters", "ht")
@@ -204,10 +208,10 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         f"filters..."
     )
 
-    ht = ht.filter(ht.de_novo_AC.AC_high_conf > 0).checkpoint(
-        new_temp_file("denovo_high_conf", "ht")
-    )
-    logger.info(f"Getting {ht.count()} high confidence de novos...")
+    ht = ht.filter(
+        (ht.de_novo_AC.AC_high_conf > 0) | (ht.de_novo_AC.AC_medium_conf_P_0_9 > 0)
+    ).checkpoint(new_temp_file("denovo_high_conf", "ht"))
+    logger.info(f"Getting {ht.count()} high-quality de novos...")
 
     # Get the set of coding variant except for the splice region variants for
     # calibration.
@@ -225,25 +229,25 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     ht = ht.filter(coding_csqs.contains(ht.worst_csq_for_variant)).checkpoint(
         new_temp_file("denovo_high_coding", "ht")
     )
-    logger.info(f"Getting {ht.count()} high confidence coding de novos...")
-
-    ht = ht.filter(ht.de_novo_AC.AC_high_conf <= 15).checkpoint(
-        new_temp_file("denovo_high_coding_ac15", "ht")
-    )
-    logger.info(
-        f"Getting {ht.count()} high confidence coding de novos with AC <= 15 in the "
-        f"callset..."
-    )
+    logger.info(f"Getting {ht.count()} high-quality coding de novos...")
 
     ht = ht.filter(
         (ht.gnomAD_v4_exomes_AF < 0.001) | hl.is_missing(ht.gnomAD_v4_exomes_AF)
-    )
+    ).checkpoint(new_temp_file("denovo_coding_af0001", "ht"))
     logger.info(
-        f"Getting {ht.count()} high confidence coding de novos with AF < 0.001 in "
+        f"Getting {ht.count()} high-quality coding de novos with AF < 0.001 in "
         f"gnomAD..."
     )
 
-    return ht_all_conf, ht
+    ht = ht.filter(
+        ht.de_novo_AC.AC_high_conf + ht.de_novo_AC.AC_medium_conf_P_0_9 <= 15
+    )
+    logger.info(
+        f"Getting {ht.count()} high-quality coding de novos with AC <= 15 in the "
+        f"callset..."
+    )
+
+    return ht_all_hq, ht
 
 
 def restructure_for_tsv(ht: hl.Table) -> hl.Table:
@@ -262,6 +266,7 @@ def restructure_for_tsv(ht: hl.Table) -> hl.Table:
             "de_novo_AC.AC_all_raw": "de_novo_AC_all_raw",
             "de_novo_AC.AC_high_conf": "de_novo_AC_high_conf",
             "de_novo_AC.AC_medium_conf": "de_novo_AC_medium_conf",
+            "de_novo_AC.AC_medium_conf_P_0_9": "de_novo_AC_medium_conf_P_0_9",
             "de_novo_AC.AC_low_conf": "de_novo_AC_low_conf",
             "p_de_novo_stats.mean": "p_de_novo_mean",
             "p_de_novo_stats.stdev": "p_de_novo_stdev",
