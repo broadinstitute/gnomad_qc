@@ -549,7 +549,6 @@ def main(args):
         annotations = unfurl_array_annotations(ht, config["indexed_array_annotations"])
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
-        ht.show()
 
         validate_federated_data(
             ht=ht,
