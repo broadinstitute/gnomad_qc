@@ -266,7 +266,7 @@ def validate_federated_data(
 
 def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     """
-    Create a test Hail Table formatted before running unfurl_array_annotations() to test log output.
+    Create a test Hail Table with nested struct annotations to test log output.
 
     :param exclude_xnonpar_y: If True, exclude chrX non-pseudoautosomal region and chrY variants when making test data. Default is False.
     :return: Table to use for testing log output.
