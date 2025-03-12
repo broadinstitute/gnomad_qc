@@ -48,8 +48,6 @@ formatter = logging.Formatter(
     "%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"
 )
 handler.setFormatter(formatter)
-
-# Add the handler to the logger
 logger.addHandler(handler)
 
 
