@@ -103,9 +103,15 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     """
     Aggregate and annotate de novo calls.
 
-    This step get two sets of de novo calls:
-       - de novos at all confidence levels
-       - filtered high-confidence coding de novos
+    This step produces two sets of de novo calls:
+
+       - **Filtered de novos**: Variants that are not in low-confidence regions, do not have a `*` alt allele,
+       and are not excluded by variant QC. Includes all confidence levels.
+
+       - **Filtered high-quality coding de novos**: A subset of filtered de novos, further restricted to:
+          - HIGH confidence, or MEDIUM confidence with a high P-value
+          - Coding consequence
+          - gnomAD v4.1 exomes allele frequency (AF) and callset allele count (AC) filters.
 
     :param ht: De novo calls Table.
     :return: Aggregated and annotated Tables.
@@ -156,6 +162,10 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
                 AC_medium_conf=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "MEDIUM") & ht.adj_trio
                 ),
+                # We're adding some MEDIUM confidence calls to high-quality because
+                # we found the rate of some coding consequences didn't meet the
+                # expectations, based on the distribution of p_de_novo values at
+                # MEDIUM level, we chose a reasonable threshold of 0.9.
                 AC_medium_conf_P_0_9=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "MEDIUM")
                     & (ht.de_novo_call_info.p_de_novo >= 0.9)
@@ -166,8 +176,8 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
                 ),
             ),
             p_de_novo_stats=hl.agg.stats(ht.de_novo_call_info.p_de_novo),
+            # The mixed_site info should stay the same for each variant.
             mixed_site=hl.agg.collect(ht.mixed_site)[0],
-            # the mixed_site info should stay the same for each variant.
         )
         .key_by("locus", "alleles")
     )
@@ -181,11 +191,9 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
 
     ht = ht.annotate(
         pass_filters=filters_ht[ht.key]
-        .filters.intersection(hl.set(["AS_VQSR", "InbreedingCoeff"]))
-        .length()
-        == 0,
         # AC0 is not used as a criteria in de novos because AC0 was used for
         # release sites and some of the probands weren't included in the release.
+        .filters.intersection(hl.set(["AS_VQSR", "InbreedingCoeff"])).length() == 0,
         worst_csq_for_variant=ht.vep.worst_csq_for_variant.most_severe_consequence,
         worst_csq_gene_id=ht.vep.worst_csq_for_variant.gene_id,
         worst_csq_transcript_id=ht.vep.worst_csq_for_variant.transcript_id,
@@ -197,8 +205,8 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     )
     logger.info(f"Getting {ht.count()} de novos after filtering out '*' alts...")
 
-    # Store all high-quality de novo calls
-    ht_all_hq = ht
+    # Store de novo calls with all confidence levels.
+    ht_all_conf = ht
 
     ht = ht.filter(ht.pass_filters).checkpoint(
         new_temp_file("denovo_pass_filters", "ht")
@@ -247,7 +255,7 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         f"callset..."
     )
 
-    return ht_all_hq, ht
+    return ht_all_conf, ht
 
 
 def restructure_for_tsv(ht: hl.Table) -> hl.Table:
@@ -260,14 +268,13 @@ def restructure_for_tsv(ht: hl.Table) -> hl.Table:
     :param ht: De novo release HT.
     :return: Restructured HT.
     """
+    ht = ht.drop(ht.de_novo_AC.AC_medium_conf, ht.de_novo_AC.AC_low_conf)
     return ht.flatten().rename(
         {
             "de_novo_AC.AC_all": "de_novo_AC_all",
             "de_novo_AC.AC_all_raw": "de_novo_AC_all_raw",
             "de_novo_AC.AC_high_conf": "de_novo_AC_high_conf",
-            "de_novo_AC.AC_medium_conf": "de_novo_AC_medium_conf",
             "de_novo_AC.AC_medium_conf_P_0_9": "de_novo_AC_medium_conf_P_0_9",
-            "de_novo_AC.AC_low_conf": "de_novo_AC_low_conf",
             "p_de_novo_stats.mean": "p_de_novo_mean",
             "p_de_novo_stats.stdev": "p_de_novo_stdev",
             "p_de_novo_stats.min": "p_de_novo_min",
