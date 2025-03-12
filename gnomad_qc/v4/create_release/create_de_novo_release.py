@@ -255,7 +255,7 @@ def restructure_for_tsv(ht: hl.Table) -> hl.Table:
     Restructure the de novo release HT for TSV export.
 
     .. note::
-       This function will only be used for the TSV of high confidence coding de novos.
+       This function will only be used for the TSV of high-quality coding de novos.
 
     :param ht: De novo release HT.
     :return: Restructured HT.
