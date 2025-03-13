@@ -7,12 +7,7 @@ from io import StringIO
 from typing import Any, Dict, List
 
 import hail as hl
-
-from gnomad.assessment.parse_validity_logs import (
-    generate_html_report,
-    parse_log_file,
-)
-
+from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
     check_missingness_of_struct,
     check_raw_and_adj_callstats,
@@ -23,7 +18,6 @@ from gnomad.assessment.validity_checks import (
     summarize_variants,
     unfurl_array_annotations,
 )
-
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
 from jsonschema import validate
