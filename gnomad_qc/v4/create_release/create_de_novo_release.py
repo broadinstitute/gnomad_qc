@@ -109,8 +109,11 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
        and are not excluded by variant QC. Includes all confidence levels.
 
        - **Filtered high-quality coding de novos**: A subset of filtered de novos, further restricted to:
+
           - HIGH confidence, or MEDIUM confidence with a high P-value
+
           - Coding consequence
+
           - gnomAD v4.1 exomes allele frequency (AF) and callset allele count (AC) filters.
 
     :param ht: De novo calls Table.
