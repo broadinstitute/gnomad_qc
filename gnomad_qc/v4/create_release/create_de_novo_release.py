@@ -177,7 +177,7 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
             ),
             p_de_novo_stats=hl.agg.stats(ht.de_novo_call_info.p_de_novo),
             # The mixed_site info should stay the same for each variant.
-            mixed_site=hl.agg.collect(ht.mixed_site)[0],
+            mixed_site=hl.agg.take(ht.mixed_site, 1)[0],
         )
         .key_by("locus", "alleles")
     )
@@ -255,6 +255,7 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         f"callset..."
     )
 
+    ht = ht.drop(ht.de_novo_AC.AC_medium_conf, ht.de_novo_AC.AC_low_conf)
     return ht_all_conf, ht
 
 
@@ -268,7 +269,6 @@ def restructure_for_tsv(ht: hl.Table) -> hl.Table:
     :param ht: De novo release HT.
     :return: Restructured HT.
     """
-    ht = ht.drop(ht.de_novo_AC.AC_medium_conf, ht.de_novo_AC.AC_low_conf)
     return ht.flatten().rename(
         {
             "de_novo_AC.AC_all": "de_novo_AC_all",
