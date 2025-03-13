@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 import hail as hl
 
-from gnomad_qc.assessment.parse_validity_logs import (
+from gnomad.assessment.parse_validity_logs import (
     generate_html_report,
     parse_log_file,
 )
