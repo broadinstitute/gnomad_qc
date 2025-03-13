@@ -6,7 +6,11 @@ import hail as hl
 
 
 def parse_log_file(log_file):
-    """Parse a log file and categorizes messages for formatting, extracting function names and sources."""
+    """Parse a log file and categorizes messages for formatting, extracting function names and sources.
+
+    :param log_file: Path to the log file containing python logging output (such as INFO and WARNING statements).
+    :return: List of tuples containing logger information describing the validity check, status category, source, message, and associated table if relevant.
+    """
     parsed_logs = []
     log_pattern = re.compile(
         r"^(INFO|WARNING|ERROR) \(([^)]+)\.(\w+) (\d+)\): (.*)"
@@ -55,19 +59,21 @@ def parse_log_file(log_file):
 
                 # Determine the category.
                 message_lower = message.lower()
-                if log_level == "INFO":
-                    if "passed" in message_lower:
-                        category = "pass"
-                    elif "failed" in message_lower or "fail" in message_lower:
-                        category = "fail"
-                    else:
-                        category = "info"
-                elif log_level == "WARNING":
-                    category = "warn"
-                elif log_level == "ERROR":
-                    category = "fail"
-                else:
-                    category = "info"
+                log_categories = {
+                    "INFO": lambda msg: (
+                        "pass"
+                        if "passed" in msg
+                        else (
+                            "fail"
+                            if any(word in msg for word in ["failed", "fail"])
+                            else "info"
+                        )
+                    ),
+                    "WARNING": "warn",
+                    "ERROR": "fail",
+                }
+                category = log_categories.get(log_level, "info")
+                category = category(message_lower) if callable(category) else category
 
                 # Reset tracking.
                 current_message = message
