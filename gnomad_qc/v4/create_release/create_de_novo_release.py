@@ -103,11 +103,13 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> hl.Table:
     """
     Aggregate and annotate de novo calls.
 
-    This step produces high-quality coding de novos for the release, including variants
-    that are not in low-confidence regions, do not have a `*` alt allele, and are not
-    excluded by variant QC A subset of filtered de novos, further restricted to HIGH
-    confidence or MEDIUM confidence with a P-value >= 0.9, coding consequence,
-    and gnomAD v4.1 exomes allele frequency (AF) and callset allele count (AC) filters.
+    This step produces high quality coding de novos for release. High quality is defined as variants that:
+        - Are not in low-confidence regions
+        - Do not have a `*` alt allele
+        - Passed variant QC
+        - Have either HIGH (all probabilities) or MEDIUM (P-value >=0.9) confidence of being a *de novo*
+        - Have a coding consequence
+        - Pass gnomAD v4.1 exomes allele frequency (AF) and callset allele count (AC) filters
 
     :param ht: De novo calls Table.
     :return: Aggregated and annotated Table.
