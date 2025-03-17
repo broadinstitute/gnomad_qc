@@ -7,6 +7,7 @@ from io import StringIO
 from typing import Any, Dict, List
 
 import hail as hl
+from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
     check_global_and_row_annot_lengths,
     check_missingness_of_struct,
@@ -24,34 +25,31 @@ from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
-from gnomad_qc.v5.data_ingestion.parse_validity_logs import (
-    generate_html_report,
-    parse_log_file,
-)
 from gnomad_qc.v5.resources.basics import get_logging_path
 
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
 
+# Configure the root logger for terminal output.
 logging.basicConfig(
-    format="%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"
+    format="%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s",
+    level=logging.INFO,
 )
-logger = logging.getLogger("federated_validity_checks")
+
+# Create an in-memory stream for logging.
+log_stream = StringIO()
+
+logger = logging.getLogger("gnomad.assessment.validity_checks")
 logger.setLevel(logging.INFO)
 
 # Create a stream handler for in-memory logging.
-log_stream = StringIO()
-logger = logging.getLogger("gnomad.assessment.validity_checks")
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler(log_stream)
+memory_handler = logging.StreamHandler(log_stream)
 formatter = logging.Formatter(
     "%(levelname)s (%(module)s.%(funcName)s %(lineno)d): %(message)s"
 )
-handler.setFormatter(formatter)
-
-# Add the handler to the logger
-logger.addHandler(handler)
+memory_handler.setFormatter(formatter)
+logger.addHandler(memory_handler)
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -279,16 +277,14 @@ def validate_federated_data(
 
 def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     """
-    Create a test Hail Table formatted before running unfurl_array_annotations() to test log output.
+    Create a test Hail Table with nested struct annotations to test log output.
 
     :param exclude_xnonpar_y: If True, exclude chrX non-pseudoautosomal region and chrY variants when making test data. Default is False.
     :return: Table to use for testing log output.
     """
-    grch38 = hl.get_reference("GRCh38")
-
     data = [
         {
-            "locus": hl.locus("chr1", 100000, reference_genome=grch38),
+            "locus": hl.locus("chr1", 100000, reference_genome="GRCh38"),
             "alleles": ["A", "T"],
             "info": hl.struct(),
             "freq": [
@@ -306,7 +302,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
             "filters": hl.empty_set(hl.tstr),
         },
         {
-            "locus": hl.locus("chr1", 200000, reference_genome=grch38),
+            "locus": hl.locus("chr1", 200000, reference_genome="GRCh38"),
             "alleles": ["C", "G"],
             "info": hl.struct(),
             "freq": [
@@ -324,7 +320,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
             "filters": hl.empty_set(hl.tstr),
         },
         {
-            "locus": hl.locus("chr1", 300000, reference_genome=grch38),
+            "locus": hl.locus("chr1", 300000, reference_genome="GRCh38"),
             "alleles": ["G", "T"],
             "info": hl.struct(),
             "freq": [
@@ -342,7 +338,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
             "filters": hl.empty_set(hl.tstr),
         },
         {
-            "locus": hl.locus("chrX", 400000, reference_genome=grch38),
+            "locus": hl.locus("chrX", 400000, reference_genome="GRCh38"),
             "alleles": ["T", "C"],
             "info": hl.struct(),
             "freq": [
@@ -364,7 +360,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     if not exclude_xnonpar_y:
         chry_variant = [
             {
-                "locus": hl.locus("chrY", 500000, reference_genome=grch38),
+                "locus": hl.locus("chrY", 500000, reference_genome="GRCh38"),
                 "alleles": ["G", "A"],
                 "info": hl.struct(),
                 "freq": [
@@ -385,7 +381,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
 
         chrx_nonpar_variant = [
             {
-                "locus": hl.locus("chrX", 22234567, reference_genome=grch38),
+                "locus": hl.locus("chrX", 22234567, reference_genome="GRCh38"),
                 "alleles": ["C", "T"],
                 "info": hl.struct(),
                 "freq": [
@@ -409,7 +405,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     ht = hl.Table.parallelize(
         data,
         hl.tstruct(
-            locus=hl.tlocus(reference_genome=grch38),
+            locus=hl.tlocus(reference_genome="GRCh38"),
             alleles=hl.tarray(hl.tstr),
             info=hl.tstruct(),
             freq=hl.tarray(
@@ -610,12 +606,8 @@ def main(args):
         log_output = log_stream.getvalue()
 
         # TODO: Create resource functions when know organization of federated data.
-        log_file = (
-            "gs://gnomad-tmp/federated_validity_checks/federated_validity_checks.log"
-        )
-        output_file = (
-            "gs://gnomad-tmp/federated_validity_checks/federated_validity_checks.html"
-        )
+        log_file = args.output_base + ".log"
+        output_file = args.output_base + ".html"
 
         # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
@@ -672,12 +664,21 @@ if __name__ == "__main__":
             "freq_annotations_to_sum: List of annotation fields within `freq_meta_expr` to sum. Example: ['AC', 'AN', 'homozygote_count']."
             "freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
         ),
+        required=True,
         type=str,
     )
     parser.add_argument(
         "--verbose",
         help="Log successes in addition to failures during validation",
         action="store_true",
+    )
+    parser.add_argument(
+        "--output-base",
+        help=(
+            "Base path for output files. Will be used to create a log file and an html file."
+        ),
+        type=str,
+        default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks",
     )
 
     args = parser.parse_args()
