@@ -8,6 +8,7 @@ import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
+from sympy.plotting.intervalmath import interval
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
@@ -141,22 +142,52 @@ def get_aou_pc_loadings_ht(tsv_path: str) -> hl.Table:
     return aou_ht
 
 
-def union_variant_tables(hgdp_tgp_ht: hl.Table, aou_ht: hl.Table) -> hl.Table:
+def union_variant_tables(
+    hgdp_tgp_ht: hl.Table, aou_ht: hl.Table, test: bool
+) -> hl.Table:
     """
     Merge the variants from AoU, HGDP/TGP and gnomAD v4 joint_qc_mt.
 
     :param hgdp_tgp_ht: Table with HGDP/TGP PC loadings.
     :param aou_ht: Table with AoU PC loadings.
+    :param test: If True, run a test on chr20 only. Default is False.
     :return: Table with the merged list of variants.
     """
-    hgdp_tgp_ht = hgdp_tgp_ht.select()
-    aou_ht = aou_ht.select()
+    # Load gnomAD v4 variants
     v4_ht = get_joint_qc().mt().rows().select()
 
-    ht = aou_ht.union(hgdp_tgp_ht, v4_ht).key_by().order_by("locus")
-    ht = ht.key_by("locus", "alleles").distinct()
+    # Select only the necessary fields (removes annotations)
+    tables = [hgdp_tgp_ht.select(), aou_ht.select(), v4_ht]
 
-    return ht
+    # Apply filtering for test mode
+    if test:
+        interval = hl.parse_locus_interval("chr20")
+        tables = [hl.filter_intervals(ht, [interval]) for ht in tables]
+
+    # Perform union and enforce distinct loci
+    merged_ht = hl.Table.union(*tables).key_by().order_by("locus")
+    merged_ht = merged_ht.key_by("locus", "alleles").distinct()
+
+    return merged_ht
+
+
+def make_interval_table(variant_ht: hl.Table) -> hl.Table:
+    """
+    Create an interval table from a variant Hail Table (HT) with `locus`.
+
+    :param variant_ht: Hail Table containing `locus`.
+    :return: Hail Table with intervals covering each variant locus.
+    """
+    interval_ht = variant_ht.select(
+        interval=hl.locus_interval(
+            variant_ht.locus.contig,
+            variant_ht.locus.position,
+            variant_ht.locus.position,
+            includes_end=True,
+        )
+    )
+    interval_ht = interval_ht.key_by("interval")
+    return interval_ht
 
 
 def generate_dense_mt(variants_ht: hl.Table, test: bool = False) -> hl.MatrixTable:
@@ -172,12 +203,14 @@ def generate_dense_mt(variants_ht: hl.Table, test: bool = False) -> hl.MatrixTab
         variants_ht = hl.filter_intervals(
             variants_ht, [hl.parse_locus_interval("chr20")]
         )
+    intervals_ht = make_interval_table(variants_ht)
 
     vds = get_gnomad_v4_genomes_vds(
         split=True,
         annotate_meta=True,
         remove_hard_filtered_samples=True,
         filter_variant_ht=variants_ht,
+        filter_intervals=intervals_ht,
         entries_to_keep=["GT", "GQ", "DP", "AD"],
     )
 
@@ -203,7 +236,7 @@ def main(args):
     if args.get_aou_pca_loadings:
         logger.info("Importing AoU PCA loadings...")
         tsv_path = ancestry_pca_loadings(data_set="aou").path.replace(".ht", ".tsv.gz")
-        aou_ht = get_aou_pc_loadings_ht(tsv_path)
+        aou_ht = get_aou_pc_loadings_ht(tsv_path).repartition(500)
         aou_ht.write(ancestry_pca_loadings(data_set="aou").path, overwrite=overwrite)
 
     if args.generate_dense_mt:
@@ -211,7 +244,7 @@ def main(args):
         hgdp_tgp_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
         aou_ht = ancestry_pca_loadings(data_set="aou").ht()
 
-        variants_ht = union_variant_tables(hgdp_tgp_ht, aou_ht).checkpoint(
+        variants_ht = union_variant_tables(hgdp_tgp_ht, aou_ht, test).checkpoint(
             new_temp_file("merged_variants", "ht")
         )
         mt = generate_dense_mt(variants_ht, test=test)
