@@ -157,10 +157,10 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> hl.Table:
                 AC_high_conf=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "HIGH") & ht.adj_trio
                 ),
-                # We're adding some MEDIUM confidence calls to high-quality because
-                # we found the rate of some coding consequences didn't meet the
-                # expectations, based on the distribution of p_de_novo values at
-                # MEDIUM level, we chose a reasonable threshold of 0.9.
+                # We included some some MEDIUM confidence calls in the set of high-quality variants because
+                # the numbers of de novos for some coding consequences didn't meet the expected rates from the literature.
+                # To increase our de novo detection rates, we assessed the distribution of p_de_novo values for MEDIUM confidence de novos
+                # and chose to include MEDIUM confidence de novos with p >= 0.9.
                 AC_medium_conf_P_0_9=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "MEDIUM")
                     & (ht.de_novo_call_info.p_de_novo >= 0.9)
