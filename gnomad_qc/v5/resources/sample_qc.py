@@ -51,7 +51,7 @@ def _get_ancestry_pca_ht_path(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "genomes",
-    data_set: str = "aou",
+    data_set: str = "hgdp_tgp",
 ) -> str:
     """
     Get path to files related to ancestry PCA.
@@ -69,7 +69,7 @@ def _get_ancestry_pca_ht_path(
 def ancestry_pca_loadings(
     test: bool = False,
     data_type: str = "genomes",
-    data_set: str = "aou",
+    data_set: str = "hgdp_tgp",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA loadings VersionedTableResource.
@@ -99,7 +99,7 @@ def ancestry_pca_loadings(
 def ancestry_pca_scores(
     test: bool = False,
     data_type: str = "genomes",
-    data_set: str = "aou",
+    data_set: str = "hgdp_tgp",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA loadings VersionedTableResource.
@@ -157,9 +157,27 @@ def ancestry_pca_eigenvalues(
 
 
 ######################################################################
-# Generate QC MT resources
+# Ancestry MT resources
 ######################################################################
 
 hgdp_tgp_unrelateds_without_outliers_mt = MatrixTableResource(
     "gs://gcp-public-data--gnomad/release/3.1/secondary_analyses/hgdp_1kg_v2/pca_results/unrelateds_without_outliers.mt"
 )
+
+
+def get_union_dense_mt(test: bool = False) -> VersionedMatrixTableResource:
+    """
+    Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: MatrixTableResource of QC sites.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_set='union')}/qc_mt/gnomad.union.v{version}.dense.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )

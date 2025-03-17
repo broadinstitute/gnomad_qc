@@ -11,22 +11,18 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
+from gnomad_qc.v4.resources.sample_qc import get_joint_qc
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
+    get_union_dense_mt,
     hgdp_tgp_unrelateds_without_outliers_mt,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
-
-# Make a dense MT for gnomAD v4 genomes
-variants_ht = hl.read_table(
-    "gs://(gnomad-qin/v5/merged_variants_aou_v4qc_hgdp_tgp_loadings.ht"
-)
-
 
 # Function 1: get HGDP/TGP PC loadings
 
@@ -81,14 +77,54 @@ def write_pca_results(
     )
 
 
-def get_aou_loadings_ht(tsv_path: str) -> hl.Table:
+def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
+    """
+    Run PCA on HGDP/TGP unrelated samples and export the results.
+
+    ..note::
+
+       This is getting the same results as in this notebook:
+       https://nbviewer.org/github/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb
+
+    :param test: Whether to run in test mode (restricting to chr20).
+    :param overwrite: Whether to overwrite existing PCA results.
+    :param n_pcs: Number of PCs to compute. Default is 20.
+    """
+    # Load the HGDP/TGP unrelated samples matrix table
+    mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
+
+    # If test mode is enabled, restrict to chromosome 20
+    if test:
+        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
+
+    # Perform PCA
+    pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca_with_relateds(
+        mt, n_pcs=n_pcs, autosomes_only=False
+    )
+
+    # Write PCA results
+    write_pca_results(
+        pop_eigenvalues,
+        pop_scores_ht,
+        pop_loadings_ht,
+        data_set="hgdp_tgp",
+        overwrite=overwrite,
+        test=test,
+    )
+
+
+def get_aou_pc_loadings_ht(tsv_path: str) -> hl.Table:
     """
     Read the loadings from a TSV file and return a hail Table.
 
     :param tsv_path: Path to the TSV file.
     :return: Hail Table with the loadings.
     """
-    aou_ht = hl.import_table(tsv_path, force_bgz=True)
+    aou_ht = hl.import_table(
+        tsv_path,
+        force_bgz=True,
+        types={"loadings": hl.tarray(hl.tfloat64), "af": hl.tfloat64},
+    )
 
     aou_ht = aou_ht.annotate(
         locus=hl.parse_locus(aou_ht.locus),
@@ -100,10 +136,30 @@ def get_aou_loadings_ht(tsv_path: str) -> hl.Table:
         ),
     )
 
+    aou_ht = aou_ht.key_by("locus", "alleles")
+
+    return aou_ht
+
+
+def union_variant_tables(hgdp_tgp_ht: hl.Table, aou_ht: hl.Table) -> hl.Table:
+    """
+    Merge the variants from AoU, HGDP/TGP and gnomAD v4 joint_qc_mt.
+
+    :param hgdp_tgp_ht: Table with HGDP/TGP PC loadings.
+    :param aou_ht: Table with AoU PC loadings.
+    :return: Table with the merged list of variants.
+    """
+    hgdp_tgp_ht = hgdp_tgp_ht.select()
+    aou_ht = aou_ht.select()
+    v4_ht = get_joint_qc().mt().rows().select()
+
+    ht = aou_ht.union(hgdp_tgp_ht, v4_ht).key_by().order_by("locus")
+    ht = ht.key_by("locus", "alleles").distinct()
+
     return ht
 
 
-def get_qc_dense_mt(variants_ht: hl.Table, test: bool = False) -> hl.MatrixTable:
+def generate_dense_mt(variants_ht: hl.Table, test: bool = False) -> hl.MatrixTable:
     """
     Make a dense MT with the variants (including entry fields: GT, GQ, DP, AD), will be (488412, 149623) for gnomAD v4 genomes.
 
@@ -142,22 +198,24 @@ def main(args):
 
     if args.run_hgdp_tgp_pca:
         logger.info("Running PCA on HGDP/TGP unrelated samples...")
-        mt = hgdp_tgp_unrelateds_without_outliers_mt().mt()
-        if test:
-            mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
+        run_hgdp_tgp_pca(test=test, overwrite=overwrite)
 
-        pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca_with_relateds(
-            mt, n_pcs=20, autosomes_only=False
-        )
+    if args.get_aou_pca_loadings:
+        logger.info("Importing AoU PCA loadings...")
+        tsv_path = ancestry_pca_loadings(data_set="aou").path.replace(".ht", ".tsv.gz")
+        aou_ht = get_aou_pc_loadings_ht(tsv_path)
+        aou_ht.write(ancestry_pca_loadings(data_set="aou").path, overwrite=overwrite)
 
-        write_pca_results(
-            pop_eigenvalues,
-            pop_scores_ht,
-            pop_loadings_ht,
-            data_set="hgdp_tgp",
-            overwrite=overwrite,
-            test=test,
+    if args.generate_dense_mt:
+        logger.info("Merging variants from AoU, HGDP/TGP and gnomAD v4 joint_qc_mt...")
+        hgdp_tgp_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
+        aou_ht = ancestry_pca_loadings(data_set="aou").ht()
+
+        variants_ht = union_variant_tables(hgdp_tgp_ht, aou_ht).checkpoint(
+            new_temp_file("merged_variants", "ht")
         )
+        mt = generate_dense_mt(variants_ht, test=test)
+        mt.write(get_union_dense_mt(test).path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -176,6 +234,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run-hgdp-tgp-pca",
         help="Run PCA on HGDP/TGP unrelated samples.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--get-aou-pca-loadings",
+        help="Import downloaded AoU PCA loadings to a hail Table.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-dense-mt",
+        help="Make a dense MT with the variants.",
         action="store_true",
     )
     return parser
