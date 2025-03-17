@@ -155,9 +155,6 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> hl.Table:
                 AC_high_conf=hl.agg.count_where(
                     (ht.de_novo_call_info.confidence == "HIGH") & ht.adj_trio
                 ),
-                AC_medium_conf=hl.agg.count_where(
-                    (ht.de_novo_call_info.confidence == "MEDIUM") & ht.adj_trio
-                ),
                 # We're adding some MEDIUM confidence calls to high-quality because
                 # we found the rate of some coding consequences didn't meet the
                 # expectations, based on the distribution of p_de_novo values at
@@ -166,9 +163,6 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> hl.Table:
                     (ht.de_novo_call_info.confidence == "MEDIUM")
                     & (ht.de_novo_call_info.p_de_novo >= 0.9)
                     & ht.adj_trio
-                ),
-                AC_low_conf=hl.agg.count_where(
-                    (ht.de_novo_call_info.confidence == "LOW") & ht.adj_trio
                 ),
             ),
             p_de_novo_stats=hl.agg.stats(ht.de_novo_call_info.p_de_novo),
@@ -248,7 +242,6 @@ def aggregate_and_annotate_de_novos(ht: hl.Table) -> hl.Table:
         f"callset..."
     )
 
-    ht = ht.drop(ht.de_novo_AC.AC_medium_conf, ht.de_novo_AC.AC_low_conf)
     return ht
 
 
@@ -302,7 +295,7 @@ def main(args):
             overwrite=overwrite,
         )
 
-    if args.generate_final_hts:
+    if args.generate_final_ht:
         ht = hl.read_table(trio_denovo_ht(test=test).path)
         ht = aggregate_and_annotate_de_novos(ht)
         ht.naive_coalesce(20).write(
@@ -344,7 +337,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--generate-final-hts",
+        "--generate-final-ht",
         help="Generate the final HT for de novo release.",
         action="store_true",
     )
