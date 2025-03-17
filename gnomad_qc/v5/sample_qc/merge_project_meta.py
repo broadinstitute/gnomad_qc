@@ -1,4 +1,4 @@
-"""Merge gnomAD v4 metadata with AoU metadata to created gnomAD v5 project metadata."""
+"""Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata."""
 
 import logging
 import os
@@ -16,9 +16,20 @@ from gnomad_qc.v5.resources.meta import project_meta
 # RWB Jupyter notebook environment. After running the code block, restart the kernel.
 # This is required to run the code.
 """
-!git clone https://github.com/broadinstitute/gnomad_qc.git
-!mv gnomad_qc /home/jupyter/packages
-!pip install -U gnomad
+from IPython.display import display, Javascript
+import subprocess
+import shutil
+
+def restart_kernel_with_gnomad() -> None:
+    """Clones the gnomad_qc/(gnomad?) repository, moves it to /home/jupyter/packages, and restarts the kernel."""
+    # Install gnomad repos.
+    subprocess.run(["git", "clone", "https://github.com/broadinstitute/gnomad_qc.git"], check=True)
+    subprocess.run(["pip", "install", "-U", "gnomad"], check=True)    
+            
+    shutil.move("gnomad_qc", "/home/jupyter/packages/")
+    
+    # Restart the kernel.
+    display(Javascript("Jupyter.notebook.kernel.restart()"))
 """
 
 hl.default_reference(new_default_reference="GRCh38")
@@ -228,14 +239,16 @@ def update_ht_to_final_schema(ht: hl.Table) -> hl.Table:
         for k, v in FINAL_SCHEMA_FIELDS_AND_TYPES.items()
         if k not in set(ht.key.dtype.fields)
     }
+    annotations = {}
     for field, field_type in final_fields.items():
-        if field not in ht.row:
-            ht = ht.annotate(**{field: hl.missing(field_type)})
-        elif field_type != ht[field].dtype:
-            ht = ht.transmute(**{field: EXPR_TO_TYPE[field_type](ht[field])})
+        if field in ht.row:
+            if ht[field].dtype != field_type:
+                annotations[field] = EXPR_TO_TYPE[field_type](ht[field])
         else:
-            ht = ht.annotate(**{field: ht[field]})
+            annotations[field] = hl.missing(field_type)
 
+    ht = ht.annotate(**annotations)
+    
     return ht.select(*final_fields)
 
 
@@ -259,7 +272,7 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> Set[str]:
     return sample_collisions
 
 
-def add_project_prefix_to_sample_ids(
+def add_project_prefix_to_sample_collisions(
     ht: hl.Table,
     project: str,
     sample_collisions: Set[str],
@@ -270,7 +283,7 @@ def add_project_prefix_to_sample_ids(
 
     :param ht: Table to add project prefix to sample IDs.
     :param project: Project name.
-    :param sample_collisions: Set of sample IDs that exist in multiple project projects.
+    :param sample_collisions: Set of sample IDs that exist in multiple projects.
     :return: Table with project prefix added to sample IDs.
     """
     ht = ht.key_by()
