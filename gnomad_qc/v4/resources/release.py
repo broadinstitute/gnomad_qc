@@ -398,30 +398,16 @@ def release_all_sites_an(
 
 def release_de_novo(
     test: bool = False,
-    by_confidence: str = "all",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for exomes de novo release Table.
 
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param by_confidence: Whether to get the table filtered by confidence level.
-       Either 'all' or 'high'. Default is 'all'.
     :return: De novo release Table.
     """
     data_type = "exomes"
 
-    valid_options = {"all", "high"}
-    if by_confidence not in valid_options:
-        raise ValueError(
-            f"Invalid value for by_confidence: '{by_confidence}'. "
-            f"Allowed values are {valid_options}."
-        )
-
-    confidence_suffix = (
-        ".all_confidences.filtered"
-        if by_confidence == "all"
-        else ".high_confidence.filtered"
-    )
+    confidence_suffix = ".high_quality_coding"
     return VersionedTableResource(
         default_version=CURRENT_DE_NOVO_RELEASE[data_type],
         versions={
