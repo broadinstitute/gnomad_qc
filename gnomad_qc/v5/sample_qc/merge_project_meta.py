@@ -1,4 +1,11 @@
-"""Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata."""
+"""
+Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata.
+
+NOTE:
+Use the util_functions.ipynb notebook with function restart_kernel_with_gnomad_package
+to clone the gnomad_qc repository, update the gnomAD package, and restart the kernel.If
+this is not done, the gnomad_qc imports will fail below.
+"""
 
 import logging
 import os
@@ -10,34 +17,14 @@ import hail as hl
 import pandas as pd
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
+from gnomad_qc.v5.resources.basics import get_checkpoint_path
 from gnomad_qc.v5.resources.meta import project_meta
-
-# The code block below is used to install the gnomad package and its dependencies in the
-# RWB Jupyter notebook environment. After running the code block, restart the kernel.
-# This is required to run the code.
-"""
-from IPython.display import display, Javascript
-import subprocess
-import shutil
-
-def restart_kernel_with_gnomad() -> None:
-    """Clones the gnomad_qc/(gnomad?) repository, moves it to /home/jupyter/packages, and restarts the kernel."""
-    # Install gnomad repos.
-    subprocess.run(["git", "clone", "https://github.com/broadinstitute/gnomad_qc.git"], check=True)
-    subprocess.run(["pip", "install", "-U", "gnomad"], check=True)    
-            
-    shutil.move("gnomad_qc", "/home/jupyter/packages/")
-    
-    # Restart the kernel.
-    display(Javascript("Jupyter.notebook.kernel.restart()"))
-"""
 
 hl.default_reference(new_default_reference="GRCh38")
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("merge_project_meta")
 logger.setLevel(logging.INFO)
-
 
 AOU_AUXILIARY_DATA_BUCKET = (
     "gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux"
@@ -71,7 +58,7 @@ EXPR_TO_TYPE = {
 }
 
 
-def get_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
+def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get project metadata configuration.
 
@@ -87,16 +74,22 @@ def get_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                         "s": "s",
                         "project_age": "project_meta.age",
                         "project_contamination_freemix": "bam_metrics.contam_rate",
-                        "project_contamination_charr": "hard_filter_metrics.mean_AB_snp_biallelic",
+                        "project_contamination_charr": (
+                            "hard_filter_metrics.mean_AB_snp_biallelic"
+                        ),
                         "project_chimeras_rate": "bam_metrics.chimeras_rate",
-                        "project_bases_over_20x_coverage": "bam_metrics.target_bases_20x_rate",
+                        "project_bases_over_20x_coverage": (
+                            "bam_metrics.target_bases_20x_rate"
+                        ),
                         "project_mean_depth": "hard_filter_metrics.chr20_mean_dp",
                         "project_median_insert_size": "bam_metrics.median_insert_size",
                         "project_callrate": "hard_filter_metrics.sample_qc_mt_callrate",
                         "project_hard_filters": "sample_filters.hard_filters",
                         "project_sex_karyotype": "sex_imputation.sex_karyotype",
                         "project_gen_anc": "population_inference.pop",
-                        "project_qc_metrics_filters": "sample_filters.qc_metrics_filters",
+                        "project_qc_metrics_filters": (
+                            "sample_filters.qc_metrics_filters"
+                        ),
                         "project_releasable": "project_meta.releasable",
                         "project_release": "release",
                     },
@@ -110,10 +103,10 @@ def get_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                         "s": "s",
                         "project_age": "project_meta.age",
                         # NOTE: Some samples have age_alt, which is the mean age of the
-                        # age_bin field
+                        # age_bin field.
                         "project_age_alt": "project_meta.age_alt",
                         # TODO: Did we recalculate charr on v4 genomes? Determine/look
-                        # into cost and then decide if we want to recalculate
+                        # into cost and then decide if we want to recalculate.
                         "project_contamination_freemix": "bam_metrics.freemix",
                         "project_chimeras_rate": "bam_metrics.pct_chimeras",
                         "project_bases_over_20x_coverage": "bam_metrics.pct_bases_20x",
@@ -148,10 +141,10 @@ def get_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                         "project_mean_depth": "mean_coverage",
                         "project_bases_over_20x_coverage": "genome_coverage",
                         # TODO: Do we want dragen estimates or verifybamid? They show
-                        # the two metrics correlate in the QC report
+                        # the two metrics correlate in the QC report.all
                         "project_contamination_freemix": "verify_bam_id2_contamination",
                         # TODO: Check within hard filters if there is a difference --
-                        # annotate back on during outlier detection
+                        # annotate back on during outlier detection.
                         "project_sample_source": "sample_source",
                     },
                 },
@@ -197,16 +190,15 @@ def select_only_final_fields(
     ht: hl.Table, project: hl.str, data_type: hl.str
 ) -> hl.Table:
     """
-    Update table to final schema.
+    Extract only fields needed for the final metadata table.
 
-    If a field exists within the table being updated, check that the type matches,
-    if not, cast to the type in the joint field schema. If it does not exist, annotate
-    with missing value.
+    Filter metadata inputs to include only relevant fields since not all inputs have all
+    final fields.
 
-    :param ht: Table to update to final schema.
-    :param project: Project name.
-    :param data_type: Data type, genomes or exomes.
-    :return: Table with final schema.
+    :param ht: Input Hail Table with metadata
+    :param project: Project identifier (e.g., "gnomad", "aou")
+    :param data_type: Data type ("genomes" or "exomes")
+    :return: Filtered Hail Table containing only fields required for the final schema
     """
     # gnomAD v4 genome metadata has some samples with age_alt, which is the mean age of
     # the age_bin field. This creates a single age field.
@@ -248,7 +240,7 @@ def update_ht_to_final_schema(ht: hl.Table) -> hl.Table:
             annotations[field] = hl.missing(field_type)
 
     ht = ht.annotate(**annotations)
-    
+
     return ht.select(*final_fields)
 
 
@@ -287,7 +279,7 @@ def add_project_prefix_to_sample_collisions(
     :return: Table with project prefix added to sample IDs.
     """
     ht = ht.key_by()
-    ht = ht.transmute(
+    ht = ht.annotate(
         **{
             f"{sample_id_field}": hl.if_else(
                 hl.literal(sample_collisions).contains(ht["s"]),
@@ -302,7 +294,7 @@ def add_project_prefix_to_sample_collisions(
 def main():
     """Create v5 project metadata."""
     meta_hts = {}
-    for project, project_metadata in get_config().items():
+    for project, project_metadata in get_meta_config().items():
         project_hts = []
         logger.info("Processing the %s project's metadata...", project)
         for data_type in project_metadata.keys():
@@ -358,7 +350,9 @@ def main():
         project_ht = project_ht.annotate(project=project)
         logger.info("Updating the %s metadata to the final schema...", project)
         project_ht = update_ht_to_final_schema(project_ht)
-
+        project_ht = project_ht.checkpoint(
+            get_checkpoint_path(f"{project}_meta", mt=False), overwrite=True
+        )
         meta_hts[project] = project_ht
 
     sample_collisions = get_sample_collisions(meta_hts)
@@ -366,8 +360,8 @@ def main():
         f"Samples that appear in more than one project: {hl.eval(sample_collisions)}"
     )
 
-    for project in get_config().keys():
-        meta_hts[project] = add_project_prefix_to_sample_ids(
+    for project in get_meta_config().keys():
+        meta_hts[project] = add_project_prefix_to_sample_collisions(
             meta_hts[project],
             project=project,
             sample_collisions=sample_collisions,
