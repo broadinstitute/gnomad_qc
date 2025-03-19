@@ -30,7 +30,7 @@ def get_gnomad_v3_vds(
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
     filter_variant_ht: Optional[hl.Table] = None,
-    filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
+    filter_intervals: Optional[Union[List[Union[str, hl.tinterval]], hl.Table]] = None,
     split_reference_blocks: bool = True,
     entries_to_keep: Optional[List[str]] = None,
     annotate_het_non_ref: bool = False,
@@ -108,12 +108,21 @@ def get_gnomad_v3_vds(
         )
 
     if filter_intervals:
-        logger.info("Filtering to %s intervals...", len(filter_intervals))
-        if isinstance(filter_intervals[0], str):
-            filter_intervals = [
-                hl.parse_locus_interval(x, reference_genome="GRCh38")
-                for x in filter_intervals
-            ]
+        logger.info(
+            "Filtering to %s intervals...",
+            (
+                len(filter_intervals)
+                if isinstance(filter_intervals, list)
+                else filter_intervals.count()
+            ),
+        )
+        if isinstance(filter_intervals, list):
+            if isinstance(filter_intervals[0], str):
+                filter_intervals = [
+                    hl.parse_locus_interval(x, reference_genome="GRCh38")
+                    for x in filter_intervals
+                ]
+
         vds = hl.vds.filter_intervals(
             vds, filter_intervals, split_reference_blocks=split_reference_blocks
         )
