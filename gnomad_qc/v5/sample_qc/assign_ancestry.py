@@ -118,6 +118,9 @@ def get_aou_pc_loadings_ht(tsv_path: str) -> hl.Table:
     """
     Read the loadings from a TSV file and return a hail Table.
 
+    As of 2025-03-18, it seems impossible to download a HT folder from AoU
+    environment, so we read the HT and export it as a TSV and then read it back.
+
     :param tsv_path: Path to the TSV file.
     :return: Hail Table with the loadings.
     """
