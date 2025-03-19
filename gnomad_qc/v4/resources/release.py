@@ -396,7 +396,9 @@ def release_all_sites_an(
     )
 
 
-def release_de_novo(test: bool = False) -> VersionedTableResource:
+def release_de_novo(
+    test: bool = False,
+) -> VersionedTableResource:
     """
     Retrieve versioned resource for exomes de novo release Table.
 
@@ -404,14 +406,15 @@ def release_de_novo(test: bool = False) -> VersionedTableResource:
     :return: De novo release Table.
     """
     data_type = "exomes"
-    postfix = f".{datetime.today().strftime('%Y-%m-%d')}" if test else ""
+
+    confidence_suffix = ".high_quality_coding"
     return VersionedTableResource(
         default_version=CURRENT_DE_NOVO_RELEASE[data_type],
         versions={
             release: TableResource(
                 path=(
                     f"{_release_root(version=release, test=test, data_type=data_type)}"
-                    f"/gnomad.{data_type}.v{release}.de_novo{postfix}.ht"
+                    f"/gnomad.{data_type}.v{release}.de_novo{confidence_suffix}.ht"
                 )
             )
             for release in DE_NOVO_RELEASES[data_type]

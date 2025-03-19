@@ -999,12 +999,14 @@ def ped_filter_param_json_path(
 
 def dense_trio_mt(
     releasable: bool = True,
+    split: bool = False,
     test: bool = False,
 ) -> VersionedMatrixTableResource:
     """
     Get the VersionedMatrixTableResource for the dense trio MatrixTable.
 
     :param releasable: Whether to get the resource for the releasable trios only.
+    :param split: Whether to get the resource for the split trio MatrixTable.
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedMatrixTableResource of dense trio MatrixTable.
     """
@@ -1015,7 +1017,31 @@ def dense_trio_mt(
             version: MatrixTableResource(
                 f"{get_sample_qc_root(version, test, data_type='exomes')}"
                 f"/relatedness/trios/gnomad.{data_type}.v{version}.trios"
-                f"{'.releasable' if releasable else ''}.dense.mt"
+                f"{'.releasable' if releasable else ''}.dense"
+                f"{'.split' if split else ''}.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def trio_denovo_ht(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for the trio de novo Table.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource of trio de novo Table.
+    """
+    data_type = "exomes"
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.trios."
+                f"releasable.denovo.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -1094,28 +1120,3 @@ hgdp_tgp_duplicated_to_exomes = TableResource(
 hgdp_tgp_relatedness = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_relatedness.ht",
 )
-
-
-def de_novo_mt(
-    releasable: bool = True,
-    test: bool = False,
-) -> VersionedMatrixTableResource:
-    """
-    Get the VersionedMatrixTableResource for the dense de novo variants MatrixTable.
-
-    :param releasable: Whether to get the resource for the releasable trios only.
-    :param test: Whether to use a tmp path for a test resource.
-    :return: VersionedMatrixTableResource of dense de novo variants MatrixTable.
-    """
-    data_type = "exomes"
-    return VersionedMatrixTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
-        {
-            version: MatrixTableResource(
-                f"{get_sample_qc_root(version, test, data_type='exomes')}"
-                f"/relatedness/trios/gnomad.{data_type}.v{version}.de_novo"
-                f"{'.releasable' if releasable else ''}.dense.mt"
-            )
-            for version in SAMPLE_QC_VERSIONS
-        },
-    )
