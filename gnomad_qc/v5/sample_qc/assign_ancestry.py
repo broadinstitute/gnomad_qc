@@ -2,16 +2,20 @@
 
 import argparse
 import logging
-from typing import List
+from typing import Any, List, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import (
+    assign_population_pcs,
+    pc_project,
+    run_pca_with_relateds,
+)
+from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
-from sympy.plotting.intervalmath import interval
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, meta
 from gnomad_qc.v4.resources.sample_qc import get_joint_qc
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -94,6 +98,14 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
     # Load the HGDP/TGP unrelated samples matrix table
     mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
 
+    # Load and filter metadata to HGDP or TGP samples
+    meta_ht = meta(data_type="genomes").ht()
+    meta_ht = meta_ht.filter((meta_ht.subsets.hgdp | meta_ht.subsets.tgp))
+    meta_ht = meta_ht.key_by(meta_ht.project_meta.sample_id)
+
+    mt = mt.annotate_cols(new_s=meta_ht[mt.s].s).key_cols_by()
+    mt = mt.transmute_cols(s=mt.new_s).key_cols_by("s")
+
     # If test mode is enabled, restrict to chromosome 20
     if test:
         mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
@@ -112,6 +124,75 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
         overwrite=overwrite,
         test=test,
     )
+
+
+def project_and_assign_pops_by_hgdptgp_rf(
+    min_prob: float,
+    pcs: List[int] = list(range(1, 21)),
+    missing_label: str = "remaining",
+    test: bool = False,
+) -> Tuple[hl.Table, Any]:
+    """
+    Assign populations to samples based on RF predictions from HGDP/TGP PCs.
+
+    :param min_prob: Minimum probability for a sample to be assigned a population.
+    :param pcs: List of PCs to use for RF predictions. Default is [1, 2, ..., 20].
+    :param missing_label: Label to assign to samples with missing predictions. Default is "remaining".
+    :param test: Whether to run in test mode (restricting to chr20).
+    :param overwrite: Whether to overwrite existing results.
+    :return: Tuple of the Table with population assignments and the RF model.
+    """
+    pop_field = "pop"
+
+    pca_loadings_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
+    pca_scores_ht = ancestry_pca_scores(data_set="hgdp_tgp").ht()
+    meta_ht = meta(data_type="genomes").ht()
+
+    mt = get_union_dense_mt(test=test).mt()
+
+    # Collect sample IDs from the HGDP/TGP dataset
+    hgdp_tgp_samples = set(pca_scores_ht.s.collect())
+
+    # Filter the matrix table to keep samples in release but not in the
+    # HGDP/TGP pc scores
+    mt = mt.filter_cols(~hl.literal(hgdp_tgp_samples).contains(mt.s) & mt.meta.release)
+
+    # fitler to adj
+    mt = filter_to_adj(mt)
+
+    logger.info(
+        "Proecting %d genome samples with HGDP/TGP PCA loadings", mt.count_cols()
+    )
+    projections_ht = pc_project(mt, pca_loadings_ht)
+
+    pca_scores_ht = pca_scores_ht.annotate(
+        training_pop=meta_ht[pca_scores_ht.s].project_meta.project_pop
+    )
+    # Remove the 'oth' population from the training set
+    pca_scores_ht = pca_scores_ht.annotate(
+        train_pop=hl.or_else(
+            pca_scores_ht.training_pop != "oth", pca_scores_ht.training_pop
+        )
+    )
+    projections_ht = projections_ht.annotate(training_pop=hl.missing(hl.tstr))
+    pca_scores_ht = pca_scores_ht.union(projections_ht)
+
+    # Run the pop RF.
+    pop_ht, pops_rf_model = assign_population_pcs(
+        pca_scores_ht,
+        pc_cols=pcs,
+        known_col="training_pop",
+        output_col=pop_field,
+        min_prob=min_prob,
+        missing_label=missing_label,
+    )
+
+    pop_ht = pop_ht.annotate_globals(
+        min_prob=min_prob,
+        pcs=pcs,
+    )
+
+    return pop_ht, pops_rf_model
 
 
 def get_aou_pc_loadings_ht(tsv_path: str) -> hl.Table:
