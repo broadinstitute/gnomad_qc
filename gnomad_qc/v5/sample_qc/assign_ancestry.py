@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import pickle
 from typing import Any, List, Tuple
 
 import hail as hl
@@ -17,12 +18,16 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, meta
 from gnomad_qc.v4.resources.sample_qc import get_joint_qc
+from gnomad_qc.v4.sample_qc.assign_ancestry import compute_precision_recall
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
+    get_pop_ht,
+    get_pop_pr_ht,
     get_union_dense_mt,
     hgdp_tgp_unrelateds_without_outliers_mt,
+    pop_rf_path,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -126,14 +131,20 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
     )
 
 
-def project_and_assign_pops_by_hgdptgp_rf(
+def assign_pops_by_hgdp_tgp(
     min_prob: float,
     pcs: List[int] = list(range(1, 21)),
     missing_label: str = "remaining",
     test: bool = False,
 ) -> Tuple[hl.Table, Any]:
     """
-    Assign populations to samples based on RF predictions from HGDP/TGP PCs.
+    Assign global ancestry labels to gnomAD v4 genomes samples based on HGDP/TGP labels.
+
+    ..note::
+
+       This function will first project the gnomAD v4 genomes samples onto the
+       HGDP/TGP PCA loadings and then assign global ancestry labels using a random
+       forest model trained on the HGDP/TGP samples.
 
     :param min_prob: Minimum probability for a sample to be assigned a population.
     :param pcs: List of PCs to use for RF predictions. Default is [1, 2, ..., 20].
@@ -179,6 +190,7 @@ def project_and_assign_pops_by_hgdptgp_rf(
     pca_scores_ht = pca_scores_ht.union(projections_ht).checkpoint(
         new_temp_file("pca_scores", "ht")
     )
+    # TODO: Do we need to write the pca_scores_ht?
 
     # Run the pop RF.
     pop_ht, pops_rf_model = assign_population_pcs(
@@ -337,6 +349,31 @@ def main(args):
         mt = generate_dense_mt(variants_ht, test=test)
         mt.write(get_union_dense_mt(test).path, overwrite=overwrite)
 
+    if args.assign_pops_by_hgdp_tgp:
+        pop_pcs = args.pop_pcs
+        pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
+        logger.info("Using following PCs: %s", pop_pcs)
+        pop_ht, pops_rf_model = assign_pops_by_hgdp_tgp(
+            args.min_pop_prob,
+            pcs=pop_pcs,
+            test=test,
+        )
+
+        logger.info("Writing pop ht...")
+        pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+
+        with hl.hadoop_open(
+            pop_rf_path(test=test),
+            "wb",
+        ) as out:
+            pickle.dump(pops_rf_model, out)
+
+    if args.compute_precision_recall:
+        ht = compute_precision_recall(
+            get_pop_ht(test=test).ht(), num_pr_points=args.number_pr_points
+        )
+        ht.write(get_pop_pr_ht(test=test).path, overwrite=overwrite)
+
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
@@ -364,6 +401,47 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate-dense-mt",
         help="Make a dense MT with the variants.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--assign-pops-by-hgdp-tgp",
+        help="Assign global ancestry labels to samples using HGDP/TGP labels.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--min-pop-prob",
+        help="Minimum probability for a sample to be assigned a population.",
+        type=float,
+        default=0.75,
+    )
+    parser.add_argument(
+        "--pop-pcs",
+        help=(
+            "List of PCs to use for ancestry assignment. The values provided should be"
+            " 1-based. If a single integer is passed, the script assumes this"
+            " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
+            " 1,2,3,4,5,and 6. Defaults to 20 PCs."
+        ),
+        default=[20],
+        type=int,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--number-pr-points",
+        help=(
+            "Number of min prob cutoffs to compute PR metrics for. e.g. 100 will "
+            "compute PR metrics for min prob of 0 to 1 in increments of 0.01. Default "
+            "is 100."
+        ),
+        default=100,
+        type=int,
+    )
+    parser.add_argument(
+        "--compute-precision-recall",
+        help=(
+            "Compute precision and recall for the RF model using evaluation samples. "
+            "This is computed for all evaluation samples as well as per population."
+        ),
         action="store_true",
     )
     return parser
