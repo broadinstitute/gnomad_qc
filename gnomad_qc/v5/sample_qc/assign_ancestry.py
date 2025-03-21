@@ -139,7 +139,6 @@ def project_and_assign_pops_by_hgdptgp_rf(
     :param pcs: List of PCs to use for RF predictions. Default is [1, 2, ..., 20].
     :param missing_label: Label to assign to samples with missing predictions. Default is "remaining".
     :param test: Whether to run in test mode (restricting to chr20).
-    :param overwrite: Whether to overwrite existing results.
     :return: Tuple of the Table with population assignments and the RF model.
     """
     pop_field = "pop"
@@ -169,13 +168,17 @@ def project_and_assign_pops_by_hgdptgp_rf(
         training_pop=meta_ht[pca_scores_ht.s].project_meta.project_pop
     )
     # Remove the 'oth' population from the training set
-    pca_scores_ht = pca_scores_ht.annotate(
-        train_pop=hl.or_else(
-            pca_scores_ht.training_pop != "oth", pca_scores_ht.training_pop
+    pca_scores_ht = pca_scores_ht.transmute(
+        training_pop=hl.if_else(
+            pca_scores_ht.training_pop == "oth",
+            hl.missing(hl.tstr),
+            pca_scores_ht.training_pop,
         )
     )
     projections_ht = projections_ht.annotate(training_pop=hl.missing(hl.tstr))
-    pca_scores_ht = pca_scores_ht.union(projections_ht)
+    pca_scores_ht = pca_scores_ht.union(projections_ht).checkpoint(
+        new_temp_file("pca_scores", "ht")
+    )
 
     # Run the pop RF.
     pop_ht, pops_rf_model = assign_population_pcs(
