@@ -4,14 +4,11 @@ from typing import Optional
 
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
-    PedigreeResource,
     TableResource,
     VersionedMatrixTableResource,
-    VersionedPedigreeResource,
     VersionedTableResource,
 )
 
-from gnomad_qc.v5.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     CURRENT_SAMPLE_QC_VERSION,
     SAMPLE_QC_VERSIONS,
@@ -153,6 +150,64 @@ def ancestry_pca_eigenvalues(
             )
             for version in SAMPLE_QC_VERSIONS
         },
+    )
+
+
+def pop_rf_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "genomes",
+    data_set: str = "aou",
+) -> str:
+    """
+    Path to RF model used for inferring sample populations.
+
+    :param version: gnomAD Version.
+    :param test: Whether the RF assignment was from a test dataset.
+    :param data_type: Data type used in sample QC, e.g. "genomes".
+    :param data_set: Data set used to infer the population, e.g. "aou" or "hgdp_tgp".
+    :return: String path to sample pop RF model.
+    """
+    return f"{get_sample_qc_root(version, test, data_type, data_set)}/ancestry_inference/gnomad.{data_type}.{data_set}.v{version}.pop.RF_fit.pickle"
+
+
+def get_pop_ht(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "genomes",
+    data_set: str = "aou",
+):
+    """
+    Get the TableResource of samples' inferred population for the indicated gnomAD version.
+
+    :param version: Version of pop TableResource to return.
+    :param test: Whether to use the test version of the pop TableResource.
+    :param data_type: Data type used in sample QC, e.g. "genomes".
+    :param data_set: Data set used to infer the population, e.g. "aou" or "hgdp_tgp".
+    :return: TableResource of sample pops.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type, data_set)}/ancestry_inference/gnomad.{data_type}.{data_set}.v{version}.pop.ht"
+    )
+
+
+def get_pop_pr_ht(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "genomes",
+    data_set: str = "aou",
+):
+    """
+    Get the TableResource of ancestry inference precision and recall values.
+
+    :param version: Version of pop PR TableResource to return.
+    :param test: Whether to use the test version of the pop PR TableResource.
+    :param data_type: Data type used in sample QC, e.g. "genomes".
+    :param data_set: Data set used to infer the population, e.g. "aou" or "hgdp_tgp".
+    :return: TableResource of ancestry inference PR values.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type, data_set)}/ancestry_inference/gnomad.{data_type}.{data_set}.v{version}..pop_pr.ht"
     )
 
 
