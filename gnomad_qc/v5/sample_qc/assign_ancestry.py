@@ -106,8 +106,11 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
     # Load and filter metadata to HGDP or TGP samples
     meta_ht = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter((meta_ht.subsets.hgdp | meta_ht.subsets.tgp))
-    meta_ht = meta_ht.key_by(meta_ht.project_meta.sample_id)
 
+    # Some HGDP/TGP sample IDs had a prefix 'v3.1::' in gnomAD releases but removed
+    # in the subset release, we need to use the ones with the prefix to match gnomAD
+    # and AoU genomes
+    meta_ht = meta_ht.key_by(meta_ht.project_meta.sample_id)
     mt = mt.annotate_cols(new_s=meta_ht[mt.s].s).key_cols_by()
     mt = mt.transmute_cols(s=mt.new_s).key_cols_by("s")
 
