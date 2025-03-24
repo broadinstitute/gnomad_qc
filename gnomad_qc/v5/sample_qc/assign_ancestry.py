@@ -11,7 +11,7 @@ from hail.utils.misc import new_temp_file
 from sympy.plotting.intervalmath import interval
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, meta
 from gnomad_qc.v4.resources.sample_qc import get_joint_qc
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -93,6 +93,17 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
     """
     # Load the HGDP/TGP unrelated samples matrix table
     mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
+
+    # Load and filter metadata to HGDP or TGP samples
+    meta_ht = meta(data_type="genomes").ht()
+    meta_ht = meta_ht.filter((meta_ht.subsets.hgdp | meta_ht.subsets.tgp))
+
+    # Some HGDP/TGP sample IDs had a prefix 'v3.1::' in gnomAD releases but removed
+    # in the subset release, we need to use the ones with the prefix to match gnomAD
+    # and AoU genomes
+    meta_ht = meta_ht.key_by(meta_ht.project_meta.sample_id)
+    mt = mt.annotate_cols(new_s=meta_ht[mt.s].s).key_cols_by()
+    mt = mt.transmute_cols(s=mt.new_s).key_cols_by("s")
 
     # If test mode is enabled, restrict to chromosome 20
     if test:
