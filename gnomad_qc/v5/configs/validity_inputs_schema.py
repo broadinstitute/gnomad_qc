@@ -8,7 +8,7 @@ schema = {
             "type": "array",
             "items": {"type": "string"},
         },
-        "freq_names": {
+        "freq_fields": {
             "type": "object",
             "properties": {
                 "freq": {"type": "string"},
@@ -19,19 +19,17 @@ schema = {
             "required": [
                 "freq",
                 "freq_meta",
-                "freq_index_dict",
                 "freq_meta_sample_count",
             ],
             "additionalProperties": False,
         },
-        "faf_names": {
+        "faf_fields": {
             "type": "object",
             "properties": {
                 "faf": {"type": "string"},
                 "faf_meta": {"type": "string"},
                 "faf_index_dict": {"type": "string"},
             },
-            "required": ["faf", "faf_meta", "faf_index_dict"],
             "additionalProperties": False,
         },
         "freq_annotations_to_sum": {
@@ -46,9 +44,7 @@ schema = {
     },
     "required": [
         "missingness_threshold",
-        "struct_annotations_for_missingness",
-        "freq_names",
-        "faf_names",
+        "freq_fields",
         "freq_annotations_to_sum",
         "freq_sort_order",
         "nhomalt_metric",

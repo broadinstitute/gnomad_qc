@@ -75,19 +75,25 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     :return: None.
     """
     indexed_array_annotations = {
-        config["freq_names"]["freq"]: config["freq_names"]["freq_index_dict"],
-        config["faf_names"]["faf"]: config["faf_names"]["faf_index_dict"],
+        config["freq_fields"]["freq"]: config["freq_fields"]["freq_index_dict"],
     }
+
+    if config.get("faf_fields"):
+        indexed_array_annotations[config["faf_fields"]["faf"]] = config["faf_fields"][
+            "faf_index_dict"
+        ]
 
     # Check that all neccesaary fields are present in the Table.
     missing_fields = {}
 
     # Check that specified global annotations are present.
     global_fields = [i for i in indexed_array_annotations.values()] + [
-        config["faf_names"]["faf_meta"],
-        config["freq_names"]["freq_meta"],
-        config["freq_names"]["freq_meta_sample_count"],
+        config["freq_fields"]["freq_meta"],
+        config["freq_fields"]["freq_meta_sample_count"],
     ]
+
+    if config.get("faf_fields"):
+        global_fields.append(config["faf_fields"]["faf_meta"])
 
     missing_global_fields = [i for i in global_fields if i not in ht.globals]
     missing_fields["globals"] = missing_global_fields
@@ -100,15 +106,15 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["rows"] = missing_row_fields
 
     # Check that freq_annotations_to_sum values are present in the 'freq' struct.
-    freq_field_names = list(ht.freq.dtype.element_type)
+    freq_fields = list(ht.freq.dtype.element_type)
     freq_annotations = config["freq_annotations_to_sum"] + [config["nhomalt_metric"]]
-    missing_freq_fields = [i for i in freq_annotations if i not in freq_field_names]
+    missing_freq_fields = [i for i in freq_annotations if i not in freq_fields]
     missing_fields["missing_freq_fields"] = missing_freq_fields
 
     # Check that sort_order values are present as keys within freq_meta_expr.
     freq_meta_keys = set(
         key
-        for item in hl.eval(ht[config["freq_names"]["freq_meta"]])
+        for item in hl.eval(ht[config["freq_fields"]["freq_meta"]])
         for key in item.keys()
     )
     missing_sort_order_keys = [
@@ -556,16 +562,24 @@ def main(args):
             ht = test_ht.union(x_ht, y_ht)
 
         row_to_globals_check = {
-            config["freq_names"]["freq"]: [
-                config["freq_names"]["freq_index_dict"],
-                config["freq_names"]["freq_meta"],
-                config["freq_names"]["freq_meta_sample_count"],
-            ],
-            config["faf_names"]["faf"]: [
-                config["faf_names"]["faf_index_dict"],
-                config["faf_names"]["faf_meta"],
-            ],
+            config["freq_fields"]["freq"]: [
+                config["freq_fields"]["freq_meta"],
+                config["freq_fields"]["freq_meta_sample_count"],
+            ]
         }
+        if config["freq_fields"].get("freq_index_dict"):
+            row_to_globals_check[config["freq_fields"]["freq"]].append(
+                config["freq_fields"]["freq_index_dict"]
+            )
+
+        if config.get("faf_fields"):
+            row_to_globals_check[config["faf_fields"]["faf"]] = [
+                config["faf_fields"]["faf_meta"],
+            ]
+            if config["faf_fields"].get("faf_index_dict"):
+                row_to_globals_check[config["faf_fields"]["faf"]].append(
+                    config["faf_fields"]["faf_index_dict"]
+                )
 
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
@@ -581,9 +595,13 @@ def main(args):
         # Create row annotations for each element of the indexed arrays and their
         # structs.
         indexed_array_annotations = {
-            config["freq_names"]["freq"]: config["freq_names"]["freq_index_dict"],
-            config["faf_names"]["faf"]: config["faf_names"]["faf_index_dict"],
+            config["freq_fields"]["freq"]: config["freq_fields"]["freq_index_dict"],
         }
+
+        if config.get("faf_fields"):
+            indexed_array_annotations[config["faf_fields"]["faf"]] = config[
+                "faf_fields"
+            ]["faf_index_dict"]
 
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
@@ -595,7 +613,7 @@ def main(args):
             struct_annotations_for_missingness=config[
                 "struct_annotations_for_missingness"
             ],
-            freq_meta_expr=ht[config["freq_names"]["freq_meta"]],
+            freq_meta_expr=ht[config["freq_fields"]["freq_meta"]],
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
