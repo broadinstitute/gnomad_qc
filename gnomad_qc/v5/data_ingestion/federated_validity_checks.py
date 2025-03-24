@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 import hail as hl
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
+    check_global_and_row_annot_lengths,
     check_missingness_of_struct,
     check_raw_and_adj_callstats,
     check_sex_chr_metrics,
@@ -73,13 +74,27 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     :param config: JSON configuration for parameter inputs.
     :return: None.
     """
-    indexed_array_annotations = config["indexed_array_annotations"]
+    indexed_array_annotations = {
+        config["freq_fields"]["freq"]: config["freq_fields"]["freq_index_dict"],
+    }
+
+    if config.get("faf_fields"):
+        indexed_array_annotations[config["faf_fields"]["faf"]] = config["faf_fields"][
+            "faf_index_dict"
+        ]
 
     # Check that all neccesaary fields are present in the Table.
     missing_fields = {}
 
     # Check that specified global annotations are present.
-    global_fields = [i for i in indexed_array_annotations.values()]
+    global_fields = [i for i in indexed_array_annotations.values()] + [
+        config["freq_fields"]["freq_meta"],
+        config["freq_fields"]["freq_meta_sample_count"],
+    ]
+
+    if config.get("faf_fields"):
+        global_fields.append(config["faf_fields"]["faf_meta"])
+
     missing_global_fields = [i for i in global_fields if i not in ht.globals]
     missing_fields["globals"] = missing_global_fields
 
@@ -91,14 +106,16 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["rows"] = missing_row_fields
 
     # Check that freq_annotations_to_sum values are present in the 'freq' struct.
-    freq_field_names = list(ht.freq.dtype.element_type)
+    freq_fields = list(ht.freq.dtype.element_type)
     freq_annotations = config["freq_annotations_to_sum"] + [config["nhomalt_metric"]]
-    missing_freq_fields = [i for i in freq_annotations if i not in freq_field_names]
+    missing_freq_fields = [i for i in freq_annotations if i not in freq_fields]
     missing_fields["missing_freq_fields"] = missing_freq_fields
 
     # Check that sort_order values are present as keys within freq_meta_expr.
     freq_meta_keys = set(
-        key for item in hl.eval(eval(config["freq_meta_expr"])) for key in item.keys()
+        key
+        for item in hl.eval(ht[config["freq_fields"]["freq_meta"]])
+        for key in item.keys()
     )
     missing_sort_order_keys = [
         i for i in config["freq_sort_order"] if i not in freq_meta_keys
@@ -430,10 +447,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         {"sex": "XY", "group": "adj"},
     ]
 
+    faf_meta = [{"group": "adj"}, {"group": "raw"}]
+
+    freq_index_sample_count = [10, 20, 3, 4, 8]
+
     ht = ht.annotate_globals(
         freq_index_dict=freq_index_dict,
         faf_index_dict=faf_index_dict,
         freq_meta=freq_meta,
+        faf_meta=faf_meta,
+        freq_meta_sample_count=freq_index_sample_count,
     )
 
     # Add grpmax and fafmax annotations.
@@ -538,13 +561,50 @@ def main(args):
 
             ht = test_ht.union(x_ht, y_ht)
 
+        row_to_globals_check = {
+            config["freq_fields"]["freq"]: [
+                config["freq_fields"]["freq_meta"],
+                config["freq_fields"]["freq_meta_sample_count"],
+            ]
+        }
+        if config["freq_fields"].get("freq_index_dict"):
+            row_to_globals_check[config["freq_fields"]["freq"]].append(
+                config["freq_fields"]["freq_index_dict"]
+            )
+
+        if config.get("faf_fields"):
+            row_to_globals_check[config["faf_fields"]["faf"]] = [
+                config["faf_fields"]["faf_meta"],
+            ]
+            if config["faf_fields"].get("faf_index_dict"):
+                row_to_globals_check[config["faf_fields"]["faf"]].append(
+                    config["faf_fields"]["faf_index_dict"]
+                )
+
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
+        logger.info("Check that row and global annotations lengths match...")
+        check_global_and_row_annot_lengths(
+            t=ht,
+            row_to_globals_check=row_to_globals_check,
+            check_all_rows=not args.check_only_first_rows_to_globals,
+        )
+
         # Create row annotations for each element of the indexed arrays and their
         # structs.
-        annotations = unfurl_array_annotations(ht, config["indexed_array_annotations"])
+        indexed_array_annotations = {
+            config["freq_fields"]["freq"]: config["freq_fields"]["freq_index_dict"],
+        }
+
+        if config.get("faf_fields"):
+            indexed_array_annotations[config["faf_fields"]["faf"]] = config[
+                "faf_fields"
+            ]["faf_index_dict"]
+
+        logger.info("Unfurl array annotations...")
+        annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
         validate_federated_data(
@@ -553,7 +613,7 @@ def main(args):
             struct_annotations_for_missingness=config[
                 "struct_annotations_for_missingness"
             ],
-            freq_meta_expr=eval(config["freq_meta_expr"]),
+            freq_meta_expr=ht[config["freq_fields"]["freq_meta"]],
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
@@ -603,6 +663,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--exclude-xnonpar-y-in-logtest",
         help="Exclude chrX non-pseudoautosomal region and chrY variants when using the logtest data.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--check-only-first-rows-to-globals",
+        help="Check only the first row when checking that the lengths of row annotations match the lengths of associated global annotations.",
         action="store_true",
     )
     parser.add_argument(

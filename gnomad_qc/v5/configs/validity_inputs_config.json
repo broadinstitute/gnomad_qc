@@ -1,9 +1,9 @@
 {
     "missingness_threshold": 0.5,
-    "indexed_array_annotations": {"faf": "faf_index_dict", "freq": "freq_index_dict"},
-    "struct_annotations_for_missingness": ["grpmax", "fafmax"],
-    "freq_meta_expr": "ht.freq_meta",
+    "struct_annotations_for_missingness": [],
+    "freq_fields": {"freq": "freq", "freq_meta": "freq_meta", "freq_index_dict": "freq_index_dict", "freq_meta_sample_count": "freq_meta_sample_count"},
+    "faf_fields": {},
     "freq_annotations_to_sum": ["AC", "AN", "homozygote_count"],
     "freq_sort_order": ["gen_anc", "sex", "group"],
-    "nhomalt_metric": "homozygote_count",
+    "nhomalt_metric": "homozygote_count"
 }
