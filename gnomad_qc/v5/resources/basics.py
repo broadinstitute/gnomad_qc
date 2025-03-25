@@ -21,7 +21,7 @@ def qc_temp_prefix(
     :return: Path to bucket with temporary QC data.
     """
     if environment == "rwb":
-        env_bucket = WORKSPACE_BUCKET
+        env_bucket = f"{WORKSPACE_BUCKET}/tmp"
     elif environment == "dataproc":
         env_bucket = "gnomad-tmp"
     else:
