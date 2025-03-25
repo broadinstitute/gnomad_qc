@@ -9,7 +9,7 @@ from gnomad_qc.v5.resources.constants import (
 
 _project_meta_versions = {
     "5.0": TableResource(
-        path=f"{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.project_meta.ht"
+        path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.project_meta.ht"
     )
 }
 
