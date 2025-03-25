@@ -2,7 +2,7 @@
 Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata.
 
 NOTE:
-Use the util_functions.ipynb notebook with function restart_kernel_with_gnomad_package
+Use the util_functions.ipynb notebook with function restart_kernel_with_gnomad_packages
 to clone the gnomad_qc repository, update the gnomAD package, and restart the kernel.If
 this is not done, the gnomad_qc imports will fail below.
 """
@@ -26,7 +26,7 @@ pm.execute_notebook(  # noqa
     "utils_restart_notebook_output.ipynb",
     parameters={
         "GNOMAD_QC_BRANCH": "main",
-        "GNOMAD_METHODS": "main",
+        "GNOMAD_METHODS_BRANCH": "main",
     },
 )
 # Restart the kernel -- this needs to be run here, in the open notebook.
@@ -157,7 +157,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                         "project_mean_depth": "mean_coverage",
                         "project_bases_over_20x_coverage": "genome_coverage",
                         # TODO: Do we want dragen estimates or verifybamid? They show
-                        # the two metrics correlate in the QC report.all
+                        # the two metrics correlate in the QC report
                         "project_contamination_freemix": "verify_bam_id2_contamination",
                         # TODO: Check within hard filters if there is a difference --
                         # annotate back on during outlier detection.
@@ -211,10 +211,10 @@ def select_only_final_fields(
     Filter metadata inputs to include only relevant fields since not all inputs have all
     final fields.
 
-    :param ht: Input Hail Table with metadata
-    :param project: Project identifier (e.g., "gnomad", "aou")
-    :param data_type: Data type ("genomes" or "exomes")
-    :return: Filtered Hail Table containing only fields required for the final schema
+    :param ht: Input Hail Table with metadata.
+    :param project: Project identifier (e.g., "gnomad", "aou").
+    :param data_type: Data type ("genomes" or "exomes").
+    :return: Filtered Hail Table containing only fields required for the final schema.
     """
     # gnomAD v4 genome metadata has some samples with age_alt, which is the mean age of
     # the age_bin field. This creates a single age field.

@@ -19,7 +19,7 @@ def restart_kernel_with_gnomad_packages(
     directory="/home/jupyter/packages/",
 ) -> None:
     """
-    Clone the gnomad_qcrepository, update the gnomAD package, and restart the kernel.
+    Clone the gnomad_qc repository, update the gnomAD package, and restart the kernel.
 
     :param qc_branch: Branch of the gnomad_qc repository to clone, defaults to None.
     :param methods_branch: Branch of the gnomad_methods repository to clone, defaults to None.
@@ -37,11 +37,11 @@ def restart_kernel_with_gnomad_packages(
         """
         Clone a git repository.
 
-        :param repo: Broad git repository name
-        :param branch: Feature branch, defaults to None and thus main
-        :param secondary_name: Secondary name of the repository, defaults to None
-        :param directory: Package directory, defaults to "/home/jupyter/packages/"
-        :param install_reqs: Install requirements, defaults to False
+        :param repo: Broad git repository name.
+        :param branch: Feature branch, defaults to None and thus main.
+        :param secondary_name: Secondary name of the repository, defaults to None.
+        :param directory: Package directory, defaults to "/home/jupyter/packages/".
+        :param install_reqs: Install requirements, defaults to False.
         """
         clone_command = [
             "git",
@@ -60,7 +60,7 @@ def restart_kernel_with_gnomad_packages(
 
         # The way we import the gnomad packages is by adding the package to the python
         # path, e.g. from gnomad import sample_qc, so we need to move the secondary name
-        # argument into the package directory or well need import with the syntax
+        # argument into the package directory or we would need to import with the syntax
         # from gnomad_methods.gnomad import sample_qc which is not what we want given
         # the way the gnomad package is structured. Using rsync allows us to move the
         # package to the package directory multiple times on the same cluster.
@@ -87,7 +87,7 @@ def restart_kernel_with_gnomad_packages(
     )
 
     # Put installed packages first in the python path. This is necessary as we cannot
-    # overwrite or delete the preinstalled gnomad package
+    # overwrite or delete the preinstalled gnomad package.
     sys.path.insert(0, "/home/jupyter/packages")
 
     # Restart the kernel.
