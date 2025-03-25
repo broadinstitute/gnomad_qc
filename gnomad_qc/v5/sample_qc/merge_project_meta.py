@@ -7,14 +7,6 @@ to clone the gnomad_qc repository, update the gnomAD package, and restart the ke
 this is not done, the gnomad_qc imports will fail below.
 """
 
-import logging
-import os
-from functools import reduce
-from itertools import combinations
-from typing import Dict, Set
-
-import hail as hl
-import pandas as pd
 import papermill as pm
 from IPython.display import Javascript, display
 
@@ -25,12 +17,21 @@ pm.execute_notebook(  # noqa
     "utils_restart_kernel_with_gnomad_packages.ipynb",
     "utils_restart_notebook_output.ipynb",
     parameters={
-        "GNOMAD_QC_BRANCH": "main",
+        "GNOMAD_QC_BRANCH": "mw/merge_project_meta",
         "GNOMAD_METHODS_BRANCH": "main",
     },
 )
 # Restart the kernel -- this needs to be run here, in the open notebook.
 display(Javascript("Jupyter.notebook.kernel.restart()"))  # noqa
+
+import logging
+import os
+from functools import reduce
+from itertools import combinations
+from typing import Dict, Set
+
+import hail as hl
+import pandas as pd
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
 from gnomad_qc.v5.resources.basics import get_checkpoint_path
