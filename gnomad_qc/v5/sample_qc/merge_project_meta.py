@@ -15,10 +15,25 @@ from typing import Dict, Set
 
 import hail as hl
 import pandas as pd
+import papermill as pm
+from IPython.display import Javascript, display
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
 from gnomad_qc.v5.resources.basics import get_checkpoint_path
 from gnomad_qc.v5.resources.meta import project_meta
+
+# This block runs the gnomad repo clones. Change the branch parameters to clone
+# your feature branch then uncomment and run in the notebook.
+pm.execute_notebook(  # noqa
+    "utils_restart_kernel_with_gnomad_packages.ipynb",
+    "utils_restart_notebook_output.ipynb",
+    parameters={
+        "GNOMAD_QC_BRANCH": "main",
+        "GNOMAD_METHODS": "main",
+    },
+)
+# Restart the kernel -- this needs to be run here, in the open notebook.
+display(Javascript("Jupyter.notebook.kernel.restart()"))  # noqa
 
 hl.default_reference(new_default_reference="GRCh38")
 
