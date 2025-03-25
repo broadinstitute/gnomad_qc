@@ -686,7 +686,7 @@ def main(args):
             indexed_array_annotations[config["faf_fields"]["faf"]] = config[
                 "faf_fields"
             ]["faf_index_dict"]
-            
+
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)

@@ -7,5 +7,5 @@
     "freq_sort_order": ["subset", "gen_anc", "sex", "group"],
     "nhomalt_metric": "homozygote_count",
     "subsets": [""],
-    "variant_filter_field": "AS_VQSR",
+    "variant_filter_field": ""
 }
