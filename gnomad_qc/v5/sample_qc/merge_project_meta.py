@@ -368,7 +368,8 @@ def main():
         logger.info("Updating the %s metadata to the final schema...", project)
         project_ht = update_ht_to_final_schema(project_ht)
         project_ht = project_ht.checkpoint(
-            get_checkpoint_path(f"{project}_meta", mt=False), overwrite=True
+            get_checkpoint_path(f"{project}_meta", mt=False, environment="rwb"),
+            overwrite=True,
         )
         meta_hts[project] = project_ht
 
