@@ -23,9 +23,9 @@ from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
+    get_aou_hq_dense_mt,
     get_pop_ht,
     get_pop_pr_ht,
-    get_union_dense_mt,
     hgdp_tgp_unrelateds_without_outliers_mt,
     pop_rf_path,
 )
@@ -139,6 +139,7 @@ def assign_pops_by_hgdp_tgp(
     pcs: List[int] = list(range(1, 21)),
     missing_label: str = "remaining",
     test: bool = False,
+    data_set: str = "hgdp_tgp",
 ) -> Tuple[hl.Table, Any]:
     """
     Assign global ancestry labels to gnomAD v4 genomes samples based on HGDP/TGP labels.
@@ -153,15 +154,16 @@ def assign_pops_by_hgdp_tgp(
     :param pcs: List of PCs to use for RF predictions. Default is [1, 2, ..., 20].
     :param missing_label: Label to assign to samples with missing predictions. Default is "remaining".
     :param test: Whether to run in test mode (restricting to chr20).
+    :param data_set: Data set used in sample QC, e.g. "hgdp_tgp".
     :return: Tuple of the Table with population assignments and the RF model.
     """
     pop_field = "pop"
 
-    pca_loadings_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
-    pca_scores_ht = ancestry_pca_scores(data_set="hgdp_tgp").ht()
+    pca_loadings_ht = ancestry_pca_loadings(data_set=data_set).ht()
+    pca_scores_ht = ancestry_pca_scores(data_set=data_set).ht()
     meta_ht = meta(data_type="genomes").ht()
 
-    mt = get_union_dense_mt(test=test).mt()
+    mt = get_aou_hq_dense_mt(test=test).mt()
 
     # Collect sample IDs from the HGDP/TGP dataset
     hgdp_tgp_samples = set(pca_scores_ht.s.collect())
@@ -305,14 +307,16 @@ def generate_dense_mt(variants_ht: hl.Table, test: bool = False) -> hl.MatrixTab
         variants_ht = hl.filter_intervals(
             variants_ht, [hl.parse_locus_interval("chr20")]
         )
-    intervals_ht = make_interval_table(variants_ht)
+
+    variants_ht = variants_ht.repartition(115376, shuffle=True).checkpoint(
+        new_temp_file("variants", "ht")
+    )
 
     vds = get_gnomad_v4_genomes_vds(
         split=True,
         annotate_meta=True,
         remove_hard_filtered_samples=True,
         filter_variant_ht=variants_ht,
-        filter_intervals=intervals_ht,
         entries_to_keep=["GT", "GQ", "DP", "AD"],
     )
 
@@ -330,6 +334,7 @@ def main(args):
 
     test = args.test
     overwrite = args.overwrite
+    data_set = args.data_set
 
     if args.run_hgdp_tgp_pca:
         logger.info("Running PCA on HGDP/TGP unrelated samples...")
@@ -343,14 +348,16 @@ def main(args):
 
     if args.generate_dense_mt:
         logger.info("Merging variants from AoU, HGDP/TGP and gnomAD v4 joint_qc_mt...")
-        hgdp_tgp_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
+        # hgdp_tgp_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
         aou_ht = ancestry_pca_loadings(data_set="aou").ht()
 
-        variants_ht = union_variant_tables(hgdp_tgp_ht, aou_ht, test).checkpoint(
-            new_temp_file("merged_variants", "ht")
+        # variants_ht = union_variant_tables(hgdp_tgp_ht, aou_ht, test).checkpoint(
+        #     new_temp_file("merged_variants", "ht")
+        # )
+        mt = generate_dense_mt(aou_ht, test=test)
+        mt.naive_coalesce(1000).write(
+            get_aou_hq_dense_mt(test).path, overwrite=overwrite
         )
-        mt = generate_dense_mt(variants_ht, test=test)
-        mt.write(get_union_dense_mt(test).path, overwrite=overwrite)
 
     if args.assign_pops_by_hgdp_tgp:
         pop_pcs = args.pop_pcs
@@ -360,13 +367,14 @@ def main(args):
             args.min_pop_prob,
             pcs=pop_pcs,
             test=test,
+            data_set=data_set,
         )
 
         logger.info("Writing pop ht...")
-        pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+        pop_ht.write(get_pop_ht(test=test, data_set=data_set).path, overwrite=overwrite)
 
         with hl.hadoop_open(
-            pop_rf_path(test=test),
+            pop_rf_path(test=test, data_set=data_set),
             "wb",
         ) as out:
             pickle.dump(pops_rf_model, out)
@@ -410,6 +418,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--assign-pops-by-hgdp-tgp",
         help="Assign global ancestry labels to samples using HGDP/TGP labels.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--data-set",
+        help="Data set used in sample QC, e.g. 'hgdp_tgp' or 'aou'.",
+        default="hgdp_tgp",
     )
     parser.add_argument(
         "--min-pop-prob",

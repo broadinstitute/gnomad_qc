@@ -220,18 +220,18 @@ hgdp_tgp_unrelateds_without_outliers_mt = MatrixTableResource(
 )
 
 
-def get_union_dense_mt(test: bool = False) -> VersionedMatrixTableResource:
+def get_aou_hq_dense_mt(test: bool = False) -> VersionedMatrixTableResource:
     """
-    Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
+    Return the dense MatrixTableResource containing high-quality sites based on AoU data.
 
     :param test: Whether to use a tmp path for a test resource.
-    :return: MatrixTableResource of QC sites.
+    :return: Dense MatrixTableResource of high-quality sites based on AoU data.
     """
     return VersionedMatrixTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: MatrixTableResource(
-                f"{get_sample_qc_root(version, test, data_set='union')}/qc_mt/gnomad.union.v{version}.dense.mt"
+                f"{get_sample_qc_root(version, test, data_set='gnomad')}/qc_mt/gnomad.genomes.v{version}.aou_hq_sites.dense.mt"
             )
             for version in SAMPLE_QC_VERSIONS
         },
