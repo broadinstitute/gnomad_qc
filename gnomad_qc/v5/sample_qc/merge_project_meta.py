@@ -17,7 +17,7 @@ pm.execute_notebook(  # noqa
     "utils_restart_kernel_with_gnomad_packages.ipynb",
     "utils_restart_notebook_output.ipynb",
     parameters={
-        "GNOMAD_QC_BRANCH": "mw/merge_project_meta",
+        "GNOMAD_QC_BRANCH": "mw/v5_merge_meta",
         "GNOMAD_METHODS_BRANCH": "main",
     },
 )
@@ -35,7 +35,7 @@ import pandas as pd
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
 from gnomad_qc.v5.resources.basics import get_checkpoint_path
-from gnomad_qc.v5.resources.meta import project_meta
+from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
 
 hl.default_reference(new_default_reference="GRCh38")
 
@@ -48,21 +48,21 @@ AOU_AUXILIARY_DATA_BUCKET = (
 )
 FINAL_SCHEMA_FIELDS_AND_TYPES = {
     "s": hl.tstr,
-    "project_age": hl.tint,
-    "project_contamination_freemix": hl.tfloat,
-    "project_contamination_charr": hl.tfloat,
-    "project_chimeras_rate": hl.tfloat,
-    "project_bases_over_20x_coverage": hl.tfloat,
-    "project_mean_depth": hl.tfloat,
-    "project_median_insert_size": hl.tfloat,
-    "project_callrate": hl.tfloat,
-    "project_hard_filters": hl.tset(hl.tstr),
-    "project_sex_karyotype": hl.tstr,
-    "project_gen_anc": hl.tstr,
-    "project_outlier_filters": hl.tset(hl.tstr),
-    "project_releasable": hl.tbool,
-    "project_release": hl.tstr,
-    "project_sample_source": hl.tstr,
+    "age": hl.tint,
+    "ontamination_freemix": hl.tfloat,
+    "contamination_charr": hl.tfloat,
+    "chimeras_rate": hl.tfloat,
+    "bases_over_20x_coverage": hl.tfloat,
+    "mean_depth": hl.tfloat,
+    "median_insert_size": hl.tfloat,
+    "callrate": hl.tfloat,
+    "hard_filters": hl.tset(hl.tstr),
+    "sex_karyotype": hl.tstr,
+    "gen_anc": hl.tstr,
+    "outlier_filters": hl.tset(hl.tstr),
+    "releasable": hl.tbool,
+    "release": hl.tstr,
+    "sample_source": hl.tstr,
     "data_type": hl.tstr,
     "project": hl.tstr,
 }
@@ -89,26 +89,22 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "ht",
                     "field_mappings": {
                         "s": "s",
-                        "project_age": "project_meta.age",
-                        "project_contamination_freemix": "bam_metrics.contam_rate",
-                        "project_contamination_charr": (
+                        "age": "project_meta.age",
+                        "contamination_freemix": "bam_metrics.contam_rate",
+                        "contamination_charr": (
                             "hard_filter_metrics.mean_AB_snp_biallelic"
                         ),
-                        "project_chimeras_rate": "bam_metrics.chimeras_rate",
-                        "project_bases_over_20x_coverage": (
-                            "bam_metrics.target_bases_20x_rate"
-                        ),
-                        "project_mean_depth": "hard_filter_metrics.chr20_mean_dp",
-                        "project_median_insert_size": "bam_metrics.median_insert_size",
-                        "project_callrate": "hard_filter_metrics.sample_qc_mt_callrate",
-                        "project_hard_filters": "sample_filters.hard_filters",
-                        "project_sex_karyotype": "sex_imputation.sex_karyotype",
-                        "project_gen_anc": "population_inference.pop",
-                        "project_qc_metrics_filters": (
-                            "sample_filters.qc_metrics_filters"
-                        ),
-                        "project_releasable": "project_meta.releasable",
-                        "project_release": "release",
+                        "chimeras_rate": "bam_metrics.chimeras_rate",
+                        "bases_over_20x_coverage": "bam_metrics.target_bases_20x_rate",
+                        "mean_depth": "hard_filter_metrics.chr20_mean_dp",
+                        "median_insert_size": "bam_metrics.median_insert_size",
+                        "callrate": "hard_filter_metrics.sample_qc_mt_callrate",
+                        "hard_filters": "sample_filters.hard_filters",
+                        "sex_karyotype": "sex_imputation.sex_karyotype",
+                        "gen_anc": "population_inference.pop",
+                        "outlier_filters": "sample_filters.qc_metrics_filters",
+                        "releasable": "project_meta.releasable",
+                        "release": "release",
                     },
                 }
             ],
@@ -118,23 +114,23 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "ht",
                     "field_mappings": {
                         "s": "s",
-                        "project_age": "project_meta.age",
+                        "age": "project_meta.age",
                         # NOTE: Some samples have age_alt, which is the mean age of the
                         # age_bin field.
-                        "project_age_alt": "project_meta.age_alt",
+                        "age_alt": "project_meta.age_alt",
                         # TODO: Did we recalculate charr on v4 genomes? Determine/look
                         # into cost and then decide if we want to recalculate.
-                        "project_contamination_freemix": "bam_metrics.freemix",
-                        "project_chimeras_rate": "bam_metrics.pct_chimeras",
-                        "project_bases_over_20x_coverage": "bam_metrics.pct_bases_20x",
-                        "project_mean_depth": "sex_imputation.chr20_mean_dp",
-                        "project_median_insert_size": "bam_metrics.median_insert_size",
-                        "project_hard_filters": "sample_filters.hard_filters",
-                        "project_sex_karyotype": "sex_imputation.sex_karyotype",
-                        "project_gen_anc": "population_inference.pop",
-                        "project_outlier_filters": "sample_filters.qc_metrics_filters",
-                        "project_releasable": "project_meta.releasable",
-                        "project_release": "release",
+                        "contamination_freemix": "bam_metrics.freemix",
+                        "chimeras_rate": "bam_metrics.pct_chimeras",
+                        "bases_over_20x_coverage": "bam_metrics.pct_bases_20x",
+                        "mean_depth": "sex_imputation.chr20_mean_dp",
+                        "median_insert_size": "bam_metrics.median_insert_size",
+                        "hard_filters": "sample_filters.hard_filters",
+                        "sex_karyotype": "sex_imputation.sex_karyotype",
+                        "gen_anc": "population_inference.pop",
+                        "outlier_filters": "sample_filters.qc_metrics_filters",
+                        "releasable": "project_meta.releasable",
+                        "release": "release",
                     },
                 }
             ],
@@ -146,7 +142,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "tsv",
                     "field_mappings": {
                         "s": "research_id",
-                        "project_gen_anc": "ancestry_pred",
+                        "gen_anc": "ancestry_pred",
                     },
                 },
                 {
@@ -154,15 +150,15 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "tsv",
                     "field_mappings": {
                         "s": "research_id",
-                        "project_sex_karyotype": "dragen_sex_ploidy",
-                        "project_mean_depth": "mean_coverage",
-                        "project_bases_over_20x_coverage": "genome_coverage",
+                        "sex_karyotype": "dragen_sex_ploidy",
+                        "mean_depth": "mean_coverage",
+                        "bases_over_20x_coverage": "genome_coverage",
                         # TODO: Do we want dragen estimates or verifybamid? They show
                         # the two metrics correlate in the QC report
-                        "project_contamination_freemix": "verify_bam_id2_contamination",
+                        "contamination_freemix": "verify_bam_id2_contamination",
                         # TODO: Check within hard filters if there is a difference --
                         # annotate back on during outlier detection.
-                        "project_sample_source": "sample_source",
+                        "sample_source": "sample_source",
                     },
                 },
                 {
@@ -170,7 +166,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "tsv",
                     "field_mappings": {
                         "s": "s",
-                        "project_outlier_filters": "qc_metrics_filters",
+                        "outlier_filters": "qc_metrics_filters",
                     },
                 },
                 {
@@ -178,7 +174,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "ht",
                     "field_mappings": {
                         "s": "research_id",
-                        "project_age": "age",
+                        "age": "age",
                     },
                 },
             ],
@@ -220,11 +216,7 @@ def select_only_final_fields(
     # gnomAD v4 genome metadata has some samples with age_alt, which is the mean age of
     # the age_bin field. This creates a single age field.
     if project == "gnomad" and data_type == "genomes":
-        ht = ht.annotate(
-            project_age=hl.if_else(
-                hl.is_defined(ht.project_age), ht.project_age, ht.project_age_alt
-            )
-        )
+        ht = ht.annotate(age=hl.if_else(hl.is_defined(ht.age), ht.age, ht.age_alt))
 
     present_fields = {
         field for field in ht.row if field in FINAL_SCHEMA_FIELDS_AND_TYPES.keys()
@@ -261,22 +253,26 @@ def update_ht_to_final_schema(ht: hl.Table) -> hl.Table:
     return ht.select(*final_fields)
 
 
-def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> Set[str]:
+def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> hl.Table:
     """
     Get sample ID collisions between projects.
 
     :param meta_hts: Project metadata tables.
-    :return: List of sample IDs that exist in more than one project.
+    :return: Table of sample IDs that exist in more than one project.
     """
     # Get all possible pairs of projects
     project_pairs = list(combinations(meta_hts.keys(), 2))
-    sample_collisions = hl.empty_set(hl.tstr)
+
+    sample_collisions = hl.Table.parallelize([], schema=hl.tstruct(s=hl.tstr), key="s")
 
     for p1, p2 in project_pairs:
         logger.info(f"project 1 is {p1}, project 2 is {p2}")
         collisions_ht = meta_hts[p1].filter(hl.is_defined(meta_hts[p2][meta_hts[p1].s]))
-        collisions = collisions_ht.aggregate(hl.agg.collect_as_set(collisions_ht.s))
-        sample_collisions = sample_collisions.union(collisions)
+        sample_collisions = sample_collisions.union(collisions_ht.select())
+
+    sample_collisions = sample_collisions.checkpoint(
+        sample_id_collisions.path, overwrite=True
+    )
 
     return sample_collisions
 
@@ -284,7 +280,7 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> Set[str]:
 def add_project_prefix_to_sample_collisions(
     ht: hl.Table,
     project: str,
-    sample_collisions: Set[str],
+    sample_collisions: hl.Table,
     sample_id_field: str = "s",
 ) -> hl.Table:
     """
@@ -292,14 +288,15 @@ def add_project_prefix_to_sample_collisions(
 
     :param ht: Table to add project prefix to sample IDs.
     :param project: Project name.
-    :param sample_collisions: Set of sample IDs that exist in multiple projects.
+    :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :return: Table with project prefix added to sample IDs.
     """
+    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
     ht = ht.key_by()
     ht = ht.annotate(
         **{
             f"{sample_id_field}": hl.if_else(
-                hl.literal(sample_collisions).contains(ht["s"]),
+                hl.literal(collisions).contains(ht["s"]),
                 hl.delimit([ht.project, ht[sample_id_field]], "_"),
                 ht[sample_id_field],
             )
@@ -371,11 +368,11 @@ def main():
             get_checkpoint_path(f"{project}_meta", mt=False, environment="rwb"),
             overwrite=True,
         )
-        meta_hts[project] = project_ht
+        meta_hts[project] = project_ht.key_by("s")
 
     sample_collisions = get_sample_collisions(meta_hts)
     logger.info(
-        f"Samples that appear in more than one project: {hl.eval(sample_collisions)}"
+        f"Samples that appear in more than one project: {hl.eval(sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s)))}"
     )
 
     for project in get_meta_config().keys():

@@ -16,3 +16,7 @@ _project_meta_versions = {
 project_meta = VersionedTableResource(
     CURRENT_PROJECT_META_VERSION, _project_meta_versions
 )
+
+sample_id_collisions = TableResource(
+    path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.sample_id_collisions.ht"
+)

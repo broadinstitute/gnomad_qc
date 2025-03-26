@@ -21,8 +21,8 @@ def restart_kernel_with_gnomad_packages(
     """
     Clone the gnomad_qc repository, update the gnomAD package, and restart the kernel.
 
-    :param qc_branch: Branch of the gnomad_qc repository to clone, defaults to None.
-    :param methods_branch: Branch of the gnomad_methods repository to clone, defaults to None.
+    :param qc_branch: Branch of the gnomad_qc repository to clone, defaults to None which loads main.
+    :param methods_branch: Branch of the gnomad_methods repository to clone, defaults to None which loads main.
     :param directory: Package directory, defaults to "/home/jupyter/packages/".
     """
     subprocess.run(["mkdir", directory])
