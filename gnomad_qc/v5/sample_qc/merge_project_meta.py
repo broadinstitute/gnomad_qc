@@ -3,7 +3,7 @@ Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata.
 
 NOTE:
 Use the util_functions.ipynb notebook with function restart_kernel_with_gnomad_packages
-to clone the gnomad_qc repository, update the gnomAD package, and restart the kernel.If
+to clone the gnomad_qc repository, update the gnomAD package, and restart the kernel. If
 this is not done, the gnomad_qc imports will fail below.
 """
 
@@ -270,10 +270,6 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> hl.Table:
         collisions_ht = meta_hts[p1].filter(hl.is_defined(meta_hts[p2][meta_hts[p1].s]))
         sample_collisions = sample_collisions.union(collisions_ht.select())
 
-    sample_collisions = sample_collisions.checkpoint(
-        sample_id_collisions.path, overwrite=True
-    )
-
     return sample_collisions
 
 
@@ -370,7 +366,11 @@ def main():
         )
         meta_hts[project] = project_ht.key_by("s")
 
+    logger.info("Determining if there are any sample ID collisions between projects...")
     sample_collisions = get_sample_collisions(meta_hts)
+    sample_collisions = sample_collisions.checkpoint(
+        sample_id_collisions.path, overwrite=True
+    )
     logger.info(
         f"Samples that appear in more than one project: {hl.eval(sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s)))}"
     )
