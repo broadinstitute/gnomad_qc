@@ -49,7 +49,7 @@ AOU_AUXILIARY_DATA_BUCKET = (
 FINAL_SCHEMA_FIELDS_AND_TYPES = {
     "s": hl.tstr,
     "age": hl.tint,
-    "ontamination_freemix": hl.tfloat,
+    "contamination_freemix": hl.tfloat,
     "contamination_charr": hl.tfloat,
     "chimeras_rate": hl.tfloat,
     "bases_over_20x_coverage": hl.tfloat,
