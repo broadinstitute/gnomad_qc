@@ -12,6 +12,7 @@ from gnomad.resources.resource_utils import (
 from gnomad_qc.v5.resources.constants import (
     CURRENT_SAMPLE_QC_VERSION,
     SAMPLE_QC_VERSIONS,
+    WORKSPACE_BUCKET,
 )
 
 
@@ -63,6 +64,19 @@ def _get_ancestry_pca_ht_path(
     return f"{get_sample_qc_root(version, test, data_type, data_set)}/ancestry_inference/gnomad.{data_type}.{data_set}.v{version}.pca_{part}.ht"
 
 
+def _get_aou_rwb_ancestry_pca_ht_path(
+    part: str,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "genomes",
+    data_set: str = "aou",
+) -> str:
+    if test:
+        return f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc/ancestry_inference/aou.{data_type}.{data_set}.v{version}.pca_{part}.ht"
+    else:
+        return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/ancestry_inference/aou.{data_type}.{data_set}.v{version}.pca_{part}.ht"
+
+
 def ancestry_pca_loadings(
     test: bool = False,
     data_type: str = "genomes",
@@ -106,21 +120,38 @@ def ancestry_pca_scores(
     :param data_set: Data set used in sample QC, e.g. "aou" or "hgdp_tgp".
     :return: Ancestry PCA loadings
     """
-    return VersionedTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
-        {
-            version: TableResource(
-                _get_ancestry_pca_ht_path(
-                    "scores",
-                    version,
-                    test,
-                    data_type,
-                    data_set,
+    if data_set == "aou":
+        return VersionedTableResource(
+            CURRENT_SAMPLE_QC_VERSION,
+            {
+                version: TableResource(
+                    _get_rwb_ancestry_pca_ht_path(
+                        "scores",
+                        version,
+                        test,
+                        data_type,
+                        data_set,
+                    )
                 )
-            )
-            for version in SAMPLE_QC_VERSIONS
-        },
-    )
+                for version in SAMPLE_QC_VERSIONS
+            },
+        )
+    else:
+        return VersionedTableResource(
+            CURRENT_SAMPLE_QC_VERSION,
+            {
+                version: TableResource(
+                    _get_ancestry_pca_ht_path(
+                        "scores",
+                        version,
+                        test,
+                        data_type,
+                        data_set,
+                    )
+                )
+                for version in SAMPLE_QC_VERSIONS
+            },
+        )
 
 
 def ancestry_pca_eigenvalues(
