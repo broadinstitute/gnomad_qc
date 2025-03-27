@@ -2,41 +2,41 @@
 
 import argparse
 import logging
-from typing import List
+import pickle
+from typing import Any, List, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import (
+    assign_population_pcs,
+    pc_project,
+    run_pca_with_relateds,
+)
+from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
-from sympy.plotting.intervalmath import interval
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.release import hgdp_tgp_subset
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, meta
+from gnomad_qc.v4.resources.sample_qc import (
+    hgdp_tgp_pop_outliers,  # this list is the same as gs://gcp-public-data--gnomad/release/3.1/secondary_analyses/hgdp_1kg_v2/pca/pca_outliers.txt
+)
 from gnomad_qc.v4.resources.sample_qc import get_joint_qc
+from gnomad_qc.v4.sample_qc.assign_ancestry import compute_precision_recall
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
-    get_union_dense_mt,
+    get_dense_mt_for_ancestry_inference,
+    get_pop_ht,
+    get_pop_pr_ht,
     hgdp_tgp_unrelateds_without_outliers_mt,
+    pop_rf_path,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
-
-# Function 1: get HGDP/TGP PC loadings
-
-# Function 2: merge variants from AoU, HGDP/TGP and gnomAD v4 joint_qc_mt
-
-# Function 3: make a dense MT with the variants (including entry fields: GT, GQ, DP,
-# AD), will be (488412, 149623) for gnomAD v4 genomes
-
-# get_predetermined_qc(version="3.1", test=False).mt() have (259482, 149625),
-# fewer samples because it removed the hard-filtered samples. The update meta for v4
-# genomes will 149623 samples.
-# TODO: Do we need to get annotations like AF, site_callrate,
-#  and site_inbreeding_coefficient?
 
 
 def write_pca_results(
@@ -80,36 +80,50 @@ def write_pca_results(
 
 def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
     """
-    Run PCA on HGDP/TGP unrelated samples and export the results.
+    Run PCA on unrelated HGDP/TGP samples using high-quality variants identified by AoU.
 
-    ..note::
-
-       This is getting the same results as in this notebook:
+    Note:
+       The list of unrelated samples without outliers is based on:
        https://nbviewer.org/github/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb
 
-    :param test: Whether to run in test mode (restricting to chr20).
-    :param overwrite: Whether to overwrite existing PCA results.
-    :param n_pcs: Number of PCs to compute. Default is 20.
+    :param test: If True, restrict to chr20 for testing purposes.
+    :param overwrite: If True, overwrite existing PCA output.
+    :param n_pcs: Number of principal components to compute. Default is 20.
     """
-    # Load the HGDP/TGP unrelated samples matrix table
-    mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
+    mt = hgdp_tgp_subset(dense=True).mt()
 
-    # Load and filter metadata to HGDP or TGP samples
-    meta_ht = meta(data_type="genomes").ht()
-    meta_ht = meta_ht.filter((meta_ht.subsets.hgdp | meta_ht.subsets.tgp))
+    # Get the list of HGDP/TGP unrelated samples without outliers
+    unrelated_mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
+    unrelated_samples_ht = unrelated_mt.cols()
+
+    # Get the list of high quality variants that AoU identified and used in their PCA
+    aou_loadings_ht = ancestry_pca_loadings(data_set="aou").ht()
+
+    # Filter to unrelated samples
+    mt = mt.filter_cols(hl.is_defined(unrelated_samples_ht[mt.col_key]))
+
+    # Filter to AoU/HGDP/TGP high quality variants
+    mt = mt.semi_join_rows(aou_loadings_ht.select())
 
     # Some HGDP/TGP sample IDs had a prefix 'v3.1::' in gnomAD releases but removed
     # in the subset release, we need to use the ones with the prefix to match gnomAD
     # and AoU genomes
+    meta_ht = meta(data_type="genomes").ht()
+    meta_ht = meta_ht.filter((meta_ht.subsets.hgdp | meta_ht.subsets.tgp))
     meta_ht = meta_ht.key_by(meta_ht.project_meta.sample_id)
     mt = mt.annotate_cols(new_s=meta_ht[mt.s].s).key_cols_by()
     mt = mt.transmute_cols(s=mt.new_s).key_cols_by("s")
 
     # If test mode is enabled, restrict to chromosome 20
     if test:
+        logger.info("Filtering to chr20 for testing purposes...")
         mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
 
-    # Perform PCA
+    mt = mt.checkpoint(new_temp_file("hgdp_tgp_unrelated_3400", "mt"))
+
+    logger.info(
+        "Running PCA on HGDP/TGP samples after filtering to unrelateds and HQ variants."
+    )
     pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca_with_relateds(
         mt, n_pcs=n_pcs, autosomes_only=False
     )
@@ -123,6 +137,112 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
         overwrite=overwrite,
         test=test,
     )
+
+
+def project_to_hgdp_tgp_pcs(
+    mt: hl.MatrixTable, is_gnomad: bool = True, test: bool = False
+) -> hl.Table:
+    """
+    Project gnomAD v4 genomes or AoU genomes onto HGDP/TGP PCA loadings.
+
+    :param mt: MatrixTable containing the samples to project.
+    :param is_gnomad: Whether the input MT is gnomAD v4 genomes. Default is True.
+    :param test: If True, run a test on chr20 only. Default is False.
+    :return: Table with the projections.
+    """
+    pca_loadings_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
+    pca_scores_ht = ancestry_pca_scores(data_set="hgdp_tgp").ht()
+
+    # Collect sample IDs from the HGDP/TGP dataset
+    hgdp_tgp_samples = set(pca_scores_ht.s.collect())
+
+    if test:
+        logger.info("Filtering to chr20 for testing purposes...")
+        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
+
+    # Filter out samples present in the HGDP/TGP dataset
+    mt = mt.filter_cols(~hl.literal(hgdp_tgp_samples).contains(mt.s))
+    if is_gnomad:
+        mt = mt.filter_cols(mt.meta.release)
+        mt = filter_to_adj(mt)
+
+    logger.info(
+        "Proecting %d genome samples with HGDP/TGP PCA loadings", mt.count_cols()
+    )
+    projections_ht = pc_project(mt, pca_loadings_ht)
+    pca_scores_ht = pca_scores_ht.union(projections_ht)
+
+    return pca_scores_ht
+
+
+def assign_pops_by_hgdp_tgp(
+    pca_scores_ht: hl.Table,
+    min_prob: float,
+    pcs: List[int] = list(range(1, 21)),
+    missing_label: str = "remaining",
+) -> Tuple[hl.Table, Any]:
+    """
+    Assign global ancestry labels to gnomAD v4 genomes samples based on HGDP/TGP labels.
+
+    ..note::
+
+       This function will first project the gnomAD v4 genomes samples onto the
+       HGDP/TGP PCA loadings and then assign global ancestry labels using a random
+       forest model trained on the HGDP/TGP samples.
+
+    :param mt: MatrixTable containing the samples to assign populations to.
+    :param pca_scores_ht: Table with the PCA scores for the samples.
+    :param min_prob: Minimum probability for a sample to be assigned a population.
+    :param pcs: List of PCs to use for RF predictions. Default is [1, 2, ..., 20].
+    :param missing_label: Label to assign to samples with missing predictions. Default is "remaining".
+    :param adj_filters: Whether to filter to adj variants. Default is True.
+    :param data_set: Data set used in sample QC, e.g. "hgdp_tgp".
+    :return: Tuple of the Table with population assignments and the RF model.
+    """
+    pop_field = "pop"
+
+    # Get the list of HGDP/TGP samples that are outliers
+    hgdp_tgp_outliers = hgdp_tgp_pop_outliers.ht().s.collect()
+
+    meta_ht = meta(data_type="genomes").ht()
+    meta_ht = meta_ht.annotate(
+        training_pop=hl.if_else(
+            (meta_ht.subsets.hgdp | meta_ht.subsets.tgp)
+            & ~hl.literal(hgdp_tgp_outliers).contains(meta_ht.s)
+            & (meta_ht.project_meta.project_pop != "oth"),
+            meta_ht.project_meta.project_pop,
+            hl.missing(hl.tstr),
+        )
+    )
+
+    pca_scores_ht = pca_scores_ht.annotate(
+        training_pop=meta_ht[pca_scores_ht.key].training_pop
+    ).checkpoint(new_temp_file("pca_scores", "ht"))
+
+    count_training_labels = pca_scores_ht.aggregate(
+        hl.agg.counter(pca_scores_ht.training_pop)
+    )
+    logger.info(
+        "%s HGDP/TGP samples are used to train the Random Forest Model",
+        count_training_labels,
+    )
+
+    # Run the pop RF.
+    pop_ht, pops_rf_model = assign_population_pcs(
+        pca_scores_ht,
+        pc_cols=pcs,
+        known_col="training_pop",
+        output_col=pop_field,
+        min_prob=min_prob,
+        missing_label=missing_label,
+    )
+
+    pop_ht = pop_ht.annotate_globals(
+        min_prob=min_prob,
+        pcs=pcs,
+    )
+
+    return pop_ht, pops_rf_model
 
 
 def get_aou_pc_loadings_ht(tsv_path: str) -> hl.Table:
@@ -217,14 +337,16 @@ def generate_dense_mt(variants_ht: hl.Table, test: bool = False) -> hl.MatrixTab
         variants_ht = hl.filter_intervals(
             variants_ht, [hl.parse_locus_interval("chr20")]
         )
-    intervals_ht = make_interval_table(variants_ht)
+
+    variants_ht = variants_ht.repartition(115376, shuffle=True).checkpoint(
+        new_temp_file("variants", "ht")
+    )
 
     vds = get_gnomad_v4_genomes_vds(
         split=True,
         annotate_meta=True,
         remove_hard_filtered_samples=True,
         filter_variant_ht=variants_ht,
-        filter_intervals=intervals_ht,
         entries_to_keep=["GT", "GQ", "DP", "AD"],
     )
 
@@ -242,6 +364,7 @@ def main(args):
 
     test = args.test
     overwrite = args.overwrite
+    data_set = args.data_set
 
     if args.run_hgdp_tgp_pca:
         logger.info("Running PCA on HGDP/TGP unrelated samples...")
@@ -254,15 +377,46 @@ def main(args):
         aou_ht.write(ancestry_pca_loadings(data_set="aou").path, overwrite=overwrite)
 
     if args.generate_dense_mt:
-        logger.info("Merging variants from AoU, HGDP/TGP and gnomAD v4 joint_qc_mt...")
-        hgdp_tgp_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
-        aou_ht = ancestry_pca_loadings(data_set="aou").ht()
-
-        variants_ht = union_variant_tables(hgdp_tgp_ht, aou_ht, test).checkpoint(
-            new_temp_file("merged_variants", "ht")
+        logger.info(
+            "Densifying gnomAD v4 genomes VDS using AoU/HGDP/TGP high-quality sites..."
         )
-        mt = generate_dense_mt(variants_ht, test=test)
-        mt.write(get_union_dense_mt(test).path, overwrite=overwrite)
+
+        aou_ht = ancestry_pca_loadings(data_set="aou").ht()
+        mt = generate_dense_mt(aou_ht, test=test)
+
+        mt.naive_coalesce(1000).write(
+            get_dense_mt_for_ancestry_inference(test).path, overwrite=overwrite
+        )
+
+    if args.assign_pops_by_hgdp_tgp:
+        pop_pcs = args.pop_pcs
+        pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
+        logger.info("Using following PCs: %s", pop_pcs)
+        mt = get_dense_mt_for_ancestry_inference().mt()
+        pca_scores_ht = project_to_hgdp_tgp_pcs(mt).checkpoint(
+            ancestry_pca_scores(test=test, data_set=data_set).path,
+            overwrite=overwrite,
+        )
+        pop_ht, pops_rf_model = assign_pops_by_hgdp_tgp(
+            pca_scores_ht=pca_scores_ht,
+            min_prob=args.min_pop_prob,
+            pcs=pop_pcs,
+        )
+
+        logger.info("Writing pop ht...")
+        pop_ht.write(get_pop_ht(test=test, data_set=data_set).path, overwrite=overwrite)
+
+        with hl.hadoop_open(
+            pop_rf_path(test=test, data_set=data_set),
+            "wb",
+        ) as out:
+            pickle.dump(pops_rf_model, out)
+
+    if args.compute_precision_recall:
+        ht = compute_precision_recall(
+            get_pop_ht(test=test).ht(), num_pr_points=args.number_pr_points
+        )
+        ht.write(get_pop_pr_ht(test=test).path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -291,6 +445,52 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--generate-dense-mt",
         help="Make a dense MT with the variants.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--assign-pops-by-hgdp-tgp",
+        help="Assign global ancestry labels to samples using HGDP/TGP labels.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--data-set",
+        help="Data set used in sample QC, e.g. 'hgdp_tgp' or 'aou'.",
+        default="hgdp_tgp",
+    )
+    parser.add_argument(
+        "--min-pop-prob",
+        help="Minimum probability for a sample to be assigned a population.",
+        type=float,
+        default=0.75,
+    )
+    parser.add_argument(
+        "--pop-pcs",
+        help=(
+            "List of PCs to use for ancestry assignment. The values provided should be"
+            " 1-based. If a single integer is passed, the script assumes this"
+            " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
+            " 1,2,3,4,5,and 6. Defaults to 20 PCs."
+        ),
+        default=[20],
+        type=int,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--number-pr-points",
+        help=(
+            "Number of min prob cutoffs to compute PR metrics for. e.g. 100 will "
+            "compute PR metrics for min prob of 0 to 1 in increments of 0.01. Default "
+            "is 100."
+        ),
+        default=100,
+        type=int,
+    )
+    parser.add_argument(
+        "--compute-precision-recall",
+        help=(
+            "Compute precision and recall for the RF model using evaluation samples. "
+            "This is computed for all evaluation samples as well as per population."
+        ),
         action="store_true",
     )
     return parser
