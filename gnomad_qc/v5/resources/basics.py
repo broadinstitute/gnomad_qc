@@ -50,20 +50,6 @@ def get_checkpoint_path(
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'
 
 
-def get_checkpoint_path(
-    name: str, version: str = CURRENT_VERSION, mt: bool = False
-) -> str:
-    """
-    Create a checkpoint path for Table or MatrixTable.
-
-    :param str name: Name of intermediate Table/MatrixTable
-    :param version: Version of annotation path to return
-    :param bool mt: Whether path is for a MatrixTable, default is False
-    :return: Output checkpoint path
-    """
-    return f'{qc_temp_prefix(version)}{name}.{"mt" if mt else "ht"}'
-
-
 def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
     """
     Create a path for Hail log files.
