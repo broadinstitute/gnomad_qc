@@ -220,9 +220,11 @@ hgdp_tgp_unrelateds_without_outliers_mt = MatrixTableResource(
 )
 
 
-def get_aou_hq_dense_mt(test: bool = False) -> VersionedMatrixTableResource:
+def get_dense_mt_for_ancestry_inference(
+    test: bool = False,
+) -> VersionedMatrixTableResource:
     """
-    Return the dense MatrixTableResource containing high-quality sites based on AoU data.
+    Return a versioned dense MatrixTableResource containing gnomAD genome samples used for ancestry inference, filtered to high-quality variants based on the AoU/HGDP/TGP.
 
     :param test: Whether to use a tmp path for a test resource.
     :return: Dense MatrixTableResource of high-quality sites based on AoU data.
