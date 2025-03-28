@@ -134,7 +134,7 @@ def ancestry_pca_scores(
             CURRENT_SAMPLE_QC_VERSION,
             {
                 version: TableResource(
-                    _get_rwb_ancestry_pca_ht_path(
+                    _get_aou_rwb_ancestry_pca_ht_path(
                         "scores",
                         version,
                         test,
