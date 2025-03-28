@@ -61,7 +61,7 @@ FINAL_SCHEMA_FIELDS_AND_TYPES = {
     "gen_anc": hl.tstr,
     "outlier_filters": hl.tset(hl.tstr),
     "releasable": hl.tbool,
-    "release": hl.tstr,
+    "release": hl.tbool,
     "sample_source": hl.tstr,
     "data_type": hl.tstr,
     "project": hl.tstr,
@@ -138,14 +138,6 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
         "aou": {
             "genomes": [
                 {
-                    "path": f"{AOU_AUXILIARY_DATA_BUCKET}/ancestry/ancestry_preds.tsv",
-                    "file_format": "tsv",
-                    "field_mappings": {
-                        "s": "research_id",
-                        "gen_anc": "ancestry_pred",
-                    },
-                },
-                {
                     "path": f"{AOU_AUXILIARY_DATA_BUCKET}/qc/genomic_metrics.tsv",
                     "file_format": "tsv",
                     "field_mappings": {
@@ -162,7 +154,15 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     },
                 },
                 {
-                    "path": f"{AOU_AUXILIARY_DATA_BUCKET}/qc/flagged_samples.tsv",
+                    "path": f"{AOU_AUXILIARY_DATA_BUCKET}/ancestry/ancestry_preds.tsv",
+                    "file_format": "tsv",
+                    "field_mappings": {
+                        "s": "research_id",
+                        "gen_anc": "ancestry_pred",
+                    },
+                },
+                {
+                    "path": f"{AOU_AUXILIARY_DATA_BUCKET}/qc/all_samples.tsv",
                     "file_format": "tsv",
                     "field_mappings": {
                         "s": "s",
@@ -341,8 +341,10 @@ def main():
                 logger.info(
                     "Combining the %s metadata files from %s...", data_type, project
                 )
+                # The left join ensures we keep only AoU samples with srWGS data but
+                # requires all samples to be in the first table, which they are.
                 data_type_ht = reduce(
-                    (lambda joined_ht, ht: joined_ht.join(ht, how="outer")),
+                    (lambda joined_ht, ht: joined_ht.join(ht, how="left")),
                     data_type_hts,
                 )
             else:
