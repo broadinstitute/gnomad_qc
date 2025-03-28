@@ -71,10 +71,19 @@ def _get_aou_rwb_ancestry_pca_ht_path(
     data_type: str = "genomes",
     data_set: str = "aou",
 ) -> str:
+    """
+    Get path to files related to AoU ancestry PCA.
+
+    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores).
+    :param version: Version of sample QC path to return.
+    :param data_type: Data type used in sample QC, e.g. "genomes".
+    :param data_set: Data set used in sample QC, e.g. "aou"
+    :return: Path to requested ancestry PCA file.
+    """
     if test:
-        return f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc/ancestry_inference/aou.{data_type}.{data_set}.v{version}.pca_{part}.ht"
+        return f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc/ancestry_inference/{data_set}.{data_type}.v{version}.pca_{part}.ht"
     else:
-        return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/ancestry_inference/aou.{data_type}.{data_set}.v{version}.pca_{part}.ht"
+        return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/ancestry_inference/{data_set}.{data_type}.{data_set}.v{version}.pca_{part}.ht"
 
 
 def ancestry_pca_loadings(
