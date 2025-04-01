@@ -209,6 +209,7 @@ def assign_pops_by_hgdp_tgp(
         training_pop=hl.if_else(
             (meta_ht.subsets.hgdp | meta_ht.subsets.tgp)
             & ~hl.literal(hgdp_tgp_outliers).contains(meta_ht.s)
+            & ~meta_ht.sample_filters.hard_filtered
             & (meta_ht.project_meta.project_pop != "oth"),
             meta_ht.project_meta.project_pop,
             hl.missing(hl.tstr),
