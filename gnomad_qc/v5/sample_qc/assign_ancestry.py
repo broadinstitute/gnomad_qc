@@ -163,11 +163,11 @@ def project_to_hgdp_tgp_pcs(
     # Filter out samples present in the HGDP/TGP dataset
     mt = mt.filter_cols(~hl.literal(hgdp_tgp_samples).contains(mt.s))
     if is_gnomad:
-        mt = mt.filter_cols(mt.meta.release)
+        # mt = mt.filter_cols(mt.meta.release)
         mt = filter_to_adj(mt)
 
     logger.info(
-        "Proecting %d genome samples with HGDP/TGP PCA loadings", mt.count_cols()
+        "Projecting %d genome samples with HGDP/TGP PCA loadings", mt.count_cols()
     )
     projections_ht = pc_project(mt, pca_loadings_ht)
     pca_scores_ht = pca_scores_ht.union(projections_ht)
@@ -220,7 +220,7 @@ def assign_pops_by_hgdp_tgp(
     ).checkpoint(new_temp_file("pca_scores", "ht"))
 
     count_training_labels = pca_scores_ht.aggregate(
-        hl.agg.counter(pca_scores_ht.training_pop)
+        hl.agg.count_where(~hl.is_missing(pca_scores_ht.training_pop))
     )
     logger.info(
         "%s HGDP/TGP samples are used to train the Random Forest Model",
