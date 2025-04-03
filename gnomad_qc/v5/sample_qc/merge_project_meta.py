@@ -17,7 +17,7 @@ pm.execute_notebook(  # noqa
     "utils_restart_kernel_with_gnomad_packages.ipynb",
     "utils_restart_notebook_output.ipynb",
     parameters={
-        "GNOMAD_QC_BRANCH": "mw/v5_project_meta_update",
+        "GNOMAD_QC_BRANCH": "main",
         "GNOMAD_METHODS_BRANCH": "main",
     },
 )
