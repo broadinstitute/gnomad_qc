@@ -11,6 +11,7 @@ hailctl dataproc submit cluster_name generate_ld_data.py --test --overwrite --hg
 import argparse
 import sys
 
+from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.slack import slack_notifications
 from hail.linalg import BlockMatrix
 from hail.utils import new_temp_file
@@ -18,10 +19,15 @@ from hail.utils import new_temp_file
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.release import hgdp_tgp_subset
 from gnomad_qc.v4.resources import *
-from gnomad_qc.v4.resources.ld_resources import *
 
-COMMON_FREQ = 0.005
-RARE_FREQ = 0.0005
+EXPECTED_CONTIGS = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
+
+from typing import Optional
+
+from gnomad.resources.grch38.gnomad import CURRENT_EXOME_RELEASE, CURRENT_GENOME_RELEASE
+
+# Importing paths and Common+Rare Freqs
+from gnomad_qc.v4.resources.ld_resources import *
 
 
 def get_pop_counters(mt, label) -> dict:
@@ -45,12 +51,32 @@ def get_pop_counters(mt, label) -> dict:
     return cut_data
 
 
+def _filter_call_stats(
+    ht,
+    freq: float = COMMON_FREQ,
+    ac_cutoff: int = 1,
+) -> hl.Table:
+    """
+    Filter ht to relevant variants. Must have field popfreq. This code is used for filtering ht and mt
+    """
+
+    ht = ht.filter(
+        (ht.pop_freq.AC > ac_cutoff)
+        & (ht.pop_freq.AN - ht.pop_freq.AC > 1)
+        & (ht.pop_freq.AF > freq)
+        & ~((ht.pop_freq.AF == 0.5) & (ht.pop_freq.homozygote_count == 0))
+        #  the above filter is needed for "het-only" monomorphic sites
+        #  as otherwise variance is 0, and so, row_correlation errors out
+    )
+    return ht
+
+
 def _filter_ht_for_ld(
     ht,
+    freq: float = COMMON_FREQ,
     label="gen_anc",
     pop="eas",
-    common_only: bool = True,
-    re_call_stats: bool = False,
+    ac_cutoff: int = 1,
 ) -> hl.MatrixTable:
     """
     Filter HT to only variants appropriate for LD analyses for a given genetic ancestry.
@@ -62,17 +88,12 @@ def _filter_ht_for_ld(
     :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
     :return: MT filtered to appropriate variants and samples
     """
-
-    frequency = COMMON_FREQ if common_only else RARE_FREQ
-    # At the moment, ld_matrix OOMs above ~30M variants, so filtering all populations to 0.05% to cut down on variants
-    # All work on standard machines except AFR
-    # Also creating `common_only` ones for most practical uses (above 0.5%)
-    # pop_mt = mt.filter_cols(mt.meta.population_inference.pop == pop) # irrelevant for HT
     meta_index = (
         hl.enumerate(ht.freq_meta)
         .find(lambda f: (f[1].get(label) == pop))
         .collect()[0][0]
     )
+
     # No support for SV datasets in gnomAD v4 Production team code
     # Have to re-do callstats when noted frequencies don't 100% reflect what you are calculating on
     # This is for test sets or 1kg_tdpg
@@ -81,21 +102,18 @@ def _filter_ht_for_ld(
     pop_freq = ht.freq[meta_index]
     ht = ht.annotate(pop_freq=pop_freq)
 
-    ht = ht.filter(
-        (ht.pop_freq.AC > 1)
-        & (ht.pop_freq.AN - ht.pop_freq.AC > 1)
-        & (ht.pop_freq.AF > frequency)
-        &
-        #  the following filter is needed for "het-only" monomorphic sites
-        #  as otherwise variance is 0, and so, row_correlation errors out
-        ~((ht.pop_freq.AF == 0.5) & (ht.pop_freq.homozygote_count == 0))
-    )
-
-    return ht
+    return _filter_call_stats(ht, freq=freq, ac_cutoff=ac_cutoff)
 
 
 def filter_mt_for_ld(
-    mt, label, pop, common_only: bool = True, re_call_stats: bool = False
+    mt,
+    label,
+    pop,
+    freq: float = COMMON_FREQ,
+    re_call_stats: bool = False,
+    ld_pruned_path: str = None,
+    ac_cutoff: int = 1,
+    call_rate_cutoff: float = 0.8,
 ) -> hl.MatrixTable:
     """
     Filter MT to only variants and samples appropriate for LD analyses
@@ -107,17 +125,30 @@ def filter_mt_for_ld(
     :param re_call_stats: Bool to re-calculate callstats. Needed for subsets and when sampling cols.
     :return: MT filtered to appropriate variants and samples
     """
+    logger.info(
+        f"With label: {label} and pop: {pop} and freq: {freq} and ac_cutoff: {ac_cutoff} and call_rate_cutoff: {call_rate_cutoff}"
+    )
 
-    frequency = COMMON_FREQ if common_only else RARE_FREQ
-    # At the moment, ld_matrix OOMs above ~30M variants, so filtering all populations to 0.05% to cut down on variants
-    # All work on standard machines except AFR
-    # Also creating `common_only` ones for most practical uses (above 0.5%)
     pop_mt = mt.filter_cols(mt.meta.population_inference.pop == pop)
     meta_index = (
         hl.enumerate(pop_mt.freq_meta)
         .find(lambda f: (f[1].get(label) == pop))
         .collect()[0][0]
     )
+
+    pop_count_int = pop_mt.count_cols()
+    logger.info(f"Count1: {pop_mt.count()}")
+
+    # If passed, read in pruned variants and remove them from our analyses
+    # Do this here to save having to compute on them
+    # ... and nothing here is sample-level, so we can count out
+    if ld_pruned_path:
+        logger.info("Filtering out LD pruned variants...")
+        ld_ht = hl.read_table(ld_pruned_path)
+        pop_mt = pop_mt.filter_rows(~hl.is_defined(ld_ht[pop_mt.row_key]))
+
+    logger.info(f"Count2: {pop_mt.count()}")
+
     # No support for SV datasets in gnomAD v4 Production team code
     # Have to re-do callstats when noted frequencies don't 100% reflect what you are calculating on
     # This is for test sets or 1kg_tdpg
@@ -133,21 +164,21 @@ def filter_mt_for_ld(
         pop_freq = call_stats_bind
         pop_mt = pop_mt.annotate_rows(pop_freq=pop_freq)
 
+        logger.info(f"Count_recallstats: {pop_mt.count()}")
+
     else:
-        pop_mt = pop_mt.filter_rows((hl.len(pop_mt.filters) == 0))
         pop_freq = pop_mt.freq[meta_index]
         pop_mt = pop_mt.annotate_rows(pop_freq=pop_freq)
+        logger.info(f"Count_not_recall_stats: {pop_mt.count()}")
+
+    # Annotate callrate to check
+    pop_mt = pop_mt.annotate_rows(callrate=pop_mt.pop_freq.AN / (pop_count_int * 2))
 
     pop_mt = pop_mt.filter_rows((hl.len(pop_mt.filters) == 0))
-    pop_mt = pop_mt.filter_rows(
-        (pop_mt.pop_freq.AC > 1)
-        & (pop_mt.pop_freq.AN - pop_mt.pop_freq.AC > 1)
-        & (pop_mt.pop_freq.AF > frequency)
-        &
-        #  the following filter is needed for "het-only" monomorphic sites
-        #  as otherwise variance is 0, and so, row_correlation errors out
-        ~((pop_mt.pop_freq.AF == 0.5) & (pop_mt.pop_freq.homozygote_count == 0))
-    )
+    pop_ht_rows = _filter_call_stats(pop_mt.rows(), freq=freq, ac_cutoff=ac_cutoff)
+    pop_mt = pop_mt.filter_rows(hl.is_defined(pop_ht_rows[pop_mt.row_key]))
+
+    logger.info(f"Count_final: {pop_mt.count()}")
 
     return pop_mt
 
@@ -157,11 +188,16 @@ def generate_ld_pruned_set(
     pop_data: dict,
     data_type: str,
     r2: str = "0.2",
+    freq: float = COMMON_FREQ,
     radius: int = 1000000,
     overwrite: bool = False,
     re_call_stats: bool = False,
     version: str = None,
     test: bool = False,
+    ld_contig: str = None,
+    ac_cutoff: int = 1,
+    call_rate_cutoff: float = 0.8,
+    adj: bool = False,
 ) -> None:
     """
     Generate and write set of variants uncorrelated with eachother. Wrapper for hl.ld_prune()
@@ -180,24 +216,36 @@ def generate_ld_pruned_set(
     for label, pops in dict(pop_data).items():
         for pop in pops:
             logger.info(f"Filtering for {pop}...")
-            pop_mt = filter_mt_for_ld(mt, label, pop, re_call_stats)
+            pop_mt = filter_mt_for_ld(
+                mt=mt,
+                label=label,
+                pop=pop,
+                freq=freq,
+                re_call_stats=re_call_stats,
+                ld_pruned_path=None,
+                ac_cutoff=ac_cutoff,
+                call_rate_cutoff=call_rate_cutoff,
+            )
             logger.info(f"Count after filter_mt_for_ld() : {pop_mt.count()}")
-
-            # now we checkpoint
-            # pop_mt = pop_mt.checkpoint(
-            #     ld_mt_checkpoint_path(
-            #         data_type="genomes", pops=pop, version=version, test=test
-            #     ),
-            #     overwrite=overwrite,
-            # )
 
             pruned_ht = hl.ld_prune(pop_mt.GT, r2=float(r2), bp_window_size=radius)
 
-            logger.info(f"Count after hl.ld_prune() : {pruned_ht.count()}")
+            logger.info(f"Count of pruned from hl.ld_prune() : {pruned_ht.count()}")
 
             ht = pop_mt.rows().select("pop_freq")
             ht = ht.filter(hl.is_defined(pruned_ht[ht.key]))
-            ld_path = ld_pruned_path(data_type, pop, r2, version=version, test=test)
+
+            # Write out pruned set
+            ld_path = ld_pruned_path(
+                data_type,
+                pop,
+                r2,
+                version=version,
+                test=test,
+                freq=freq,
+                ld_contig=ld_contig,
+                adj=adj,
+            )
             logger.info(f"Writing pruned ht for {pop} to {ld_path} ...")
             ht.write(ld_path, overwrite)
 
@@ -207,12 +255,17 @@ def generate_ld_matrix(
     pop_data,
     data_type,
     radius: int = 1000000,
-    common_only: bool = True,
+    freq: float = COMMON_FREQ,
     adj: bool = False,
     overwrite: bool = False,
     re_call_stats: bool = False,
     version: str = None,
     test: bool = False,
+    ld_contig: str = None,
+    r2: str = "0.2",
+    custom_suffix: str = None,
+    ac_cutoff: int = 1,
+    call_rate_cutoff: float = 0.8,
 ) -> None:
     """
     Generate and write matrix of LD correlcations as Hail BlockMatrix using hl.ld_matrix. Read by generate_ld_scores_from_ld_matrix()
@@ -234,16 +287,36 @@ def generate_ld_matrix(
     for label, pops in dict(pop_data).items():
         for pop in pops:
 
-            pop_mt = filter_mt_for_ld(mt, label, pop, common_only, re_call_stats)
+            pop_mt = filter_mt_for_ld(
+                mt,
+                label,
+                pop,
+                freq=freq,
+                re_call_stats=re_call_stats,
+                ac_cutoff=ac_cutoff,
+                call_rate_cutoff=call_rate_cutoff,
+                ld_pruned_path=ld_pruned_path(
+                    data_type,
+                    pop,
+                    r2=r2,
+                    version=version,
+                    test=test,
+                    freq=freq,
+                    ld_contig=ld_contig,
+                    adj=adj,
+                ),
+            )
 
             pop_mt.rows().select("pop_freq").add_index().write(
                 ld_index_path(
                     data_type=data_type,
                     pop=pop,
-                    common_only=common_only,
+                    freq=freq,
                     adj=adj,
                     version=version,
                     test=test,
+                    ld_contig=ld_contig,
+                    custom_suffix=custom_suffix,
                 ),
                 overwrite,
             )
@@ -254,10 +327,12 @@ def generate_ld_matrix(
                 ld_matrix_path(
                     data_type,
                     pop,
-                    common_only=common_only,
+                    freq=freq,
                     adj=adj,
                     version=version,
                     test=test,
+                    ld_contig=ld_contig,
+                    custom_suffix=custom_suffix,
                 ),
                 overwrite,
             )
@@ -266,14 +341,15 @@ def generate_ld_matrix(
 def generate_ld_scores_from_ld_matrix(
     pop_data,
     data_type,
-    min_frequency=0.01,
+    freq: float = COMMON_FREQ,
     call_rate_cutoff=0.8,
-    common_only: bool = True,
     adj: bool = False,
     radius: int = 1000000,
     overwrite: bool = False,
     version: str = None,
     test: bool = False,
+    ld_contig: str = None,
+    custom_suffix: str = None,
 ) -> None:
     """
     Generate LD scores from Hail BlockMatrix written by generate_ld_scores_from_ld_matrix().
@@ -293,11 +369,9 @@ def generate_ld_scores_from_ld_matrix(
     # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
     # mins to compute LD scores per population (~$150 total)
 
-    freq_cutoff = COMMON_FREQ if common_only else RARE_FREQ
-
-    logger.info(
-        f'Min frequency of {min_frequency} is {">=" if min_frequency >= freq_cutoff else "<"} cutoff of {freq_cutoff}...'
-    )
+    # logger.info(
+    #     f'Min frequency of {min_frequency} is {">=" if min_frequency >= freq_cutoff else "<"} cutoff of {freq_cutoff}...'
+    # )
 
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
@@ -305,15 +379,20 @@ def generate_ld_scores_from_ld_matrix(
                 ld_index_path(
                     data_type=data_type,
                     pop=pop,
-                    common_only=common_only,
+                    freq=freq,
                     adj=adj,
                     version=version,
                     test=test,
+                    ld_contig=ld_contig,
+                    custom_suffix=custom_suffix,
                 )
             )
+
+            ht = ht.annotate(callrate=(ht.pop_freq.AN / n) / 2)
+
             ht = ht.filter(
-                (ht.pop_freq.AF >= min_frequency)
-                & (ht.pop_freq.AF <= 1 - min_frequency)
+                (ht.pop_freq.AF >= freq)
+                & (ht.pop_freq.AF <= 1 - freq)
                 & (ht.pop_freq.AN / n >= 2 * call_rate_cutoff)
             ).add_index(name="new_idx")
 
@@ -323,16 +402,28 @@ def generate_ld_scores_from_ld_matrix(
                 ld_matrix_path(
                     data_type=data_type,
                     pop=pop,
-                    common_only=common_only,
+                    freq=freq,
                     adj=adj,
                     version=version,
                     test=test,
+                    ld_contig=ld_contig,
+                    custom_suffix=custom_suffix,
                 )
             )
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
-            out_name = ld_scores_path(data_type, pop, adj, version=version, test=test)
+            out_name = ld_scores_path(
+                data_type,
+                pop,
+                adj,
+                version=version,
+                test=test,
+                freq=freq,
+                ld_contig=ld_contig,
+                custom_suffix=custom_suffix,
+                call_rate_cutoff=call_rate_cutoff,
+            )
             compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite)
 
 
@@ -365,6 +456,152 @@ def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite) -> No
     ht.filter(hl.is_defined(ht.ld_score)).write(out_name, overwrite)
 
 
+def _ld_test_mt(
+    mt: hl.MatrixTable,
+    mt_contig: bool = False,
+    sample_cols: bool = False,
+) -> hl.MatrixTable:
+    if mt_contig:
+        logger.info("Filtering to chr22...")
+        mt = mt.filter_rows(mt.locus.contig == "chr22")
+    if sample_cols:
+        logger.info("Downsampling all cols by 0.1...")
+        mt = mt.sample_cols(0.1)
+
+    return mt
+
+
+def generate_ld_mt(
+    ld_mt_path: str,
+    is_hgdp: bool = False,
+    test: bool = False,
+    pop: str = "eas",
+    adj: bool = False,
+    freq: float = COMMON_FREQ,
+    mt_contig: str = None,
+    do_v2_samples: bool = False,
+    hapmap: bool = False,
+    overwrite=False,
+) -> hl.MatrixTable:
+
+    if is_hgdp:
+        logger.info("Reading in HGDP_TGP Subset...")
+        mt = hgdp_tgp_subset(dense=True, public=True).mt()
+        mt = mt.annotate_globals(
+            freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
+        )
+        mt = mt.annotate_rows(freq=mt.gnomad_freq)
+        mt = mt.annotate_cols(
+            meta=hl.struct(
+                population_inference=hl.struct(pop=mt.gnomad_population_inference.pop)
+            )
+        )
+
+        # Filter to appropriate genetic ancestry and frequency b efore checkpointing
+        mt = mt.filter_cols(mt.meta.population_inference.pop == pop)
+        mt = mt.filter_rows(mt.freq[mt.freq_index_dict[f"gnomad_{pop}"]].AF > freq)
+
+        if mt_contig:
+            mt = mt.filter_rows(mt.locus.contig == mt_contig)
+
+        if test:
+            mt = _ld_test_mt(mt, filter_contig=True, sample_cols=True)
+
+        logger.info(
+            f"Checkpointing HGDP_TGP Subset on {mt_contig if mt_contig else 'full'}"
+        )
+        mt = mt.checkpoint(ld_mt_path, overwrite=overwrite)
+
+    else:
+        logger.info("Reading in gnomAD release HT and VDS...")
+
+        ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
+        ht_filter = _filter_ht_for_ld(ht_release, freq=freq, label="gen_anc", pop=pop)
+        if mt_contig:
+            ht_filter = ht_filter.filter(ht_filter.locus.contig == mt_contig)
+
+        ht_filter = ht_filter.select("freq", "filters").checkpoint(new_temp_file())
+
+        filter_samples_ht = meta(version="4.0", data_type="genomes").ht()
+        filter_samples_ht = filter_samples_ht.filter(
+            filter_samples_ht.population_inference.pop == pop
+        )
+
+        if do_v2_samples:
+            logger.info("Filtering to only v2 samples...")
+            filter_samples_ht = filter_samples_ht.filter(
+                (filter_samples_ht.project_meta.v2_pop == pop)
+                & (filter_samples_ht.project_meta.v2_release)
+                & (filter_samples_ht.project_meta.v2_high_quality)
+            )
+
+        naive_coalesce_partitions = 9800 if mt_contig is None else 1000
+
+        if mt_contig == "chr1":
+            naive_coalesce_partitions = 2500
+
+        if hapmap:
+            logger.info("Filtering to only hapmap variants...")
+            ht_hm3 = hl.read_table(
+                f"gs://gnomad-tmp/ld/HM3.UKBB.{pop.upper()}.qc.snplist.grch38.ht"
+            )
+            ht_filter = ht_filter.filter(hl.is_defined(ht_hm3[ht_filter.key]))
+            logger.info(
+                f"Count after filtering to hapmap variants: {ht_filter.count()}"
+            )
+
+        entries_to_keep = ["GT"] if not adj else ["GT", "GQ", "DP", "AD"]
+
+        vds = basics.get_gnomad_v4_genomes_vds(
+            test=test,
+            annotate_meta=True,
+            release_only=True,
+            split=True,
+            chrom=[mt_contig] if mt_contig else None,
+            filter_variant_ht=ht_filter,
+            naive_coalesce_partitions=naive_coalesce_partitions,
+            entries_to_keep=entries_to_keep,
+            filter_samples_ht=filter_samples_ht,
+        )
+
+        logger.info("From DENSE MT, performance beware...")
+        mt = hl.vds.to_dense_mt(vds)
+
+        logger.info(f"Filtering to relevant cols - only meta - and no VDS/MT rows...")
+        mt = mt.select_cols(mt.meta)
+        mt = mt.select_rows()
+
+        # NOTE: QUESTION IF THIS SHOULD BE RAN OR NOT
+        # NOTE: need to checkpoint either here or step below where noted
+        logger.info(
+            f"Checkpointing unannotated {pop} on {mt_contig if mt_contig else 'full'}"
+        )
+        mt = mt.checkpoint(new_temp_file())
+
+        if adj:
+            logger.info("Filtering to adj sites only...")
+            adj_expr = get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
+            mt = mt.filter_entries(adj_expr)
+            mt = mt.select_entries("GT")
+
+        # logger.info('CUSTOM READ FROM PRIOR CHECKPOINT..')
+        # mt = hl.read_matrix_table('gs://gnomad-tmp-4day/ld_tmp//XLmYz1uA7NYEY2jgB55Yuc')
+        # This part begins potential performance concerns - what is up here?
+        # Ideally, would checkpoint both of these beforehand.
+        # Is very slow if MT isn't checkpointed
+        # Checkpointing said MT is also very slow...
+        logger.info("Annotating information from release HT...")
+        mt = mt.annotate_rows(
+            freq=ht_filter[mt.row_key].freq, filters=ht_filter[mt.row_key].filters
+        )
+        mt = mt.annotate_globals(**hl.eval(ht_filter.globals))
+
+        logger.info("Checkpointing annotated MT...")
+        mt = mt.checkpoint(ld_mt_path, overwrite=overwrite)
+
+    return mt
+
+
 def main(args):
     hl.init(
         log="/ld_assessment.log",
@@ -380,10 +617,34 @@ def main(args):
 
     # Define command line args used more than once
     test = args.test
+    adj = args.adj
     is_hgdp = args.hgdp_subset
     overwrite = args.overwrite
     pop = args.pop
-    chrom = args.chrom
+    custom_mt = args.custom_mt
+    do_v2_samples = args.do_v2_samples
+    hapmap = args.do_hapmap
+
+    # Chromosome filter logic
+    mt_contig = args.mt_contig
+    ld_contig = args.ld_contig
+
+    if test:
+        mt_contig = "chr22"
+
+    if mt_contig:
+        ld_contig = mt_contig
+
+    # Get correct AF based on input logic...
+    vds_freq = args.vds_af
+
+    ld_freq = args.ld_af
+    ld_ac = args.ld_ac
+
+    if vds_freq < ld_freq:
+        pass  # this is the desired behavior, for the vds freq to be more permisive
+    if ld_freq < vds_freq:
+        ld_freq = vds_freq
 
     if test and not args.re_call_stats:
         logger.info(
@@ -391,179 +652,117 @@ def main(args):
         )
 
     # Version is populated via ld_resources.py if None
-    version = None if not is_hgdp else "hgdp"
+    version = None
+    if is_hgdp:
+        version = "hgdp"
+    elif do_v2_samples:
+        version = "v2samples"
 
-    # Path for LD MT includes all pops by design
+    if version:
+        version += "hapmap"
+    else:
+        version = "hapmap"
+
     ld_mt_path = ld_mt_checkpoint_path(
-        data_type="genomes", pops=pop, version=version, test=test
+        data_type="genomes",
+        freq=vds_freq,
+        pop=pop,
+        version=version,
+        test=test,
+        mt_contig=mt_contig,
+        adj=adj,
     )
 
-    def _ld_test_mt(
-        mt: hl.MatrixTable,
-        filter_contig: bool = False,
-        sample_cols: bool = False,
-    ):
-        if filter_contig:
-            logger.info("Filtering to chr22...")
-            mt = mt.filter_rows(mt.locus.contig == "chr22")
-        if sample_cols:
-            logger.info("Downsampling all cols by 0.1...")
-            mt = mt.sample_cols(0.1)
-
-        return mt
-
-    def _generate_ld_mt(
-        version: str = version,
-        is_hgdp: bool = False,
-        test: bool = False,
-        ld_mt_path: str = ld_mt_path,
-        pop: str = "eas",
-        overwrite=overwrite,
-    ) -> hl.MatrixTable:
-
-        if is_hgdp:
-            logger.info("Reading in HGDP_TGP Subset...")
-            mt = hgdp_tgp_subset(dense=True, public=True).mt()
-            mt = mt.annotate_globals(
-                freq_meta=mt.gnomad_freq_meta, freq_index_dict=mt.gnomad_freq_index_dict
-            )
-            mt = mt.annotate_rows(freq=mt.gnomad_freq)
-            mt = mt.annotate_cols(
-                meta=hl.struct(
-                    population_inference=hl.struct(
-                        pop=mt.gnomad_population_inference.pop
-                    )
-                )
-            )
-
-            mt = mt.filter_cols(mt.meta.population_inference.pop == "pop")
-
-            if test:
-                mt = _ld_test_mt(mt, filter_contig=True, sample_cols=True)
-
-            mt = mt.checkpoint(
-                ld_mt_path,
-                overwrite=overwrite,
-            )
-
+    if args.generate_ld_mt:
+        mt = generate_ld_mt(
+            is_hgdp=is_hgdp,
+            test=test,
+            pop=pop,
+            mt_contig=mt_contig,
+            freq=vds_freq,
+            ld_mt_path=ld_mt_path,
+            overwrite=overwrite,
+            do_v2_samples=do_v2_samples,
+            adj=adj,
+            hapmap=hapmap,
+        )
+    else:
+        if not custom_mt:
+            mt = hl.read_matrix_table(ld_mt_path)
         else:
-            logger.info("Reading in gnomAD release HT and VDS...")
-            filter_chrom = None
-            if test:
-                filter_chrom = "chr22"
-            elif chrom:
-                filter_chrom = chrom
-
-            ht_release = hl.read_table(release.release_ht_path(data_type="genomes"))
-            ht_filter = _filter_ht_for_ld(ht_release,label='gen_anc',pop=pop)
-            if filter_chrom:
-                ht_filter = ht_filter.filter(ht_filter.locus.contig==filter_chrom)
-
-            ht_filter = ht_filter.select('freq','filters').checkpoint(new_temp_file())
-
-            vds = basics.get_gnomad_v4_genomes_vds(
-                test=test,
-                annotate_meta=True,
-                release_only=True,
-                split=True,
-                chrom=filter_chrom,
-                filter_variant_ht=ht_filter,
-                entries_to_keep=["GT"],
-            )
-
-            if test or chrom:
-                logger.info(
-                    f"Due to Test or Chrom behavior, only working on {filter_chrom} - do naive coalesce to 1,000 partitions"
-                )
-                mt = vds.variant_data.naive_coalesce(1000)
-            else:
-                mt = vds.variant_data.naive_coalesce(9800)
-
-            logger.info(
-                f"Filtering to relevant cols - only meta - and no VDS/MT rows..."
-            )
-            mt = mt.select_cols(mt.meta)
-            mt = mt.select_rows()
-            logger.info(f"Filtering to {args.pop}...")
-            mt = mt.filter_cols(mt.meta.population_inference.pop == pop)
-
-            # NOTE: QUESTION IF THIS SHOULD BE RAN OR NOT
-            logger.info(f"Checkpointing {pop} on {chrom if chrom else default_str}")
-            mt = mt.checkpoint(new_temp_file())
-
-            # This part begins potential performance concerns - what is up here?
-            # Ideally, would checkpoint both of these beforehand.
-            # Is very slow if MT isn't checkpointed
-            # Checkpointing said MT is also very slow...
-            mt = mt.annotate_rows(
-                freq=ht_filter[mt.row_key].freq, filters=ht_filter[mt.row_key].filters
-            )
-            mt = mt.annotate_globals(**hl.eval(ht_filter.globals))
-
-        # Select and checkpoint to speed up calculations
-
-        # logger.info(f"DO NOT Checkpoint MT to {ld_mt_path} ...")
-        # mt = mt.checkpoint(ld_mt_path, overwrite=overwrite)
-
-        return mt
-
-    mt = _generate_ld_mt(
-        version=version, is_hgdp=is_hgdp, test=test, ld_mt_path=ld_mt_path
-    )
-
-    # Something needs checkpointed before heading into generate_ld_pruned_set()
-    mt = mt.checkpoint(new_temp_file()) # skip if prior step is being checkpointed
+            mt = hl.read_matrix_table(custom_mt)
 
     label = "gen_anc" if not is_hgdp else "pop"
-    pop_data = get_pop_counters(mt, label=label)
+    pop_data = get_pop_counters(
+        mt, label=label
+    )  # NOTE: could be irrelevant later? tbd if needed
 
-    # Previously established that THIS needs a checkpoint to have been ran to work effectively
-    if args.generate_ld_pruned_set:
-        logger.info(
-            "Generating LD Pruned Set of uncorrelated variants, using hl.ld_prune()..."
-        )
-        generate_ld_pruned_set(
-            mt=mt,
-            pop_data=pop_data,
-            data_type=data_type,
-            r2=args.r2,
-            radius=args.radius,
-            overwrite=overwrite,
-            re_call_stats=args.re_call_stats,
-            version=version,
-            test=test,
-        )
+    contig_list = EXPECTED_CONTIGS if not ld_contig else [ld_contig]
 
-    if args.generate_ld_matrix:
-        logger.info(
-            "Generating Hail BlockMatrix of variants correlations to other variants, using hl.ld_matrix()..."
-        )
-        generate_ld_matrix(
-            mt=mt,
-            pop_data=pop_data,
-            data_type=data_type,
-            radius=args.radius,
-            common_only=args.common_only,
-            adj=args.adj,
-            overwrite=overwrite,
-            re_call_stats=args.re_call_stats,
-            version=version,
-            test=test,
-        )
+    for ld_contig in contig_list:
+        # NOTE: This FULLY serializes the code, but hopefully it works
+        # Would we save time without so many separate filter_mt_for_ld calls ?
+        # The only point of concern is hl.ld_prune() and the size of the matrix
+        # Need to filter the mt to only the contig we are working on
+        # This is because the LD matrix is too large otherwise
+        mt = mt.filter_rows(mt.locus.contig == ld_contig)
+        logger.info(f"Filtering to {ld_contig}...")
 
-    if args.generate_ld_scores:
-        logger.info("Generating in LD scores and annotating onto variant HT...")
-        generate_ld_scores_from_ld_matrix(
-            pop_data=pop_data,
-            data_type=data_type,
-            min_frequency=args.min_frequency,
-            call_rate_cutoff=args.min_call_rate,
-            common_only=args.common_only,
-            adj=args.adj,
-            version=version,
-            overwrite=overwrite,
-            test=test,
-        )
+        # Previously established that THIS needs a checkpoint to have been ran to work effectively
+        if args.generate_ld_pruned_set:
+            logger.info(
+                "Generating LD Pruned Set of uncorrelated variants, using hl.ld_prune()..."
+            )
+            generate_ld_pruned_set(
+                mt=mt,
+                pop_data=pop_data,
+                data_type=data_type,
+                r2=args.r2,
+                freq=ld_freq,
+                ac_cutoff=ld_ac,
+                radius=args.radius,
+                overwrite=overwrite,
+                re_call_stats=args.re_call_stats,
+                version=version,
+                test=test,
+                ld_contig=ld_contig,
+                adj=adj,
+            )
+
+        if args.generate_ld_matrix:
+            logger.info(
+                "Generating Hail BlockMatrix of variants correlations to other variants, using hl.ld_matrix()..."
+            )
+            generate_ld_matrix(
+                mt=mt,
+                pop_data=pop_data,
+                data_type=data_type,
+                radius=args.radius,
+                freq=ld_freq,
+                ac_cutoff=ld_ac,
+                adj=args.adj,
+                overwrite=overwrite,
+                re_call_stats=args.re_call_stats,
+                version=version,
+                test=test,
+                ld_contig=ld_contig,
+                custom_suffix=args.custom_suffix,
+            )
+
+        if args.generate_ld_scores:
+            logger.info("Generating in LD scores and annotating onto variant HT...")
+            generate_ld_scores_from_ld_matrix(
+                pop_data=pop_data,
+                data_type=data_type,
+                freq=ld_freq,
+                call_rate_cutoff=args.min_call_rate,
+                adj=args.adj,
+                version=version,
+                overwrite=overwrite,
+                test=test,
+                ld_contig=ld_contig,
+                custom_suffix=args.custom_suffix,
+            )
 
 
 if __name__ == "__main__":
@@ -575,7 +774,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--generate-ld-mt",
-        help="Generate Hail MatrixTable of variants and calls to calculate LD for. ",
+        help="Generate pop-specific Hail MatrixTable of variants and calls to calculate LD for. ",
         action="store_true",
     )
     parser.add_argument(
@@ -587,9 +786,10 @@ if __name__ == "__main__":
         "--generate-ld-matrix", help="Calculates LD matrix", action="store_true"
     )
     parser.add_argument(
-        "--common-only",
-        help="Calculates LD matrix only on common variants (above 0.5%)",
-        action="store_true",
+        "--vds-af",
+        help="Minimum genetic ancestry-specific allele frequency to pull from for VDS.",
+        type=float,
+        default=RARE_FREQ,
     )
     parser.add_argument(
         "--adj",
@@ -602,15 +802,21 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--min-frequency",
-        help="Minimum allele frequency to compute LD scores (default 0.01)",
-        default=0.01,
-        type=float,
-    )
-    parser.add_argument(
         "--min-call-rate",
         help="Minimum call rate to compute LD scores (default 0.8)",
         default=0.8,
+        type=float,
+    )
+    parser.add_argument(
+        "--ld-ac",
+        help="Minimum allele count to compute LD scores (default 1).",
+        default=1,
+        type=int,
+    )
+    parser.add_argument(
+        "--ld-af",
+        help="Minimum allele frequency to compute LD scores (default 0.0005).",
+        default=RARE_FREQ,
         type=float,
     )
     parser.add_argument(
@@ -637,19 +843,48 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop",
-        help="Which individual pop to run LD on",
+        help="Which individual pop to run LD on.",
         type=str,
         required=True,
     )
     parser.add_argument(
-        "--chrom",
-        help="Which individual chromosome to run LD on",
+        "--mt-contig",
+        help="Which chromosome to pull VDS from. Applies for reading and writing.",
+        type=str,
+        required=False,
+    )
+    parser.add_argument(
+        "--ld-contig",
+        help="Which chromosome to run LD on. Applies for reading and writing.",
         type=str,
         required=False,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
+    parser.add_argument(
+        "--custom-mt",
+        type=str,
+        default=None,
+        help="Custom MT to run LD on",
+    )
+    parser.add_argument(
+        "--do-v2-samples",
+        action="store_true",
+        help="Only use samples also in v2. Good for verification!",
+    )
+    parser.add_argument(
+        "--custom-suffix",
+        type=str,
+        help="Custom string to append to output files",
+        required=False,
+    )
+    parser.add_argument(
+        "--do-hapmap",
+        action="store_true",
+        help="Filter to HapMap3 SNPs when pulling VDS.",
+    )
+
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     args = parser.parse_args()
 
