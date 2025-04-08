@@ -209,7 +209,7 @@ def validate_federated_data(
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
     subsets: List[str] = None,
-    variant_filter_field: str = "RF",
+    variant_filter_field: str = "AS_VQSR",
     problematic_regions: List[str] = ["lcr", "non_par", "segdup"],
 ) -> None:
     """
@@ -224,7 +224,7 @@ def validate_federated_data(
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
-    :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "RF".
+    :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "AS_VQSR".
     :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
     :return: None
     """
@@ -279,7 +279,6 @@ def validate_federated_data(
         groups=["adj"],
         verbose=verbose,
         sort_order=freq_sort_order,
-        delimiter="_",
         metric_first_field=True,
         metrics=freq_annotations_to_sum,
         gen_anc_label_name=gen_anc_label_name,
@@ -293,7 +292,6 @@ def validate_federated_data(
         info_metrics=info_metrics,
         contigs=contigs,
         verbose=verbose,
-        delimiter="_",
         nhomalt_metric=nhomalt_metric,
     )
 
@@ -302,7 +300,6 @@ def validate_federated_data(
         t=ht,
         subsets=[""],
         verbose=verbose,
-        delimiter="_",
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
     )
@@ -313,7 +310,6 @@ def validate_federated_data(
             t=ht,
             subsets=subsets,
             verbose=verbose,
-            delimiter="_",
             metric_first_field=True,
             metrics=freq_annotations_to_sum,
         )
