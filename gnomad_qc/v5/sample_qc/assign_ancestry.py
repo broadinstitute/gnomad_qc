@@ -78,7 +78,13 @@ def write_pca_results(
     )
 
 
-def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
+def run_hgdp_tgp_pca(
+    test: bool,
+    overwrite: bool,
+    unrelated_only: bool = True,
+    data_set: str = "hgdp_tgp",
+    n_pcs: int = 20,
+):
     """
     Run PCA on unrelated HGDP/TGP samples using high-quality variants identified by AoU.
 
@@ -88,22 +94,11 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
 
     :param test: If True, restrict to chr20 for testing purposes.
     :param overwrite: If True, overwrite existing PCA output.
+    :param unrelated_only: If True, restrict to unrelated samples. Default is True.
+    :param data_set: Data set used to run PCA, e.g. "hgdp_tgp" or 'hgdp_tgp_hq'.
     :param n_pcs: Number of principal components to compute. Default is 20.
     """
     mt = hgdp_tgp_subset(dense=True).mt()
-
-    # Get the list of HGDP/TGP unrelated samples without outliers
-    unrelated_mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
-    unrelated_samples_ht = unrelated_mt.cols()
-
-    # Get the list of high quality variants that AoU identified and used in their PCA
-    aou_loadings_ht = ancestry_pca_loadings(data_set="aou").ht()
-
-    # Filter to unrelated samples
-    mt = mt.filter_cols(hl.is_defined(unrelated_samples_ht[mt.col_key]))
-
-    # Filter to AoU/HGDP/TGP high quality variants
-    mt = mt.semi_join_rows(aou_loadings_ht.select())
 
     # Some HGDP/TGP sample IDs had a prefix 'v3.1::' in gnomAD releases but removed
     # in the subset release, we need to use the ones with the prefix to match gnomAD
@@ -114,16 +109,45 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
     mt = mt.annotate_cols(new_s=meta_ht[mt.s].s).key_cols_by()
     mt = mt.transmute_cols(s=mt.new_s).key_cols_by("s")
 
+    mt = mt.annotate_cols(
+        hard_filtered=meta_ht[mt.s].sample_filters.hard_filtered,
+        project_pop=meta_ht[mt.s].project_meta.project_pop,
+    )
+
+    if unrelated_only:
+        # Get the list of HGDP/TGP unrelated samples without outliers
+        unrelated_mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
+        unrelated_samples_ht = unrelated_mt.cols()
+
+        # Filter to unrelated samples
+        mt = mt.filter_cols(hl.is_defined(unrelated_samples_ht[mt.col_key]))
+        logger.info("Filtering to %d unrelated samples", mt.count_cols())
+    else:
+        # Get the list of HGDP/TGP samples that are outliers
+        hgdp_tgp_outliers = hgdp_tgp_pop_outliers.ht().s.collect()
+        mt = mt.filter_cols(
+            ~hl.literal(hgdp_tgp_outliers).contains(mt.s)
+            & ~mt.hard_filtered
+            & (mt.project_pop != "oth")
+        )
+        logger.info(
+            "Filtering to %d high-quality samples that are not in 'oth' ancestry",
+            mt.count_cols(),
+        )
+
+    # Get the list of high quality variants that AoU identified and used in their PCA
+    aou_loadings_ht = ancestry_pca_loadings(data_set="aou").ht()
+
+    # Filter to AoU/HGDP/TGP high quality variants
+    mt = mt.semi_join_rows(aou_loadings_ht.select())
+
     # If test mode is enabled, restrict to chromosome 20
     if test:
         logger.info("Filtering to chr20 for testing purposes...")
         mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
 
-    mt = mt.checkpoint(new_temp_file("hgdp_tgp_unrelated_3400", "mt"))
+    mt = mt.checkpoint(new_temp_file("hgdp_tgp_pca", "mt"))
 
-    logger.info(
-        "Running PCA on HGDP/TGP samples after filtering to unrelateds and HQ variants."
-    )
     pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca_with_relateds(
         mt, n_pcs=n_pcs, autosomes_only=False
     )
@@ -133,7 +157,7 @@ def run_hgdp_tgp_pca(test: bool, overwrite: bool, n_pcs: int = 20):
         pop_eigenvalues,
         pop_scores_ht,
         pop_loadings_ht,
-        data_set="hgdp_tgp",
+        data_set=data_set,
         overwrite=overwrite,
         test=test,
     )
