@@ -81,20 +81,23 @@ def write_pca_results(
 def run_hgdp_tgp_pca(
     test: bool,
     overwrite: bool,
-    unrelated_only: bool = True,
+    include_relateds: bool = False,
     data_set: str = "hgdp_tgp",
     n_pcs: int = 20,
 ):
     """
-    Run PCA on unrelated HGDP/TGP samples using high-quality variants identified by AoU.
+    Run PCA on HGDP/TGP samples using high-quality variants identified by AoU.
 
-    Note:
+    By default, uses unrelated samples. Set `include_relateds=True` to include relateds
+    (minus outliers, hard-filtered, and 'oth' ancestry).
+
+    .. note::
        The list of unrelated samples without outliers is based on:
        https://nbviewer.org/github/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb
 
     :param test: If True, restrict to chr20 for testing purposes.
     :param overwrite: If True, overwrite existing PCA output.
-    :param unrelated_only: If True, restrict to unrelated samples. Default is True.
+    :param include_relateds: If True, include related samples.
     :param data_set: Data set used to run PCA, e.g. "hgdp_tgp" or 'hgdp_tgp_hq'.
     :param n_pcs: Number of principal components to compute. Default is 20.
     """
@@ -114,15 +117,7 @@ def run_hgdp_tgp_pca(
         project_pop=meta_ht[mt.s].project_meta.project_pop,
     )
 
-    if unrelated_only:
-        # Get the list of HGDP/TGP unrelated samples without outliers
-        unrelated_mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
-        unrelated_samples_ht = unrelated_mt.cols()
-
-        # Filter to unrelated samples
-        mt = mt.filter_cols(hl.is_defined(unrelated_samples_ht[mt.col_key]))
-        logger.info("Filtering to %d unrelated samples", mt.count_cols())
-    else:
+    if include_relateds:
         # Get the list of HGDP/TGP samples that are outliers
         hgdp_tgp_outliers = hgdp_tgp_pop_outliers.ht().s.collect()
         mt = mt.filter_cols(
@@ -131,9 +126,17 @@ def run_hgdp_tgp_pca(
             & (mt.project_pop != "oth")
         )
         logger.info(
-            "Filtering to %d high-quality samples that are not in 'oth' ancestry",
+            "Filtering to %d high-quality samples (relateds included) that are not in 'oth' ancestry",
             mt.count_cols(),
         )
+    else:
+        # Get the list of HGDP/TGP unrelated samples without outliers
+        unrelated_mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
+        unrelated_samples_ht = unrelated_mt.cols()
+
+        # Filter to unrelated samples
+        mt = mt.filter_cols(hl.is_defined(unrelated_samples_ht[mt.col_key]))
+        logger.info("Filtering to %d unrelated samples", mt.count_cols())
 
     # Get the list of high quality variants that AoU identified and used in their PCA
     aou_loadings_ht = ancestry_pca_loadings(data_set="aou").ht()
@@ -393,7 +396,13 @@ def main(args):
 
     if args.run_hgdp_tgp_pca:
         logger.info("Running PCA on HGDP/TGP unrelated samples...")
-        run_hgdp_tgp_pca(test=test, overwrite=overwrite)
+        run_hgdp_tgp_pca(
+            test=test,
+            overwrite=overwrite,
+            include_relateds=args.include_relateds,
+            data_set=data_set,
+            n_pcs=args.n_pcs,
+        )
 
     if args.get_aou_pca_loadings:
         logger.info("Importing AoU PCA loadings...")
@@ -463,6 +472,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
+        "--include-relateds",
+        help="Include related samples in the PCA.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--get-aou-pca-loadings",
         help="Import downloaded AoU PCA loadings to a hail Table.",
         action="store_true",
@@ -479,7 +493,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--data-set",
-        help="Data set used in sample QC, e.g. 'hgdp_tgp' or 'aou'.",
+        help="Data set used, e.g. 'hgdp_tgp' or 'aou'.",
         default="hgdp_tgp",
     )
     parser.add_argument(
