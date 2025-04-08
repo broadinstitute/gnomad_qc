@@ -442,7 +442,7 @@ def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite) -> No
 
     l2row = r2_adj.sum(axis=0).T
     l2col = r2_adj.sum(axis=1)
-    l2 = l2row + l2col + 1
+    l2 = l2row + l2col - 1
     l2_bm_tmp = new_temp_file()
     l2_tsv_tmp = new_temp_file()
 
@@ -564,6 +564,9 @@ def generate_ld_mt(
             filter_samples_ht=filter_samples_ht,
         )
 
+        vds.variant_data = vds.variant_data.checkpoint(new_temp_file())
+        vds.reference_data = vds.reference_data.checkpoint(new_temp_file())
+
         logger.info("From DENSE MT, performance beware...")
         mt = hl.vds.to_dense_mt(vds)
 
@@ -576,13 +579,14 @@ def generate_ld_mt(
         logger.info(
             f"Checkpointing unannotated {pop} on {mt_contig if mt_contig else 'full'}"
         )
-        mt = mt.checkpoint(new_temp_file())
 
         if adj:
             logger.info("Filtering to adj sites only...")
             adj_expr = get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
             mt = mt.filter_entries(adj_expr)
             mt = mt.select_entries("GT")
+
+        # mt = mt.checkpoint(new_temp_file())
 
         # logger.info('CUSTOM READ FROM PRIOR CHECKPOINT..')
         # mt = hl.read_matrix_table('gs://gnomad-tmp-4day/ld_tmp//XLmYz1uA7NYEY2jgB55Yuc')
