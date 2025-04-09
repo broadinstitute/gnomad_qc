@@ -108,9 +108,13 @@ def run_hgdp_tgp_pca(
     # and AoU genomes
     meta_ht = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter((meta_ht.subsets.hgdp | meta_ht.subsets.tgp))
-    meta_ht = meta_ht.key_by(meta_ht.project_meta.sample_id)
-    mt = mt.annotate_cols(new_s=meta_ht[mt.s].s).key_cols_by()
+    # Create a version keyed by sample_id for joining
+    meta_ht_by_sample_id = meta_ht.key_by(meta_ht.project_meta.sample_id)
+    mt = mt.annotate_cols(new_s=meta_ht_by_sample_id[mt.s].s).key_cols_by()
     mt = mt.transmute_cols(s=mt.new_s).key_cols_by("s")
+
+    # Now we can key the meta Table by 's'
+    meta_ht = meta_ht.key_by(meta_ht.s)
 
     mt = mt.annotate_cols(
         hard_filtered=meta_ht[mt.s].sample_filters.hard_filtered,
@@ -133,6 +137,14 @@ def run_hgdp_tgp_pca(
         # Get the list of HGDP/TGP unrelated samples without outliers
         unrelated_mt = hgdp_tgp_unrelateds_without_outliers_mt.mt()
         unrelated_samples_ht = unrelated_mt.cols()
+
+        # Transform sample IDs to match our MT
+        unrelated_samples_ht = unrelated_samples_ht.annotate(
+            new_s=meta_ht_by_sample_id[unrelated_samples_ht.s].s
+        ).key_by()
+        unrelated_samples_ht = unrelated_samples_ht.transmute(
+            s=unrelated_samples_ht.new_s
+        ).key_by("s")
 
         # Filter to unrelated samples
         mt = mt.filter_cols(hl.is_defined(unrelated_samples_ht[mt.col_key]))
@@ -167,18 +179,22 @@ def run_hgdp_tgp_pca(
 
 
 def project_to_hgdp_tgp_pcs(
-    mt: hl.MatrixTable, is_gnomad: bool = True, test: bool = False
+    mt: hl.MatrixTable,
+    data_set: str = "hgdp_tgp",
+    is_gnomad: bool = True,
+    test: bool = False,
 ) -> hl.Table:
     """
     Project gnomAD v4 genomes or AoU genomes onto HGDP/TGP PCA loadings.
 
     :param mt: MatrixTable containing the samples to project.
+    :param data_set: Data set used to compute the PCA, e.g. "hgdp_tgp" with only unrelated samples or "hgdp_tgp_hq" with relateds.
     :param is_gnomad: Whether the input MT is gnomAD v4 genomes. Default is True.
     :param test: If True, run a test on chr20 only. Default is False.
     :return: Table with the projections.
     """
-    pca_loadings_ht = ancestry_pca_loadings(data_set="hgdp_tgp").ht()
-    pca_scores_ht = ancestry_pca_scores(data_set="hgdp_tgp").ht()
+    pca_loadings_ht = ancestry_pca_loadings(data_set=data_set).ht()
+    pca_scores_ht = ancestry_pca_scores(data_set=data_set).ht()
 
     # Collect sample IDs from the HGDP/TGP dataset
     hgdp_tgp_samples = set(pca_scores_ht.s.collect())
@@ -190,7 +206,6 @@ def project_to_hgdp_tgp_pcs(
     # Filter out samples present in the HGDP/TGP dataset
     mt = mt.filter_cols(~hl.literal(hgdp_tgp_samples).contains(mt.s))
     if is_gnomad:
-        # mt = mt.filter_cols(mt.meta.release)
         mt = filter_to_adj(mt)
 
     logger.info(
@@ -395,13 +410,12 @@ def main(args):
     data_set = args.data_set
 
     if args.run_hgdp_tgp_pca:
-        logger.info("Running PCA on HGDP/TGP unrelated samples...")
+        logger.info("Running PCA on HGDP/TGP samples...")
         run_hgdp_tgp_pca(
             test=test,
             overwrite=overwrite,
             include_relateds=args.include_relateds,
             data_set=data_set,
-            n_pcs=args.n_pcs,
         )
 
     if args.get_aou_pca_loadings:
