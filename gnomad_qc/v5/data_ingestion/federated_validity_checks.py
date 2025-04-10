@@ -771,12 +771,22 @@ if __name__ == "__main__":
         help=(
             "Path to JSON config file for defining parameters. Paramters to define are as follows:"
             "missingness_threshold: Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'."
-            "indexed_array_annotations: Dictionary of indexed array annotations which will be unfurled. Example: {'faf': 'faf_index_dict', 'freq': 'freq_index_dict'}."
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
-            "freq_meta_expr: Metadata expression that contains the values of the elements in `meta_indexed_expr`. The most often used expression"
-            "is `freq_meta` to index into a 'freq' array. Example: ht.freq_meta."
+            "freq_fields: Dictionary containing the names of frequency-related fields (freq: Name of annotation containing the array of frequency metric objects "
+            "corresponding to each frequency metadata group; freq_meta: Name of annotatin containting sllele frequency metadata, an ordered list containing the frequency aggregation group for "
+            "each element of the 'freq' array row annotation; freq_index_dict: Name of annotation containing dictionary keyed by specified label grouping combinations (group: adj/raw, gen_anc: inferred "
+            "genetic ancestry group, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the 'freq' array row annotation. freq_meta_sample_count: Name of "
+            "annotation containing sample count per sample grouping defined in the 'freq_meta' global annotation."
+            ")"
+            "faf_fields: Dictionary containing the names of FAF-related fields (faf: Name of annotation containing structs of filtering allele frequency information; faf_meta: Name of annotation "
+            "for FAF metadata, n ordered list containing the frequency aggregation group for each element of the faf arrays; faf_index_dict: Name of annotation containing dictionary keyed by specified "
+            "label grouping combinations (group: adj/raw, gen_anc: inferred genetic ancestry group, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the filtering "
+            "allele frequency annotation."
             "freq_annotations_to_sum: List of annotation fields within `freq_meta_expr` to sum. Example: ['AC', 'AN', 'homozygote_count']."
             "freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
+            "nhomalt_metric: Name of metric denoting homozygous alternate count."
+            "subsets: List of sample subsets to include for the subset validity check."
+            "variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR)."
         ),
         required=True,
         type=str,
