@@ -1,4 +1,4 @@
-"""Script defining schema for federated validty check input config file."""
+"""Script defining schema for json config that is input to the federated validity checks."""
 
 schema = {
     "type": "object",
@@ -41,6 +41,11 @@ schema = {
             "items": {"type": "string"},
         },
         "nhomalt_metric": {"type": "string"},
+        "subsets": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "variant_filter_field": {"type": "string"},
     },
     "required": [
         "missingness_threshold",
@@ -48,6 +53,8 @@ schema = {
         "freq_annotations_to_sum",
         "freq_sort_order",
         "nhomalt_metric",
+        "subsets",
+        "variant_filter_field",
     ],
     "additionalProperties": False,
 }

@@ -10,12 +10,15 @@ import hail as hl
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
     check_global_and_row_annot_lengths,
+    check_globals_for_retired_terms,
     check_missingness_of_struct,
     check_raw_and_adj_callstats,
     check_sex_chr_metrics,
+    compare_subset_freqs,
     compute_missingness,
     flatten_missingness_struct,
     sum_group_callstats,
+    summarize_variant_filters,
     summarize_variants,
     unfurl_array_annotations,
 )
@@ -24,6 +27,10 @@ from gnomad.utils.reference_genome import get_reference_genome
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
+from gnomad_qc.v4.create_release.validate_and_export_vcf import (
+    ALLELE_TYPE_FIELDS,
+    REGION_FLAG_FIELDS,
+)
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.resources.basics import get_logging_path
 
@@ -50,6 +57,9 @@ formatter = logging.Formatter(
 )
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
+
+ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
+REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -112,15 +122,19 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["missing_freq_fields"] = missing_freq_fields
 
     # Check that sort_order values are present as keys within freq_meta_expr.
-    freq_meta_keys = set(
-        key
-        for item in hl.eval(ht[config["freq_fields"]["freq_meta"]])
-        for key in item.keys()
-    )
+    freq_meta_list = hl.eval(ht[config["freq_fields"]["freq_meta"]])
+    freq_meta_keys = set(key for item in freq_meta_list for key in item.keys())
+
     missing_sort_order_keys = [
         i for i in config["freq_sort_order"] if i not in freq_meta_keys
     ]
     missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
+
+    # Check that specified subsets are present as values within the
+    # freq_meta_expr subset key.
+    subset_values = {i["subset"] for i in freq_meta_list if "subset" in i}
+    missing_subsets = set(config["subsets"]) - subset_values
+    missing_fields["missing_subsets"] = missing_subsets
 
     if any(missing_fields.values()):
         error_message = "Validation failed. Missing fields:\n" + "\n".join(
@@ -194,6 +208,9 @@ def validate_federated_data(
     freq_sort_order: List[str] = ["gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
+    subsets: List[str] = None,
+    variant_filter_field: str = "AS_VQSR",
+    problematic_regions: List[str] = ["lcr", "non_par", "segdup"],
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -206,12 +223,23 @@ def validate_federated_data(
     :param freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
+    :param subsets: List of sample subsets.
+    :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "AS_VQSR".
+    :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
     :return: None
     """
     # Summarize variants and check that all contigs exist.
     expected_contigs = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
     logger.info("Summarizing variants and checking contigs...")
     summarize_variants(ht, expected_contigs=expected_contigs)
+
+    logger.info("Summarizing variant filters...")
+    summarize_variant_filters(
+        t=ht,
+        variant_filter_field=variant_filter_field,
+        problematic_regions=problematic_regions,
+        single_filter_count=True,
+    )
 
     # Check for missingness.
     logger.info("Checking for missingness...")
@@ -251,7 +279,6 @@ def validate_federated_data(
         groups=["adj"],
         verbose=verbose,
         sort_order=freq_sort_order,
-        delimiter="_",
         metric_first_field=True,
         metrics=freq_annotations_to_sum,
         gen_anc_label_name=gen_anc_label_name,
@@ -265,7 +292,6 @@ def validate_federated_data(
         info_metrics=info_metrics,
         contigs=contigs,
         verbose=verbose,
-        delimiter="_",
         nhomalt_metric=nhomalt_metric,
     )
 
@@ -274,11 +300,19 @@ def validate_federated_data(
         t=ht,
         subsets=[""],
         verbose=verbose,
-        delimiter="_",
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
     )
-    # TODO: consider adding check_global_and_row_annot_lengths, check for raw and adj.
+
+    if subsets:
+        logger.info("Comparing subset frequencies...")
+        compare_subset_freqs(
+            t=ht,
+            subsets=subsets,
+            verbose=verbose,
+            metric_first_field=True,
+            metrics=freq_annotations_to_sum,
+        )
 
 
 def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
@@ -300,12 +334,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 20, "AF": 0.09, "AN": 15, "homozygote_count": 1},
                 {"AC": 25, "AF": 0.11, "AN": 18, "homozygote_count": 2},
                 {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
+                {"AC": 30, "AF": 0.13, "AN": 22, "homozygote_count": 4},
+                {"AC": 20, "AF": 0.10, "AN": 20, "homozygote_count": 2},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
-            "filters": hl.empty_set(hl.tstr),
+            "filters": hl.set(["AS_VQSR"]),
+            "region_flags": hl.struct(lcr=False, non_par=False, segdup=True),
+            "allele_info": hl.struct(allele_type="del", n_alt_alleles=1),
         },
         {
             "locus": hl.locus("chr1", 200000, reference_genome="GRCh38"),
@@ -318,12 +356,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 18, "AF": 0.18, "AN": 70, "homozygote_count": 3},
                 {"AC": 22, "AF": 0.20, "AN": 85, "homozygote_count": 6},
                 {"AC": 28, "AF": 0.25, "AN": 95, "homozygote_count": 7},
+                {"AC": 24, "AF": 0.20, "AN": 90, "homozygote_count": 1},
+                {"AC": 20, "AF": 0.15, "AN": 80, "homozygote_count": 0},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
-            "filters": hl.empty_set(hl.tstr),
+            "filters": hl.set(["AC0"]),
+            "region_flags": hl.struct(lcr=False, non_par=False, segdup=False),
+            "allele_info": hl.struct(allele_type="snv", n_alt_alleles=1),
         },
         {
             "locus": hl.locus("chr1", 300000, reference_genome="GRCh38"),
@@ -336,12 +378,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 95, "AF": 0.22, "AN": 250, "homozygote_count": 15},
                 {"AC": 100, "AF": 0.24, "AN": 275, "homozygote_count": 18},
                 {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
+                {"AC": 110, "AF": 0.28, "AN": 300, "homozygote_count": 20},
+                {"AC": 100, "AF": 0.20, "AN": 200, "homozygote_count": 2},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
             "filters": hl.empty_set(hl.tstr),
+            "region_flags": hl.struct(lcr=True, non_par=True, segdup=True),
+            "allele_info": hl.struct(allele_type="snv", n_alt_alleles=1),
         },
         {
             "locus": hl.locus("chrX", 400000, reference_genome="GRCh38"),
@@ -354,12 +400,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                 {"AC": 30, "AF": 0.18, "AN": 60, "homozygote_count": 5},
                 {"AC": 40, "AF": 0.20, "AN": 75, "homozygote_count": 7},
                 {"AC": 50, "AF": 0.25, "AN": 85, "homozygote_count": 9},
+                {"AC": 40, "AF": 0.20, "AN": 80, "homozygote_count": 2},
+                {"AC": 30, "AF": 0.10, "AN": 70, "homozygote_count": 2},
             ],
             "faf": [
                 hl.struct(faf95=0.001, faf99=0.002),
                 hl.struct(faf95=0.0009, faf99=0.0018),
             ],
-            "filters": hl.empty_set(hl.tstr),
+            "filters": hl.set(["AS_VQSR", "AC0"]),
+            "region_flags": hl.struct(lcr=True, non_par=True, segdup=False),
+            "allele_info": hl.struct(allele_type="snv", n_alt_alleles=1),
         },
     ]
 
@@ -376,12 +426,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     {"AC": 42, "AF": 0.22, "AN": 70, "homozygote_count": 6},
                     {"AC": 55, "AF": 0.27, "AN": 90, "homozygote_count": None},
                     {"AC": 65, "AF": 0.33, "AN": 100, "homozygote_count": 10},
+                    {"AC": 45, "AF": 0.23, "AN": 50, "homozygote_count": 1},
+                    {"AC": 40, "AF": 0.20, "AN": 44, "homozygote_count": 2},
                 ],
                 "faf": [
                     hl.struct(faf95=0.0012, faf99=0.0025),
                     hl.struct(faf95=0.0010, faf99=0.0020),
                 ],
-                "filters": hl.empty_set(hl.tstr),
+                "filters": hl.set(["AS_VQSR", "AC0"]),
+                "region_flags": hl.struct(lcr=True, non_par=False, segdup=False),
+                "allele_info": hl.struct(allele_type="del", n_alt_alleles=1),
             }
         ]
 
@@ -397,12 +451,16 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     {"AC": 55, "AF": 0.27, "AN": 100, "homozygote_count": 8},
                     {"AC": 68, "AF": 0.32, "AN": 120, "homozygote_count": None},
                     {"AC": 80, "AF": 0.38, "AN": 140, "homozygote_count": 12},
+                    {"AC": 60, "AF": 0.28, "AN": 120, "homozygote_count": 2},
+                    {"AC": 50, "AF": 0.20, "AN": 10, "homozygote_count": 5},
                 ],
                 "faf": [
                     hl.struct(faf95=0.0013, faf99=0.0027),
                     hl.struct(faf95=0.0011, faf99=0.0023),
                 ],
-                "filters": hl.empty_set(hl.tstr),
+                "filters": hl.set(["AC0"]),
+                "region_flags": hl.struct(lcr=True, non_par=True, segdup=False),
+                "allele_info": hl.struct(allele_type="del", n_alt_alleles=1),
             }
         ]
 
@@ -424,7 +482,18 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
             ),
             faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
             filters=hl.tset(hl.tstr),
+            region_flags=hl.tstruct(lcr=hl.tbool, non_par=hl.tbool, segdup=hl.tbool),
+            allele_info=hl.tstruct(allele_type=hl.tstr, n_alt_alleles=hl.tint32),
         ),
+    )
+
+    ht = ht.annotate(
+        region_flags=ht.region_flags.annotate(
+            fail_interval_qc=False,
+            outside_ukb_capture_region=False,
+            outside_broad_capture_region=False,
+        ),
+        allele_info=ht.allele_info.annotate(variant_type="snv", was_mixed=False),
     )
 
     # Define global annotation for freq_index_dict.
@@ -435,6 +504,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         "amr_adj": 3,
         "adj_XX": 4,
         "adj_XY": 5,
+        "non_ukb_adj": 6,
+        "non_ukb_raw": 7,
     }
     faf_index_dict = {"adj": 0, "raw": 1}
 
@@ -445,11 +516,12 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         {"gen_anc": "amr", "group": "adj"},
         {"sex": "XX", "group": "adj"},
         {"sex": "XY", "group": "adj"},
+        {"subset": "non_ukb", "group": "adj"},
     ]
 
     faf_meta = [{"group": "adj"}, {"group": "raw"}]
 
-    freq_index_sample_count = [10, 20, 3, 4, 8]
+    freq_index_sample_count = [10, 20, 3, 4, 8, 12, 14]
 
     ht = ht.annotate_globals(
         freq_index_dict=freq_index_dict,
@@ -457,6 +529,11 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         freq_meta_sample_count=freq_index_sample_count,
+    )
+
+    # Add in retired terms to globals.
+    ht = ht.annotate_globals(
+        test_meta=[{"group": "adj"}, {"group": "adj", "pop": "oth"}]
     )
 
     # Add grpmax and fafmax annotations.
@@ -533,33 +610,39 @@ def main(args):
 
         validate_config(config, schema)
 
-        # TODO: Add resources to intake federated data once obtained.
-        ht = public_release(data_type="exomes").ht()
+        if args.use_logtest_ht:
+            logger.info("Using logtest ht...")
+            ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
-        # Check that fields specified in the config are present in the Table.
-        validate_ht_fields(ht=ht, config=config)
+        else:
+            # TODO: Add resources to intake federated data once obtained.
+            ht = public_release(data_type="exomes").ht()
 
-        # Confirm Table is using build GRCh38.
-        build = get_reference_genome(ht.locus).name
-        if build != "GRCh38":
-            raise ValueError(f"Reference genome is {build}, not GRCh38!")
+            # Check that fields specified in the config are present in the Table.
+            validate_ht_fields(ht=ht, config=config)
 
-        # Filter to test partitions if specified.
-        if test_n_partitions:
-            logger.info(
-                "Filtering to %d partitions and sex chromosomes...", test_n_partitions
-            )
-            test_ht = ht._filter_partitions(range(test_n_partitions))
+            # Confirm Table is using build GRCh38.
+            build = get_reference_genome(ht.locus).name
+            if build != "GRCh38":
+                raise ValueError(f"Reference genome is {build}, not GRCh38!")
 
-            x_ht = hl.filter_intervals(
-                ht, [hl.parse_locus_interval("chrX")]
-            )._filter_partitions(range(test_n_partitions))
+            # Filter to test partitions if specified.
+            if test_n_partitions:
+                logger.info(
+                    "Filtering to %d partitions and sex chromosomes...",
+                    test_n_partitions,
+                )
+                test_ht = ht._filter_partitions(range(test_n_partitions))
 
-            y_ht = hl.filter_intervals(
-                ht, [hl.parse_locus_interval("chrY")]
-            )._filter_partitions(range(test_n_partitions))
+                x_ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval("chrX")]
+                )._filter_partitions(range(test_n_partitions))
 
-            ht = test_ht.union(x_ht, y_ht)
+                y_ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval("chrY")]
+                )._filter_partitions(range(test_n_partitions))
+
+                ht = test_ht.union(x_ht, y_ht)
 
         row_to_globals_check = {
             config["freq_fields"]["freq"]: [
@@ -581,16 +664,13 @@ def main(args):
                     config["faf_fields"]["faf_index_dict"]
                 )
 
-        if args.use_logtest_ht:
-            logger.info("Using logtest ht...")
-            ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
-
         logger.info("Check that row and global annotations lengths match...")
         check_global_and_row_annot_lengths(
             t=ht,
             row_to_globals_check=row_to_globals_check,
             check_all_rows=not args.check_only_first_rows_to_globals,
         )
+        check_globals_for_retired_terms(ht)
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
@@ -603,9 +683,22 @@ def main(args):
                 "faf_fields"
             ]["faf_index_dict"]
 
+        # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(ht, indexed_array_annotations)
         ht = ht.annotate(info=ht.info.annotate(**annotations))
+
+        info_dict = {}
+        if "region_flags" in ht.row:
+            # Add region_flag to info dict.
+            for field in REGION_FLAG_FIELDS:
+                info_dict[field] = ht["region_flags"][f"{field}"]
+        # Add allele_info fields to info dict.
+        if "allele_info" in ht.row:
+            for field in ALLELE_TYPE_FIELDS:
+                info_dict[field] = ht["allele_info"][f"{field}"]
+
+        ht = ht.annotate(info=ht.info.annotate(**info_dict))
 
         validate_federated_data(
             ht=ht,
@@ -618,6 +711,9 @@ def main(args):
             freq_sort_order=config["freq_sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
             verbose=verbose,
+            subsets=config["subsets"],
+            variant_filter_field=config["variant_filter_field"],
+            problematic_regions=REGION_FLAG_FIELDS,
         )
 
         handler.flush()
@@ -675,12 +771,22 @@ if __name__ == "__main__":
         help=(
             "Path to JSON config file for defining parameters. Paramters to define are as follows:"
             "missingness_threshold: Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'."
-            "indexed_array_annotations: Dictionary of indexed array annotations which will be unfurled. Example: {'faf': 'faf_index_dict', 'freq': 'freq_index_dict'}."
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
-            "freq_meta_expr: Metadata expression that contains the values of the elements in `meta_indexed_expr`. The most often used expression"
-            "is `freq_meta` to index into a 'freq' array. Example: ht.freq_meta."
-            "freq_annotations_to_sum: List of annotation fields within `freq_meta_expr` to sum. Example: ['AC', 'AN', 'homozygote_count']."
+            "freq_fields: Dictionary containing the names of frequency-related fields ('freq': Name of annotation containing the array of frequency metric objects "
+            "corresponding to each frequency metadata group; 'freq_meta': Name of annotation containing allele frequency metadata, an ordered list containing the frequency aggregation group for "
+            "each element of the 'freq' array row annotation; 'freq_index_dict': Name of annotation containing dictionary keyed by specified label grouping combinations (group: adj/raw, gen_anc: inferred "
+            "genetic ancestry group, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the 'freq' array row annotation. 'freq_meta_sample_count': Name of "
+            "annotation containing sample count per sample grouping defined in the 'freq_meta' global annotation."
+            ")"
+            "faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields ('faf': Name of annotation containing structs of FAF information; 'faf_meta': Name of annotation "
+            "for FAF metadata, an ordered list containing the frequency aggregation group for each element of the 'faf' arrays; 'faf_index_dict': Name of annotation containing dictionary keyed by specified "
+            "label grouping combinations ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype), with values describing the corresponding index of each grouping entry in the filtering "
+            "allele frequency annotation."
+            "freq_annotations_to_sum: List of annotation fields within `freq_meta` to sum. Example: ['AC', 'AN', 'homozygote_count']."
             "freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
+            "nhomalt_metric: Name of metric denoting homozygous alternate count."
+            "subsets: List of sample subsets to include for the subset validity check."
+            "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
         ),
         required=True,
         type=str,
