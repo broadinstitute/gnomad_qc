@@ -1,3 +1,5 @@
+"""Script defining schema for json config that is input to the federated validity checks."""
+
 schema = {
     "type": "object",
     "properties": {
