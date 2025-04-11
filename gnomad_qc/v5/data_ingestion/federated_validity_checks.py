@@ -780,7 +780,7 @@ if __name__ == "__main__":
             ")"
             "faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields ('faf': Name of annotation containing structs of FAF information; 'faf_meta': Name of annotation "
             "for FAF metadata, an ordered list containing the frequency aggregation group for each element of the 'faf' arrays; 'faf_index_dict': Name of annotation containing dictionary keyed by specified "
-            "label grouping combinations (group: adj/raw, gen_anc: inferred genetic ancestry group, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the filtering "
+            "label grouping combinations ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype), with values describing the corresponding index of each grouping entry in the filtering "
             "allele frequency annotation."
             "freq_annotations_to_sum: List of annotation fields within `freq_meta` to sum. Example: ['AC', 'AN', 'homozygote_count']."
             "freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
