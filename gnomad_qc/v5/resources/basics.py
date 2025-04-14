@@ -66,15 +66,18 @@ def get_checkpoint_path(
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'
 
 
-def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
+def get_logging_path(
+    name: str, version: str = CURRENT_VERSION, environment: str = "dataproc"
+) -> str:
     """
     Create a path for Hail log files.
 
     :param name: Name of log file.
     :param version: Version of annotation path to return.
+    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
     :return: Output log path.
     """
-    return f"{qc_temp_prefix(version)}{name}.log"
+    return f"{qc_temp_prefix(version, environment)}{name}.log"
 
 
 _aou_genotypes = {
@@ -116,10 +119,10 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data. Default is False.
     :return: The AOU VDS.
     """
-    aou_v5_resource = aou_genotypes
+    aou_v8_resource = aou_genotypes
 
     if autosomes_only or sex_chr_only:
-        rg = aou_v5_resource.vds().reference_genome
+        rg = aou_v8_resource.vds().reference_genome
         sex_chrom = set(rg.x_contigs + rg.y_contigs)
         if sex_chr_only:
             chrom = list(sex_chrom)
@@ -135,7 +138,7 @@ def get_aou_vds(
             "Filtering to chromosome(s) %s with %s partitions...", chrom, n_partitions
         )
         reference_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._reference_path(aou_v5_resource.path)
+            hl.vds.VariantDataset._reference_path(aou_v8_resource.path)
         )
         reference_data = hl.filter_intervals(
             reference_data,
@@ -143,18 +146,18 @@ def get_aou_vds(
         )
         intervals = reference_data._calculate_new_partitions(n_partitions)
         reference_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._reference_path(aou_v5_resource.path),
+            hl.vds.VariantDataset._reference_path(aou_v8_resource.path),
             _intervals=intervals,
         )
         variant_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._variants_path(aou_v5_resource.path),
+            hl.vds.VariantDataset._variants_path(aou_v8_resource.path),
             _intervals=intervals,
         )
         vds = hl.vds.VariantDataset(reference_data, variant_data)
     elif n_partitions:
-        vds = hl.vds.read_vds(aou_v5_resource.path, n_partitions=n_partitions)
+        vds = hl.vds.read_vds(aou_v8_resource.path, n_partitions=n_partitions)
     else:
-        vds = aou_v5_resource.vds()
+        vds = aou_v8_resource.vds()
         if chrom:
             logger.info("Filtering to chromosome %s...", chrom)
             vds = hl.vds.filter_chromosomes(vds, keep=chrom)
