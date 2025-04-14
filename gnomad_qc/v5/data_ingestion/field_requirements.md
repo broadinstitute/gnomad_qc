@@ -5,7 +5,7 @@ This table provides a view of each global (non-row) field. Every leaf field (i.e
 
 **`adj` definition:**
 A variant is considered to fail the "adj" criteria if any of the following conditions are met:
- **GQ** < 20, **DP** < 10, For heterozygous calls: **AB** < 0.2
+ **GQ** < 20, **DP** < 10, or **AB** < 0.2 (heterozygous calls)
 
 All histograms annotations must use the same bin edges as defined in their respective 'Description' columns.
 
