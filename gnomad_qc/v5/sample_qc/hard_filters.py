@@ -64,16 +64,11 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
-    try:
-        if args.aou_sample_qc:
-            compute_aou_sample_qc(
-                n_partitions=args.sample_qc_n_partitions,
-                test=test,
-            ).write(get_aou_sample_qc(test=test).path, overwrite=overwrite)
-
-    finally:
-        logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("hard_filters", environment="rwb"))
+    if args.aou_sample_qc:
+        compute_aou_sample_qc(
+            n_partitions=args.sample_qc_n_partitions,
+            test=test,
+        ).write(get_aou_sample_qc(test=test).path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
