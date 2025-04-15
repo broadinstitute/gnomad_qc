@@ -30,18 +30,14 @@ def compute_aou_sample_qc(
     """
     logger.info("Computing sample QC")
 
-    # Filter the first 100 samples for testing or filter the first 10 partitions?
+    vds = get_aou_vds(
+        autosomes_only=True,
+        split=True,
+    )
+
     if test:
-        vds = get_aou_vds(
-            autosomes_only=True,
-            split=True,
-            filter_partitions=list(range(10)),
-        )
-    else:
-        vds = get_aou_vds(
-            autosomes_only=True,
-            split=True,
-        )
+        sample_ids = list(vds.variant_data.s.take(100))
+        vds = hl.vds.filter_samples(vds, sample_ids)
 
     # Remove centromeres and telomeres
     vds = hl.vds.filter_intervals(
