@@ -90,6 +90,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Compute Hail's VDS sample QC metrics on AoU.",
         action="store_true",
     )
+    parser.add_argument(
+        "--sample-qc-n-partitions",
+        help="Number of partitions to use when writing the sample QC table.",
+        type=int,
+        default=500,
+    )
     return parser
 
 
