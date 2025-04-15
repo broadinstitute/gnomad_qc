@@ -32,7 +32,9 @@ def compute_aou_sample_qc(
 
     # Filter the first 100 samples for testing or filter the first 10 partitions?
     if test:
-        vds = get_aou_vds(autosomes_only=True, split=True, n_partitions=10)
+        vds = get_aou_vds(
+            autosomes_only=True, split=True, chrom="chr1", n_partitions=10
+        )
     else:
         vds = get_aou_vds(
             autosomes_only=True,

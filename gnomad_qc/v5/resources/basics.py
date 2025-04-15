@@ -124,12 +124,7 @@ def get_aou_vds(
     if isinstance(chrom, str):
         chrom = [chrom]
 
-    if autosomes_only or sex_chr_only:
-        if sex_chr_only:
-            vds = hl.vds.filter_chromosomes(aou_v8_resource.vds, keep=["chrX", "chrY"])
-        else:
-            vds = hl.vds.filter_chromosomes(aou_v8_resource.vds, keep_autosomes=True)
-    elif autosomes_only and sex_chr_only:
+    if autosomes_only and sex_chr_only:
         raise ValueError(
             "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
         )
@@ -159,10 +154,17 @@ def get_aou_vds(
         vds = hl.vds.read_vds(aou_v8_resource.path, n_partitions=n_partitions)
     else:
         vds = aou_v8_resource.vds()
-        if chrom:
-            logger.info("Filtering to chromosome %s...", chrom)
-            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
+    # Now apply chromosome filters if needed
+    if sex_chr_only:
+        vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
+    elif autosomes_only:
+        vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+    elif chrom and not n_partitions:
+        logger.info("Filtering to chromosome %s...", chrom)
+        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+
+    # Rest of the function remains the same
     if filter_intervals:
         logger.info("Filtering to %s intervals...", len(filter_intervals))
         if isinstance(filter_intervals[0], str):
