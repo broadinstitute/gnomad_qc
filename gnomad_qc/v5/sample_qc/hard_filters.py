@@ -57,8 +57,9 @@ def main(args):
     """Determine samples that fail hard filtering thresholds."""
     hl.init(
         log="/hard_filters.log",
-        default_reference="GRCh38",
     )
+    hl.default_reference("GRCh38")
+
     # NOTE: remove this flag when the new shuffle method is the default.
     hl._set_flags(use_new_shuffle="1")
 
