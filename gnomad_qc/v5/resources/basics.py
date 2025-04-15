@@ -97,6 +97,7 @@ def get_aou_vds(
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
+    filter_samples: Optional[Union[List[str], hl.Table]] = None,
     filter_partitions: Optional[List[int]] = None,
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
     split_reference_blocks: bool = True,
@@ -111,6 +112,7 @@ def get_aou_vds(
     :param chrom: Chromosome(s) to filter the VDS to. Can be a single chromosome or a list of chromosomes.
     :param autosomes_only: Whether to include only autosomes.
     :param sex_chr_only: whether to include only sex chromosomes.
+    :param filter_samples: List of samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param filter_intervals: List of intervals to filter the VDS.
     :param split_reference_blocks: Whether to split the reference blocks. Default is True.
     :param filter_variant_ht: Table to filter the variant data.
@@ -139,7 +141,19 @@ def get_aou_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-        # Apply interval filtering
+    # Apply sample filtering
+    if filter_samples:
+        logger.info(
+            "Filtering to %s samples...",
+            (
+                len(filter_samples)
+                if isinstance(filter_samples, list)
+                else filter_samples.count()
+            ),
+        )
+        vds = hl.vds.filter_samples(vds, filter_samples)
+
+    # Apply interval filtering
     if filter_intervals and len(filter_intervals) > 0:
         logger.info("Filtering to %s intervals...", len(filter_intervals))
         if isinstance(filter_intervals[0], str):
@@ -159,7 +173,6 @@ def get_aou_vds(
             vds.variant_data._filter_partitions(filter_partitions),
         )
 
-        # Process variant data
     vmt = vds.variant_data
 
     if split:
