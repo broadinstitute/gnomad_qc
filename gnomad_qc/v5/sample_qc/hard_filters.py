@@ -55,13 +55,7 @@ def compute_aou_sample_qc(
 
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
-    hl.init(
-        log="/hard_filters.log",
-    )
     hl.default_reference("GRCh38")
-
-    # NOTE: remove this flag when the new shuffle method is the default.
-    hl._set_flags(use_new_shuffle="1")
 
     test = args.test
     overwrite = args.overwrite
