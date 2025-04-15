@@ -97,7 +97,7 @@ def get_aou_vds(
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
-    n_partitions: Optional[int] = None,
+    filter_partitions: Optional[List[int]] = None,
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
     split_reference_blocks: bool = True,
     filter_variant_ht: Optional[hl.Table] = None,
@@ -111,15 +111,16 @@ def get_aou_vds(
     :param chrom: Chromosome(s) to filter the VDS to. Can be a single chromosome or a list of chromosomes.
     :param autosomes_only: Whether to include only autosomes.
     :param sex_chr_only: whether to include only sex chromosomes.
-    :param n_partitions: Number of partitions to use for the VDS.
     :param filter_intervals: List of intervals to filter the VDS.
     :param split_reference_blocks: Whether to split the reference blocks. Default is True.
     :param filter_variant_ht: Table to filter the variant data.
+    :param filter_partitions: List of partitions to filter the VDS.
     :param entries_to_keep: List of entries to keep in the variant data.
     :param checkpoint_variant_data: Whether to checkpoint the variant data. Default is False.
     :return: The AOU VDS.
     """
     aou_v8_resource = aou_genotypes
+    vds = aou_v8_resource.vds()
 
     if isinstance(chrom, str):
         chrom = [chrom]
@@ -129,43 +130,17 @@ def get_aou_vds(
             "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
         )
 
-    if n_partitions and chrom:
-        logger.info(
-            "Filtering to chromosome(s) %s with %s partitions...", chrom, n_partitions
-        )
-        reference_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._reference_path(aou_v8_resource.path)
-        )
-        reference_data = hl.filter_intervals(
-            reference_data,
-            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in chrom],
-        )
-        intervals = reference_data._calculate_new_partitions(n_partitions)
-        reference_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._reference_path(aou_v8_resource.path),
-            _intervals=intervals,
-        )
-        variant_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._variants_path(aou_v8_resource.path),
-            _intervals=intervals,
-        )
-        vds = hl.vds.VariantDataset(reference_data, variant_data)
-    elif n_partitions:
-        vds = hl.vds.read_vds(aou_v8_resource.path, n_partitions=n_partitions)
-    else:
-        vds = aou_v8_resource.vds()
-
-    # Now apply chromosome filters if needed
+        # Apply chromosome filtering
     if sex_chr_only:
         vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
     elif autosomes_only:
         vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
-    elif chrom and not n_partitions:
-        logger.info("Filtering to chromosome %s...", chrom)
+    elif chrom and len(chrom) > 0:
+        logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    # Rest of the function remains the same
-    if filter_intervals:
+        # Apply interval filtering
+    if filter_intervals and len(filter_intervals) > 0:
         logger.info("Filtering to %s intervals...", len(filter_intervals))
         if isinstance(filter_intervals[0], str):
             filter_intervals = [
@@ -176,14 +151,27 @@ def get_aou_vds(
             vds, filter_intervals, split_reference_blocks=split_reference_blocks
         )
 
+        # Apply partition filtering
+    if filter_partitions and len(filter_partitions) > 0:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
+
+        # Process variant data
     vmt = vds.variant_data
 
     if split:
         vmt = _split_and_filter_variant_data_for_loading(
             vmt, filter_variant_ht, entries_to_keep, checkpoint_variant_data
         )
+        # Don't need to filter entries again if already done in split function
+        entries_filtered_during_split = entries_to_keep is not None
+    else:
+        entries_filtered_during_split = False
 
-    if entries_to_keep is not None:
+    if entries_to_keep is not None and not entries_filtered_during_split:
         vmt = vmt.select_entries(*entries_to_keep)
 
     if checkpoint_variant_data:
