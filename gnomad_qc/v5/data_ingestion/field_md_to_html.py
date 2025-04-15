@@ -1,3 +1,5 @@
+"""Script to convert required fields markdown to html."""
+
 import markdown
 from bs4 import BeautifulSoup
 
@@ -20,13 +22,18 @@ final_sections = []
 first_table_processed = False
 second_table_processed = False
 
-elements = soup.find_all(["p", "table"])
+elements = soup.find_all(["p", "table", "h1", "h2"])
 
 paragraphs_before_first_table = []
 paragraphs_before_second_table = []
 
+current_header = None
+
 for element in elements:
-    if element.name == "p":
+    if element.name in ["h1", "h2"]:
+        current_header = str(element)
+
+    elif element.name == "p":
         if not first_table_processed:
             paragraphs_before_first_table.append(str(element))
         elif not second_table_processed:
@@ -35,13 +42,18 @@ for element in elements:
     elif element.name == "table":
         if not first_table_processed:
             first_table_processed = True
-            final_sections.append("<h1>Global Fields Specification</h1>")
+            if current_header:
+                final_sections.append(current_header)
             final_sections.extend(paragraphs_before_first_table)
 
         elif not second_table_processed:
             second_table_processed = True
-            final_sections.append("<h1>Row Fields Specification</h1>")
+            if current_header:
+                final_sections.append(current_header)
             final_sections.extend(paragraphs_before_second_table)
+
+        # (rest of your table processing code remains unchanged)
+
 
         # Build a styled table
         styled_table = BeautifulSoup(
@@ -72,6 +84,7 @@ for element in elements:
             if len(cells) < 5:
                 continue
 
+            # Extract field necessity column and use value to decide row color.
             necessity = cells[4].get_text(strip=True).lower()
             bg_color = color_map.get(necessity, "#ffffff")
             tr = styled_table.new_tag("tr", style=f"background-color:{bg_color};")

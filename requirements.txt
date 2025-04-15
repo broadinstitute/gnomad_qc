@@ -6,3 +6,4 @@ scikit-learn
 scipy
 hail
 papermill
+bs4
