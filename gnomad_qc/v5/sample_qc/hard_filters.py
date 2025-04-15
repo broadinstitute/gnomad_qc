@@ -44,7 +44,7 @@ def compute_aou_sample_qc(
         vds = get_aou_vds(
             autosomes_only=True,
             filter_samples=sample_ids,
-            naive_coalesce_partitions=20,  # Reduce partitions for the smaller dataset
+            naive_coalesce_partitions=100,
             split=True,
         )
     else:
