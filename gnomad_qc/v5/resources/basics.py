@@ -104,6 +104,7 @@ def get_aou_vds(
     filter_variant_ht: Optional[hl.Table] = None,
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -119,6 +120,7 @@ def get_aou_vds(
     :param filter_partitions: List of partitions to filter the VDS.
     :param entries_to_keep: List of entries to keep in the variant data.
     :param checkpoint_variant_data: Whether to checkpoint the variant data. Default is False.
+    :param naive_coalesce_partitions: Number of partitions to coalesce the VDS to. Default is None.
     :return: The AOU VDS.
     """
     aou_v8_resource = aou_genotypes
@@ -152,6 +154,12 @@ def get_aou_vds(
             ),
         )
         vds = hl.vds.filter_samples(vds, filter_samples)
+
+    if naive_coalesce_partitions:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
+            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
+        )
 
     # Apply interval filtering
     if filter_intervals and len(filter_intervals) > 0:
