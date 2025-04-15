@@ -98,6 +98,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Compute Hail's VDS sample QC metrics on AoU.",
         action="store_true",
     )
+    return parser
 
 
 if __name__ == "__main__":
