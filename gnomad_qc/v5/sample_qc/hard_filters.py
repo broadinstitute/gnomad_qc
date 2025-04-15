@@ -69,7 +69,7 @@ def main(args):
 
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("hard_filters"))
+        hl.copy_log(get_logging_path("hard_filters", environment="rwb").path)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
