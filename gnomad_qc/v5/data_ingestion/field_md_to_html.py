@@ -52,9 +52,6 @@ for element in elements:
                 final_sections.append(current_header)
             final_sections.extend(paragraphs_before_second_table)
 
-        # (rest of your table processing code remains unchanged)
-
-
         # Build a styled table
         styled_table = BeautifulSoup(
             "<table style='border-collapse: collapse; border: 1px solid #000; width: 100%;'><thead></thead><tbody></tbody></table>",
