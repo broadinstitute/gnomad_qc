@@ -37,6 +37,7 @@ def compute_aou_sample_qc(
             autosomes_only=True,
             split=True,
         )
+        n_partitions = n_partitions // 100
     else:
         logger.info("Loading full VDS...")
         vds = get_aou_vds(
@@ -44,7 +45,7 @@ def compute_aou_sample_qc(
             split=True,
         )
 
-    # Remove centromeres and telomeres
+    logger.info("Filtering VDS to exclude telomeres and centromeres...")
     vds = hl.vds.filter_intervals(
         vds, intervals=telomeres_and_centromeres.ht(), keep=False
     )
