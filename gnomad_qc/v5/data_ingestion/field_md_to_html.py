@@ -5,7 +5,8 @@ import os
 import markdown
 from bs4 import BeautifulSoup
 
-# Obtain path to script (to use either locally or through repo) and read the markdown content.
+# Obtain path to script (to use either locally or through repo) and read
+# the markdown content.
 script_dir = os.path.dirname(os.path.abspath(__file__))
 md_path = os.path.join(script_dir, "field_requirements.md")
 
