@@ -1,9 +1,9 @@
 """Script to convert required fields markdown to html."""
 
-import markdown
 import os
-from bs4 import BeautifulSoup
 
+import markdown
+from bs4 import BeautifulSoup
 
 # Obtain path to script (to use either locally or through repo) and read the markdown content.
 script_dir = os.path.dirname(os.path.abspath(__file__))
