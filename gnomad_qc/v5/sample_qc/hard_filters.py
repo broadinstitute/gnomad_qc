@@ -31,12 +31,14 @@ def compute_aou_sample_qc(
     logger.info("Computing sample QC")
 
     if test:
+        logger.info("Loading test VDS...")
         vds = get_aou_vds(
             test=True,
             autosomes_only=True,
             split=True,
         )
     else:
+        logger.info("Loading full VDS...")
         vds = get_aou_vds(
             autosomes_only=True,
             split=True,
