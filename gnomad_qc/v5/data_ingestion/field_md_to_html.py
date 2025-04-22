@@ -1,10 +1,15 @@
 """Script to convert required fields markdown to html."""
 
 import markdown
+import os
 from bs4 import BeautifulSoup
 
-# Read markdown content.
-with open("field_requirements.md", "r") as f:
+
+# Obtain path to script (to use either locally or through repo) and read the markdown content.
+script_dir = os.path.dirname(os.path.abspath(__file__))
+md_path = os.path.join(script_dir, "field_requirements.md")
+
+with open(md_path, "r") as f:
     markdown_text = f.read()
 
 # Convert markdown to HTML.
@@ -19,8 +24,7 @@ color_map = {
 }
 
 final_sections = []
-first_table_processed = False
-second_table_processed = False
+
 
 elements = soup.find_all(["p", "table", "h1", "h2"])
 
@@ -29,28 +33,23 @@ paragraphs_before_second_table = []
 
 current_header = None
 
+table_count = 0
+paragraph_buffers = [paragraphs_before_first_table, paragraphs_before_second_table]
+
 for element in elements:
-    if element.name in ["h1", "h2"]:
+    name = element.name
+
+    if name in ["h1", "h2"]:
         current_header = str(element)
 
-    elif element.name == "p":
-        if not first_table_processed:
-            paragraphs_before_first_table.append(str(element))
-        elif not second_table_processed:
-            paragraphs_before_second_table.append(str(element))
+    elif name == "p" and table_count < 2:
+        paragraph_buffers[table_count].append(str(element))
 
-    elif element.name == "table":
-        if not first_table_processed:
-            first_table_processed = True
-            if current_header:
-                final_sections.append(current_header)
-            final_sections.extend(paragraphs_before_first_table)
-
-        elif not second_table_processed:
-            second_table_processed = True
-            if current_header:
-                final_sections.append(current_header)
-            final_sections.extend(paragraphs_before_second_table)
+    elif name == "table" and table_count < 2:
+        if current_header:
+            final_sections.append(current_header)
+        final_sections.extend(paragraph_buffers[table_count])
+        table_count += 1
 
         # Build a styled table
         styled_table = BeautifulSoup(
