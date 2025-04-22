@@ -31,20 +31,9 @@ def compute_aou_sample_qc(
     logger.info("Computing sample QC")
 
     if test:
-        # First load a small VDS to extract sample IDs
-        temp_vds = get_aou_vds(
-            autosomes_only=True,
-            filter_partitions=[0],  # Use just one partition to get sample IDs quickly
-        )
-        # Get the first 100 sample IDs
-        sample_ids = list(temp_vds.variant_data.s.take(100))
-
-        # Now load the VDS with the sample filter applied and coalesce to reduce
-        # partitions
         vds = get_aou_vds(
+            test=True,
             autosomes_only=True,
-            filter_samples=sample_ids,
-            naive_coalesce_partitions=100,
             split=True,
         )
     else:

@@ -91,8 +91,13 @@ aou_genotypes = VersionedVariantDatasetResource(
     _aou_genotypes,
 )
 
+aou_test_dataset = VariantDatasetResource(
+    f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
+)
+
 
 def get_aou_vds(
+    test: bool = False,
     split: bool = False,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
@@ -109,6 +114,7 @@ def get_aou_vds(
     """
     Load the AOU VDS.
 
+    :param test: Whether to load the test VDS. Default is False.
     :param split: Whether to split the VDS into separate datasets for each chromosome. Default is False.
     :param chrom: Chromosome(s) to filter the VDS to. Can be a single chromosome or a list of chromosomes.
     :param autosomes_only: Whether to include only autosomes.
@@ -123,7 +129,7 @@ def get_aou_vds(
     :param naive_coalesce_partitions: Number of partitions to coalesce the VDS to. Default is None.
     :return: The AOU VDS.
     """
-    aou_v8_resource = aou_genotypes
+    aou_v8_resource = aou_test_dataset if test else aou_genotypes
     vds = aou_v8_resource.vds()
 
     if isinstance(chrom, str):
