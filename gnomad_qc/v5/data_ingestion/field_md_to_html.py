@@ -19,9 +19,9 @@ soup = BeautifulSoup(html, "html.parser")
 
 # Color map based on Field Necessity.
 color_map = {
-    "required": "#fff0f0",
-    "optional": "#f0faff",
-    "not_needed": "#dedbe4",
+    "Required": "#fff0f0",
+    "Optional": "#f0faff",
+    "Not Needed": "#dedbe4",
 }
 
 final_sections = []
@@ -82,7 +82,7 @@ for element in elements:
                 continue
 
             # Extract field necessity column and use value to decide row color.
-            necessity = cells[4].get_text(strip=True).lower()
+            necessity = cells[4].get_text(strip=True)
             bg_color = color_map.get(necessity, "#ffffff")
             tr = styled_table.new_tag("tr", style=f"background-color:{bg_color};")
 
