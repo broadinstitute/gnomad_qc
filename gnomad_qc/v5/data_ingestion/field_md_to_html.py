@@ -121,5 +121,3 @@ final_html = """
 # Write final output.
 with open("field_requirements.html", "w") as out:
     out.write(final_html)
-
-print("✅ HTML file saved with correct spans and borders.")
