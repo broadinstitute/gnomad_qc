@@ -1,0 +1,16 @@
+gnomad_qc.v5.data_ingestion.create_vds
+======================================
+
+Script to combine VDSes and GVCFs into a single VDS.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.data_ingestion.create_vds
+
+.. automodule:: gnomad_qc.v5.data_ingestion.create_vds
+    :exclude-members: get_script_argument_parser
