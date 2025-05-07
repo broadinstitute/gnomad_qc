@@ -38,14 +38,16 @@ def qc_temp_prefix(
     """
     if environment == "rwb":
         env_bucket = f"{WORKSPACE_BUCKET}/tmp"
+        version_str = version
     elif environment == "dataproc":
         env_bucket = "gnomad-tmp"
+        version_str = f"v{version}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
         )
 
-    return f"gs://{env_bucket}/gnomad.genomes.v{version}.qc_data/"
+    return f"gs://{env_bucket}/gnomad.genomes.{version_str}.qc_data/"
 
 
 def get_checkpoint_path(
