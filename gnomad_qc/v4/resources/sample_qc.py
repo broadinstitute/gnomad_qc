@@ -1,5 +1,6 @@
 """Script containing sample QC related resources."""
 
+import logging
 from typing import Optional
 
 from gnomad.resources.resource_utils import (
@@ -360,6 +361,11 @@ def get_predetermined_qc(
             get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)
         )
     elif version == "3.1":
+        logging.warning(
+            "The gnomAD v3.1 predetermined QC sites were deleted from the gnomAD bucket "
+            "to save space. If you need them, they can be re-generated with the "
+            "v4.sample_qc.generate_qc_mt.py script."
+        )
         return v3_predetermined_qc
     else:
         return v4_predetermined_qc.versions[version]
@@ -371,6 +377,8 @@ predetermined_qc_sites = TableResource(
     "gs://gnomad/v4.0/sample_qc/additional_resources/pre_ld_pruning_qc_variants.ht"
 )
 
+# This MT was deleted from the gnomAD bucket to save space. If it is needed, it can be
+# re-generated with the v4.sample_qc.generate_qc_mt.py script.
 # gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`.
 v3_predetermined_qc = MatrixTableResource(
     "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.genomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
