@@ -106,6 +106,7 @@ def get_aou_vds(
     filter_partitions: Optional[List[int]] = None,
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
     split_reference_blocks: bool = True,
+    remove_dead_alleles: bool = True,
     filter_variant_ht: Optional[hl.Table] = None,
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
@@ -122,6 +123,7 @@ def get_aou_vds(
     :param filter_samples: List of samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param filter_intervals: List of intervals to filter the VDS.
     :param split_reference_blocks: Whether to split the reference blocks. Default is True.
+    :param remove_dead_alleles: Whether to remove dead alleles. Default is True.
     :param filter_variant_ht: Table to filter the variant data.
     :param filter_partitions: List of partitions to filter the VDS.
     :param entries_to_keep: List of entries to keep in the variant data.
@@ -140,7 +142,7 @@ def get_aou_vds(
             "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
         )
 
-        # Apply chromosome filtering
+    # Apply chromosome filtering
     if sex_chr_only:
         vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
     elif autosomes_only:
@@ -150,6 +152,28 @@ def get_aou_vds(
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     # Apply sample filtering
+
+    # Count current number of samples in the VDS.
+    n_samples = vds.variant_data.count_cols()
+
+    # Remove samples with bad quality that are noted in Known Issues #1 in AoU
+    # quality report
+    logger.info("Removing 3 samples with bad quality...")
+    # TODO: We may need to exclude the samples whose coverage was below the
+    # thresholds, waiting for AoU to update the known issues file
+
+    bad_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
+
+    vds = hl.vds.filter_samples(
+        vds, bad_ids, keep=False, remove_dead_alleles=remove_dead_alleles
+    )
+
+    # Log number of UKB samples removed from the VDS.
+    n_samples_after_exclusion = vds.variant_data.count_cols()
+    n_samples_removed = n_samples - n_samples_after_exclusion
+
+    logger.info("Total number of samples removed: %s", n_samples_removed)
+
     if filter_samples:
         logger.info(
             "Filtering to %s samples...",
@@ -179,7 +203,7 @@ def get_aou_vds(
             vds, filter_intervals, split_reference_blocks=split_reference_blocks
         )
 
-        # Apply partition filtering
+    # Apply partition filtering
     if filter_partitions and len(filter_partitions) > 0:
         logger.info("Filtering to %s partitions...", len(filter_partitions))
         vds = hl.vds.VariantDataset(
@@ -207,3 +231,15 @@ def get_aou_vds(
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     return vds
+
+
+def _aou_root_path() -> str:
+    """
+    Retrieve the path to the UKB data directory.
+
+    :return: String representation of the path to the UKB data directory
+    """
+    return "gs://fc-aou-datasets-controlled/v8"
+
+
+aou_bad_quality_path = f"{_aou_root_path()}/known_issues/wgs_v8_known_issue_1.txt"
