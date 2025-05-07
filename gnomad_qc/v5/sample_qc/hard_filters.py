@@ -45,7 +45,11 @@ def compute_aou_sample_qc(
             split=True,
         )
 
-    logger.info("Filtering VDS to exclude telomeres and centromeres...")
+    logger.info(
+        "Excluding telomeres and centromeres from VDS (redundant but acts as a safety check)..."
+    )
+    # AoU pipeline has already filtered out the centromeres and telomeres, but
+    # this serves as an additional safeguard.
     vds = hl.vds.filter_intervals(
         vds, intervals=telomeres_and_centromeres.ht(), keep=False
     )
@@ -56,7 +60,7 @@ def compute_aou_sample_qc(
             "bi_allelic": bi_allelic_expr(vds.variant_data),
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
-        tmp_ht_prefix=get_aou_sample_qc().path[:-3],
+        tmp_ht_prefix=get_aou_sample_qc(test=test).path[:-3],
         gt_col="GT",
     )
 

@@ -18,31 +18,28 @@ def get_sample_qc_root(
     data_set="aou",
 ) -> str:
     """
-    Return path to sample QC root folder.
+    Return the root path to sample QC results.
 
-    :param version: Version of sample QC path to return.
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
-        full v4 VDS.
-    :param data_type: Data type used in sample QC, e.g. "genomes".
-    :param data_set: Data set used in sample QC, e.g. "aou" or "hgdp_tgp".
-    :return: Root to sample QC path.
+    :param version: Sample QC version (default: CURRENT_SAMPLE_QC_VERSION).
+    :param test: If True, use a temporary path (for testing on intermediate VDS).
+    :param data_type: Type of data used (e.g., "genomes").
+    :param data_set: Dataset name (e.g., "aou", "hgdp_tgp").
+    :return: Path to the sample QC directory.
     """
+    if test:
+        env = "rwb" if data_set == "aou" else "dataproc"
+        base = qc_temp_prefix(version=version, environment=env)
+        suffix = (
+            f"sample_qc/{data_set}"
+            if data_set == "aou"
+            else f"sample_qc/{data_type}/{data_set}"
+        )
+        return base + suffix
+
     if data_set == "aou":
-        if test:
-            return (
-                qc_temp_prefix(version=version, environment="rwb")
-                + f"sample_qc/{data_set}"
-            )
-        else:
-            return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/{data_set}"
-    else:
-        if test:
-            return (
-                qc_temp_prefix(version=version, environment="dataproc")
-                + f"sample_qc/{data_type}/{data_set}"
-            )
-        else:
-            return f"gs://gnomad/v{version}/sample_qc/{data_type}/{data_set}"
+        return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/{data_set}"
+
+    return f"gs://gnomad/v{version}/sample_qc/{data_type}/{data_set}"
 
 
 def get_aou_sample_qc(
