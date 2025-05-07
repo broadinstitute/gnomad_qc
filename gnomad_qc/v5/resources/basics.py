@@ -1,8 +1,24 @@
 """Script containing generic resources."""
 
-from gnomad.resources.resource_utils import VariantDatasetResource
+import logging
+from typing import List, Optional, Set, Union
 
-from gnomad_qc.v5.resources.constants import CURRENT_VERSION, WORKSPACE_BUCKET
+import hail as hl
+from gnomad.resources.resource_utils import (
+    VariantDatasetResource,
+    VersionedVariantDatasetResource,
+)
+from hail.utils import new_temp_file
+
+from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
+from gnomad_qc.v5.resources.constants import (
+    CURRENT_AOU_VERSION,
+    CURRENT_VERSION,
+    WORKSPACE_BUCKET,
+)
+
+logger = logging.getLogger("basic_resources")
+logger.setLevel(logging.INFO)
 
 # v5 DRAGEN TGP test VDS.
 dragen_tgp_vds = VariantDatasetResource(
@@ -17,19 +33,21 @@ def qc_temp_prefix(
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
-    :param env: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
     :return: Path to bucket with temporary QC data.
     """
     if environment == "rwb":
         env_bucket = f"{WORKSPACE_BUCKET}/tmp"
+        version_str = version
     elif environment == "dataproc":
         env_bucket = "gnomad-tmp"
+        version_str = f"v{version}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
         )
 
-    return f"gs://{env_bucket}/gnomad.genomes.v{version}.qc_data/"
+    return f"gs://{env_bucket}/gnomad.genomes.{version_str}.qc_data/"
 
 
 def get_checkpoint_path(
@@ -50,12 +68,180 @@ def get_checkpoint_path(
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'
 
 
-def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
+def get_logging_path(
+    name: str, version: str = CURRENT_VERSION, environment: str = "dataproc"
+) -> str:
     """
     Create a path for Hail log files.
 
     :param name: Name of log file.
     :param version: Version of annotation path to return.
+    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
     :return: Output log path.
     """
-    return f"{qc_temp_prefix(version)}{name}.log"
+    return f"{qc_temp_prefix(version, environment)}{name}.log"
+
+
+_aou_genotypes = {
+    "v8": VariantDatasetResource(
+        "gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/vds/hail.vds"
+    )
+}
+
+aou_genotypes = VersionedVariantDatasetResource(
+    CURRENT_AOU_VERSION,
+    _aou_genotypes,
+)
+
+aou_test_dataset = VariantDatasetResource(
+    f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
+)
+
+
+def get_aou_vds(
+    test: bool = False,
+    split: bool = False,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
+    autosomes_only: bool = False,
+    sex_chr_only: bool = False,
+    filter_samples: Optional[Union[List[str], hl.Table]] = None,
+    filter_partitions: Optional[List[int]] = None,
+    filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
+    split_reference_blocks: bool = True,
+    remove_dead_alleles: bool = True,
+    filter_variant_ht: Optional[hl.Table] = None,
+    entries_to_keep: Optional[List[str]] = None,
+    checkpoint_variant_data: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+) -> hl.vds.VariantDataset:
+    """
+    Load the AOU VDS.
+
+    :param test: Whether to load the test VDS. Default is False.
+    :param split: Whether to split the VDS into separate datasets for each chromosome. Default is False.
+    :param chrom: Chromosome(s) to filter the VDS to. Can be a single chromosome or a list of chromosomes.
+    :param autosomes_only: Whether to include only autosomes.
+    :param sex_chr_only: whether to include only sex chromosomes.
+    :param filter_samples: List of samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+    :param filter_intervals: List of intervals to filter the VDS.
+    :param split_reference_blocks: Whether to split the reference blocks. Default is True.
+    :param remove_dead_alleles: Whether to remove dead alleles. Default is True.
+    :param filter_variant_ht: Table to filter the variant data.
+    :param filter_partitions: List of partitions to filter the VDS.
+    :param entries_to_keep: List of entries to keep in the variant data.
+    :param checkpoint_variant_data: Whether to checkpoint the variant data. Default is False.
+    :param naive_coalesce_partitions: Number of partitions to coalesce the VDS to. Default is None.
+    :return: The AOU VDS.
+    """
+    aou_v8_resource = aou_test_dataset if test else aou_genotypes
+    vds = aou_v8_resource.vds()
+
+    if isinstance(chrom, str):
+        chrom = [chrom]
+
+    if autosomes_only and sex_chr_only:
+        raise ValueError(
+            "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
+        )
+
+    # Apply chromosome filtering
+    if sex_chr_only:
+        vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
+    elif autosomes_only:
+        vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+    elif chrom and len(chrom) > 0:
+        logger.info("Filtering to chromosome(s) %s...", chrom)
+        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+
+    # Apply sample filtering
+
+    # Count current number of samples in the VDS.
+    n_samples = vds.variant_data.count_cols()
+
+    # Remove samples with bad quality that are noted in Known Issues #1 in AoU
+    # quality report
+    logger.info("Removing 3 samples with bad quality...")
+    # TODO: We may need to exclude the samples whose coverage was below the
+    # thresholds, waiting for AoU to update the known issues file
+
+    bad_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
+
+    vds = hl.vds.filter_samples(
+        vds, bad_ids, keep=False, remove_dead_alleles=remove_dead_alleles
+    )
+
+    # Log number of UKB samples removed from the VDS.
+    n_samples_after_exclusion = vds.variant_data.count_cols()
+    n_samples_removed = n_samples - n_samples_after_exclusion
+
+    logger.info("Total number of samples removed: %s", n_samples_removed)
+
+    if filter_samples:
+        logger.info(
+            "Filtering to %s samples...",
+            (
+                len(filter_samples)
+                if isinstance(filter_samples, list)
+                else filter_samples.count()
+            ),
+        )
+        vds = hl.vds.filter_samples(vds, filter_samples)
+
+    if naive_coalesce_partitions:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
+            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
+        )
+
+    # Apply interval filtering
+    if filter_intervals and len(filter_intervals) > 0:
+        logger.info("Filtering to %s intervals...", len(filter_intervals))
+        if isinstance(filter_intervals[0], str):
+            filter_intervals = [
+                hl.parse_locus_interval(x, reference_genome="GRCh38")
+                for x in filter_intervals
+            ]
+        vds = hl.vds.filter_intervals(
+            vds, filter_intervals, split_reference_blocks=split_reference_blocks
+        )
+
+    # Apply partition filtering
+    if filter_partitions and len(filter_partitions) > 0:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
+
+    vmt = vds.variant_data
+
+    if split:
+        vmt = _split_and_filter_variant_data_for_loading(
+            vmt, filter_variant_ht, entries_to_keep, checkpoint_variant_data
+        )
+        # Don't need to filter entries again if already done in split function
+        entries_filtered_during_split = entries_to_keep is not None
+    else:
+        entries_filtered_during_split = False
+
+    if entries_to_keep is not None and not entries_filtered_during_split:
+        vmt = vmt.select_entries(*entries_to_keep)
+
+    if checkpoint_variant_data:
+        vmt = vmt.checkpoint(new_temp_file("vds_loading.variant_data", "mt"))
+
+    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+    return vds
+
+
+def _aou_root_path() -> str:
+    """
+    Retrieve the path to the UKB data directory.
+
+    :return: String representation of the path to the UKB data directory
+    """
+    return "gs://fc-aou-datasets-controlled/v8"
+
+
+aou_bad_quality_path = f"{_aou_root_path()}/known_issues/wgs_v8_known_issue_1.txt"
