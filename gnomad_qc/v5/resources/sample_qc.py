@@ -31,15 +31,15 @@ def get_sample_qc_root(
         if test:
             return (
                 qc_temp_prefix(version=version, environment="rwb")
-                + f"sample_qc/{data_set}/"
+                + f"sample_qc/{data_set}"
             )
         else:
-            return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/{data_set}/"
+            return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/{data_set}"
     else:
         if test:
             return (
                 qc_temp_prefix(version=version, environment="dataproc")
-                + f"sample_qc/{data_type}/{data_set}/"
+                + f"sample_qc/{data_type}/{data_set}"
             )
         else:
             return f"gs://gnomad/v{version}/sample_qc/{data_type}/{data_set}"
@@ -66,7 +66,7 @@ def get_aou_sample_qc(
         CURRENT_AOU_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set='aou')}/hard_filtering/aou.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
+                f"{get_sample_qc_root(version, test, data_set='aou')}/hard_filtering/aou.{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
             for version in AOU_VERSIONS
         },
