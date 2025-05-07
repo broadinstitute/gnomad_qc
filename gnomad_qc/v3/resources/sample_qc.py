@@ -170,7 +170,7 @@ def ancestry_pca_eigenvalues(
 
 
 # These MTs were deleted from the gnomAD bucket to save space. If they are needed, they
-# can be re-generated with the sample_qc.subpop_analysis.py script.
+# can be re-generated with the v3.sample_qc.subpop_analysis.py script.
 def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION) -> str:
     """
     Get path to the filtered subpop QC MT for a specified population.
@@ -231,7 +231,7 @@ gnomad_v2_qc_sites = TableResource(
 )
 
 # This MT was deleted from the gnomAD bucket to save space. If it is needed, it can be
-# re-generated with the sample_qc.sample_qc.py script.
+# re-generated with the v3.sample_qc.sample_qc.py script.
 # Dense MT of samples at QC sites
 qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
@@ -333,7 +333,7 @@ pop = VersionedTableResource(
 )
 
 # This MTs was deleted from the gnomAD bucket to save space. If it is needed, it can be
-# re-generated with the sample_qc.subpop_analysis.py script.
+# re-generated with the v3.sample_qc.subpop_analysis.py script.
 # Dense QC MT to use for subpop analyses
 subpop_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
