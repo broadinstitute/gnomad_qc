@@ -1,11 +1,7 @@
-""" 
+"""
 Script to generate LD scores for gnomAD v4 Genome SNPs & Indels. Example usage:
 
-hailctl dataproc submit cluster_name generate_ld_data.py --test --overwrite --hgdp-subset --pop afr --re-call-stats \
-    --generate-ld-mt \
-    --generate-ld-pruned-set \
-    --generate-ld-matrix \
-    --generate-ld-scores
+hailctl dataproc submit dmld10 ~/Documents/GitHub/gnomad_qc/gnomad_qc/v4/assessment/generate_ld_data.py --generate-ld-mt --custom-suffix alleassample --pop eas --generate-ld-pruned-set --generate-ld-matrix --generate-ld-scores --adj --overwrite
 """
 
 import argparse
@@ -281,6 +277,7 @@ def generate_ld_matrix(
     :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
     :param test: Filter to test versions and/or write to test paths.
     """
+    # From gnomAD v2 run:
     # Takes about 4 hours on 20 n1-standard-8 nodes (with SSD - not sure if necessary) per population
     # Total of ~37 hours ($400)
 
@@ -365,6 +362,7 @@ def generate_ld_scores_from_ld_matrix(
     :param version: Version of files, either 'hgdp' or None, which ld_pruned_path() populates with most recent gnomAD genomes version.
     :param test: Filter to test versions and/or write to test paths.
     """
+    # From gnomAD v2 run:
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
     # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
     # mins to compute LD scores per population (~$150 total)
@@ -564,7 +562,14 @@ def generate_ld_mt(
             filter_samples_ht=filter_samples_ht,
         )
 
+        logger.info("New checkpointing logic...")
         vds.variant_data = vds.variant_data.checkpoint(new_temp_file())
+
+        # From a prior run, where it failed (or was failed) after writing the Variant Data, it can be read back in as follows:
+        # with args: hailctl dataproc submit dmld50 generate_ld_data.py --overwrite --pop eas --ld-contig chr22 --adj --generate-ld-mt --generate-ld-pruned-set --generate-ld-matrix --generate-ld-scores --custom-suffix alleassamples
+        # READ VARIANT DATA FROM THIS
+        # vds.variant_data = hl.read_matrix_table('gs://gnomad-tmp-4day/ld_tmp/Sms092zqq8FbN9QXweJnzA') # FOR EAS RUN
+
         vds.reference_data = vds.reference_data.checkpoint(new_temp_file())
 
         logger.info("From DENSE MT, performance beware...")
@@ -574,26 +579,12 @@ def generate_ld_mt(
         mt = mt.select_cols(mt.meta)
         mt = mt.select_rows()
 
-        # NOTE: QUESTION IF THIS SHOULD BE RAN OR NOT
-        # NOTE: need to checkpoint either here or step below where noted
-        logger.info(
-            f"Checkpointing unannotated {pop} on {mt_contig if mt_contig else 'full'}"
-        )
-
         if adj:
             logger.info("Filtering to adj sites only...")
             adj_expr = get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
             mt = mt.filter_entries(adj_expr)
             mt = mt.select_entries("GT")
 
-        # mt = mt.checkpoint(new_temp_file())
-
-        # logger.info('CUSTOM READ FROM PRIOR CHECKPOINT..')
-        # mt = hl.read_matrix_table('gs://gnomad-tmp-4day/ld_tmp//XLmYz1uA7NYEY2jgB55Yuc')
-        # This part begins potential performance concerns - what is up here?
-        # Ideally, would checkpoint both of these beforehand.
-        # Is very slow if MT isn't checkpointed
-        # Checkpointing said MT is also very slow...
         logger.info("Annotating information from release HT...")
         mt = mt.annotate_rows(
             freq=ht_filter[mt.row_key].freq, filters=ht_filter[mt.row_key].filters
@@ -646,7 +637,7 @@ def main(args):
     ld_ac = args.ld_ac
 
     if vds_freq < ld_freq:
-        pass  # this is the desired behavior, for the vds freq to be more permisive
+        pass
     if ld_freq < vds_freq:
         ld_freq = vds_freq
 
@@ -662,10 +653,11 @@ def main(args):
     elif do_v2_samples:
         version = "v2samples"
 
-    if version:
-        version += "hapmap"
-    else:
-        version = "hapmap"
+    if hapmap == True:
+        if version:
+            version += "hapmap"
+        else:
+            version = "hapmap"
 
     ld_mt_path = ld_mt_checkpoint_path(
         data_type="genomes",
@@ -709,8 +701,8 @@ def main(args):
         # The only point of concern is hl.ld_prune() and the size of the matrix
         # Need to filter the mt to only the contig we are working on
         # This is because the LD matrix is too large otherwise
-        mt = mt.filter_rows(mt.locus.contig == ld_contig)
         logger.info(f"Filtering to {ld_contig}...")
+        mt_ld = mt.filter_rows(mt.locus.contig == ld_contig)
 
         # Previously established that THIS needs a checkpoint to have been ran to work effectively
         if args.generate_ld_pruned_set:
@@ -718,7 +710,7 @@ def main(args):
                 "Generating LD Pruned Set of uncorrelated variants, using hl.ld_prune()..."
             )
             generate_ld_pruned_set(
-                mt=mt,
+                mt=mt_ld,
                 pop_data=pop_data,
                 data_type=data_type,
                 r2=args.r2,
@@ -738,7 +730,7 @@ def main(args):
                 "Generating Hail BlockMatrix of variants correlations to other variants, using hl.ld_matrix()..."
             )
             generate_ld_matrix(
-                mt=mt,
+                mt=mt_ld,
                 pop_data=pop_data,
                 data_type=data_type,
                 radius=args.radius,
