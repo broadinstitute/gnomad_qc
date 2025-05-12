@@ -252,3 +252,38 @@ def _aou_root_path() -> str:
 
 
 aou_bad_quality_path = f"{_aou_root_path()}/known_issues/wgs_v8_known_issue_1.txt"
+
+
+def add_project_prefix_to_sample_collisions(
+    ht: hl.Table,
+    project: str,
+    sample_collisions: hl.Table,
+    sample_id_field: str = "s",
+) -> hl.Table:
+    """
+    Add project prefix to sample IDs that exist in multiple projects.
+
+    :param ht: Table to add project prefix to sample IDs.
+    :param project: Project name.
+    :param sample_collisions: Table of sample IDs that exist in multiple projects.
+    :param sample_id_field: Field name for sample IDs in the table.
+    :return: Table with project prefix added to sample IDs.
+    """
+    logger.info(
+        "Adding project prefix to sample IDs that exists in multiple projects..."
+    )
+    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    ht = ht.key_by()
+
+    prefix_expr = ht.project if "project" in ht.row_value else hl.literal(project)
+
+    ht = ht.annotate(
+        **{
+            f"{sample_id_field}": hl.if_else(
+                hl.literal(collisions).contains(ht["s"]),
+                hl.delimit([prefix_expr, ht[sample_id_field]], "_"),
+                ht[sample_id_field],
+            )
+        }
+    )
+    return ht.key_by(sample_id_field)

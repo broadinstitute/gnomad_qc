@@ -34,7 +34,10 @@ import hail as hl
 import pandas as pd
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
-from gnomad_qc.v5.resources.basics import get_checkpoint_path
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_checkpoint_path,
+)
 from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
 
 hl.default_reference(new_default_reference="GRCh38")
@@ -271,34 +274,6 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> hl.Table:
         sample_collisions = sample_collisions.union(collisions_ht.select())
 
     return sample_collisions
-
-
-def add_project_prefix_to_sample_collisions(
-    ht: hl.Table,
-    project: str,
-    sample_collisions: hl.Table,
-    sample_id_field: str = "s",
-) -> hl.Table:
-    """
-    Add project prefix to sample IDs that exist in multiple projects.
-
-    :param ht: Table to add project prefix to sample IDs.
-    :param project: Project name.
-    :param sample_collisions: Table of sample IDs that exist in multiple projects.
-    :return: Table with project prefix added to sample IDs.
-    """
-    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
-    ht = ht.key_by()
-    ht = ht.annotate(
-        **{
-            f"{sample_id_field}": hl.if_else(
-                hl.literal(collisions).contains(ht["s"]),
-                hl.delimit([ht.project, ht[sample_id_field]], "_"),
-                ht[sample_id_field],
-            )
-        }
-    )
-    return ht.key_by(sample_id_field)
 
 
 def main():

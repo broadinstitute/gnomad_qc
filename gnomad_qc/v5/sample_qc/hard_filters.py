@@ -8,7 +8,11 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
 
-from gnomad_qc.v5.resources.basics import get_aou_vds
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_aou_vds,
+)
+from gnomad_qc.v5.resources.meta import sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import get_aou_sample_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -70,10 +74,15 @@ def main(args):
     overwrite = args.overwrite
 
     if args.aou_sample_qc:
-        compute_aou_sample_qc(
+        ht = compute_aou_sample_qc(
             n_partitions=args.sample_qc_n_partitions,
             test=test,
-        ).write(get_aou_sample_qc(test=test).path, overwrite=overwrite)
+        )
+        logger.info("")
+        ht = add_project_prefix_to_sample_collisions(
+            ht, project="aou", sample_collisions=sample_id_collisions.ht()
+        )
+        ht.write(get_aou_sample_qc(test=test).path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
