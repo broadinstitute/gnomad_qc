@@ -38,16 +38,14 @@ def qc_temp_prefix(
     """
     if environment == "rwb":
         env_bucket = f"{WORKSPACE_BUCKET}/tmp"
-        version_str = version
     elif environment == "dataproc":
         env_bucket = "gnomad-tmp"
-        version_str = f"v{version}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
         )
 
-    return f"gs://{env_bucket}/gnomad.genomes.{version_str}.qc_data/"
+    return f"gs://{env_bucket}/gnomad.genomes.v{version}.qc_data/"
 
 
 def get_checkpoint_path(
@@ -93,6 +91,9 @@ aou_genotypes = VersionedVariantDatasetResource(
     _aou_genotypes,
 )
 
+# We initially created this test VDS to count the number of singletons in
+# AoU and compare the result to the counts provided in the sample QC
+# metrics. We also use this VDS to test our code.
 aou_test_dataset = VariantDatasetResource(
     f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
 )
@@ -118,20 +119,20 @@ def get_aou_vds(
     Load the AOU VDS.
 
     :param test: Whether to load the test VDS. Default is False.
-    :param split: Whether to split the VDS into separate datasets for each chromosome. Default is False.
+    :param split: Whether to split the multi-allelic variants in the VDS to bi-allelic variants. Default is False.
     :param chrom: Chromosome(s) to filter the VDS to. Can be a single chromosome or a list of chromosomes.
-    :param autosomes_only: Whether to include only autosomes.
-    :param sex_chr_only: whether to include only sex chromosomes.
-    :param filter_samples: List of samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+    :param autosomes_only: Whether to include only autosomes. Default is False.
+    :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
+    :param filter_samples: Samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param filter_intervals: List of intervals to filter the VDS.
-    :param split_reference_blocks: Whether to split the reference blocks. Default is True.
-    :param remove_dead_alleles: Whether to remove dead alleles. Default is True.
-    :param filter_variant_ht: Table to filter the variant data.
+    :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by filter_intervals. Default is True.
+    :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
+    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
     :param filter_partitions: List of partitions to filter the VDS.
-    :param entries_to_keep: List of entries to keep in the variant data.
-    :param checkpoint_variant_data: Whether to checkpoint the variant data. Default is False.
+    :param entries_to_keep: List of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
+    :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Number of partitions to coalesce the VDS to. Default is None.
-    :return: The AOU VDS.
+    :return: The AoU VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
     vds = aou_v8_resource.vds()
