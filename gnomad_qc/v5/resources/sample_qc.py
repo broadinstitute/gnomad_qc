@@ -14,8 +14,8 @@ from gnomad_qc.v5.resources.constants import (
 def get_sample_qc_root(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
-    data_type="genomes",
-    data_set="aou",
+    data_type: str ="genomes",
+    data_set: str ="aou",
 ) -> str:
     """
     Return the root path to sample QC results.
