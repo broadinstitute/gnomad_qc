@@ -119,7 +119,7 @@ def get_aou_vds(
     """
     Load the AOU VDS.
 
-    :param test: Whether to load the test VDS. Default is False.
+    :param test: Whether to load the test VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param split: Whether to split the multi-allelic variants in the VDS to bi-allelic variants. Default is False.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
