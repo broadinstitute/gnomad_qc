@@ -26,7 +26,6 @@ def compute_aou_sample_qc(
     :param n_partitions: Number of partitions to use when writing the sample QC table.
     :param test: If true, test the function on a smaller subset of the data.
     :return: Table containing sample QC metrics
-    :rtype: hl.Table
     """
     logger.info("Computing sample QC")
 
@@ -91,7 +90,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--test",
-        help="Use the v4 test dataset instead of the full dataset.",
+        help="Use the AoU test dataset instead of the full dataset.",
         action="store_true",
     )
     parser.add_argument(
