@@ -29,20 +29,16 @@ def compute_aou_sample_qc(
     """
     logger.info("Computing sample QC")
 
+    logger.info("Loading test VDS..." if test else "Loading test VDS...")
+
     if test:
-        logger.info("Loading test VDS...")
-        vds = get_aou_vds(
-            test=True,
-            autosomes_only=True,
-            split=True,
-        )
         n_partitions = n_partitions // 100
-    else:
-        logger.info("Loading full VDS...")
-        vds = get_aou_vds(
-            autosomes_only=True,
-            split=True,
-        )
+
+    vds = get_aou_vds(
+        test=test,
+        autosomes_only=True,
+        split=True,
+    )
 
     logger.info(
         "Excluding telomeres and centromeres from VDS (redundant but acts as a safety check)..."

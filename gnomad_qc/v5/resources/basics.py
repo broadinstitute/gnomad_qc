@@ -14,6 +14,7 @@ from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loa
 from gnomad_qc.v5.resources.constants import (
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
+    GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
 )
 
@@ -39,7 +40,7 @@ def qc_temp_prefix(
     if environment == "rwb":
         env_bucket = f"{WORKSPACE_BUCKET}/tmp"
     elif environment == "dataproc":
-        env_bucket = "gnomad-tmp"
+        env_bucket = GNOMAD_TMP_BUCKET
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
@@ -81,7 +82,7 @@ def get_logging_path(
 
 
 _aou_genotypes = {
-    "v8": VariantDatasetResource(
+    "8": VariantDatasetResource(
         "gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/vds/hail.vds"
     )
 }
@@ -120,11 +121,11 @@ def get_aou_vds(
 
     :param test: Whether to load the test VDS. Default is False.
     :param split: Whether to split the multi-allelic variants in the VDS to bi-allelic variants. Default is False.
-    :param chrom: Chromosome(s) to filter the VDS to. Can be a single chromosome or a list of chromosomes.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
     :param filter_samples: Samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
-    :param filter_intervals: List of intervals to filter the VDS.
+    :param filter_intervals: Optional argument to filter the VDS to specific intervals.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by filter_intervals. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
@@ -216,6 +217,11 @@ def get_aou_vds(
 
     vmt = vds.variant_data
 
+    if filter_variant_ht is not None and split is False:
+        raise ValueError(
+            "Filtering to a specific set of variants is only supported when splitting"
+            " the VDS."
+        )
     if split:
         vmt = _split_and_filter_variant_data_for_loading(
             vmt, filter_variant_ht, entries_to_keep, checkpoint_variant_data

@@ -7,6 +7,7 @@ from gnomad_qc.v5.resources.constants import (
     AOU_VERSIONS,
     CURRENT_AOU_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
+    GNOMAD_BUCKET,
     WORKSPACE_BUCKET,
 )
 
@@ -14,8 +15,8 @@ from gnomad_qc.v5.resources.constants import (
 def get_sample_qc_root(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
-    data_type: str ="genomes",
-    data_set: str ="aou",
+    data_type: str = "genomes",
+    data_set: str = "aou",
 ) -> str:
     """
     Return the root path to sample QC results.
@@ -29,17 +30,13 @@ def get_sample_qc_root(
     if test:
         env = "rwb" if data_set == "aou" else "dataproc"
         base = qc_temp_prefix(version=version, environment=env)
-        suffix = (
-            f"sample_qc/{data_set}"
-            if data_set == "aou"
-            else f"sample_qc/{data_type}/{data_set}"
-        )
+        suffix = f"sample_qc/{data_type}/{data_set}"
         return base + suffix
 
     if data_set == "aou":
-        return f"gs://{WORKSPACE_BUCKET}/v5.0/sample_qc/{data_set}"
+        return f"gs://{WORKSPACE_BUCKET}/v{version}/sample_qc/{data_type}/{data_set}"
 
-    return f"gs://gnomad/v{version}/sample_qc/{data_type}/{data_set}"
+    return f"gs://{GNOMAD_BUCKET}/v{version}/sample_qc/{data_type}/{data_set}"
 
 
 def get_aou_sample_qc(
