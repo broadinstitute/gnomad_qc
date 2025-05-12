@@ -21,7 +21,7 @@ def get_sample_qc_root(
     Return the root path to sample QC results.
 
     :param version: Sample QC version (default: CURRENT_SAMPLE_QC_VERSION).
-    :param test: If True, use a temporary path (for testing on intermediate VDS).
+    :param test: If True, use a temporary path (for analysis on test VDS).
     :param data_type: Type of data used (e.g., "genomes").
     :param data_set: Dataset name (e.g., "aou", "hgdp_tgp").
     :return: Path to the sample QC directory.
@@ -56,7 +56,7 @@ def get_aou_sample_qc(
 
     :param strat: Which stratification to return.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
-        full v4 VDS.
+        full VDS.
     :return: Sample QC table.
     """
     return VersionedTableResource(

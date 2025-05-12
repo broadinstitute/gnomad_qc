@@ -144,7 +144,7 @@ def get_aou_vds(
             "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
         )
 
-    # Apply chromosome filtering
+    # Apply chromosome filtering.
     if sex_chr_only:
         vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
     elif autosomes_only:
@@ -153,16 +153,16 @@ def get_aou_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    # Apply sample filtering
+    # Apply sample filtering.
 
     # Count current number of samples in the VDS.
     n_samples = vds.variant_data.count_cols()
 
     # Remove samples with bad quality that are noted in Known Issues #1 in AoU
-    # quality report
+    # quality report.
     logger.info("Removing 3 samples with bad quality...")
     # TODO: We may need to exclude the samples whose coverage was below the
-    # thresholds, waiting for AoU to update the known issues file
+    # thresholds, waiting for AoU to update the known issues file.
 
     bad_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
 
@@ -170,11 +170,11 @@ def get_aou_vds(
         vds, bad_ids, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
-    # Log number of UKB samples removed from the VDS.
+    # Log number bad id samples removed from the VDS.
     n_samples_after_exclusion = vds.variant_data.count_cols()
     n_samples_removed = n_samples - n_samples_after_exclusion
 
-    logger.info("Total number of samples removed: %s", n_samples_removed)
+    logger.info("Total number of samples  with bad IDs removed: %s", n_samples_removed)
 
     if filter_samples:
         logger.info(
@@ -193,7 +193,7 @@ def get_aou_vds(
             vds.variant_data.naive_coalesce(naive_coalesce_partitions),
         )
 
-    # Apply interval filtering
+    # Apply interval filtering.
     if filter_intervals and len(filter_intervals) > 0:
         logger.info("Filtering to %s intervals...", len(filter_intervals))
         if isinstance(filter_intervals[0], str):
@@ -205,7 +205,7 @@ def get_aou_vds(
             vds, filter_intervals, split_reference_blocks=split_reference_blocks
         )
 
-    # Apply partition filtering
+    # Apply partition filtering.
     if filter_partitions and len(filter_partitions) > 0:
         logger.info("Filtering to %s partitions...", len(filter_partitions))
         vds = hl.vds.VariantDataset(
