@@ -163,20 +163,25 @@ def get_aou_vds(
     # Remove samples with bad quality that are noted in Known Issues #1 in AoU
     # quality report.
     logger.info("Removing 3 samples with bad quality...")
-    # TODO: We may need to exclude the samples whose coverage was below the
-    # thresholds, waiting for AoU to update the known issues file.
-
     bad_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
 
+    bad_genomic_metrics = get_invalid_aou_genomic_samples(aou_genomic_metrics_path)
+    logger.info(
+        "Removing %s samples with low coverage or ambiguous sex...",
+        bad_genomic_metrics.count(),
+    )
+
+    to_be_removed = bad_ids.union(bad_genomic_metrics).distinct()
+
     vds = hl.vds.filter_samples(
-        vds, bad_ids, keep=False, remove_dead_alleles=remove_dead_alleles
+        vds, to_be_removed, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
     # Log number bad id samples removed from the VDS.
     n_samples_after_exclusion = vds.variant_data.count_cols()
     n_samples_removed = n_samples - n_samples_after_exclusion
 
-    logger.info("Total number of samples  with bad IDs removed: %s", n_samples_removed)
+    logger.info("Total number of samples removed from the VDS: %s", n_samples_removed)
 
     if filter_samples:
         logger.info(
@@ -252,6 +257,51 @@ def _aou_root_path() -> str:
 
 
 aou_bad_quality_path = f"{_aou_root_path()}/known_issues/wgs_v8_known_issue_1.txt"
+aou_genomic_metrics_path = (
+    f"{_aou_root_path()}/wgs/short_read/snpindel/aux/qc/genomic_metrics.tsv"
+)
+
+
+def get_invalid_aou_samples(path: str) -> hl.Table:
+    """
+    Import AoU genomic metrics.
+
+    :param path: Path to the genomic metrics file.
+    :return: Hail Table containing the genomic metrics.
+    """
+    types = {
+        "research_id": hl.tstr,
+        "sample_source": hl.tstr,
+        "site_id": hl.tstr,
+        "sex_at_birth": hl.tstr,
+        "dragen_sex_ploid" "y": hl.tstr,
+        "mean_coverage": hl.tfloat,
+        "genome_coverage": hl.tfloat,
+        "aou_hdr_coverage": hl.tfloat,
+        "dragen_contamination": hl.tfloat,
+        "aligned_q30_bases": hl.tint64,
+        "verify_bam_id2_contamination": hl.tfloat,
+        "biosample_collection_date": hl.tstr,
+    }
+    ht = hl.import_table(path, types=types).key_by("research_id")
+
+    low_cov_samples = ht.filter(
+        (ht.mean_coverage < 30)
+        | (ht.genome_coverage < 0.9)
+        | (ht.aou_hdr_coverage < 0.95)
+    ).select()
+    logger.info("%s samples with low coverage...", low_cov_samples.count())
+
+    ambiguous_sex_samples = ht.filter(
+        ~((ht.dragen_sex_ploidy == "XX") | (ht.dragen_sex_ploidy == "XY"))
+    ).select()
+    logger.info(
+        "%s samples with ambiguous sex ploidy...", ambiguous_sex_samples.count()
+    )
+
+    ht = low_cov_samples.union(ambiguous_sex_samples).distinct()
+
+    return ht
 
 
 def add_project_prefix_to_sample_collisions(
