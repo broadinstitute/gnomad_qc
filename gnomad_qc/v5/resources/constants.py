@@ -10,7 +10,7 @@ CURRENT_PROJECT_META_VERSION = "5.0"
 SAMPLE_QC_VERSIONS = ["5.0"]
 CURRENT_SAMPLE_QC_VERSION = "5.0"
 
-# Storage constants
+# Storage constants.
 WORKSPACE_BUCKET = "fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1"
 GNOMAD_BUCKET = "gnomad"
 GNOMAD_TMP_BUCKET = "gnomad-tmp"
