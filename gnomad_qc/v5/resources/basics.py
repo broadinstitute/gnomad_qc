@@ -157,33 +157,31 @@ def get_aou_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    # Apply sample filtering.
+    # Count initial number of samples
+    n_samples_before = vds.variant_data.count_cols()
 
-    # Count current number of samples in the VDS.
-    n_samples = vds.variant_data.count_cols()
+    # Load samples flagged in AoU Known Issues #1
+    logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
+    bad_quality_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
 
-    # Remove samples with bad quality that are noted in Known Issues #1 in AoU
-    # quality report.
-    logger.info("Removing 3 samples with bad quality...")
-    bad_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
-
-    bad_genomic_metrics = get_invalid_aou_samples(aou_genomic_metrics_path)
+    # Load and count samples failing genomic metrics filters
+    bad_genomic_samples = get_invalid_aou_samples(aou_genomic_metrics_path)
     logger.info(
-        "Removing %s samples with low coverage or ambiguous sex...",
-        bad_genomic_metrics.count(),
+        "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
+        bad_genomic_samples.count(),
     )
 
-    to_be_removed = bad_ids.union(bad_genomic_metrics).distinct()
+    # Union all samples to exclude
+    samples_to_exclude = bad_quality_ids.union(bad_genomic_samples).distinct()
 
+    # Filter out poor-quality samples
     vds = hl.vds.filter_samples(
-        vds, to_be_removed, keep=False, remove_dead_alleles=remove_dead_alleles
+        vds, samples_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
-    # Log number bad id samples removed from the VDS.
-    n_samples_after_exclusion = vds.variant_data.count_cols()
-    n_samples_removed = n_samples - n_samples_after_exclusion
-
-    logger.info("Total number of samples removed from the VDS: %s", n_samples_removed)
+    # Report final sample exclusion count
+    n_samples_after = vds.variant_data.count_cols()
+    logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
 
     if filter_samples:
         logger.info(
