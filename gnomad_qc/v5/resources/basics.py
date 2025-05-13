@@ -92,9 +92,10 @@ aou_genotypes = VersionedVariantDatasetResource(
     _aou_genotypes,
 )
 
-# We initially created this test VDS to count the number of singletons in
-# AoU and compare the result to the counts provided in the sample QC
-# metrics. We also use this VDS to test our code.
+# This test VDS was initially created to count the number of singletons in AoU
+# and compare the results to those provided in the sample QC metrics.
+# It contains 10 selectively chosen samples based on the `singleton` metric
+# from the AoU sample QC data and is also used for testing our code.
 aou_test_dataset = VariantDatasetResource(
     f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
 )
