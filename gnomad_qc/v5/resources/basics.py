@@ -295,7 +295,8 @@ def get_invalid_aou_samples(path: str) -> hl.Table:
     logger.info("%s samples with low coverage...", low_cov_samples.count())
 
     ambiguous_sex_samples = ht.filter(
-        ~((ht.dragen_sex_ploidy == "XX") | (ht.dragen_sex_ploidy == "XY"))
+        (ht.dragen_sex_ploidy != "XX") & (ht.dragen_sex_ploidy != "XY")
+        | hl.is_missing(ht.dragen_sex_ploidy)
     ).select()
     logger.info(
         "%s samples with ambiguous sex ploidy...", ambiguous_sex_samples.count()
