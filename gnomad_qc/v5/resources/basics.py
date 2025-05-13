@@ -166,7 +166,7 @@ def get_aou_vds(
     logger.info("Removing 3 samples with bad quality...")
     bad_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
 
-    bad_genomic_metrics = get_invalid_aou_genomic_samples(aou_genomic_metrics_path)
+    bad_genomic_metrics = get_invalid_aou_samples(aou_genomic_metrics_path)
     logger.info(
         "Removing %s samples with low coverage or ambiguous sex...",
         bad_genomic_metrics.count(),
