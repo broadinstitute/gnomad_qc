@@ -120,19 +120,20 @@ def get_aou_vds(
     Load the AOU VDS.
 
     :param test: Whether to load the test VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
-    :param split: Whether to split the multi-allelic variants in the VDS to bi-allelic variants. Default is False.
+    :param split: Whether to split the multi-allelic variants in the VDS. Note: this will perform a split on the VDS
+        rather than grab an already split VDS. Default is False.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
-    :param filter_samples: Samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+    :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param filter_intervals: Optional argument to filter the VDS to specific intervals.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by filter_intervals. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
-    :param filter_partitions: List of partitions to filter the VDS.
-    :param entries_to_keep: List of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
+    :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
+    :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
-    :param naive_coalesce_partitions: Number of partitions to coalesce the VDS to. Default is None.
+    :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :return: The AoU VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes

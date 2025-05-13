@@ -60,7 +60,7 @@ def get_aou_sample_qc(
         CURRENT_AOU_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set='aou')}/hard_filtering/aou.{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
+                f"{get_sample_qc_root(version, test, data_set='aou')}/hard_filtering/aou.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
             for version in AOU_VERSIONS
         },
