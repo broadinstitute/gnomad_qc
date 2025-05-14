@@ -88,7 +88,7 @@ def main(args):
         ht = add_project_prefix_to_sample_collisions(
             ht, project="aou", sample_collisions=sample_id_collisions.ht()
         )
-        ht.write(get_aou_sample_qc(test=test).path, overwrite=overwrite)
+        ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
