@@ -12,6 +12,8 @@ from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
 from gnomad_qc.v5.resources.constants import (
+    AOU_BAD_QUALITY_PATH,
+    AOU_GENOMIC_METRICS_PATH,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
     GNOMAD_TMP_BUCKET,
@@ -162,10 +164,10 @@ def get_aou_vds(
 
     # Load samples flagged in AoU Known Issues #1.
     logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-    bad_quality_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
+    bad_quality_ids = hl.import_table(AOU_BAD_QUALITY_PATH).key_by("research_id")
 
     # Load and count samples failing genomic metrics filters.
-    bad_genomic_samples = get_invalid_aou_samples(aou_genomic_metrics_path)
+    bad_genomic_samples = get_invalid_aou_samples()
     logger.info(
         "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
         bad_genomic_samples.count(),
@@ -247,26 +249,10 @@ def get_aou_vds(
     return vds
 
 
-def _aou_root_path() -> str:
-    """
-    Retrieve the path to the UKB data directory.
-
-    :return: String representation of the path to the UKB data directory
-    """
-    return "gs://fc-aou-datasets-controlled/v8"
-
-
-aou_bad_quality_path = f"{_aou_root_path()}/known_issues/wgs_v8_known_issue_1.txt"
-aou_genomic_metrics_path = (
-    f"{_aou_root_path()}/wgs/short_read/snpindel/aux/qc/genomic_metrics.tsv"
-)
-
-
-def get_invalid_aou_samples(path: str) -> hl.Table:
+def get_invalid_aou_samples() -> hl.Table:
     """
     Import AoU genomic metrics and filter to invalid samples (ambiguous sex and failed coverage metrics).
 
-    :param path: Path to the genomic metrics file.
     :return: Hail Table containing the genomic metrics.
     """
     types = {
@@ -283,7 +269,7 @@ def get_invalid_aou_samples(path: str) -> hl.Table:
         "verify_bam_id2_contamination": hl.tfloat,
         "biosample_collection_date": hl.tstr,
     }
-    ht = hl.import_table(aou_genomic_metrics_path, types=types).key_by("research_id")
+    ht = hl.import_table(AOU_GENOMIC_METRICS_PATH, types=types).key_by("research_id")
 
     low_cov_samples = ht.filter(
         (ht.mean_coverage < 30)
@@ -307,16 +293,16 @@ def get_invalid_aou_samples(path: str) -> hl.Table:
 
 def add_project_prefix_to_sample_collisions(
     ht: hl.Table,
-    project: Optional[str] = None,
     sample_collisions: hl.Table,
+    project: Optional[str] = None,
     sample_id_field: str = "s",
 ) -> hl.Table:
     """
     Add project prefix to sample IDs that exist in multiple projects.
 
     :param ht: Table to add project prefix to sample IDs.
-    :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
+    :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
     :return: Table with project prefix added to sample IDs.
     """
