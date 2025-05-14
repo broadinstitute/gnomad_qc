@@ -40,8 +40,8 @@ aou_genotypes = VersionedVariantDatasetResource(
 )
 
 # This test VDS was initially created to count the number of singletons in AoU and compare the results to those
-# provided in the sample QC metrics. It contains 10 selectively chosen samples based on the `singleton` metric from
-# the AoU sample QC data and is also used for testing our code.
+# provided in the sample QC metrics. It contains 10 randomly chosen samples based on if they
+# `fail_singleton_residual` (5 passed, 5 failed) from the AoU sample QC data and is also used for testing our code.
 # 'hl.vds.filter_samples()' is used to filter the VDS to these samples, hence it includes all the variants present in
 # these samples on all the contigs as the original VDS.
 aou_test_dataset = VariantDatasetResource(
