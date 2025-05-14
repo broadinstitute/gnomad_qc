@@ -157,29 +157,29 @@ def get_aou_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    # Count initial number of samples
+    # Count initial number of samples.
     n_samples_before = vds.variant_data.count_cols()
 
-    # Load samples flagged in AoU Known Issues #1
+    # Load samples flagged in AoU Known Issues #1.
     logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
     bad_quality_ids = hl.import_table(aou_bad_quality_path).key_by("research_id")
 
-    # Load and count samples failing genomic metrics filters
+    # Load and count samples failing genomic metrics filters.
     bad_genomic_samples = get_invalid_aou_samples(aou_genomic_metrics_path)
     logger.info(
         "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
         bad_genomic_samples.count(),
     )
 
-    # Union all samples to exclude
+    # Union all samples to exclude.
     samples_to_exclude = bad_quality_ids.union(bad_genomic_samples).distinct()
 
-    # Filter out poor-quality samples
+    # Filter out poor-quality samples.
     vds = hl.vds.filter_samples(
         vds, samples_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
-    # Report final sample exclusion count
+    # Report final sample exclusion count.
     n_samples_after = vds.variant_data.count_cols()
     logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
 
@@ -264,7 +264,7 @@ aou_genomic_metrics_path = (
 
 def get_invalid_aou_samples(path: str) -> hl.Table:
     """
-    Import AoU genomic metrics.
+    Import AoU genomic metrics and filter to invalid samples (ambiguous sex and failed coverage metrics).
 
     :param path: Path to the genomic metrics file.
     :return: Hail Table containing the genomic metrics.
@@ -283,7 +283,7 @@ def get_invalid_aou_samples(path: str) -> hl.Table:
         "verify_bam_id2_contamination": hl.tfloat,
         "biosample_collection_date": hl.tstr,
     }
-    ht = hl.import_table(path, types=types).key_by("research_id")
+    ht = hl.import_table(aou_genomic_metrics_path, types=types).key_by("research_id")
 
     low_cov_samples = ht.filter(
         (ht.mean_coverage < 30)
@@ -307,7 +307,7 @@ def get_invalid_aou_samples(path: str) -> hl.Table:
 
 def add_project_prefix_to_sample_collisions(
     ht: hl.Table,
-    project: str,
+    project: Optional[str] = None,
     sample_collisions: hl.Table,
     sample_id_field: str = "s",
 ) -> hl.Table:
@@ -315,7 +315,7 @@ def add_project_prefix_to_sample_collisions(
     Add project prefix to sample IDs that exist in multiple projects.
 
     :param ht: Table to add project prefix to sample IDs.
-    :param project: Project name.
+    :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param sample_id_field: Field name for sample IDs in the table.
     :return: Table with project prefix added to sample IDs.
@@ -326,7 +326,15 @@ def add_project_prefix_to_sample_collisions(
     collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
     ht = ht.key_by()
 
-    prefix_expr = ht.project if "project" in ht.row_value else hl.literal(project)
+    if project is not None:
+        prefix_expr = hl.literal(project)
+    else:
+        try:
+            prefix_expr = ht["project"]
+        except KeyError:
+            raise ValueError(
+                "No project name provided and 'ht' does not contain a 'project' field."
+            )
 
     ht = ht.annotate(
         **{
