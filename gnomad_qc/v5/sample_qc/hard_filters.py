@@ -25,7 +25,14 @@ def compute_aou_sample_qc(
     test: bool = False,
 ) -> hl.Table:
     """
-    Perform sample QC on the VDS.
+    Perform sample QC on AoU VDS.
+
+    ..note::
+
+        We are not including the `n_alt_alleles_strata` parameter in this function—as we did for v4 exomes—
+        because the distribution of alternate alleles in whole genome sequencing data is not as skewed as in exomes.
+        For example, in AoU v8 genomes, 77.06% of variants are bi-allelic, compared to 76.65% in v4 genomes and
+        only 35.77% in v4 exomes.
 
     :param n_partitions: Number of partitions to use when writing the sample QC table.
     :param test: If true, test the function on a smaller subset of the data.
@@ -63,7 +70,7 @@ def compute_aou_sample_qc(
         gt_col="GT",
     )
 
-    return sample_qc_ht.repartition(n_partitions)
+    return sample_qc_ht.naive_coalesce(n_partitions)
 
 
 def main(args):

@@ -12,8 +12,8 @@ from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
 from gnomad_qc.v5.resources.constants import (
-    AOU_BAD_QUALITY_PATH,
     AOU_GENOMIC_METRICS_PATH,
+    AOU_LOW_QUALITY_PATH,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
     GNOMAD_TMP_BUCKET,
@@ -43,6 +43,7 @@ aou_genotypes = VersionedVariantDatasetResource(
 # and compare the results to those provided in the sample QC metrics.
 # It contains 10 selectively chosen samples based on the `singleton` metric
 # from the AoU sample QC data and is also used for testing our code.
+# 'hl.vds.filter_samples()' is used to filter the VDS to these samples, hence it includes all the variants present in these samples on all the contigs as the original VDS.
 aou_test_dataset = VariantDatasetResource(
     f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
 )
@@ -163,17 +164,19 @@ def get_aou_vds(
 
     # Load samples flagged in AoU Known Issues #1.
     logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-    bad_quality_ids = hl.import_table(AOU_BAD_QUALITY_PATH).key_by("research_id")
+    bad_quality_ids = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
 
     # Load and count samples failing genomic metrics filters.
-    bad_genomic_samples = get_invalid_aou_samples()
+    failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
     logger.info(
         "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
-        bad_genomic_samples.count(),
+        failing_genomic_metrics_samples.count(),
     )
 
     # Union all samples to exclude.
-    samples_to_exclude = bad_quality_ids.union(bad_genomic_samples).distinct()
+    samples_to_exclude = bad_quality_ids.union(
+        failing_genomic_metrics_samples
+    ).distinct()
 
     # Filter out poor-quality samples.
     vds = hl.vds.filter_samples(
@@ -248,9 +251,18 @@ def get_aou_vds(
     return vds
 
 
-def get_invalid_aou_samples() -> hl.Table:
+def get_aou_failing_genomic_metrics_samples() -> hl.Table:
     """
-    Import AoU genomic metrics and filter to invalid samples (ambiguous sex and failed coverage metrics).
+    Import AoU genomic metrics and filter to samples that fail specific quality criteria, including low coverage and ambiguous sex ploidy.
+
+    .. note::
+
+        Samples with low mean coverage (<30), genome coverage (<0.9), aou_hdr_coverage (<0.95),
+        or aligned_q30_bases (<0.8e11) were expected to be excluded from the AoU callset. However,
+        some such samples are still present. AoU is preparing to publish a known issue in their
+        quality report related to this. This note will be updated with a link once the issue is published.
+
+        In addition, we exclude samples with ambiguous sex ploidy (i.e., not "XX" or "XY") from the callset.
 
     :return: Hail Table containing the genomic metrics.
     """
@@ -259,7 +271,7 @@ def get_invalid_aou_samples() -> hl.Table:
         "sample_source": hl.tstr,
         "site_id": hl.tstr,
         "sex_at_birth": hl.tstr,
-        "dragen_sex_ploid" "y": hl.tstr,
+        "dragen_sex_ploid": hl.tstr,
         "mean_coverage": hl.tfloat,
         "genome_coverage": hl.tfloat,
         "aou_hdr_coverage": hl.tfloat,
@@ -274,9 +286,7 @@ def get_invalid_aou_samples() -> hl.Table:
         (ht.mean_coverage < 30)
         | (ht.genome_coverage < 0.9)
         | (ht.aou_hdr_coverage < 0.95)
-        | (
-            ht.aligned_q30_bases < 0.8e11
-        )  # Threshold used by AoU; no samples actually failed this in v8.
+        | (ht.aligned_q30_bases < 0.8e11)  # AoU threshold; no v8 samples failed this.
     ).select()
     logger.info("%s samples with low coverage...", low_cov_samples.count())
 

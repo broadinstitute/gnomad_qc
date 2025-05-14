@@ -19,27 +19,27 @@ def get_sample_qc_root(
     data_set: str = "aou",
 ) -> str:
     """
-    Return the root path to sample QC results.
+    Return the root GCS path to sample QC results.
 
     :param version: Sample QC version (default: CURRENT_SAMPLE_QC_VERSION).
-    :param test: If True, use a temporary path (for analysis on test VDS).
-    :param data_type: Type of data used (e.g., "genomes").
-    :param data_set: Dataset name (e.g., "aou", "hgdp_tgp").
-    :return: Path to the sample QC directory.
+    :param test: If True, return a temporary path (e.g., for testing or development).
+    :param data_type: Data type (e.g., "genomes" or "exomes").
+    :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
+    :return: GCS path to the sample QC directory.
     """
+    path_suffix = f"sample_qc/{data_type}/{data_set}"
+
     if test:
-        env = "rwb" if data_set == "aou" else "dataproc"
-        base = qc_temp_prefix(version=version, environment=env)
-        suffix = f"sample_qc/{data_type}/{data_set}"
-        return base + suffix
+        environment = "rwb" if data_set == "aou" else "dataproc"
+        return (
+            f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
+        )
 
-    if data_set == "aou":
-        return f"gs://{WORKSPACE_BUCKET}/v{version}/sample_qc/{data_type}/{data_set}"
-
-    return f"gs://{GNOMAD_BUCKET}/v{version}/sample_qc/{data_type}/{data_set}"
+    base_bucket = WORKSPACE_BUCKET if data_set == "aou" else GNOMAD_BUCKET
+    return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 
-def get_aou_sample_qc(
+def get_sample_qc(
     strat: str = "all",
     test: bool = False,
 ) -> VersionedTableResource:
