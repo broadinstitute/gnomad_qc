@@ -122,7 +122,7 @@ def get_aou_vds(
     """
     Load the AOU VDS.
 
-    :param split: Whether to split the multi-allelic variants in the VDS. Note: this will perform a split on the VDS
+    :param split: Whether to split multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
@@ -132,12 +132,12 @@ def get_aou_vds(
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
     :param filter_intervals: Optional argument to filter the VDS to specific intervals.
-    :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by filter_intervals. Default is True.
+    :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by `filter_intervals`. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
-    :return: The AoU VDS.
+    :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
     vds = aou_v8_resource.vds()
@@ -257,7 +257,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
     .. note::
 
-        Samples with low mean coverage (<30x), genome coverage (<90% at 20x), All of Us Hereditary Disease Risk gen
+        Samples with low mean coverage (<30x), genome coverage (<90% at 20x), All of Us Hereditary Disease Risk gene
         (AoUHDR) coverage (<95% at 20x), or aligned_q30_bases (<8e10) were expected to be excluded from the AoU
         callset. However, some such samples are still present. AoU is preparing to publish a known issue in their
         quality report related to this. This note will be updated with a link once the issue is published.
