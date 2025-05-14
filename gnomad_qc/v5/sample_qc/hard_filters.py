@@ -13,7 +13,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
 )
 from gnomad_qc.v5.resources.meta import sample_id_collisions
-from gnomad_qc.v5.resources.sample_qc import get_aou_sample_qc
+from gnomad_qc.v5.resources.sample_qc import get_sample_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("hard_filters")
@@ -66,7 +66,7 @@ def compute_aou_sample_qc(
             "bi_allelic": bi_allelic_expr(vds.variant_data),
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
-        tmp_ht_prefix=get_aou_sample_qc(test=test).path[:-3],
+        tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
         gt_col="GT",
     )
 

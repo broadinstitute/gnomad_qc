@@ -39,11 +39,11 @@ aou_genotypes = VersionedVariantDatasetResource(
     _aou_genotypes,
 )
 
-# This test VDS was initially created to count the number of singletons in AoU
-# and compare the results to those provided in the sample QC metrics.
-# It contains 10 selectively chosen samples based on the `singleton` metric
-# from the AoU sample QC data and is also used for testing our code.
-# 'hl.vds.filter_samples()' is used to filter the VDS to these samples, hence it includes all the variants present in these samples on all the contigs as the original VDS.
+# This test VDS was initially created to count the number of singletons in AoU and compare the results to those
+# provided in the sample QC metrics. It contains 10 selectively chosen samples based on the `singleton` metric from
+# the AoU sample QC data and is also used for testing our code.
+# 'hl.vds.filter_samples()' is used to filter the VDS to these samples, hence it includes all the variants present in
+# these samples on all the contigs as the original VDS.
 aou_test_dataset = VariantDatasetResource(
     f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
 )
@@ -104,17 +104,17 @@ def get_logging_path(
 
 
 def get_aou_vds(
-    test: bool = False,
     split: bool = False,
+    filter_samples: Optional[Union[List[str], hl.Table]] = None,
+    test: bool = False,
+    filter_partitions: Optional[List[int]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
-    filter_samples: Optional[Union[List[str], hl.Table]] = None,
-    filter_partitions: Optional[List[int]] = None,
+    filter_variant_ht: Optional[hl.Table] = None,
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
     split_reference_blocks: bool = True,
     remove_dead_alleles: bool = True,
-    filter_variant_ht: Optional[hl.Table] = None,
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
@@ -122,18 +122,18 @@ def get_aou_vds(
     """
     Load the AOU VDS.
 
-    :param test: Whether to load the test VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param split: Whether to split the multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
+    :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+    :param test: Whether to load the test VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
+    :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
-    :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
     :param filter_intervals: Optional argument to filter the VDS to specific intervals.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by filter_intervals. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
-    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
-    :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
