@@ -277,7 +277,7 @@ def get_invalid_aou_samples() -> hl.Table:
         | (ht.aou_hdr_coverage < 0.95)
         | (
             ht.aligned_q30_bases < 0.8e11
-        )  # Threshold used by AoU; no samples actually failed this in practice.
+        )  # Threshold used by AoU; no samples actually failed this in v8.
     ).select()
     logger.info("%s samples with low coverage...", low_cov_samples.count())
 
