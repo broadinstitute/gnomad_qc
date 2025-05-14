@@ -257,9 +257,9 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
     .. note::
 
-        Samples with low mean coverage (<30x), genome coverage (<90% at 20x), All of Us Hereditary Disease Risk gene (AoUHDR) coverage (<95% at 20x),
-        or aligned_q30_bases (<0.8e10) were expected to be excluded from the AoU callset. However,
-        some such samples are still present. AoU is preparing to publish a known issue in their
+        Samples with low mean coverage (<30x), genome coverage (<90% at 20x), All of Us Hereditary Disease Risk gen
+        (AoUHDR) coverage (<95% at 20x), or aligned_q30_bases (<8e10) were expected to be excluded from the AoU
+        callset. However, some such samples are still present. AoU is preparing to publish a known issue in their
         quality report related to this. This note will be updated with a link once the issue is published.
 
         In addition, we exclude samples with ambiguous sex ploidy (i.e., not "XX" or "XY") from the callset.
@@ -271,7 +271,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
         "sample_source": hl.tstr,
         "site_id": hl.tstr,
         "sex_at_birth": hl.tstr,
-        "dragen_sex_ploid": hl.tstr,
+        "dragen_sex_ploidy": hl.tstr,
         "mean_coverage": hl.tfloat,
         "genome_coverage": hl.tfloat,
         "aou_hdr_coverage": hl.tfloat,
@@ -286,7 +286,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
         (ht.mean_coverage < 30)
         | (ht.genome_coverage < 0.9)
         | (ht.aou_hdr_coverage < 0.95)
-        | (ht.aligned_q30_bases < 0.8e11)  # AoU threshold; no v8 samples failed this.
+        | (ht.aligned_q30_bases < 8e10)  # AoU threshold; no v8 samples failed this.
     ).select()
     logger.info("%s samples with low coverage...", low_cov_samples.count())
 
