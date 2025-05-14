@@ -39,7 +39,6 @@ def compute_aou_sample_qc(
     :return: Table containing sample QC metrics
     """
     logger.info("Computing sample QC")
-
     logger.info("Loading test VDS..." if test else "Loading test VDS...")
 
     if test:
