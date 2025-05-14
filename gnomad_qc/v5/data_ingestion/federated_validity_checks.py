@@ -84,7 +84,8 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     :param config: JSON configuration for parameter inputs.
     :return: None.
     """
-    # Define array struct annotations.
+    # Define array struct annotations (must include frequency information as 'freq' annotation within 'freq_fields', and
+    # if filtering allele frequency is present it should be provided as 'faf' annotation within 'faf_fields').
     array_struct_annotations = [config["freq_fields"]["freq"]]
 
     if config.get("faf_fields"):
@@ -200,7 +201,7 @@ def validate_federated_data(
     missingness_threshold: float = 0.50,
     struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
     freq_annotations_to_sum: List[str] = ["AC", "AN", "homozygote_count"],
-    sort_order: List[str] = ["gen_anc", "sex", "group"],
+    sort_order: List[str] = ["subset", "gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
     subsets: List[str] = None,
@@ -215,7 +216,7 @@ def validate_federated_data(
         `meta_indexed_expr`. The most often used expression is `freq_meta` to index into
         a 'freq' array (example: ht.freq_meta).
     :param freq_annotations_to_sum: List of annotation fields within `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count'].
-    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["gen_anc", "sex", "group"].
+    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
@@ -710,10 +711,6 @@ def main(args):
         # TODO: Create resource functions when know organization of federated data.
         log_file = args.output_base + ".log"
         output_file = args.output_base + ".html"
-
-        print("OUTPUTS")
-        print(log_file)
-        print(output_file)
 
         # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
