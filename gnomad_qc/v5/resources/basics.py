@@ -28,6 +28,25 @@ dragen_tgp_vds = VariantDatasetResource(
     "gs://gnomad/v5.0/testing/genomes/dragen_tgp_v5.0_test.vds"
 )
 
+_aou_genotypes = {
+    "8": VariantDatasetResource(
+        "gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/vds/hail.vds"
+    )
+}
+
+aou_genotypes = VersionedVariantDatasetResource(
+    CURRENT_AOU_VERSION,
+    _aou_genotypes,
+)
+
+# This test VDS was initially created to count the number of singletons in AoU
+# and compare the results to those provided in the sample QC metrics.
+# It contains 10 selectively chosen samples based on the `singleton` metric
+# from the AoU sample QC data and is also used for testing our code.
+aou_test_dataset = VariantDatasetResource(
+    f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
+)
+
 
 def qc_temp_prefix(
     version: str = CURRENT_VERSION, environment: str = "dataproc"
@@ -81,26 +100,6 @@ def get_logging_path(
     :return: Output log path.
     """
     return f"{qc_temp_prefix(version, environment)}{name}.log"
-
-
-_aou_genotypes = {
-    "8": VariantDatasetResource(
-        "gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/vds/hail.vds"
-    )
-}
-
-aou_genotypes = VersionedVariantDatasetResource(
-    CURRENT_AOU_VERSION,
-    _aou_genotypes,
-)
-
-# This test VDS was initially created to count the number of singletons in AoU
-# and compare the results to those provided in the sample QC metrics.
-# It contains 10 selectively chosen samples based on the `singleton` metric
-# from the AoU sample QC data and is also used for testing our code.
-aou_test_dataset = VariantDatasetResource(
-    f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
-)
 
 
 def get_aou_vds(
