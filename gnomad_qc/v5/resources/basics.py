@@ -125,7 +125,7 @@ def get_aou_vds(
     :param split: Whether to split the multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
-    :param test: Whether to load the test VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
+    :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
@@ -257,8 +257,8 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
     .. note::
 
-        Samples with low mean coverage (<30), genome coverage (<0.9), aou_hdr_coverage (<0.95),
-        or aligned_q30_bases (<0.8e11) were expected to be excluded from the AoU callset. However,
+        Samples with low mean coverage (<30x), genome coverage (<90% at 20x), All of Us Hereditary Disease Risk gene (AoUHDR) coverage (<95% at 20x),
+        or aligned_q30_bases (<0.8e10) were expected to be excluded from the AoU callset. However,
         some such samples are still present. AoU is preparing to publish a known issue in their
         quality report related to this. This note will be updated with a link once the issue is published.
 
