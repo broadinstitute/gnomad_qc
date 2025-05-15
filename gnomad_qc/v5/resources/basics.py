@@ -164,7 +164,7 @@ def get_aou_vds(
 
     # Load samples flagged in AoU Known Issues #1.
     logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-    bad_quality_ids = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
+    low_quality_samples = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
 
     # Load and count samples failing genomic metrics filters.
     failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
@@ -174,7 +174,7 @@ def get_aou_vds(
     )
 
     # Union all samples to exclude.
-    samples_to_exclude = bad_quality_ids.union(
+    samples_to_exclude = low_quality_samples.union(
         failing_genomic_metrics_samples
     ).distinct()
 
