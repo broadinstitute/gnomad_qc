@@ -62,11 +62,10 @@ def compute_aou_sample_qc(
     logger.info("Excluding loci with more than 100 alternative alleles...")
     vmt = vds.variant_data
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     logger.info("Computing sample QC metrics...")
     sample_qc_ht = compute_stratified_sample_qc(
-        vds,
+        vmt,  # It also takes MT as input
         strata={
             "bi_allelic": bi_allelic_expr(vds.variant_data),
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
