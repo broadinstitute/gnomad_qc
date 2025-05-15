@@ -39,7 +39,6 @@ def compute_aou_sample_qc(
     :param test: If true, test the function on a smaller subset of the data.
     :return: Table containing sample QC metrics
     """
-    logger.info("Computing sample QC")
     logger.info("Loading test VDS..." if test else "Loading VDS...")
 
     if test:
@@ -65,6 +64,7 @@ def compute_aou_sample_qc(
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
+    logger.info("Computing sample QC metrics...")
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
         strata={
