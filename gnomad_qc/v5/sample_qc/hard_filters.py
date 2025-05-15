@@ -12,6 +12,7 @@ from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_aou_vds,
 )
+from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import get_sample_qc
 
@@ -59,6 +60,12 @@ def compute_aou_sample_qc(
         vds, intervals=telomeres_and_centromeres.ht(), keep=False
     )
 
+    logger.info("Excluding loci with more than 100 alternative alleles...")
+    vmt = vds.variant_data
+    vmt = vmt.annotate_rows(n_alleles=hl.len(vmt.alleles))
+    vmt = vmt.filter_rows(vmt.n_alleles < 101)
+    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
         strata={
@@ -74,6 +81,7 @@ def compute_aou_sample_qc(
 
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
+    hl.init(log="/hard_filters.log", tmp_dir=f"{WORKSPACE_BUCKET}/tmp/4_day")
     hl.default_reference("GRCh38")
 
     test = args.test
