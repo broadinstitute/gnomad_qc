@@ -39,16 +39,16 @@ def compute_aou_sample_qc(
     :param test: If true, test the function on a smaller subset of the data.
     :return: Table containing sample QC metrics
     """
-    logger.info("Loading test VDS..." if test else "Loading VDS...")
-
     if test:
         n_partitions = n_partitions // 100
-
-    vds = get_aou_vds(
-        test=test,
-        autosomes_only=True,
-        split=True,
-    )
+        logger.info("Filtering to first interval that contains n_alt_alleles > 100...")
+        vds = get_aou_vds(filter_intervals=["chr1:10440-10626"], split=True)
+    else:
+        logger.info("Loading AoU VDS...")
+        vds = get_aou_vds(
+            autosomes_only=True,
+            split=True,
+        )
 
     logger.info(
         "Excluding telomeres and centromeres from VDS (redundant but acts as a safety check)..."
