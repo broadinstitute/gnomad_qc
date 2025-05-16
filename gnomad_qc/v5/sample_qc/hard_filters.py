@@ -28,7 +28,7 @@ def compute_aou_sample_qc(
     """
     Perform sample QC on AoU VDS.
 
-    ..note::
+    .. note::
 
         We are not including the `n_alt_alleles_strata` parameter in this function—as we did for v4 exomes—
         because the distribution of alternate alleles in whole genome sequencing data is not as skewed as in exomes.
@@ -40,7 +40,6 @@ def compute_aou_sample_qc(
     :return: Table containing sample QC metrics
     """
     if test:
-        n_partitions = n_partitions // 100
         logger.info("Filtering to first interval that contains n_alt_alleles > 100...")
         vds = get_aou_vds(filter_intervals=["chr1:10440-10626"], split=True)
     else:
@@ -61,11 +60,16 @@ def compute_aou_sample_qc(
 
     logger.info("Excluding loci with more than 100 alternative alleles...")
     vmt = vds.variant_data
+
+    if test:
+        logger.info("Number of rows before filtering: %s", vmt.count_rows())
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)
+    if test:
+        logger.info("Number of rows after filtering: %s", vmt.count_rows())
 
     logger.info("Computing sample QC metrics...")
     sample_qc_ht = compute_stratified_sample_qc(
-        vmt,  # It also takes MT as input
+        vmt,
         strata={
             "bi_allelic": bi_allelic_expr(vmt),
             "multi_allelic": ~bi_allelic_expr(vmt),
@@ -90,7 +94,6 @@ def main(args):
             n_partitions=args.sample_qc_n_partitions,
             test=test,
         )
-        logger.info("")
         ht = add_project_prefix_to_sample_collisions(
             ht, project="aou", sample_collisions=sample_id_collisions.ht()
         )
