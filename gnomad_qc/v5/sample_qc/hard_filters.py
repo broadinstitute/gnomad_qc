@@ -66,14 +66,14 @@ def compute_aou_sample_qc(
 
     if test:
         logger.info(
-            "Rows before filtering loci with >100 alt alleles: %s", vmt.count_rows()
+            "Rows before filtering loci with >100 alt alleles: %s...", vmt.count_rows()
         )
 
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)
 
     if test:
         logger.info(
-            "Rows after filtering loci with >100 alt alleles: %s", vmt.count_rows()
+            "Rows after filtering loci with >100 alt alleles: %s...", vmt.count_rows()
         )
 
     logger.info("Computing sample QC metrics...")
