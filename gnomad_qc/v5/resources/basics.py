@@ -187,6 +187,15 @@ def get_aou_vds(
     n_samples_after = vds.variant_data.count_cols()
     logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
 
+    # Remove the chr4 site with excessive numbers of alleles (n=22233) to
+    # avoid memory issues with `split_multi`.
+    logger.info("Dropping excessively multi-allelic site at chr4:12237652...")
+    vds = hl.vds.filter_intervals(
+        vds,
+        [hl.parse_locus_interval("chr4:12237652-12237653", reference_genome="GRCh38")],
+        keep=False,
+    )
+
     if filter_samples:
         logger.info(
             "Filtering to %s samples...",
