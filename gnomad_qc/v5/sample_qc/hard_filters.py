@@ -40,7 +40,10 @@ def compute_aou_sample_qc(
     :return: Table containing sample QC metrics
     """
     if test:
-        logger.info("Filtering to first interval that contains n_alt_alleles > 100...")
+        logger.info(
+            "Loading test VDS using a small interval that includes loci with >100 alternate alleles..."
+        )
+        # This interval contains two loci with >100 alt alleles.
         vds = get_aou_vds(filter_intervals=["chr1:10440-10626"], split=True)
     else:
         logger.info("Loading AoU VDS...")
@@ -111,7 +114,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all Matrixtables/Tables. (default: False).",
+        help="Overwrite all Matrix Tables/Tables. (default: False).",
         action="store_true",
     )
     parser.add_argument(
