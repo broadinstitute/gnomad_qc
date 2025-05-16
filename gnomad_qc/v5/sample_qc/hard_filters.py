@@ -61,6 +61,9 @@ def compute_aou_sample_qc(
     )
 
     logger.info("Excluding loci with more than 100 alternative alleles...")
+    # NOTE: Running on the test dataset, filtering or not wouldn't change the result because it won't have any loci
+    # with >100 alleles anyway, but this has been verified the number of alleles would change after some samples from
+    # the raw VDS.
     vmt = vds.variant_data
     vmt = vmt.annotate_rows(n_unsplit_alleles=hl.len(vmt.alleles))
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)

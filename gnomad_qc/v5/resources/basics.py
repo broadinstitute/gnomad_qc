@@ -357,12 +357,10 @@ def add_project_prefix_to_sample_collisions(
     )
 
     if is_matrix:
-        t = t.key_cols_by()
         t = t.annotate_cols(**{sample_id_field: sample_id_expr})
-        t = t.key_cols_by(sample_id_field)
+        t = t.key_cols_by(**{sample_id_field: t[sample_id_field]})
     else:
-        t = t.key_by()
         t = t.annotate(**{sample_id_field: sample_id_expr})
-        t = t.key_by(sample_id_field)
+        t = t.key_by(**{sample_id_field: t[sample_id_field]})
 
     return t
