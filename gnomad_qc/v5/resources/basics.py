@@ -142,24 +142,21 @@ def get_aou_vds(
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
-    vds = aou_v8_resource.vds()
 
     if isinstance(chrom, str):
         chrom = [chrom]
 
-    if autosomes_only and sex_chr_only:
+    if autosomes_only or sex_chr_only:
+        rg = aou_v8_resource.vds().reference_genome
+        sex_chrom = set(rg.x_contigs + rg.y_contigs)
+        if sex_chr_only:
+            chrom = list(sex_chrom)
+        else:
+            chrom = list(set(rg.contigs) - (sex_chrom | set(rg.mt_contigs)))
+    elif autosomes_only and sex_chr_only:
         raise ValueError(
             "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
         )
-
-    # Apply chromosome filtering.
-    if sex_chr_only:
-        vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
-    elif autosomes_only:
-        vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
-    elif chrom and len(chrom) > 0:
-        logger.info("Filtering to chromosome(s) %s...", chrom)
-        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     if n_partitions and chrom:
         logger.info(
@@ -183,6 +180,7 @@ def get_aou_vds(
         )
         vds = hl.vds.VariantDataset(reference_data, variant_data)
     elif n_partitions:
+        logger.info("Loading VDS with %s partitions...", n_partitions)
         vds = hl.vds.read_vds(aou_v8_resource.path, n_partitions=n_partitions)
     else:
         vds = aou_v8_resource.vds()
