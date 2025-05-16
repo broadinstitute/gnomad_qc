@@ -68,6 +68,12 @@ def compute_aou_sample_qc(
     logger.info("Splitting multi-allelic variants...")
     vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
 
+    vmt = add_project_prefix_to_sample_collisions(
+        vmt,
+        project="aou",
+        sample_collisions=sample_id_collisions.ht(),
+    )
+
     logger.info("Computing sample QC metrics...")
     # This step will also checkpoint the stratified sample QC tables
     sample_qc_ht = compute_stratified_sample_qc(
@@ -83,27 +89,6 @@ def compute_aou_sample_qc(
     return sample_qc_ht.naive_coalesce(n_partitions)
 
 
-def rename_sample_collisions_in_outputs(
-    sample_collisions_ht: hl.Table, test: bool = False, project: str = "aou"
-) -> None:
-    """
-    Rename sample collisions in the sample QC stratified tables and overwrite them.
-
-    :param sample_collisions_ht: Table containing sample ID collisions.
-    :param test: If True, use the AoU test dataset instead of the full dataset.
-    :param project: Project name to use for renaming sample collisions.
-    """
-    ht_prefix = get_sample_qc(test=test).path[:-3]
-
-    for strat in ["bi_allelic", "multi_allelic"]:
-        path = f"{ht_prefix}_{strat}.ht"
-        ht = hl.read_table(path)
-        ht_renamed = add_project_prefix_to_sample_collisions(
-            ht, project=project, sample_collisions=sample_collisions_ht
-        )
-        ht_renamed.checkpoint(path, overwrite=True)
-
-
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
     hl.init(tmp_dir=f"{WORKSPACE_BUCKET}/tmp/4_day")
@@ -113,22 +98,11 @@ def main(args):
     overwrite = args.overwrite
 
     if args.aou_sample_qc:
-        sample_collisions_ht = sample_id_collisions.ht()
         ht = compute_aou_sample_qc(
             n_partitions=args.sample_qc_n_partitions,
             test=test,
         )
-        ht = add_project_prefix_to_sample_collisions(
-            ht,
-            project="aou",
-            sample_collisions=sample_collisions_ht,
-        )
         ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
-        # Rename sample collisions in the sample QC stratified tables
-        # and overwrite them.
-        rename_sample_collisions_in_outputs(
-            sample_collisions_ht=sample_collisions_ht, test=test, project="aou"
-        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
