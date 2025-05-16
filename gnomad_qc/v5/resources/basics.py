@@ -313,58 +313,43 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
 
 def add_project_prefix_to_sample_collisions(
-    t: Union[hl.Table, hl.MatrixTable],
+    ht: hl.Table,
     sample_collisions: hl.Table,
     project: Optional[str] = None,
     sample_id_field: str = "s",
-) -> Union[hl.Table, hl.MatrixTable]:
+) -> hl.Table:
     """
     Add project prefix to sample IDs that exist in multiple projects.
 
-    :param t: Table or MatrixTable to add project prefix to.
+    :param ht: Table to add project prefix to sample IDs.
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
-    :return: Table or MatrixTable with project prefix added to sample IDs.
+    :return: Table with project prefix added to sample IDs.
     """
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    # Get set of sample IDs that are in collisions
-    collision_ids = hl.literal(
-        sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
-    )
+    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    ht = ht.key_by()
 
-    # Determine if input is a Table or MatrixTable
-    is_matrix = isinstance(t, hl.MatrixTable)
-
-    # Get the appropriate expression to use as prefix
     if project is not None:
         prefix_expr = hl.literal(project)
     else:
         try:
-            prefix_expr = t.project
-        except Exception:
+            prefix_expr = ht["project"]
+        except KeyError:
             raise ValueError(
-                "No project provided and 'project' field not found in the input table or MatrixTable columns."
+                "No project name provided and 'ht' does not contain a 'project' field."
             )
 
-    if is_matrix:
-        t = t.key_cols_by()
-    else:
-        t = t.key_by()
-
-    sample_id_expr = hl.if_else(
-        collision_ids.contains(t[sample_id_field]),
-        hl.delimit([prefix_expr, t[sample_id_field]], "_"),
-        t[sample_id_field],
+    ht = ht.annotate(
+        **{
+            f"{sample_id_field}": hl.if_else(
+                hl.literal(collisions).contains(ht["s"]),
+                hl.delimit([prefix_expr, ht[sample_id_field]], "_"),
+                ht[sample_id_field],
+            )
+        }
     )
-
-    if is_matrix:
-        t = t.annotate_cols(**{sample_id_field: sample_id_expr})
-        t = t.key_cols_by(sample_id_field)
-    else:
-        t = t.annotate(**{sample_id_field: sample_id_expr})
-        t = t.key_by(sample_id_field)
-
-    return t
+    return ht.key_by(sample_id_field)

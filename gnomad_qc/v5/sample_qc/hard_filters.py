@@ -72,17 +72,9 @@ def compute_aou_sample_qc(
 
     logger.info("Splitting multi-allelic variants...")
     vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
-
-    vmt = add_project_prefix_to_sample_collisions(
-        vmt,
-        project="aou",
-        sample_collisions=sample_id_collisions.ht(),
-    )
-
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     logger.info("Computing sample QC metrics...")
-    # This step will also checkpoint the stratified sample QC tables
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
         strata={
