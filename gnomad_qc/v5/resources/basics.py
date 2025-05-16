@@ -349,19 +349,24 @@ def add_project_prefix_to_sample_collisions(
                 "No project provided and 'project' field not found in the input table or MatrixTable columns."
             )
 
-    # Build new sample ID expression
-    sample_id_expr = hl.if_else(
-        collision_ids.contains(t[sample_id_field]),
-        hl.delimit([prefix_expr, t[sample_id_field]], "_"),
-        t[sample_id_field],
-    )
-
     if is_matrix:
         t = t.key_cols_by()
+        sample_id_expr = hl.if_else(
+            collision_ids.contains(t[sample_id_field]),
+            hl.delimit([prefix_expr, t[sample_id_field]], "_"),
+            t[sample_id_field],
+        )
+
         t = t.annotate_cols(**{sample_id_field: sample_id_expr})
-        # We don't re-key the MatrixTable here because it will slow down the process
+        # We don't rekey the MatrixTable here because it will slow down the run
     else:
         t = t.key_by()
+        sample_id_expr = hl.if_else(
+            collision_ids.contains(t[sample_id_field]),
+            hl.delimit([prefix_expr, t[sample_id_field]], "_"),
+            t[sample_id_field],
+        )
+
         t = t.annotate(**{sample_id_field: sample_id_expr})
         t = t.key_by(sample_id_field)
 
