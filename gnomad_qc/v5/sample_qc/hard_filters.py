@@ -67,8 +67,8 @@ def compute_aou_sample_qc(
     sample_qc_ht = compute_stratified_sample_qc(
         vmt,  # It also takes MT as input
         strata={
-            "bi_allelic": bi_allelic_expr(vds.variant_data),
-            "multi_allelic": ~bi_allelic_expr(vds.variant_data),
+            "bi_allelic": bi_allelic_expr(vmt),
+            "multi_allelic": ~bi_allelic_expr(vmt),
         },
         tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
         gt_col="GT",
