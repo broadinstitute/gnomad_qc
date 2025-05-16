@@ -61,9 +61,10 @@ def compute_aou_sample_qc(
     )
 
     logger.info("Excluding loci with more than 100 alternative alleles...")
-    # NOTE: Running on the test dataset, filtering or not wouldn't change the result because it won't have any loci
-    # with >100 alleles anyway, but this has been verified the number of alleles would change after some samples from
-    # the raw VDS.
+    # NOTE: Filtering loci with >100 alleles has no effect on the test dataset,
+    # since it contains no such loci. However, this filtering is still necessary
+    # on the full dataset, as the number of alleles can change after removing
+    # samples from the raw VDS.
     vmt = vds.variant_data
     vmt = vmt.annotate_rows(n_unsplit_alleles=hl.len(vmt.alleles))
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)
@@ -77,13 +78,15 @@ def compute_aou_sample_qc(
         sample_collisions=sample_id_collisions.ht(),
     )
 
+    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
     logger.info("Computing sample QC metrics...")
     # This step will also checkpoint the stratified sample QC tables
     sample_qc_ht = compute_stratified_sample_qc(
-        vmt,
+        vds,
         strata={
-            "bi_allelic": bi_allelic_expr(vmt),
-            "multi_allelic": ~bi_allelic_expr(vmt),
+            "bi_allelic": bi_allelic_expr(vds.variant_data),
+            "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
         tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
         gt_col="GT",
