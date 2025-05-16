@@ -28,7 +28,7 @@ def compute_aou_sample_qc(
     """
     Perform sample QC on AoU VDS.
 
-    .. note::
+    ..note::
 
         We are not including the `n_alt_alleles_strata` parameter in this function—as we did for v4 exomes—
         because the distribution of alternate alleles in whole genome sequencing data is not as skewed as in exomes.
@@ -39,18 +39,17 @@ def compute_aou_sample_qc(
     :param test: If true, test the function on a smaller subset of the data.
     :return: Table containing sample QC metrics
     """
+    logger.info("Computing sample QC")
+    logger.info("Loading test VDS..." if test else "Loading VDS...")
+
     if test:
-        logger.info(
-            "Loading test VDS using a small interval that includes loci with >100 alternate alleles..."
-        )
-        # This interval contains two loci with >100 alt alleles.
-        vds = get_aou_vds(filter_intervals=["chr1:10440-10626"], split=True)
-    else:
-        logger.info("Loading AoU VDS...")
-        vds = get_aou_vds(
-            autosomes_only=True,
-            split=True,
-        )
+        n_partitions = n_partitions // 100
+
+    vds = get_aou_vds(
+        test=test,
+        autosomes_only=True,
+        split=False,
+    )
 
     logger.info(
         "Excluding telomeres and centromeres from VDS (redundant but acts as a safety check)..."
@@ -63,18 +62,11 @@ def compute_aou_sample_qc(
 
     logger.info("Excluding loci with more than 100 alternative alleles...")
     vmt = vds.variant_data
-
-    if test:
-        logger.info(
-            "Rows before filtering loci with >100 alt alleles: %s...", vmt.count_rows()
-        )
-
+    vmt = vmt.annotate_rows(n_unsplit_alleles=hl.len(vmt.alleles))
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)
 
-    if test:
-        logger.info(
-            "Rows after filtering loci with >100 alt alleles: %s...", vmt.count_rows()
-        )
+    logger.info("Splitting multi-allelic variants...")
+    vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
 
     logger.info("Computing sample QC metrics...")
     # This step will also checkpoint the stratified sample QC tables
