@@ -93,7 +93,7 @@ def rename_sample_collisions_in_outputs(
     :param test: If True, use the AoU test dataset instead of the full dataset.
     :param project: Project name to use for renaming sample collisions.
     """
-    ht_prefix = get_sample_qc(test=test).path
+    ht_prefix = get_sample_qc(test=test).path[:-3]
 
     for strat in ["bi_allelic", "multi_allelic"]:
         path = f"{ht_prefix}_{strat}.ht"
