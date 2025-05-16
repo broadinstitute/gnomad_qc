@@ -8,12 +8,8 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
 
-from gnomad_qc.v5.resources.basics import (
-    add_project_prefix_to_sample_collisions,
-    get_aou_vds,
-)
+from gnomad_qc.v5.resources.basics import get_aou_vds
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import get_sample_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -28,7 +24,7 @@ def compute_aou_sample_qc(
     """
     Perform sample QC on AoU VDS.
 
-    ..note::
+    .. note::
 
         We are not including the `n_alt_alleles_strata` parameter in this function—as we did for v4 exomes—
         because the distribution of alternate alleles in whole genome sequencing data is not as skewed as in exomes.
@@ -64,8 +60,10 @@ def compute_aou_sample_qc(
     # NOTE: Filtering loci with >100 alleles has no effect on the test dataset,
     # since it contains no such loci. However, this filtering is still necessary
     # on the full dataset because the number of alleles can change after removing
-    # samples from the raw VDS. As a result, it may not always match the 'EXCESS_ALLELES'
-    # flag in the 'filters' field of the raw VDS.
+    # samples from the raw VDS. As a result, it may not always match the ``EXCESS_ALLELES`` flag
+    # in the ``filters`` field of the raw VDS. (AoU v8 defined this as a site with >100 alternate alleles
+    # in their quality report: `All of Us Genomic Quality Report
+    # <https://support.researchallofus.org/hc/en-us/articles/29390274413716-All-of-Us-Genomic-Quality-Report>`_)
     vmt = vds.variant_data
     vmt = vmt.annotate_rows(n_unsplit_alleles=hl.len(vmt.alleles))
     vmt = vmt.filter_rows(vmt.n_unsplit_alleles < 101)

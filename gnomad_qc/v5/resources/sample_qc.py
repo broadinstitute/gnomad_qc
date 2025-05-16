@@ -56,6 +56,10 @@ def get_sample_qc(
         full VDS.
     :return: Sample QC table.
     """
+    # NOTE: The sample QC tables currently do not have the `aou` prefix added to sample IDs
+    # that collide with gnomAD samples. This renaming step must be applied before merging
+    # with the metadata, using the `add_project_prefix_to_sample_collisions` function from
+    # `gnomad_qc.v5.resources.basics`.
     return VersionedTableResource(
         CURRENT_AOU_VERSION,
         {
