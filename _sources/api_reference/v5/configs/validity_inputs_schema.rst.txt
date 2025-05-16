@@ -1,0 +1,16 @@
+gnomad_qc.v5.configs.validity_inputs_schema
+===========================================
+
+Script defining schema for json config that is input to the federated validity checks.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.configs.validity_inputs_schema
+
+.. automodule:: gnomad_qc.v5.configs.validity_inputs_schema
+    :exclude-members: get_script_argument_parser
