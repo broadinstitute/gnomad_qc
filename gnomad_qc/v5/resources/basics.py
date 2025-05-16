@@ -317,7 +317,7 @@ def add_project_prefix_to_sample_collisions(
     sample_collisions: hl.Table,
     project: Optional[str] = None,
     sample_id_field: str = "s",
-) -> hl.Table:
+) -> Union[hl.Table, hl.MatrixTable]:
     """
     Add project prefix to sample IDs that exist in multiple projects.
 
@@ -325,7 +325,7 @@ def add_project_prefix_to_sample_collisions(
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
-    :return: Table with project prefix added to sample IDs.
+    :return: Table or MatrixTable with project prefix added to sample IDs.
     """
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
