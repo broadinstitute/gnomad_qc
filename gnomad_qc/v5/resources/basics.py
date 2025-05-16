@@ -107,7 +107,6 @@ def get_aou_vds(
     split: bool = False,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
-    n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
@@ -127,7 +126,6 @@ def get_aou_vds(
         rather than grab an already split VDS. Default is False.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
-    :param n_partitions: Optional argument to read the VDS with a specific number of partitions.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
@@ -142,51 +140,24 @@ def get_aou_vds(
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
+    vds = aou_v8_resource.vds()
 
     if isinstance(chrom, str):
         chrom = [chrom]
 
-    if autosomes_only or sex_chr_only:
-        rg = aou_v8_resource.vds().reference_genome
-        sex_chrom = set(rg.x_contigs + rg.y_contigs)
-        if sex_chr_only:
-            chrom = list(sex_chrom)
-        else:
-            chrom = list(set(rg.contigs) - (sex_chrom | set(rg.mt_contigs)))
-    elif autosomes_only and sex_chr_only:
+    if autosomes_only and sex_chr_only:
         raise ValueError(
             "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
         )
 
-    if n_partitions and chrom:
-        logger.info(
-            "Filtering to chromosome(s) %s with %s partitions...", chrom, n_partitions
-        )
-        reference_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._reference_path(aou_v8_resource.path)
-        )
-        reference_data = hl.filter_intervals(
-            reference_data,
-            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in chrom],
-        )
-        intervals = reference_data._calculate_new_partitions(n_partitions)
-        reference_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._reference_path(aou_v8_resource.path),
-            _intervals=intervals,
-        )
-        variant_data = hl.read_matrix_table(
-            hl.vds.VariantDataset._variants_path(aou_v8_resource.path),
-            _intervals=intervals,
-        )
-        vds = hl.vds.VariantDataset(reference_data, variant_data)
-    elif n_partitions:
-        logger.info("Loading VDS with %s partitions...", n_partitions)
-        vds = hl.vds.read_vds(aou_v8_resource.path, n_partitions=n_partitions)
-    else:
-        vds = aou_v8_resource.vds()
-        if chrom:
-            logger.info("Filtering to chromosome %s...", chrom)
-            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+    # Apply chromosome filtering.
+    if sex_chr_only:
+        vds = hl.vds.filter_chromosomes(vds, keep=["chrX", "chrY"])
+    elif autosomes_only:
+        vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+    elif chrom and len(chrom) > 0:
+        logger.info("Filtering to chromosome(s) %s...", chrom)
+        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     # Count initial number of samples.
     n_samples_before = vds.variant_data.count_cols()
