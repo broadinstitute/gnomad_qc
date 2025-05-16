@@ -106,6 +106,8 @@ def main(args):
         ht = add_project_prefix_to_sample_collisions(
             ht, project="aou", sample_collisions=sample_id_collisions.ht()
         )
+        # Note: The prefix "aou" is only added to the 'all' Table, but not to the
+        # 'bi_allelic' or 'multi_allelic' Tables.
         ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
 
 
