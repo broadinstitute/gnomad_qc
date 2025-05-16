@@ -107,7 +107,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all Matrix Tables/Tables. (default: False).",
+        help="Overwrite all MatrixTables/Tables. (default: False).",
         action="store_true",
     )
     parser.add_argument(
