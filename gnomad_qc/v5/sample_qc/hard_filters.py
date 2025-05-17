@@ -88,7 +88,7 @@ def compute_aou_sample_qc(
 
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
-    hl.init(tmp_dir=f"{WORKSPACE_BUCKET}/tmp/4_day")
+    hl.init(tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day")
     hl.default_reference("GRCh38")
 
     test = args.test
