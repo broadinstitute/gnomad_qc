@@ -84,20 +84,19 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     :param config: JSON configuration for parameter inputs.
     :return: None.
     """
-    indexed_array_annotations = {
-        config["freq_fields"]["freq"]: config["freq_fields"]["freq_index_dict"],
-    }
+    # Define array struct annotations (must include frequency information as 'freq' annotation within 'freq_fields', and
+    # if filtering allele frequency is present it should be provided as 'faf'
+    # annotation within 'faf_fields').
+    array_struct_annotations = [config["freq_fields"]["freq"]]
 
     if config.get("faf_fields"):
-        indexed_array_annotations[config["faf_fields"]["faf"]] = config["faf_fields"][
-            "faf_index_dict"
-        ]
+        array_struct_annotations.append(config["faf_fields"]["faf"])
 
     # Check that all neccesaary fields are present in the Table.
     missing_fields = {}
 
     # Check that specified global annotations are present.
-    global_fields = [i for i in indexed_array_annotations.values()] + [
+    global_fields = [
         config["freq_fields"]["freq_meta"],
         config["freq_fields"]["freq_meta_sample_count"],
     ]
@@ -109,9 +108,7 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["globals"] = missing_global_fields
 
     # Check that specified row annotations are present.
-    row_fields = [i for i in indexed_array_annotations.keys()] + config[
-        "struct_annotations_for_missingness"
-    ]
+    row_fields = array_struct_annotations + config["struct_annotations_for_missingness"]
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
 
@@ -126,7 +123,7 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     freq_meta_keys = set(key for item in freq_meta_list for key in item.keys())
 
     missing_sort_order_keys = [
-        i for i in config["freq_sort_order"] if i not in freq_meta_keys
+        i for i in config["sort_order"] if i not in freq_meta_keys
     ]
     missing_fields["missing_sort_order_keys"] = missing_sort_order_keys
 
@@ -205,7 +202,7 @@ def validate_federated_data(
     missingness_threshold: float = 0.50,
     struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
     freq_annotations_to_sum: List[str] = ["AC", "AN", "homozygote_count"],
-    freq_sort_order: List[str] = ["gen_anc", "sex", "group"],
+    sort_order: List[str] = ["subset", "gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
     subsets: List[str] = None,
@@ -220,7 +217,7 @@ def validate_federated_data(
         `meta_indexed_expr`. The most often used expression is `freq_meta` to index into
         a 'freq' array (example: ht.freq_meta).
     :param freq_annotations_to_sum: List of annotation fields within `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count'].
-    :param freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["gen_anc", "sex", "group"].
+    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
@@ -278,7 +275,7 @@ def validate_federated_data(
         },
         groups=["adj"],
         verbose=verbose,
-        sort_order=freq_sort_order,
+        sort_order=sort_order,
         metric_first_field=True,
         metrics=freq_annotations_to_sum,
         gen_anc_label_name=gen_anc_label_name,
@@ -497,17 +494,6 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     )
 
     # Define global annotation for freq_index_dict.
-    freq_index_dict = {
-        "adj": 0,
-        "raw": 1,
-        "afr_adj": 2,
-        "amr_adj": 3,
-        "adj_XX": 4,
-        "adj_XY": 5,
-        "non_ukb_adj": 6,
-        "non_ukb_raw": 7,
-    }
-    faf_index_dict = {"adj": 0, "raw": 1}
 
     freq_meta = [
         {"group": "adj"},
@@ -521,14 +507,14 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
 
     faf_meta = [{"group": "adj"}, {"group": "raw"}]
 
-    freq_index_sample_count = [10, 20, 3, 4, 8, 12, 14]
+    freq_meta_sample_count = [10, 20, 3, 4, 8, 12, 14]
+    faf_meta_sample_count = [10, 20]
 
     ht = ht.annotate_globals(
-        freq_index_dict=freq_index_dict,
-        faf_index_dict=faf_index_dict,
         freq_meta=freq_meta,
         faf_meta=faf_meta,
-        freq_meta_sample_count=freq_index_sample_count,
+        freq_meta_sample_count=freq_meta_sample_count,
+        faf_meta_sample_count=freq_meta_sample_count,
     )
 
     # Add in retired terms to globals.
@@ -674,18 +660,22 @@ def main(args):
 
         # Create row annotations for each element of the indexed arrays and their
         # structs.
-        indexed_array_annotations = {
-            config["freq_fields"]["freq"]: config["freq_fields"]["freq_index_dict"],
+        array_struct_annotations = {
+            config["freq_fields"]["freq"]: config["freq_fields"]["freq_meta"],
         }
 
         if config.get("faf_fields"):
-            indexed_array_annotations[config["faf_fields"]["faf"]] = config[
+            array_struct_annotations[config["faf_fields"]["faf"]] = config[
                 "faf_fields"
-            ]["faf_index_dict"]
+            ]["faf_meta"]
 
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
-        annotations = unfurl_array_annotations(ht, indexed_array_annotations)
+        annotations = unfurl_array_annotations(
+            ht=ht,
+            array_meta_dicts=array_struct_annotations,
+            sorted_keys=config["sort_order"],
+        )
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
         info_dict = {}
@@ -708,7 +698,7 @@ def main(args):
             ],
             freq_meta_expr=ht[config["freq_fields"]["freq_meta"]],
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
-            freq_sort_order=config["freq_sort_order"],
+            sort_order=config["sort_order"],
             nhomalt_metric=config["nhomalt_metric"],
             verbose=verbose,
             subsets=config["subsets"],
@@ -774,16 +764,12 @@ if __name__ == "__main__":
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
             "freq_fields: Dictionary containing the names of frequency-related fields ('freq': Name of annotation containing the array of frequency metric objects "
             "corresponding to each frequency metadata group; 'freq_meta': Name of annotation containing allele frequency metadata, an ordered list containing the frequency aggregation group for "
-            "each element of the 'freq' array row annotation; 'freq_index_dict': Name of annotation containing dictionary keyed by specified label grouping combinations (group: adj/raw, gen_anc: inferred "
-            "genetic ancestry group, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the 'freq' array row annotation. 'freq_meta_sample_count': Name of "
+            "each element of the 'freq' array row annotation, with at least the following groups: ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype).; 'freq_meta_sample_count': Name of "
             "annotation containing sample count per sample grouping defined in the 'freq_meta' global annotation."
-            ")"
             "faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields ('faf': Name of annotation containing structs of FAF information; 'faf_meta': Name of annotation "
-            "for FAF metadata, an ordered list containing the frequency aggregation group for each element of the 'faf' arrays; 'faf_index_dict': Name of annotation containing dictionary keyed by specified "
-            "label grouping combinations ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype), with values describing the corresponding index of each grouping entry in the filtering "
-            "allele frequency annotation."
+            "for FAF metadata, an ordered list containing the frequency aggregation group for each element of the 'faf' arrays, with at least the following groups: ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype). "
             "freq_annotations_to_sum: List of annotation fields within `freq_meta` to sum. Example: ['AC', 'AN', 'homozygote_count']."
-            "freq_sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
+            "sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
             "nhomalt_metric: Name of metric denoting homozygous alternate count."
             "subsets: List of sample subsets to include for the subset validity check."
             "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."

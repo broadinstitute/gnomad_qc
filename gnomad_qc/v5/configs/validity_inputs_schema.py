@@ -36,7 +36,7 @@ schema = {
             "type": "array",
             "items": {"type": "string"},
         },
-        "freq_sort_order": {
+        "sort_order": {
             "type": "array",
             "items": {"type": "string"},
         },
@@ -51,7 +51,7 @@ schema = {
         "missingness_threshold",
         "freq_fields",
         "freq_annotations_to_sum",
-        "freq_sort_order",
+        "sort_order",
         "nhomalt_metric",
         "subsets",
         "variant_filter_field",
