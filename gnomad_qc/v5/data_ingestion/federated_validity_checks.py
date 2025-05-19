@@ -85,7 +85,8 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     :return: None.
     """
     # Define array struct annotations (must include frequency information as 'freq' annotation within 'freq_fields', and
-    # if filtering allele frequency is present it should be provided as 'faf' annotation within 'faf_fields').
+    # if filtering allele frequency is present it should be provided as 'faf'
+    # annotation within 'faf_fields').
     array_struct_annotations = [config["freq_fields"]["freq"]]
 
     if config.get("faf_fields"):
