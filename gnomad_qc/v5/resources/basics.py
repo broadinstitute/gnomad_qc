@@ -164,7 +164,9 @@ def get_aou_vds(
 
     # Load samples flagged in AoU Known Issues #1.
     logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-    low_quality_samples = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
+    low_quality_samples = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
+        "research_id"
+    )
 
     # Load and count samples failing genomic metrics filters.
     failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
@@ -289,7 +291,9 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
         "verify_bam_id2_contamination": hl.tfloat,
         "biosample_collection_date": hl.tstr,
     }
-    ht = hl.import_table(AOU_GENOMIC_METRICS_PATH, types=types).key_by("research_id")
+    ht = hl.import_table(f"gs://{AOU_GENOMIC_METRICS_PATH}", types=types).key_by(
+        "research_id"
+    )
 
     low_cov_samples = ht.filter(
         (ht.mean_coverage < 30)
