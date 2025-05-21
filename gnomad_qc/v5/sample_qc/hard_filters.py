@@ -8,9 +8,9 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
 
-from gnomad_qc.v5.resources.basics import get_aou_vds
+from gnomad_qc.v5.resources.basics import get_aou_vds, get_checkpoint_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import get_sample_qc
+from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples, get_sample_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("hard_filters")
@@ -175,6 +175,21 @@ def main(args):
         )
         ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
 
+    if args.compute_hard_filters:
+        hard_filter_path = get_checkpoint_path("test_aou_hard_filters") if test else hard_filtered_samples.path
+        ht = compute_hard_filters(
+            args.max_n_singleton,
+            args.max_r_het_hom_var,
+            args.max_r_insertion_deletion,
+            args.min_r_ti_tv,
+            args.max_r_ti_tv_singleton,
+            test,
+        )
+        ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
+        ht.group_by("sample_qc_metric_hard_filters").aggregate(
+            n=hl.agg.count()
+        ).show(20)
+
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
@@ -199,6 +214,63 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to use when writing the sample QC table.",
         type=int,
         default=500,
+    )
+    parser.add_argument(
+        "--compute-hard-filters",
+        help=(
+            "Computes samples to be hard-filtered. NOTE: Cutoffs should be determined"
+            " by visual inspection of the metrics."
+        ),
+        action="store_true",
+    )
+    parser.add_argument_group()
+    hard_filter_args = parser.add_argument_group(
+        "Hard-filter cutoffs", "Arguments used for hard-filter cutoffs."
+    )
+    hard_filter_args.add_argument(
+        "--max-n-singleton",
+        type=float,
+        default=100000,
+        help=(
+            "Filtering threshold to use for the maximum number of singletons. Default"
+            " is 100000."
+        ),
+    )
+    hard_filter_args.add_argument(
+        "--max-r-het-hom-var",
+        type=float,
+        default=2.5,
+        help=(
+            "Filtering threshold to use for the maximum ratio of heterozygotes to"
+            " alternate homozygotes. Default is 2.5."
+        ),
+    )
+    hard_filter_args.add_argument(
+        "--max-r-insertion-deletion",
+        type=float,
+        default=0.42,
+        help=(
+            "Filtering threshold to use for the maximum ratio of insertions to"
+            " deletions. Default is 0.42."
+        ),
+    )
+    hard_filter_args.add_argument(
+        "--min-r-ti-tv",
+        type=float,
+        default=2.9,
+        help=(
+            "Filtering threshold to use for the minimum ratio of transitions to"
+            " transverions. Default is 2.9."
+        ),
+    )
+    hard_filter_args.add_argument(
+        "--max-r-ti-tv-singleton",
+        type=float,
+        default=5.2,
+        help=(
+            "Filtering threshold to use for maximum ratio of transitions to"
+            " tranversions in singletons. Default is 5.2."
+        ),
     )
     return parser
 
