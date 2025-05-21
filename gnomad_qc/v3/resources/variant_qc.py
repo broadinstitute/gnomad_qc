@@ -1,5 +1,6 @@
 # noqa: D100
 
+import logging
 from typing import Optional, Union
 
 from gnomad.resources.grch38 import (
@@ -17,6 +18,12 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v3.resources.constants import CURRENT_VERSION, VERSIONS
+
+########################################################################################
+# Note: Some of the resources in this file have been moved to gs://gnomad-archive,
+# please check there if you are looking for a specific resource that is not found in
+# gs://gnomad-autoclass/variant_qc.
+########################################################################################
 
 SYNDIP = "CHMI_CHMI3_WGS2"
 """
@@ -57,7 +64,13 @@ def get_variant_qc_root(version: str = CURRENT_VERSION) -> str:
     :param version: Version of variant QC path to return
     :return: Root to sample QC path
     """
-    return f"gs://gnomad/variant_qc/genomes_v{version}"
+    logging.warning(
+        "Most objects in 'gs://gnomad/variant_qc' were moved to either "
+        "'gs://gnomad-archive' or 'gs://gnomad-autoclass'. This function now returns "
+        "'gs://gnomad-autoclass/variant_qc' paths, if no resource is found there, "
+        "please check 'gs://gnomad-archive/variant_qc'."
+    )
+    return f"gs://gnomad-autoclass/variant_qc/genomes_v{version}"
 
 
 def get_callset_truth_data(
