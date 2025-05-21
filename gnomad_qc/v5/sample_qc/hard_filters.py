@@ -86,6 +86,80 @@ def compute_aou_sample_qc(
     return sample_qc_ht.naive_coalesce(n_partitions)
 
 
+def compute_hard_filters(
+    max_n_singleton: float = 100000,
+    max_r_het_hom_var: float = 10,
+    max_r_insertion_deletion: float = 0.42,
+    min_r_ti_tv: float = 2.9,
+    max_r_ti_tv_singleton: float = 5.2,
+    test: bool = False,
+) -> hl.Table:
+    """
+    Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
+
+    Function only filters outliers based on sample QC metrics; samples were filtered upstream based on
+    contamination, sex karyotype, and coverage.
+
+    .. warning::
+        The defaults used in this function are callset specific; these hardfilter
+        cutoffs will need to be re-examined for each callset.
+
+    :param max_n_singleton: Filtering threshold to use for the maximum number of
+        singletons.
+    :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of
+        heterozygotes to alternate homozygotes.
+    :param max_r_insertion_deletion: Filtering threshold to use for the maximum ratio of
+        insertions to deletions.
+    :param min_r_ti_tv: Filtering threshold to use for the minimum ratio of
+        transitions to transverions.
+    :param max_r_ti_tv_singleton: Filtering threshold to use for maximum ratio of
+        transitions to tranversions in singletons.
+    :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full
+        dataset.
+    :return: Table of hard filtered samples.
+    """
+    ht = get_aou_vds(test=test,).variant_data.cols()
+    ht = ht.annotate_globals(
+        hard_filter_cutoffs=hl.struct(
+            max_n_singleton=max_n_singleton,
+            max_r_het_hom_var=max_r_het_hom_var,
+            max_r_insertion_deletion=max_r_insertion_deletion,
+            min_r_ti_tv=min_r_ti_tv,
+            max_r_ti_tv_singleton=max_r_ti_tv_singleton,
+        ),
+    )
+
+    # Flag extreme raw bi-allelic sample QC outliers.
+    sample_qc_metric_hard_filters = dict()
+    bi_allelic_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+
+    bi_allelic_qc_struct = bi_allelic_qc_ht[ht.key]
+    sample_qc_metric_hard_filters["high_n_singleton"] = (
+        bi_allelic_qc_struct.n_singleton > max_n_singleton
+    )
+    sample_qc_metric_hard_filters["high_r_het_hom_var"] = (
+        bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var
+    )
+    sample_qc_metric_hard_filters["high_r_ins_del"] = (
+        bi_allelic_qc_struct.r_insertion_deletion < max_r_insertion_deletion
+    )
+    sample_qc_metric_hard_filters["low_r_ti_tv"] = (
+        bi_allelic_qc_struct.r_ti_tv < min_r_ti_tv
+    )
+    sample_qc_metric_hard_filters["high_r_ti_tv_singleton"] = (
+        bi_allelic_qc_struct.r_ti_tv_singleton < max_r_ti_tv_singleton
+    )
+    ht = ht.annotate(
+        sample_qc_metric_hard_filters=add_filters_expr(
+            filters=sample_qc_metric_hard_filters
+        ),
+    )
+
+    # Keep samples failing hard filters.
+    ht = ht.filter(hl.len(ht.sample_qc_metric_hard_filters) > 0)
+    return ht
+
+
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
     hl.init(tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day")
