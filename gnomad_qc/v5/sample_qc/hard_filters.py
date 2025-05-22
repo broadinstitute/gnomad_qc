@@ -181,7 +181,6 @@ def main(args):
             args.max_r_insertion_deletion,
             args.min_r_ti_tv,
             args.max_r_ti_tv_singleton,
-            test,
         )
         ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
         ht.group_by("sample_qc_metric_hard_filters").aggregate(n=hl.agg.count()).show(
