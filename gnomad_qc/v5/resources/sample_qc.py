@@ -8,7 +8,7 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_AOU_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
     GNOMAD_BUCKET,
-    SAMPLE_QC_VERSIONS
+    SAMPLE_QC_VERSIONS,
     WORKSPACE_BUCKET,
 )
 
