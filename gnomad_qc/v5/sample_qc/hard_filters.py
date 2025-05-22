@@ -137,11 +137,11 @@ def compute_hard_filters(
         ht.r_het_hom_var > max_r_het_hom_var
     )
     sample_qc_metric_hard_filters["high_r_ins_del"] = (
-        ht.r_insertion_deletion < max_r_insertion_deletion
+        ht.r_insertion_deletion > max_r_insertion_deletion
     )
     sample_qc_metric_hard_filters["low_r_ti_tv"] = ht.r_ti_tv < min_r_ti_tv
     sample_qc_metric_hard_filters["high_r_ti_tv_singleton"] = (
-        ht.r_ti_tv_singleton < max_r_ti_tv_singleton
+        ht.r_ti_tv_singleton > max_r_ti_tv_singleton
     )
     ht = ht.annotate(
         sample_qc_metric_hard_filters=add_filters_expr(
