@@ -7,6 +7,7 @@ import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
+from gnomad.utils.filtering import add_filters_expr
 
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_checkpoint_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
