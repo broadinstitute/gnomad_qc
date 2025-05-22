@@ -76,6 +76,7 @@ def get_sample_qc(
         },
     )
 
+
 hard_filtered_samples = VersionedTableResource(
     CURRENT_SAMPLE_QC_VERSION,
     {

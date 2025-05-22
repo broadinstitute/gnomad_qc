@@ -10,7 +10,7 @@ from gnomad.utils.annotations import bi_allelic_expr
 
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_checkpoint_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples, get_sample_qc
+from gnomad_qc.v5.resources.sample_qc import get_sample_qc, hard_filtered_samples
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("hard_filters")
@@ -118,7 +118,9 @@ def compute_hard_filters(
         dataset.
     :return: Table of hard filtered samples.
     """
-    ht = get_aou_vds(test=test,).variant_data.cols()
+    ht = get_aou_vds(
+        test=test,
+    ).variant_data.cols()
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
             max_n_singleton=max_n_singleton,
@@ -176,7 +178,11 @@ def main(args):
         ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
 
     if args.compute_hard_filters:
-        hard_filter_path = get_checkpoint_path("test_aou_hard_filters") if test else hard_filtered_samples.path
+        hard_filter_path = (
+            get_checkpoint_path("test_aou_hard_filters")
+            if test
+            else hard_filtered_samples.path
+        )
         ht = compute_hard_filters(
             args.max_n_singleton,
             args.max_r_het_hom_var,
@@ -186,9 +192,9 @@ def main(args):
             test,
         )
         ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
-        ht.group_by("sample_qc_metric_hard_filters").aggregate(
-            n=hl.agg.count()
-        ).show(20)
+        ht.group_by("sample_qc_metric_hard_filters").aggregate(n=hl.agg.count()).show(
+            20
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
