@@ -171,7 +171,7 @@ def main(args):
 
     if args.compute_hard_filters:
         hard_filter_path = (
-            get_checkpoint_path("test_aou_hard_filters")
+            get_checkpoint_path("test_aou_hard_filters", environment="rwb")
             if test
             else hard_filtered_samples.path
         )
