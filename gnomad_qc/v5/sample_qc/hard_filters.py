@@ -93,7 +93,6 @@ def compute_hard_filters(
     max_r_insertion_deletion: float = 0.42,
     min_r_ti_tv: float = 2.9,
     max_r_ti_tv_singleton: float = 5.2,
-    test: bool = False,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -115,13 +114,12 @@ def compute_hard_filters(
         transitions to transverions.
     :param max_r_ti_tv_singleton: Filtering threshold to use for maximum ratio of
         transitions to tranversions in singletons.
-    :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full
-        dataset.
     :return: Table of hard filtered samples.
     """
-    ht = get_aou_vds(
-        test=test,
-    ).variant_data.cols()
+    logger.info(
+        "Removing samples that are obvious outliers based on sample QC metrics..."
+    )
+    ht = get_sample_qc("bi_allelic", test=test).ht()
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
             max_n_singleton=max_n_singleton,
@@ -134,23 +132,16 @@ def compute_hard_filters(
 
     # Flag extreme raw bi-allelic sample QC outliers.
     sample_qc_metric_hard_filters = dict()
-    bi_allelic_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
-
-    bi_allelic_qc_struct = bi_allelic_qc_ht[ht.key]
-    sample_qc_metric_hard_filters["high_n_singleton"] = (
-        bi_allelic_qc_struct.n_singleton > max_n_singleton
-    )
+    sample_qc_metric_hard_filters["high_n_singleton"] = ht.n_singleton > max_n_singleton
     sample_qc_metric_hard_filters["high_r_het_hom_var"] = (
-        bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var
+        ht.r_het_hom_var > max_r_het_hom_var
     )
     sample_qc_metric_hard_filters["high_r_ins_del"] = (
-        bi_allelic_qc_struct.r_insertion_deletion < max_r_insertion_deletion
+        ht.r_insertion_deletion < max_r_insertion_deletion
     )
-    sample_qc_metric_hard_filters["low_r_ti_tv"] = (
-        bi_allelic_qc_struct.r_ti_tv < min_r_ti_tv
-    )
+    sample_qc_metric_hard_filters["low_r_ti_tv"] = ht.r_ti_tv < min_r_ti_tv
     sample_qc_metric_hard_filters["high_r_ti_tv_singleton"] = (
-        bi_allelic_qc_struct.r_ti_tv_singleton < max_r_ti_tv_singleton
+        ht.r_ti_tv_singleton < max_r_ti_tv_singleton
     )
     ht = ht.annotate(
         sample_qc_metric_hard_filters=add_filters_expr(
