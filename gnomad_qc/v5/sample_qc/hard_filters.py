@@ -119,7 +119,7 @@ def compute_hard_filters(
     logger.info(
         "Removing samples that are obvious outliers based on sample QC metrics..."
     )
-    ht = get_sample_qc("bi_allelic", test=test).ht()
+    ht = get_sample_qc("bi_allelic").ht()
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
             max_n_singleton=max_n_singleton,
