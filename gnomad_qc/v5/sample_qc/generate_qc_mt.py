@@ -156,6 +156,21 @@ def main(args):
                 overwrite=overwrite,
             )
 
+        if args.check_missing_sites:
+            logger.info(
+                "Checking how many sites from v4 QC MT are missing from joint AoU MT..."
+            )
+            aou_ht = hl.read_matrix_table(
+                get_checkpoint_path("union_aou_mts", mt=True, environment="rwb")
+            ).rows()
+            ht = v4_sample_qc.get_joint_qc(test=test).mt().rows()
+            ht = ht.select_rows()
+            missing_sites = ht.anti_join(aou_ht)
+            logger.info(
+                "Number of QC MT sites missing from joint AoU MT: %i",
+                missing_sites.count(),
+            )
+
         if args.generate_qc_mt:
             logger.info("Loading gnomAD v4 QC MatrixTable...")
             # NOTE: Dropping extra column and entry annotations because `union_cols` requires
@@ -205,6 +220,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--check-missing-sites",
+        help=("Check how many sites from v4 QC MT are missing from joint AoU MT."),
         action="store_true",
     )
     parser.add_argument(
