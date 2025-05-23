@@ -360,7 +360,7 @@ def add_project_prefix_to_sample_collisions(
     sample_collisions: hl.Table,
     project: Optional[str] = None,
     sample_id_field: str = "s",
-    rekey_mt: Optional[bool] = False,
+    rekey_cols: Optional[bool] = False,
 ) -> hl.Table:
     """
     Add project prefix to sample IDs that exist in multiple projects.
@@ -369,7 +369,7 @@ def add_project_prefix_to_sample_collisions(
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
-    :param rekey_mt: Whether to rekey the MatrixTable after adding the project prefix. Only relevant if input is a MatrixTable.
+    :param rekey_cols: Whether to rekey the MatrixTable after adding the project prefix. Only relevant if input is a MatrixTable.
         Default is False.
     :return: Table with project prefix added to sample IDs.
     """
@@ -409,7 +409,7 @@ def add_project_prefix_to_sample_collisions(
                 t[sample_id_field],
             )
         )
-        if rekey_mt:
+        if rekey_cols:
             t = t.key_cols_by()
             t = t.key_cols_by(s=t.sample_no_collision).drop("s_no_collision")
         return t
