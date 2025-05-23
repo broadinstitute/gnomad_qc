@@ -410,6 +410,5 @@ def add_project_prefix_to_sample_collisions(
             )
         )
         if rekey_cols:
-            t = t.key_cols_by()
             t = t.key_cols_by(s=t.sample_no_collision).drop("s_no_collision")
         return t
