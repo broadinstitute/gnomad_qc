@@ -373,9 +373,7 @@ def add_project_prefix_to_sample_collisions(
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    collisions = hl.literal(
-        sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
-    )
+    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
 
     if project:
         prefix_expr = hl.literal(project)
@@ -389,7 +387,7 @@ def add_project_prefix_to_sample_collisions(
 
     renaming_expr = {
         f"{sample_id_field}": hl.if_else(
-            collisions.contains(t[sample_id_field]),
+            hl.literal(collisions).contains(t[sample_id_field]),
             hl.delimit([prefix_expr, t[sample_id_field]], "_"),
             t[sample_id_field],
         )
