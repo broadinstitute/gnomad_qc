@@ -108,6 +108,7 @@ def get_logging_path(
 
 def get_aou_vds(
     split: bool = False,
+    remove_hard_filtered_samples: bool = True,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -127,6 +128,8 @@ def get_aou_vds(
 
     :param split: Whether to split multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filtering (only relevant after hard filtering
+        is complete). Default is True.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
@@ -165,27 +168,12 @@ def get_aou_vds(
     # Count initial number of samples.
     n_samples_before = vds.variant_data.count_cols()
 
-    # Load samples flagged in AoU Known Issues #1.
-    logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-    low_quality_samples = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
-        "research_id"
-    )
-
-    # Load and count samples failing genomic metrics filters.
-    failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
-    logger.info(
-        "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
-        failing_genomic_metrics_samples.count(),
-    )
-
-    # Union all samples to exclude.
-    samples_to_exclude = low_quality_samples.union(
-        failing_genomic_metrics_samples
-    ).distinct()
-
-    # Filter out poor-quality samples.
+    # Remove samples that should have been excluded from the AoU v8 release
+    # and samples with non-XX/XY ploidies.
+    # Also optionally remove samples that failed hard filtering.
+    s_to_exclude = hl.eval(get_samples_to_exclude(remove_hard_filtered_samples))
     vds = hl.vds.filter_samples(
-        vds, samples_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
+        vds, list(s_to_exclude), keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
     # Report final sample exclusion count.
