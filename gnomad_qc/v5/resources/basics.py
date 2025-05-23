@@ -356,43 +356,60 @@ def get_samples_to_exclude(
 
 
 def add_project_prefix_to_sample_collisions(
-    ht: hl.Table,
+    t: Union[hl.Table, hl.MatrixTable],
     sample_collisions: hl.Table,
     project: Optional[str] = None,
     sample_id_field: str = "s",
+    rekey_mt: Optional[bool] = False,
 ) -> hl.Table:
     """
     Add project prefix to sample IDs that exist in multiple projects.
 
-    :param ht: Table to add project prefix to sample IDs.
+    :param t: Table/MatrixTable to add project prefix to sample IDs.
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
+    :param rekey_mt: Whether to rekey the MatrixTable after adding the project prefix. Only relevant if input is a MatrixTable.
+        Default is False.
     :return: Table with project prefix added to sample IDs.
     """
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
     collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
-    ht = ht.key_by()
 
     if project is not None:
         prefix_expr = hl.literal(project)
     else:
         try:
-            prefix_expr = ht["project"]
+            prefix_expr = t["project"]
         except KeyError:
             raise ValueError(
-                "No project name provided and 'ht' does not contain a 'project' field."
+                "No project name provided and 't' does not contain a 'project' field."
             )
 
-    ht = ht.annotate(
-        **{
-            f"{sample_id_field}": hl.if_else(
-                hl.literal(collisions).contains(ht["s"]),
-                hl.delimit([prefix_expr, ht[sample_id_field]], "_"),
-                ht[sample_id_field],
+    if isinstance(t, hl.Table):
+        t = t.key_by()
+        t = t.annotate(
+            **{
+                f"{sample_id_field}": hl.if_else(
+                    hl.literal(collisions).contains(t[sample_id_field]),
+                    hl.delimit([prefix_expr, t[sample_id_field]], "_"),
+                    t[sample_id_field],
+                )
+            }
+        )
+        return t.key_by(sample_id_field)
+
+    else:
+        t = t.annotate_cols(
+            s_no_collision=hl.if_else(
+                hl.literal(collisions).contains(t[sample_id_field]),
+                hl.delimit([prefix_expr, t[sample_id_field]], "_"),
+                t[sample_id_field],
             )
-        }
-    )
-    return ht.key_by(sample_id_field)
+        )
+        if rekey_mt:
+            t = t.key_cols_by()
+            t = t.key_cols_by(s=t.sample_no_collision).drop("s_no_collision")
+        return t
