@@ -360,7 +360,6 @@ def add_project_prefix_to_sample_collisions(
     sample_collisions: hl.Table,
     project: Optional[str] = None,
     sample_id_field: str = "s",
-    rekey_cols: Optional[bool] = False,
 ) -> hl.Table:
     """
     Add project prefix to sample IDs that exist in multiple projects.
@@ -369,16 +368,16 @@ def add_project_prefix_to_sample_collisions(
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
-    :param rekey_cols: Whether to rekey the MatrixTable after adding the project prefix. Only relevant if input is a MatrixTable.
-        Default is False.
     :return: Table with project prefix added to sample IDs.
     """
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    collisions = hl.literal(
+        sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    )
 
-    if project is not None:
+    if project:
         prefix_expr = hl.literal(project)
     else:
         try:
@@ -388,27 +387,15 @@ def add_project_prefix_to_sample_collisions(
                 "No project name provided and 't' does not contain a 'project' field."
             )
 
+    renaming_expr = {
+        f"{sample_id_field}": hl.if_else(
+            collisions.contains(t[sample_id_field]),
+            hl.delimit([prefix_expr, t[sample_id_field]], "_"),
+            t[sample_id_field],
+        )
+    }
     if isinstance(t, hl.Table):
-        t = t.key_by()
-        t = t.annotate(
-            **{
-                f"{sample_id_field}": hl.if_else(
-                    hl.literal(collisions).contains(t[sample_id_field]),
-                    hl.delimit([prefix_expr, t[sample_id_field]], "_"),
-                    t[sample_id_field],
-                )
-            }
-        )
-        return t.key_by(sample_id_field)
+        return t.key_by(**renaming_expr)
 
-    else:
-        t = t.annotate_cols(
-            s_no_collision=hl.if_else(
-                hl.literal(collisions).contains(t[sample_id_field]),
-                hl.delimit([prefix_expr, t[sample_id_field]], "_"),
-                t[sample_id_field],
-            )
-        )
-        if rekey_cols:
-            t = t.key_cols_by(s=t.sample_no_collision).drop("s_no_collision")
-        return t
+    logger.warning("Input is a MatrixTable, rekeying columns...")
+    return t.key_cols_by(**renaming_expr)
