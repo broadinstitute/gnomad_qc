@@ -344,7 +344,7 @@ def get_samples_to_exclude(
             s_to_exclude, samples_to_exclude.path, overwrite=True
         )
 
-    s_to_exclude = hl.read_expression(samples_to_exclude.path)
+    s_to_exclude = hl.experimental.read_expression(samples_to_exclude.path)
     if remove_hard_filtered_samples:
         # Load samples failing hard filtering.
         hard_filtered_samples_ht = hard_filtered_samples.ht()

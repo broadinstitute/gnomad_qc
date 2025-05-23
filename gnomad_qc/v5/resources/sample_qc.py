@@ -1,6 +1,11 @@
 """Script containing sample QC related resources."""
 
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from gnomad.resources.resource_utils import (
+    MatrixTableResource,
+    TableResource,
+    VersionedMatrixTableResource,
+    VersionedTableResource,
+)
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
