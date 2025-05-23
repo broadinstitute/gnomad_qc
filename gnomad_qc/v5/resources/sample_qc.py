@@ -1,6 +1,11 @@
 """Script containing sample QC related resources."""
 
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from gnomad.resources.resource_utils import (
+    MatrixTableResource,
+    TableResource,
+    VersionedMatrixTableResource,
+    VersionedTableResource,
+)
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
@@ -8,6 +13,7 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_AOU_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
     GNOMAD_BUCKET,
+    SAMPLE_QC_VERSIONS,
     WORKSPACE_BUCKET,
 )
 
@@ -67,5 +73,28 @@ def get_sample_qc(
                 f"{get_sample_qc_root(version, test, data_set='aou')}/hard_filtering/aou.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
             for version in AOU_VERSIONS
+        },
+    )
+
+
+######################################################################
+# QC MT resources
+######################################################################
+
+
+def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
+    """
+    Get joint gnomAD + AoU dense MatrixTableResource.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: MatrixTableResource of QC sites.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint', data_set='aou')}/qc_mt/gnomad.joint.v{version}.qc.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
         },
     )
