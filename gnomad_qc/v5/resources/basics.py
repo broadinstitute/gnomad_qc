@@ -8,6 +8,7 @@ from gnomad.resources.resource_utils import (
     VariantDatasetResource,
     VersionedVariantDatasetResource,
 )
+from gnomad.utils.file_utils import file_exists
 from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
@@ -19,6 +20,8 @@ from gnomad_qc.v5.resources.constants import (
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
 )
+from gnomad_qc.v5.resources.meta import samples_to_exclude
+from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
@@ -314,6 +317,54 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
     ht = low_cov_samples.union(ambiguous_sex_samples).distinct()
 
     return ht
+
+
+def get_samples_to_exclude(
+    remove_hard_filtered_samples: bool,
+    overwrite: bool = False,
+) -> hl.expr.SetExpression:
+    """
+    Get set of AoU sample IDs to exclude.
+
+    :param remove_hard_filtered_samples: Whether to additionally remove samples that failed hard filtering.
+    :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
+    :return: SetExpression containing IDs of samples to exclude from v5 analysis.
+    """
+    if not file_exists(samples_to_exclude.path) or overwrite:
+        # Load samples flagged in AoU Known Issues #1.
+        logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
+        low_quality_ht = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
+            "research_id"
+        )
+        low_quality_samples = low_quality_ht.aggregate(
+            hl.agg.collect_as_set(low_quality_ht.research_id)
+        )
+
+        # Load and count samples failing genomic metrics filters.
+        failing_genomic_metrics_samples_ht = get_aou_failing_genomic_metrics_samples()
+        logger.info(
+            "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
+            failing_genomic_metrics_samples.count(),
+        )
+        failing_genomic_metrics_samples = failing_genomic_metrics_samples_ht.aggregate(
+            hl.agg.collect_as_set(failing_genomic_metrics_samples_ht.research_id)
+        )
+
+        # Union all samples to exclude and write out.
+        s_to_exclude = low_quality_samples.union(failing_genomic_metrics_samples)
+        hl.experimental.write_expression(
+            s_to_exclude, samples_to_exclude.path, overwrite=True
+        )
+
+    s_to_exclude = hl.read_expression(samples_to_exclude.path)
+    if remove_hard_filtered_samples:
+        # Load samples failing hard filtering.
+        hard_filtered_samples_ht = hard_filtered_samples.ht()
+        hard_filtered_samples = hard_filtered_samples_ht.aggregate(
+            hl.agg.collect_as_set(hard_filtered_samples_ht.s)
+        )
+        s_to_exclude = s_to_exclude.union(hard_filtered_samples)
+    return s_to_exclude
 
 
 def add_project_prefix_to_sample_collisions(
