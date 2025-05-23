@@ -9,7 +9,11 @@ from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import add_filters_expr
 
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_checkpoint_path
+from gnomad_qc.v5.resources.basics import (
+    get_aou_vds,
+    get_checkpoint_path,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import get_sample_qc, hard_filtered_samples
 
@@ -162,30 +166,34 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
-    if args.aou_sample_qc:
-        ht = compute_aou_sample_qc(
-            n_partitions=args.sample_qc_n_partitions,
-            test=test,
-        )
-        ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
+    try:
+        if args.aou_sample_qc:
+            ht = compute_aou_sample_qc(
+                n_partitions=args.sample_qc_n_partitions,
+                test=test,
+            )
+            ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
 
-    if args.compute_hard_filters:
-        hard_filter_path = (
-            get_checkpoint_path("test_aou_hard_filters", environment="rwb")
-            if test
-            else hard_filtered_samples.path
-        )
-        ht = compute_hard_filters(
-            args.max_n_singleton,
-            args.max_r_het_hom_var,
-            args.max_r_insertion_deletion,
-            args.min_r_ti_tv,
-            args.max_r_ti_tv_singleton,
-        )
-        ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
-        ht.group_by("sample_qc_metric_hard_filters").aggregate(n=hl.agg.count()).show(
-            20
-        )
+        if args.compute_hard_filters:
+            hard_filter_path = (
+                get_checkpoint_path("test_aou_hard_filters", environment="rwb")
+                if test
+                else hard_filtered_samples.path
+            )
+            ht = compute_hard_filters(
+                args.max_n_singleton,
+                args.max_r_het_hom_var,
+                args.max_r_insertion_deletion,
+                args.min_r_ti_tv,
+                args.max_r_ti_tv_singleton,
+            )
+            ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
+            ht.group_by("sample_qc_metric_hard_filters").aggregate(
+                n=hl.agg.count()
+            ).show(20)
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("hard_filters", environment="rwb"))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
