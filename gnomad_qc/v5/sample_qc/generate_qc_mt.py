@@ -15,10 +15,15 @@ from typing import List
 
 import hail as hl
 
-from gnomad_qc.v4.resources.sample_qc import get_joint_qc
-from gnomad_qc.v5.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v4.resources import sample_qc as v4_sample_qc
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_checkpoint_path,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.constants import AOU_WGS_BUCKET, WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import samples_to_exclude
+from gnomad_qc.v5.resources.meta import sample_id_collisions, samples_to_exclude
+from gnomad_qc.v5.resources.sample_qc import get_joint_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_qc_mt")
@@ -29,7 +34,6 @@ def union_aou_mts(
     s_to_exclude: hl.expr.SetExpression,
     ht: hl.Table,
     n_partitions: int = 10000,
-    row_annotations: List[str] = ["a_index", "was_split"],
     entry_annotations: List[str] = ["GT"],
     overwrite: bool = False,
 ) -> None:
@@ -43,8 +47,6 @@ def union_aou_mts(
     :param ht: Table containing the gnomAD QC sites.
     :param n_partitions: Number of desired partitions for the unioned MatrixTable.
         Default is 10000.
-    :param row_annotations: List of row annotations to keep in the unioned MatrixTable.
-        Default is ["a_index", "was_split"].
     :param entry_annotations: List of entry annotations to keep in the unioned MatrixTable.
         Default is ["GT"].
     :param overwrite: Whether to overwrite output data. Default is False.
@@ -55,12 +57,12 @@ def union_aou_mts(
     )
     acaf_mt = (
         hl.read_matrix_table(f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt")
-        .select_rows(*row_annotations)
+        .select_rows()
         .select_entries(*entry_annotations)
     )
     exome_mt = (
         hl.read_matrix_table(f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
-        .select_rows(*row_annotations)
+        .select_rows()
         .select_entries(*entry_annotations)
     )
 
@@ -102,6 +104,37 @@ def union_aou_mts(
     )
 
 
+def generate_qc_mt(
+    gnomad_mt: hl.MatrixTable,
+    aou_mt: hl.MatrixTable,
+    n_partitions: int = 5000,
+) -> hl.MatrixTable:
+    """
+    Union gnomAD v4 QC MT and AoU v8 MTs.
+
+    :param gnomad_mt: gnomAD v4 QC MatrixTable.
+    :param aou_mt: Joint AoU (ACAF + exome) v8 MatrixTable.
+    :param n_partitions: Number of desired partitions for the unioned MatrixTable.
+        Default is 5000.
+    :return: Joint gnomAD v4 (exomes + genomes) + AoU v8 (genomes) QC MT.
+    """
+    logger.info("Resolving sample ID collisions...")
+    sample_collisions = sample_id_collisions.ht()
+    gnomad_mt = add_project_prefix_to_sample_collisions(
+        t=gnomad_mt,
+        sample_collisions=sample_collisions,
+        project="gnomad",
+    )
+    aou_mt = add_project_prefix_to_sample_collisions(
+        t=aou_mt,
+        sample_collisions=sample_collisions,
+        project="aou",
+    )
+
+    joint_mt = gnomad_mt.union_cols(aou_mt)
+    return joint_mt.naive_coalesce(n_partitions)
+
+
 def main(args):
     """Create a joint gnomAD + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
     hl.init(
@@ -123,6 +156,37 @@ def main(args):
                 overwrite=overwrite,
             )
 
+        if args.generate_qc_mt:
+            logger.info("Loading gnomAD v4 QC MatrixTable...")
+            # NOTE: Dropping extra column and entry annotations because `union_cols` requires
+            # that the column keys/schemas and entry schemas match across the two MTs.
+            # Also dropping row annotations because they are not needed for the joint
+            # MT.
+            gnomad_mt = (
+                v4_sample_qc.get_joint_qc(test=test)
+                .mt()
+                .select_globals()
+                .select_rows()
+                .select_cols()
+                .select_entries("GT")
+            )
+
+            logger.info("Loading AoU joint ACAF + exome MatrixTable...")
+            aou_mt = hl.read_matrix_table(
+                get_checkpoint_path("union_aou_mts", mt=True, environment="rwb")
+            )
+
+            logger.info("Generating joint gnomAD + AoU QC MatrixTable...")
+            joint_mt = generate_qc_mt(
+                gnomad_mt=gnomad_mt,
+                aou_mt=aou_mt,
+                n_partitions=args.n_partitions,
+            )
+            joint_mt.write(
+                get_joint_qc(test=test).path,
+                overwrite=overwrite,
+            )
+
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("generate_qc_mt", environment="rwb"))
@@ -141,6 +205,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-qc-mt",
+        help="Generate joint gnomAD v4 + AoU v8 dense MatrixTable.",
         action="store_true",
     )
     parser.add_argument(
