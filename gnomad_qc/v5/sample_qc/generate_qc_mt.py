@@ -20,10 +20,11 @@ from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_checkpoint_path,
     get_logging_path,
+    get_samples_to_exclude,
 )
 from gnomad_qc.v5.resources.constants import AOU_WGS_BUCKET, WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import sample_id_collisions, samples_to_exclude
-from gnomad_qc.v5.resources.sample_qc import get_joint_qc
+from gnomad_qc.v5.resources.meta import sample_id_collisions
+from gnomad_qc.v5.resources.sample_qc import get_joint_qc, hard_filtered_samples
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_qc_mt")
@@ -150,7 +151,9 @@ def main(args):
         if args.union_aou_mts:
             logger.info("Generating joint AoU MatrixTable...")
             union_aou_mts(
-                s_to_exclude=samples_to_exclude().he(),
+                s_to_exclude=get_samples_to_exclude(
+                    filter_samples=hard_filtered_samples.ht()
+                ),
                 ht=get_joint_qc(test=test).mt().rows(),
                 n_partitions=args.n_partitions,
                 overwrite=overwrite,

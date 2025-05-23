@@ -21,7 +21,6 @@ from gnomad_qc.v5.resources.constants import (
     WORKSPACE_BUCKET,
 )
 from gnomad_qc.v5.resources.meta import samples_to_exclude
-from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
@@ -108,7 +107,6 @@ def get_logging_path(
 
 def get_aou_vds(
     split: bool = False,
-    remove_hard_filtered_samples: bool = True,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -128,8 +126,6 @@ def get_aou_vds(
 
     :param split: Whether to split multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
-    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filtering (only relevant after hard filtering
-        is complete). Default is True.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
@@ -170,8 +166,8 @@ def get_aou_vds(
 
     # Remove samples that should have been excluded from the AoU v8 release
     # and samples with non-XX/XY ploidies.
-    # Also optionally remove samples that failed hard filtering.
-    s_to_exclude = hl.eval(get_samples_to_exclude(remove_hard_filtered_samples))
+    # NOTE: `remove_hard_filtered_samples` is set to False to avoid circular import
+    s_to_exclude = hl.eval(get_samples_to_exclude(remove_hard_filtered_samples=False))
     vds = hl.vds.filter_samples(
         vds, list(s_to_exclude), keep=False, remove_dead_alleles=remove_dead_alleles
     )
@@ -308,13 +304,16 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
 
 def get_samples_to_exclude(
-    remove_hard_filtered_samples: bool,
+    filter_samples: Optional[Union[List[str], hl.Table]] = None,
     overwrite: bool = False,
 ) -> hl.expr.SetExpression:
     """
     Get set of AoU sample IDs to exclude.
 
-    :param remove_hard_filtered_samples: Whether to additionally remove samples that failed hard filtering.
+    .. note::
+        If `filter_samples` is a Hail Table, it must contain a field named 's' with sample IDs.
+
+    :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
     :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
@@ -345,13 +344,19 @@ def get_samples_to_exclude(
         )
 
     s_to_exclude = hl.experimental.read_expression(samples_to_exclude.path)
-    if remove_hard_filtered_samples:
-        # Load samples failing hard filtering.
-        hard_filtered_samples_ht = hard_filtered_samples.ht()
-        hard_filtered_samples = hard_filtered_samples_ht.aggregate(
-            hl.agg.collect_as_set(hard_filtered_samples_ht.s)
-        )
-        s_to_exclude = s_to_exclude.union(hard_filtered_samples)
+    if filter_samples:
+        if isinstance(filter_samples, list):
+            s_to_exclude = s_to_exclude.union(set(filter_samples))
+        elif isinstance(filter_samples, hl.Table):
+            logger.warning("Function assumes HT has field 's' for sample IDs...")
+            filter_samples_ids = filter_samples.aggregate(
+                hl.agg.collect_as_set(filter_samples.s)
+            )
+            s_to_exclude = s_to_exclude.union(filter_samples_ids)
+        else:
+            raise ValueError(
+                "`filter_samples` must be a list of sample IDs or a Hail Table with sample IDs."
+            )
     return s_to_exclude
 
 
