@@ -45,6 +45,11 @@ def get_sample_qc_root(
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 
+######################################################################
+# Hard-filtering resources
+######################################################################
+
+
 def get_sample_qc(
     strat: str = "all",
     test: bool = False,
@@ -75,6 +80,17 @@ def get_sample_qc(
             for version in AOU_VERSIONS
         },
     )
+
+
+hard_filtered_samples = VersionedTableResource(
+    CURRENT_SAMPLE_QC_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples.ht"
+        )
+        for version in SAMPLE_QC_VERSIONS
+    },
+)
 
 
 ######################################################################
