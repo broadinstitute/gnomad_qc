@@ -59,16 +59,12 @@ def union_aou_mts(
     logger.info(
         "Loading AoU ACAF and exome MatrixTables and removing unnecessary annotations..."
     )
-    acaf_mt = (
-        hl.read_matrix_table(f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt")
-        .select_rows()
-        .select_entries(*entry_annotations)
-    )
-    exome_mt = (
-        hl.read_matrix_table(f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
-        .select_rows()
-        .select_entries(*entry_annotations)
-    )
+    acaf_mt = hl.read_matrix_table(
+        f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt"
+    ).select_entries(*entry_annotations)
+    exome_mt = hl.read_matrix_table(
+        f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt"
+    ).select_entries(*entry_annotations)
 
     def _filter_aou_mt(
         mt: hl.MatrixTable,
@@ -95,6 +91,7 @@ def union_aou_mts(
         # Filter to gnomAD QC sites and use `NO_HQ_GENOTYPES` to filter to `adj`.
         mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
         mt = mt.filter_rows(~mt.filters.contains("NO_HQ_GENOTYPES"))
+        mt = mt.select_rows()
 
         # Remove samples to exclude and their variant sites.
         mt = mt.filter_cols(~s_to_exclude.contains(mt.s))
