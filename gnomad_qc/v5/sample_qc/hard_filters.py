@@ -91,7 +91,7 @@ def compute_aou_sample_qc(
     return sample_qc_ht.naive_coalesce(n_partitions)
 
 
-def compute_hard_filters(
+def apply_sample_qc_metrics_hard_filters(
     max_n_singleton: float = 100000,
     max_r_het_hom_var: float = 10,
     max_r_insertion_deletion: float = 0.42,
@@ -125,7 +125,7 @@ def compute_hard_filters(
     )
     ht = get_sample_qc("bi_allelic").ht()
     ht = ht.annotate_globals(
-        hard_filter_cutoffs=hl.struct(
+        sample_qc_metric_hard_filters_cutoffs=hl.struct(
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
             max_r_insertion_deletion=max_r_insertion_deletion,
@@ -183,7 +183,7 @@ def main(args):
                 if test
                 else hard_filtered_samples.path
             )
-            ht = compute_hard_filters(
+            ht = apply_sample_qc_metrics_hard_filters(
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
                 args.max_r_insertion_deletion,
