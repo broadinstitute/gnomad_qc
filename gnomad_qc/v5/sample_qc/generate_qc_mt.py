@@ -90,8 +90,7 @@ def union_aou_mts(
         """
         if test:
             logger.info("Filtering AoU MTs to the first 2 partitions for testing...")
-            acaf_mt = acaf_mt._filter_partitions(range(2))
-            exome_mt = exome_mt._filter_partitions(range(2))
+            mt = mt._filter_partitions(range(2))
 
         # Filter to gnomAD QC sites and use `NO_HQ_GENOTYPES` to filter to `adj`.
         mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
