@@ -98,10 +98,3 @@ def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
             for version in SAMPLE_QC_VERSIONS
         },
     )
-
-
-# TODO: Remove this resource once hard filters PR is merged
-# This was added just for testing (to avoid import errors in QC MT script)
-hard_filtered_samples = TableResource(
-    path="gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/gnomad.genomes.v5.0.qc_data/test_aou_hard_filters.ht",
-)
