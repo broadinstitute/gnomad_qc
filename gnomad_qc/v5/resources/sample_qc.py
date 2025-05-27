@@ -8,6 +8,7 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_AOU_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
     GNOMAD_BUCKET,
+    SAMPLE_QC_VERSIONS,
     WORKSPACE_BUCKET,
 )
 
@@ -37,6 +38,11 @@ def get_sample_qc_root(
 
     base_bucket = WORKSPACE_BUCKET if data_set == "aou" else GNOMAD_BUCKET
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
+
+
+######################################################################
+# Hard-filtering resources
+######################################################################
 
 
 def get_sample_qc(
@@ -69,3 +75,14 @@ def get_sample_qc(
             for version in AOU_VERSIONS
         },
     )
+
+
+hard_filtered_samples = VersionedTableResource(
+    CURRENT_SAMPLE_QC_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples.ht"
+        )
+        for version in SAMPLE_QC_VERSIONS
+    },
+)
