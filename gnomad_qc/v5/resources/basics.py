@@ -331,7 +331,7 @@ def get_samples_to_exclude(
         failing_genomic_metrics_samples_ht = get_aou_failing_genomic_metrics_samples()
         logger.info(
             "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
-            failing_genomic_metrics_samples.count(),
+            failing_genomic_metrics_samples_ht.count(),
         )
         failing_genomic_metrics_samples = failing_genomic_metrics_samples_ht.aggregate(
             hl.agg.collect_as_set(failing_genomic_metrics_samples_ht.research_id)
