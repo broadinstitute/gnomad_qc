@@ -34,6 +34,7 @@ logger.setLevel(logging.INFO)
 def union_aou_mts(
     s_to_exclude: hl.expr.SetExpression,
     ht: hl.Table,
+    test: bool = False,
     n_partitions: int = 10000,
     entry_annotations: List[str] = ["GT"],
     overwrite: bool = False,
@@ -46,6 +47,8 @@ def union_aou_mts(
 
     :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
     :param ht: Table containing the gnomAD QC sites.
+    :param test: If true, filter to the first 2 partitions for testing.
+        Default is False.
     :param n_partitions: Number of desired partitions for the unioned MatrixTable.
         Default is 10000.
     :param entry_annotations: List of entry annotations to keep in the unioned MatrixTable.
@@ -71,6 +74,7 @@ def union_aou_mts(
         mt: hl.MatrixTable,
         s_to_exclude: hl.expr.SetExpression,
         ht: hl.Table,
+        test: bool,
     ) -> hl.MatrixTable:
         """
         Filter AoU MT to gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
@@ -81,8 +85,14 @@ def union_aou_mts(
         :param mt: AoU MatrixTable.
         :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
         :param ht: Table containing the gnomAD QC sites.
+        :param test: If true, filter to the first 2 partitions for testing.
         :return: Filtered AoU MatrixTable.
         """
+        if test:
+            logger.info("Filtering AoU MTs to the first 2 partitions for testing...")
+            acaf_mt = acaf_mt._filter_partitions(range(2))
+            exome_mt = exome_mt._filter_partitions(range(2))
+
         # Filter to gnomAD QC sites and use `NO_HQ_GENOTYPES` to filter to `adj`.
         mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
         mt = mt.filter_rows(~mt.filters.contains("NO_HQ_GENOTYPES"))
@@ -93,8 +103,8 @@ def union_aou_mts(
         return mt
 
     logger.info("Filtering AoU ACAF and exome MatrixTables and unioning (on rows)...")
-    acaf_mt = _filter_aou_mt(acaf_mt, s_to_exclude, ht)
-    exome_mt = _filter_aou_mt(exome_mt, s_to_exclude, ht)
+    acaf_mt = _filter_aou_mt(acaf_mt, s_to_exclude, ht, test)
+    exome_mt = _filter_aou_mt(exome_mt, s_to_exclude, ht, test)
     union_mt = acaf_mt.union_rows(exome_mt)
 
     logger.info("Decreasing partitions and checkpointing...")
@@ -155,6 +165,7 @@ def main(args):
                     filter_samples=hard_filtered_samples.ht()
                 ),
                 ht=get_joint_qc(test=test).mt().rows(),
+                test=test,
                 n_partitions=args.n_partitions,
                 overwrite=overwrite,
             )
@@ -166,7 +177,7 @@ def main(args):
             aou_ht = hl.read_matrix_table(
                 get_checkpoint_path("union_aou_mts", mt=True, environment="rwb")
             ).rows()
-            ht = v4_sample_qc.get_joint_qc(test=test).mt().rows()
+            ht = v4_sample_qc.get_joint_qc().mt().rows()
             ht = ht.select_rows()
             missing_sites = ht.anti_join(aou_ht)
             logger.info(
@@ -181,13 +192,19 @@ def main(args):
             # Also dropping row annotations because they are not needed for the joint
             # MT.
             gnomad_mt = (
-                v4_sample_qc.get_joint_qc(test=test)
+                v4_sample_qc.get_joint_qc()
                 .mt()
                 .select_globals()
                 .select_rows()
                 .select_cols()
                 .select_entries("GT")
             )
+
+            if test:
+                logger.info(
+                    "Filtering gnomAD MT to the first 2 partitions for testing..."
+                )
+                gnomad_mt = gnomad_mt._filter_partitions(range(2))
 
             logger.info("Loading AoU joint ACAF + exome MatrixTable...")
             aou_mt = hl.read_matrix_table(
@@ -215,7 +232,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--test",
-        help="Read in a test dataset rather than the full dataset.",
+        help="Filter to the first 2 partitions for testing.",
         action="store_true",
     )
     parser.add_argument(
