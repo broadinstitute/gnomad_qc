@@ -163,7 +163,7 @@ def main(args):
                 s_to_exclude=get_samples_to_exclude(
                     filter_samples=hard_filtered_samples.ht()
                 ),
-                ht=get_joint_qc(test=test).mt().rows(),
+                ht=get_joint_qc().mt().rows(),
                 test=test,
                 n_partitions=args.n_partitions,
                 overwrite=overwrite,
