@@ -160,7 +160,10 @@ def compute_hard_filters(
 
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
-    hl.init(tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day")
+    hl.init(
+        log="/home/jupyter/workspaces/gnomadproduction/hard_filters.log",
+        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+    )
     hl.default_reference("GRCh38")
 
     test = args.test
