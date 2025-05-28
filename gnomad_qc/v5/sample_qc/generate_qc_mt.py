@@ -74,7 +74,7 @@ def union_aou_mts(
             mt = mt._filter_partitions(range(2))
 
         # Filter to gnomAD QC sites and use `NO_HQ_GENOTYPES` to filter to `adj`.
-        mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
+        mt = mt.semi_join_rows(ht)
         mt = mt.filter_rows(~mt.filters.contains("NO_HQ_GENOTYPES"))
         mt = mt.select_rows()
 
