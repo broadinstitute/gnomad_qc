@@ -41,11 +41,11 @@ def union_aou_mts(
     test: bool = False,
 ) -> hl.MatrixTable:
     """
-    Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs.
+    Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, filter to `adj`, and union MTs.
 
     .. note::
 
-        Both AoU MTs have 145192 partitions.
+        Both v8 AoU MTs have 145192 partitions.
 
     :param acaf_mt: AoU ACAF MatrixTable.
     :param exome_mt: AoU exome MatrixTable.
@@ -58,9 +58,6 @@ def union_aou_mts(
 
     def _filter_aou_mt(
         mt: hl.MatrixTable,
-        s_to_exclude: hl.expr.SetExpression,
-        ht: hl.Table,
-        test: bool,
     ) -> hl.MatrixTable:
         """
         Filter AoU MT to gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
@@ -70,9 +67,6 @@ def union_aou_mts(
             This function uses AoU's `NO_HQ_GENOTYPES` filter to filter to `adj`.
 
         :param mt: AoU MatrixTable.
-        :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
-        :param ht: Table containing the gnomAD QC sites.
-        :param test: If true, filter to the first 2 partitions for testing.
         :return: Filtered AoU MatrixTable.
         """
         if test:
@@ -90,8 +84,8 @@ def union_aou_mts(
         return mt
 
     logger.info("Filtering AoU ACAF and exome MatrixTables and unioning (on rows)...")
-    acaf_mt = _filter_aou_mt(acaf_mt, s_to_exclude, ht, test)
-    exome_mt = _filter_aou_mt(exome_mt, s_to_exclude, ht, test)
+    acaf_mt = _filter_aou_mt(acaf_mt)
+    exome_mt = _filter_aou_mt(exome_mt)
     return acaf_mt.union_rows(exome_mt)
 
 
