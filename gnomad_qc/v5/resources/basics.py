@@ -257,7 +257,7 @@ def get_aou_vds(
     return vds
 
 
-acaf_mt = MatrixTableResource(
+aou_acaf_mt = MatrixTableResource(
     path=f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt"
 )
 """
@@ -269,7 +269,7 @@ for more information.
 """
 
 
-exome_mt = MatrixTableResource(path=f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
+aou_exome_mt = MatrixTableResource(path=f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
 """
 AoU v8 Exome MatrixTable.
 
