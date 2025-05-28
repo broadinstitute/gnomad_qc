@@ -18,6 +18,8 @@ import hail as hl
 from gnomad_qc.v4.resources import sample_qc as v4_sample_qc
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
+    aou_acaf_mt,
+    aou_exome_mt,
     get_checkpoint_path,
     get_logging_path,
     get_samples_to_exclude,
@@ -32,6 +34,8 @@ logger.setLevel(logging.INFO)
 
 
 def union_aou_mts(
+    acaf_mt: hl.MatrixTable,
+    exome_mt: hl.MatrixTable,
     s_to_exclude: hl.expr.SetExpression,
     ht: hl.Table,
     test: bool = False,
@@ -45,6 +49,8 @@ def union_aou_mts(
 
         Both AoU MTs have 145192 partitions.
 
+    :param acaf_mt: AoU ACAF MatrixTable.
+    :param exome_mt: AoU exome MatrixTable.
     :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
     :param ht: Table containing the gnomAD QC sites.
     :param test: Whether to filter to the first 2 partitions for testing.
@@ -54,15 +60,6 @@ def union_aou_mts(
     :param overwrite: Whether to overwrite output data. Default is False.
     :return: MatrixTable containing the union of AoU ACAF and exome MTs.
     """
-    logger.info(
-        "Loading AoU ACAF and exome MatrixTables and removing unnecessary annotations..."
-    )
-    acaf_mt = hl.read_matrix_table(
-        f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt"
-    ).select_entries(*entry_annotations)
-    exome_mt = hl.read_matrix_table(
-        f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt"
-    ).select_entries(*entry_annotations)
 
     def _filter_aou_mt(
         mt: hl.MatrixTable,
@@ -147,8 +144,18 @@ def main(args):
 
     try:
         if args.union_aou_mts:
+
+            logger.info(
+                "Loading AoU ACAF and exome MatrixTables and removing unnecessary entry annotations..."
+            )
+            entry_annotations = args.entry_annotations.split(",")
+            acaf_mt = aou_acaf_mt.mt().select_entries(*entry_annotations)
+            exome_mt = aou_exome_mt.mt().select_entries(*entry_annotations)
+
             logger.info("Generating joint AoU MatrixTable...")
             mt = union_aou_mts(
+                acaf_mt=acaf_mt,
+                exome_mt=exome_mt,
                 s_to_exclude=get_samples_to_exclude(
                     filter_samples=hard_filtered_samples.ht()
                 ),
@@ -228,6 +235,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Filter to the first 2 partitions for testing.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--entry-annotations",
+        help=(
+            "Comma separated string of entry annotations to keep in the unioned AoU MatrixTable. "
+            "Default is 'GT,'."
+        ),
+        type=str,
+        default="GT,",
     )
     parser.add_argument(
         "--union-aou-mts",
