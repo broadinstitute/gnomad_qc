@@ -48,7 +48,7 @@ def union_aou_mts(
 
     :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
     :param ht: Table containing the gnomAD QC sites.
-    :param test: If true, filter to the first 2 partitions for testing.
+    :param test: Whether to filter to the first 2 partitions for testing.
         Default is False.
     :param n_partitions: Number of desired partitions for the unioned MatrixTable.
         Default is 10000.
