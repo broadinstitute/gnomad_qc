@@ -5,6 +5,7 @@ from typing import List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
+    MatrixTableResource,
     VariantDatasetResource,
     VersionedVariantDatasetResource,
 )
@@ -254,6 +255,26 @@ def get_aou_vds(
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     return vds
+
+
+acaf_mt = MatrixTableResource(
+    path=f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt"
+)
+"""
+AoU v8 ACAF (Allele Count/Allele Frequency threshold) MatrixTable.
+
+See https://support.researchallofus.org/hc/en-us/articles/29475228181908-How-the-All-of-Us-Genomic-data-are-organized#01JJK0HH53FX9XQRDQ5HQFZW9B
+and https://support.researchallofus.org/hc/en-us/articles/14929793660948-Smaller-Callsets-for-Analyzing-Short-Read-WGS-SNP-Indel-Data-with-Hail-MT-VCF-and-PLINK
+for more information.
+"""
+
+
+exome_mt = MatrixTableResource(path=f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
+"""
+AoU v8 Exome MatrixTable.
+
+See same links as above (in `acaf_mt`) for more information.
+"""
 
 
 def get_aou_failing_genomic_metrics_samples() -> hl.expr.SetExpression:
