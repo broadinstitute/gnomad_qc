@@ -35,27 +35,24 @@ def union_aou_mts(
     s_to_exclude: hl.expr.SetExpression,
     ht: hl.Table,
     test: bool = False,
-    n_partitions: int = 10000,
     entry_annotations: List[str] = ["GT"],
     overwrite: bool = False,
-) -> None:
+) -> hl.MatrixTable:
     """
     Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs.
 
     .. note::
-        
+
         Both AoU MTs have 145192 partitions.
 
     :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
     :param ht: Table containing the gnomAD QC sites.
     :param test: Whether to filter to the first 2 partitions for testing.
         Default is False.
-    :param n_partitions: Number of desired partitions for the unioned MatrixTable.
-        Default is 10000.
     :param entry_annotations: List of entry annotations to keep in the unioned MatrixTable.
         Default is ["GT"].
     :param overwrite: Whether to overwrite output data. Default is False.
-    :return: None; function writes unioned MT to temporary path.
+    :return: MatrixTable containing the union of AoU ACAF and exome MTs.
     """
     logger.info(
         "Loading AoU ACAF and exome MatrixTables and removing unnecessary annotations..."
@@ -77,7 +74,7 @@ def union_aou_mts(
         Filter AoU MT to gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
 
         .. note::
-        
+
             This function uses AoU's `NO_HQ_GENOTYPES` filter to filter to `adj`.
 
         :param mt: AoU MatrixTable.
@@ -103,14 +100,7 @@ def union_aou_mts(
     logger.info("Filtering AoU ACAF and exome MatrixTables and unioning (on rows)...")
     acaf_mt = _filter_aou_mt(acaf_mt, s_to_exclude, ht, test)
     exome_mt = _filter_aou_mt(exome_mt, s_to_exclude, ht, test)
-    union_mt = acaf_mt.union_rows(exome_mt)
-
-    logger.info("Decreasing partitions and checkpointing...")
-    union_mt = union_mt.naive_coalesce(n_partitions)
-    union_mt.write(
-        get_checkpoint_path("union_aou_mts", mt=True, environment="rwb"),
-        overwrite=overwrite,
-    )
+    return acaf_mt.union_rows(exome_mt)
 
 
 def generate_qc_mt(
@@ -158,13 +148,19 @@ def main(args):
     try:
         if args.union_aou_mts:
             logger.info("Generating joint AoU MatrixTable...")
-            union_aou_mts(
+            mt = union_aou_mts(
                 s_to_exclude=get_samples_to_exclude(
                     filter_samples=hard_filtered_samples.ht()
                 ),
                 ht=v4_sample_qc.get_joint_qc().mt().rows(),
                 test=test,
-                n_partitions=args.n_partitions,
+                overwrite=overwrite,
+            )
+
+            logger.info("Decreasing partitions and checkpointing...")
+            mt = union_mt.naive_coalesce(n_partitions)
+            mt.write(
+                get_checkpoint_path("union_aou_mts", mt=True, environment="rwb"),
                 overwrite=overwrite,
             )
 
