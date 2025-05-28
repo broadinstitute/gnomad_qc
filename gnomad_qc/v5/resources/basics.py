@@ -166,7 +166,10 @@ def get_aou_vds(
 
     # Remove samples that should have been excluded from the AoU v8 release
     # and samples with non-XX/XY ploidies.
-    # NOTE: `remove_hard_filtered_samples` is set to False to avoid circular import
+    # TODO: Add option to remove hard filtered samples on loading?
+    # This would require the user to pass in the hard filtered samples HT as an argument,
+    # since this script is unable to import from `sample_qc.py`
+    # (would cause a circular import error).
     s_to_exclude = hl.eval(get_samples_to_exclude())
     vds = hl.vds.filter_samples(
         vds, list(s_to_exclude), keep=False, remove_dead_alleles=remove_dead_alleles
