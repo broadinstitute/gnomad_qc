@@ -39,8 +39,6 @@ def union_aou_mts(
     s_to_exclude: hl.expr.SetExpression,
     ht: hl.Table,
     test: bool = False,
-    entry_annotations: List[str] = ["GT"],
-    overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
     Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs.
@@ -55,9 +53,6 @@ def union_aou_mts(
     :param ht: Table containing the gnomAD QC sites.
     :param test: Whether to filter to the first 2 partitions for testing.
         Default is False.
-    :param entry_annotations: List of entry annotations to keep in the unioned MatrixTable.
-        Default is ["GT"].
-    :param overwrite: Whether to overwrite output data. Default is False.
     :return: MatrixTable containing the union of AoU ACAF and exome MTs.
     """
 
