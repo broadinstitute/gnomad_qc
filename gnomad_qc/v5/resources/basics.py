@@ -368,23 +368,20 @@ def get_samples_to_exclude(
         )
 
     s_to_exclude = hl.experimental.read_expression(samples_to_exclude.path)
-    if filter_samples:
-        if isinstance(filter_samples, list):
-            s_to_exclude = s_to_exclude.union(set(filter_samples))
-        elif isinstance(filter_samples, hl.Table):
-            if "s" not in filter_samples.row:
-                raise ValueError(
-                    "Hail Table must contain a field named 's' with sample IDs."
-                )
-            filter_samples_ids = filter_samples.aggregate(
-                hl.agg.collect_as_set(filter_samples.s)
-            )
-            s_to_exclude = s_to_exclude.union(filter_samples_ids)
-        else:
+    filter_sample_ids = filter_samples or []
+    if isinstance(filter_sample_ids, hl.Table):
+        if "s" not in filter_samples.row:
             raise ValueError(
-                "`filter_samples` must be a list of sample IDs or a Hail Table with sample IDs."
+                "Hail Table must contain a field named 's' with sample IDs."
             )
-    return s_to_exclude
+        filter_sample_ids = filter_samples.aggregate(
+            hl.agg.collect_as_set(filter_samples.s)
+        )
+    elif not isinstance(filter_sample_ids, list):
+        raise ValueError(
+            "`filter_samples` must be a list of sample IDs or a Hail Table with sample IDs."
+        )
+    return s_to_exclude.union(set(filter_sample_ids))
 
 
 def add_project_prefix_to_sample_collisions(
