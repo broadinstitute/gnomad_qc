@@ -100,7 +100,7 @@ hard_filtered_samples = VersionedTableResource(
 
 def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
     """
-    Get joint gnomAD + AoU dense MatrixTableResource.
+    Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.
 
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedMatrixTableResource of QC sites.
