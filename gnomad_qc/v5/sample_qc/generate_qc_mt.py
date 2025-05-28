@@ -43,6 +43,7 @@ def union_aou_mts(
     Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs.
 
     .. note::
+        
         Both AoU MTs have 145192 partitions.
 
     :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
