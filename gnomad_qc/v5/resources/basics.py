@@ -20,7 +20,11 @@ from gnomad_qc.v5.resources.constants import (
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
 )
-from gnomad_qc.v5.resources.meta import samples_to_exclude
+from gnomad_qc.v5.resources.meta import (
+    failing_metrics_samples,
+    low_quality_samples,
+    samples_to_exclude,
+)
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
@@ -252,7 +256,7 @@ def get_aou_vds(
     return vds
 
 
-def get_aou_failing_genomic_metrics_samples() -> hl.Table:
+def get_aou_failing_genomic_metrics_samples() -> hl.expr.SetExpression:
     """
     Import AoU genomic metrics and filter to samples that fail specific quality criteria, including low coverage and ambiguous sex ploidy.
 
@@ -265,7 +269,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
         In addition, we exclude samples with ambiguous sex ploidy (i.e., not "XX" or "XY") from the callset.
 
-    :return: Hail Table containing the genomic metrics.
+    :return: SetExpression of samples failing coverage filters or with non-XX-XY sex ploidies.
     """
     types = {
         "research_id": hl.tstr,
@@ -302,8 +306,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
     )
 
     ht = low_cov_samples.union(ambiguous_sex_samples).distinct()
-
-    return ht
+    return ht.aggregate(hl.agg.collect_as_set(ht.research_id))
 
 
 def get_samples_to_exclude(
@@ -322,27 +325,44 @@ def get_samples_to_exclude(
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
     if not file_exists(samples_to_exclude.path) or overwrite:
-        # Load samples flagged in AoU Known Issues #1.
-        logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-        low_quality_ht = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
-            "research_id"
-        )
-        low_quality_samples = low_quality_ht.aggregate(
-            hl.agg.collect_as_set(low_quality_ht.research_id)
-        )
 
-        # Load and count samples failing genomic metrics filters.
-        failing_genomic_metrics_samples_ht = get_aou_failing_genomic_metrics_samples()
-        logger.info(
-            "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
-            failing_genomic_metrics_samples_ht.count(),
-        )
-        failing_genomic_metrics_samples = failing_genomic_metrics_samples_ht.aggregate(
-            hl.agg.collect_as_set(failing_genomic_metrics_samples_ht.research_id)
-        )
+        if not file_exists(low_quality_samples.path):
+            # Load samples flagged in AoU Known Issues #1.
+            logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
+            low_quality_ht = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
+                "research_id"
+            )
+            low_quality_sample_ids = low_quality_ht.aggregate(
+                hl.agg.collect_as_set(low_quality_ht.research_id)
+            )
+            low_quality_sample_ids.write(low_quality_samples.path)
+
+        if not file_exists(failing_metrics_samples.path):
+            # Load and count samples failing genomic metrics filters.
+            failing_genomic_metrics_samples_ht = (
+                get_aou_failing_genomic_metrics_samples()
+            )
+            logger.info(
+                "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
+                failing_genomic_metrics_samples_ht.count(),
+            )
+            failing_genomic_metrics_samples = (
+                failing_genomic_metrics_samples_ht.aggregate(
+                    hl.agg.collect_as_set(
+                        failing_genomic_metrics_samples_ht.research_id
+                    )
+                )
+            )
+            failing_genomic_metrics_samples.write(failing_metrics_samples.path)
 
         # Union all samples to exclude and write out.
-        s_to_exclude = low_quality_samples.union(failing_genomic_metrics_samples)
+        low_quality_sample_ids = hl.experimental.read_expression(
+            low_quality_samples.path
+        )
+        failing_genomic_metrics_samples = hl.experimental.read_expression(
+            failing_genomic_metrics_samples.path
+        )
+        s_to_exclude = low_quality_sample_ids.union(failing_genomic_metrics_samples)
         hl.experimental.write_expression(
             s_to_exclude, samples_to_exclude.path, overwrite=True
         )
