@@ -311,6 +311,7 @@ def get_samples_to_exclude(
     Get set of AoU sample IDs to exclude.
 
     .. note::
+
         If `filter_samples` is a Hail Table, it must contain a field named 's' with sample IDs.
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
