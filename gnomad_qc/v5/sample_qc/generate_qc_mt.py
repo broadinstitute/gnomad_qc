@@ -151,11 +151,10 @@ def main(args):
                 ),
                 ht=v4_sample_qc.get_joint_qc().mt().rows(),
                 test=test,
-                overwrite=overwrite,
             )
 
             logger.info("Decreasing partitions and checkpointing...")
-            mt = union_mt.naive_coalesce(n_partitions)
+            mt = mt.naive_coalesce(args.n_partitions)
             mt.write(
                 get_checkpoint_path("union_aou_mts", mt=True, environment="rwb"),
                 overwrite=overwrite,

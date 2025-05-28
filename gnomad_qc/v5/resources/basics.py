@@ -16,6 +16,7 @@ from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loa
 from gnomad_qc.v5.resources.constants import (
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
+    AOU_WGS_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
     GNOMAD_TMP_BUCKET,
