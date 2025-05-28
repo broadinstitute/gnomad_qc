@@ -372,7 +372,10 @@ def get_samples_to_exclude(
         if isinstance(filter_samples, list):
             s_to_exclude = s_to_exclude.union(set(filter_samples))
         elif isinstance(filter_samples, hl.Table):
-            logger.warning("Function assumes HT has field 's' for sample IDs...")
+            if "s" not in filter_samples.row:
+                raise ValueError(
+                    "Hail Table must contain a field named 's' with sample IDs."
+                )
             filter_samples_ids = filter_samples.aggregate(
                 hl.agg.collect_as_set(filter_samples.s)
             )
