@@ -263,6 +263,8 @@ aou_acaf_mt = MatrixTableResource(
 """
 AoU v8 ACAF (Allele Count/Allele Frequency threshold) MatrixTable.
 
+MatrixTable contains only variants with AF > 1% or AC > 100 in any genetic ancestry group.
+
 See https://support.researchallofus.org/hc/en-us/articles/29475228181908-How-the-All-of-Us-Genomic-data-are-organized#01JJK0HH53FX9XQRDQ5HQFZW9B
 and https://support.researchallofus.org/hc/en-us/articles/14929793660948-Smaller-Callsets-for-Analyzing-Short-Read-WGS-SNP-Indel-Data-with-Hail-MT-VCF-and-PLINK
 for more information.
@@ -272,6 +274,8 @@ for more information.
 aou_exome_mt = MatrixTableResource(path=f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
 """
 AoU v8 Exome MatrixTable.
+
+MatrixTable contains only variants in exons (with 15 bp padding on either side) as defined by GENCODE v42 basic.
 
 See same links as above (in `acaf_mt`) for more information.
 """
