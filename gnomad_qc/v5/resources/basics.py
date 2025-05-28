@@ -169,7 +169,7 @@ def get_aou_vds(
     # NOTE: `remove_hard_filtered_samples` is set to False to avoid circular import
     s_to_exclude = list(hl.eval(get_samples_to_exclude()))
     vds = hl.vds.filter_samples(
-        vds, list(s_to_exclude), keep=False, remove_dead_alleles=remove_dead_alleles
+        vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
     # Report final sample exclusion count.
