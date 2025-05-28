@@ -84,6 +84,7 @@ def union_aou_mts(
         return mt
 
     logger.info("Filtering AoU ACAF and exome MatrixTables and unioning (on rows)...")
+    # NOTE: Add checkpoints after each MT if run into errors in AoU workbench.
     acaf_mt = _filter_aou_mt(acaf_mt)
     exome_mt = _filter_aou_mt(exome_mt)
     return acaf_mt.union_rows(exome_mt)
