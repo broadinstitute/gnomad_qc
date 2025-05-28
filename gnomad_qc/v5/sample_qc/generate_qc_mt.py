@@ -76,6 +76,7 @@ def union_aou_mts(
         Filter AoU MT to gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
 
         .. note::
+        
             This function uses AoU's `NO_HQ_GENOTYPES` filter to filter to `adj`.
 
         :param mt: AoU MatrixTable.
