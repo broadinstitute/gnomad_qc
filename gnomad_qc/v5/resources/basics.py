@@ -172,7 +172,7 @@ def get_aou_vds(
     # (would cause a circular import error).
     s_to_exclude = hl.eval(get_samples_to_exclude())
     vds = hl.vds.filter_samples(
-        vds, list(s_to_exclude), keep=False, remove_dead_alleles=remove_dead_alleles
+        vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
     # Report final sample exclusion count.
@@ -314,6 +314,7 @@ def get_samples_to_exclude(
     Get set of AoU sample IDs to exclude.
 
     .. note::
+
         If `filter_samples` is a Hail Table, it must contain a field named 's' with sample IDs.
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.

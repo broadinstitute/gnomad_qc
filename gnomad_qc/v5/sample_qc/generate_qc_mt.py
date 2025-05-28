@@ -43,11 +43,12 @@ def union_aou_mts(
     Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, and union MTs.
 
     .. note::
+        
         Both AoU MTs have 145192 partitions.
 
     :param s_to_exclude: Set of sample IDs to exclude from the AoU MatrixTable.
     :param ht: Table containing the gnomAD QC sites.
-    :param test: If true, filter to the first 2 partitions for testing.
+    :param test: Whether to filter to the first 2 partitions for testing.
         Default is False.
     :param n_partitions: Number of desired partitions for the unioned MatrixTable.
         Default is 10000.
@@ -76,6 +77,7 @@ def union_aou_mts(
         Filter AoU MT to gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
 
         .. note::
+        
             This function uses AoU's `NO_HQ_GENOTYPES` filter to filter to `adj`.
 
         :param mt: AoU MatrixTable.
