@@ -5,19 +5,27 @@ from typing import List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
+    MatrixTableResource,
     VariantDatasetResource,
     VersionedVariantDatasetResource,
 )
+from gnomad.utils.file_utils import file_exists
 from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
 from gnomad_qc.v5.resources.constants import (
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
+    AOU_WGS_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
+)
+from gnomad_qc.v5.resources.meta import (
+    failing_metrics_samples,
+    low_quality_samples,
+    samples_to_exclude,
 )
 
 logger = logging.getLogger("basic_resources")
@@ -105,6 +113,7 @@ def get_logging_path(
 
 def get_aou_vds(
     split: bool = False,
+    remove_hard_filtered_samples: bool = True,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -124,6 +133,8 @@ def get_aou_vds(
 
     :param split: Whether to split multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after hard filtering is complete). Default is True.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
@@ -162,27 +173,17 @@ def get_aou_vds(
     # Count initial number of samples.
     n_samples_before = vds.variant_data.count_cols()
 
-    # Load samples flagged in AoU Known Issues #1.
-    logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-    low_quality_samples = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
-        "research_id"
-    )
+    # Remove samples that should have been excluded from the AoU v8 release
+    # and samples with non-XX/XY ploidies.
+    hard_filtered_samples_ht = None
+    if remove_hard_filtered_samples:
+        from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
 
-    # Load and count samples failing genomic metrics filters.
-    failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
-    logger.info(
-        "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
-        failing_genomic_metrics_samples.count(),
-    )
-
-    # Union all samples to exclude.
-    samples_to_exclude = low_quality_samples.union(
-        failing_genomic_metrics_samples
-    ).distinct()
-
-    # Filter out poor-quality samples.
+        logger.info("Removing hard filtered samples from AoU VDS...")
+        hard_filtered_samples_ht = hard_filtered_samples.ht()
+    s_to_exclude = list(hl.eval(get_samples_to_exclude(hard_filtered_samples_ht)))
     vds = hl.vds.filter_samples(
-        vds, samples_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
+        vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
 
     # Report final sample exclusion count.
@@ -262,7 +263,31 @@ def get_aou_vds(
     return vds
 
 
-def get_aou_failing_genomic_metrics_samples() -> hl.Table:
+aou_acaf_mt = MatrixTableResource(
+    path=f"gs://{AOU_WGS_BUCKET}/acaf_threshold/splitMT/hail.mt"
+)
+"""
+AoU v8 ACAF (Allele Count/Allele Frequency threshold) MatrixTable.
+
+MatrixTable contains only variants with AF > 1% or AC > 100 in any genetic ancestry group.
+
+See https://support.researchallofus.org/hc/en-us/articles/29475228181908-How-the-All-of-Us-Genomic-data-are-organized#01JJK0HH53FX9XQRDQ5HQFZW9B
+and https://support.researchallofus.org/hc/en-us/articles/14929793660948-Smaller-Callsets-for-Analyzing-Short-Read-WGS-SNP-Indel-Data-with-Hail-MT-VCF-and-PLINK
+for more information.
+"""
+
+
+aou_exome_mt = MatrixTableResource(path=f"gs://{AOU_WGS_BUCKET}/exome/splitMT/hail.mt")
+"""
+AoU v8 Exome MatrixTable.
+
+MatrixTable contains only variants in exons (with 15 bp padding on either side) as defined by GENCODE v42 basic.
+
+See same links as above (in `acaf_mt`) for more information.
+"""
+
+
+def get_aou_failing_genomic_metrics_samples() -> hl.expr.SetExpression:
     """
     Import AoU genomic metrics and filter to samples that fail specific quality criteria, including low coverage and ambiguous sex ploidy.
 
@@ -275,7 +300,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
 
         In addition, we exclude samples with ambiguous sex ploidy (i.e., not "XX" or "XY") from the callset.
 
-    :return: Hail Table containing the genomic metrics.
+    :return: SetExpression of samples failing coverage filters or with non-XX-XY sex ploidies.
     """
     types = {
         "research_id": hl.tstr,
@@ -291,9 +316,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
         "verify_bam_id2_contamination": hl.tfloat,
         "biosample_collection_date": hl.tstr,
     }
-    ht = hl.import_table(f"gs://{AOU_GENOMIC_METRICS_PATH}", types=types).key_by(
-        "research_id"
-    )
+    ht = hl.import_table(AOU_GENOMIC_METRICS_PATH, types=types).key_by("research_id")
 
     low_cov_samples = ht.filter(
         (ht.mean_coverage < 30)
@@ -312,12 +335,84 @@ def get_aou_failing_genomic_metrics_samples() -> hl.Table:
     )
 
     ht = low_cov_samples.union(ambiguous_sex_samples).distinct()
+    return ht.aggregate(hl.agg.collect_as_set(ht.research_id))
 
-    return ht
+
+def get_samples_to_exclude(
+    filter_samples: Optional[Union[List[str], hl.Table]] = None,
+    overwrite: bool = False,
+) -> hl.expr.SetExpression:
+    """
+    Get set of AoU sample IDs to exclude.
+
+    .. note::
+
+        If `filter_samples` is a Hail Table, it must contain a field named 's' with sample IDs.
+
+    :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
+    :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
+    :return: SetExpression containing IDs of samples to exclude from v5 analysis.
+    """
+    if not file_exists(samples_to_exclude.path) or overwrite:
+
+        if not file_exists(low_quality_samples.path):
+            # Load samples flagged in AoU Known Issues #1.
+            logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
+            low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
+            low_quality_sample_ids = low_quality_ht.aggregate(
+                hl.agg.collect_as_set(low_quality_ht.research_id)
+            )
+            low_quality_sample_ids.write(low_quality_samples.path)
+
+        if not file_exists(failing_metrics_samples.path):
+            # Load and count samples failing genomic metrics filters.
+            failing_genomic_metrics_samples_ht = (
+                get_aou_failing_genomic_metrics_samples()
+            )
+            logger.info(
+                "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
+                failing_genomic_metrics_samples_ht.count(),
+            )
+            failing_genomic_metrics_samples = (
+                failing_genomic_metrics_samples_ht.aggregate(
+                    hl.agg.collect_as_set(
+                        failing_genomic_metrics_samples_ht.research_id
+                    )
+                )
+            )
+            failing_genomic_metrics_samples.write(failing_metrics_samples.path)
+
+        # Union all samples to exclude and write out.
+        low_quality_sample_ids = hl.experimental.read_expression(
+            low_quality_samples.path
+        )
+        failing_genomic_metrics_samples = hl.experimental.read_expression(
+            failing_genomic_metrics_samples.path
+        )
+        s_to_exclude = low_quality_sample_ids.union(failing_genomic_metrics_samples)
+        hl.experimental.write_expression(
+            s_to_exclude, samples_to_exclude.path, overwrite=True
+        )
+
+    s_to_exclude = hl.experimental.read_expression(samples_to_exclude.path)
+    filter_sample_ids = filter_samples or []
+    if isinstance(filter_sample_ids, hl.Table):
+        if "s" not in filter_samples.row:
+            raise ValueError(
+                "Hail Table must contain a field named 's' with sample IDs."
+            )
+        filter_sample_ids = filter_samples.aggregate(
+            hl.agg.collect_as_set(filter_samples.s)
+        )
+    elif not isinstance(filter_sample_ids, list):
+        raise ValueError(
+            "`filter_samples` must be a list of sample IDs or a Hail Table with sample IDs."
+        )
+    return s_to_exclude.union(set(filter_sample_ids))
 
 
 def add_project_prefix_to_sample_collisions(
-    ht: hl.Table,
+    t: Union[hl.Table, hl.MatrixTable],
     sample_collisions: hl.Table,
     project: Optional[str] = None,
     sample_id_field: str = "s",
@@ -325,7 +420,7 @@ def add_project_prefix_to_sample_collisions(
     """
     Add project prefix to sample IDs that exist in multiple projects.
 
-    :param ht: Table to add project prefix to sample IDs.
+    :param t: Table/MatrixTable to add project prefix to sample IDs.
     :param sample_collisions: Table of sample IDs that exist in multiple projects.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
@@ -335,25 +430,26 @@ def add_project_prefix_to_sample_collisions(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
     collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
-    ht = ht.key_by()
 
-    if project is not None:
+    if project:
         prefix_expr = hl.literal(project)
     else:
         try:
-            prefix_expr = ht["project"]
+            prefix_expr = t["project"]
         except KeyError:
             raise ValueError(
-                "No project name provided and 'ht' does not contain a 'project' field."
+                "No project name provided and 't' does not contain a 'project' field."
             )
 
-    ht = ht.annotate(
-        **{
-            f"{sample_id_field}": hl.if_else(
-                hl.literal(collisions).contains(ht["s"]),
-                hl.delimit([prefix_expr, ht[sample_id_field]], "_"),
-                ht[sample_id_field],
-            )
-        }
-    )
-    return ht.key_by(sample_id_field)
+    renaming_expr = {
+        f"{sample_id_field}": hl.if_else(
+            hl.literal(collisions).contains(t[sample_id_field]),
+            hl.delimit([prefix_expr, t[sample_id_field]], "_"),
+            t[sample_id_field],
+        )
+    }
+    if isinstance(t, hl.Table):
+        return t.key_by(**renaming_expr)
+
+    logger.warning("Input is a MatrixTable, rekeying columns...")
+    return t.key_cols_by(**renaming_expr)

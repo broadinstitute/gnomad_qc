@@ -1,6 +1,11 @@
 """Script containing sample QC related resources."""
 
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from gnomad.resources.resource_utils import (
+    MatrixTableResource,
+    TableResource,
+    VersionedMatrixTableResource,
+    VersionedTableResource,
+)
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
@@ -86,3 +91,39 @@ hard_filtered_samples = VersionedTableResource(
         for version in SAMPLE_QC_VERSIONS
     },
 )
+
+
+######################################################################
+# QC MT resources
+######################################################################
+
+
+def get_aou_mt_union(test: bool = True) -> MatrixTableResource:
+    """
+    Get the union of AoU ACAF and exome MatrixTables.
+
+    :param test: Whether to use a tmp path for a test resource.
+        Default is True.
+    :return: MatrixTableResource containing the union of AoU ACAF and exome MTs.
+    """
+    return MatrixTableResource(
+        path=f"{get_sample_qc_root(CURRENT_SAMPLE_QC_VERSION, test=test, data_type='genomes', data_set='aou')}/union_aou/aou.acaf.exomes.union.mt"
+    )
+
+
+def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
+    """
+    Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource of QC sites.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint', data_set='aou')}/qc_mt/gnomad.joint.v{version}.qc.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
