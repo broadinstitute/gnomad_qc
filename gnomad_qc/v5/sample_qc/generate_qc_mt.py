@@ -11,7 +11,6 @@ The joint MatrixTable created by this script is used for relatedness and genetic
 
 import argparse
 import logging
-from typing import List
 
 import hail as hl
 
