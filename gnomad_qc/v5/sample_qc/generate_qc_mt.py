@@ -122,7 +122,7 @@ def generate_qc_mt(
 
 
 def main(args):
-    """Create a joint gnomAD + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
+    """Create a joint gnomAD v4 (exomes + genomes) + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
     hl.init(
         log="/home/jupyter/workspaces/gnomadproduction/generate_qc_mt.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
