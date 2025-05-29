@@ -98,7 +98,7 @@ hard_filtered_samples = VersionedTableResource(
 ######################################################################
 
 
-def get_union_aou(test: bool = True) -> MatrixTableResource:
+def get_aou_mt_union(test: bool = True) -> MatrixTableResource:
     """
     Get the union of AoU ACAF and exome MatrixTables.
 

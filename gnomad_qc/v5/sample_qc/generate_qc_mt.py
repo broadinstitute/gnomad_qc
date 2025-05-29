@@ -20,13 +20,16 @@ from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     aou_acaf_mt,
     aou_exome_mt,
-    get_checkpoint_path,
     get_logging_path,
     get_samples_to_exclude,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import sample_id_collisions
-from gnomad_qc.v5.resources.sample_qc import get_joint_qc, hard_filtered_samples
+from gnomad_qc.v5.resources.sample_qc import (
+    get_aou_mt_union,
+    get_joint_qc,
+    hard_filtered_samples,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_qc_mt")
@@ -133,6 +136,7 @@ def main(args):
     n_partitions = args.n_partitions
     overwrite = args.overwrite
     test = args.test
+    v4_qc_sites_ht = v4_sample_qc.get_joint_qc().mt().rows()
 
     try:
         if args.union_aou_mts:
@@ -151,26 +155,20 @@ def main(args):
                 s_to_exclude=get_samples_to_exclude(
                     filter_samples=hard_filtered_samples.ht()
                 ),
-                ht=v4_sample_qc.get_joint_qc().mt().rows(),
+                ht=v4_qc_sites_ht,
                 test=test,
             )
 
             logger.info("Decreasing partitions and checkpointing...")
             mt = mt.naive_coalesce(n_partitions)
-            mt.write(
-                get_checkpoint_path("union_aou_mts", mt=True, environment="rwb"),
-                overwrite=overwrite,
-            )
+            mt.write(get_aou_mt_union.path, overwrite=overwrite)
 
         if args.check_missing_sites:
             logger.info(
                 "Checking how many sites from v4 QC MT are missing from joint AoU MT..."
             )
-            aou_ht = hl.read_matrix_table(
-                get_checkpoint_path("union_aou_mts", mt=True, environment="rwb")
-            ).rows()
-            ht = v4_sample_qc.get_joint_qc().mt().rows()
-            ht = ht.select_rows()
+            aou_ht = get_aou_mt_union().mt().rows()
+            ht = v4_qc_sites_ht.select_rows()
             missing_sites = ht.anti_join(aou_ht)
             logger.info(
                 "Number of QC MT sites missing from joint AoU MT: %i",
