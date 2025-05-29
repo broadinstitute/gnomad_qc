@@ -45,7 +45,7 @@ def union_aou_mts(
     test: bool = False,
 ) -> hl.MatrixTable:
     """
-    Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, filter to `adj`, and union MTs.
+    Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, filter to `adj`, and union rows of the MTs.
 
     .. note::
 
@@ -106,7 +106,7 @@ def generate_qc_mt(
     """
     Union gnomAD v4 QC MT and AoU v8 MTs.
 
-    :param gnomad_mt: gnomAD v4 QC MatrixTable.
+    :param gnomad_mt: gnomAD (exomes + genomes) v4 QC MatrixTable.
     :param aou_mt: Joint AoU (ACAF + exome) v8 MatrixTable.
     :return: Joint gnomAD v4 (exomes + genomes) + AoU v8 (genomes) QC MT.
     """
@@ -127,7 +127,7 @@ def generate_qc_mt(
 
 
 def main(args):
-    """Create a joint gnomAD + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
+    """Create a joint gnomAD v4 (exomes + genomes) + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
     hl.init(
         log="/home/jupyter/workspaces/gnomadproduction/generate_qc_mt.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
