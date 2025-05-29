@@ -107,7 +107,7 @@ def get_aou_mt_union(test: bool = True) -> MatrixTableResource:
     :return: MatrixTableResource containing the union of AoU ACAF and exome MTs.
     """
     return MatrixTableResource(
-        f"{get_sample_qc_root(CURRENT_SAMPLE_QC_VERSION, test=test, data_type='genomes', data_set='aou')}/union_aou/aou.acaf.exomes.union.mt"
+        path=f"{get_sample_qc_root(CURRENT_SAMPLE_QC_VERSION, test=test, data_type='genomes', data_set='aou')}/union_aou/aou.acaf.exomes.union.mt"
     )
 
 
