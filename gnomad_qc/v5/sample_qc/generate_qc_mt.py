@@ -139,7 +139,7 @@ def main(args):
             logger.info(
                 "Loading AoU ACAF and exome MatrixTables and removing unnecessary entry annotations..."
             )
-            entry_annotations = args.entry_annotations.split(",")
+            entry_annotations = args.entry_annotations
             acaf_mt = aou_acaf_mt.mt().select_entries(*entry_annotations)
             exome_mt = aou_exome_mt.mt().select_entries(*entry_annotations)
 
@@ -229,11 +229,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--entry-annotations",
         help=(
-            "Comma separated string of entry annotations to keep in the unioned AoU MatrixTable. "
-            "Default is 'GT,'."
+            "Entry annotations to keep in the unioned AoU MatrixTable. "
+            "Default is ['GT']."
         ),
         type=str,
-        default="GT,",
+        default=["GT"],
+        nargs="+",
     )
     parser.add_argument(
         "--union-aou-mts",
