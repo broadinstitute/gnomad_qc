@@ -24,7 +24,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     get_samples_to_exclude,
 )
-from gnomad_qc.v5.resources.constants import AOU_WGS_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import get_joint_qc, hard_filtered_samples
 
