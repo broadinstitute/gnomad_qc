@@ -98,7 +98,7 @@ def generate_qc_mt(
     """
     Union gnomAD v4 QC MT and AoU v8 MTs.
 
-    :param gnomad_mt: gnomAD v4 QC MatrixTable.
+    :param gnomad_mt: gnomAD (exomes + genomes) v4 QC MatrixTable.
     :param aou_mt: Joint AoU (ACAF + exome) v8 MatrixTable.
     :param n_partitions: Number of desired partitions for the unioned MatrixTable.
         Default is 5000.
