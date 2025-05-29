@@ -97,15 +97,12 @@ def union_aou_mts(
 def generate_qc_mt(
     gnomad_mt: hl.MatrixTable,
     aou_mt: hl.MatrixTable,
-    n_partitions: int = 5000,
 ) -> hl.MatrixTable:
     """
     Union gnomAD v4 QC MT and AoU v8 MTs.
 
     :param gnomad_mt: gnomAD v4 QC MatrixTable.
     :param aou_mt: Joint AoU (ACAF + exome) v8 MatrixTable.
-    :param n_partitions: Number of desired partitions for the unioned MatrixTable.
-        Default is 5000.
     :return: Joint gnomAD v4 (exomes + genomes) + AoU v8 (genomes) QC MT.
     """
     logger.info("Resolving sample ID collisions...")
@@ -121,8 +118,7 @@ def generate_qc_mt(
         project="aou",
     )
 
-    joint_mt = gnomad_mt.union_cols(aou_mt)
-    return joint_mt.naive_coalesce(n_partitions)
+    return gnomad_mt.union_cols(aou_mt)
 
 
 def main(args):
@@ -133,6 +129,7 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
+    n_partitions = args.n_partitions
     overwrite = args.overwrite
     test = args.test
 
@@ -158,7 +155,7 @@ def main(args):
             )
 
             logger.info("Decreasing partitions and checkpointing...")
-            mt = mt.naive_coalesce(args.n_partitions)
+            mt = mt.naive_coalesce(n_partitions)
             mt.write(
                 get_checkpoint_path("union_aou_mts", mt=True, environment="rwb"),
                 overwrite=overwrite,
@@ -209,8 +206,8 @@ def main(args):
             joint_mt = generate_qc_mt(
                 gnomad_mt=gnomad_mt,
                 aou_mt=aou_mt,
-                n_partitions=args.n_partitions,
             )
+            joint_mt = joint_mt.naive_coalesce(n_partitions)
             joint_mt.write(
                 get_joint_qc(test=test).path,
                 overwrite=overwrite,
