@@ -177,7 +177,7 @@ def main(args):
 
         if args.generate_qc_mt:
             logger.info("Loading gnomAD v4 QC MatrixTable...")
-            # NOTE: Dropping extra column and entry annotations because `union_cols` requires
+            # NOTE: Dropping extra column and entry annotations because `union_cols` requires # noqa
             # that the column keys/schemas and entry schemas match across the two MTs.
             # Also dropping row annotations because they are not needed for the joint
             # MT.
