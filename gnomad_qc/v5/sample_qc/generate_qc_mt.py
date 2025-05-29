@@ -45,7 +45,11 @@ def union_aou_mts(
 
     .. note::
 
-        Both v8 AoU MTs have 145192 partitions.
+        - Both v8 AoU MTs have 145192 partitions.
+        - This function unions both MTs to reduce the number of missing sites in the joint MT; after unioning these two MTs,
+            only 5080 sites from the v4 QC MT are missing from the joint AoU MT.
+        - The v7 AoU exome MT was missing 35,621 sites from the v4 QC MT, and the v7 ACAF MT was missing 65,935 sites.
+            After unioning the v7 MTs, the joint MT was only missing 8203 sites.
 
     :param acaf_mt: AoU ACAF MatrixTable.
     :param exome_mt: AoU exome MatrixTable.
