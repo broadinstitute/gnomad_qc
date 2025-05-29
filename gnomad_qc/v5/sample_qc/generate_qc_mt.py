@@ -13,6 +13,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.utils.filtering import filter_to_autosomes
 
 from gnomad_qc.v4.resources import sample_qc as v4_sample_qc
 from gnomad_qc.v5.resources.basics import (
@@ -63,7 +64,7 @@ def union_aou_mts(
         mt: hl.MatrixTable,
     ) -> hl.MatrixTable:
         """
-        Filter AoU MT to gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
+        Filter AoU MT to autosomal gnomAD QC MT sites, remove hard filtered or low quality samples, and filter to `adj`.
 
         .. note::
 
@@ -77,6 +78,7 @@ def union_aou_mts(
             mt = mt._filter_partitions(range(2))
 
         # Filter to gnomAD QC sites and use `NO_HQ_GENOTYPES` to filter to `adj`.
+        mt = filter_to_autosomes(mt)
         mt = mt.semi_join_rows(ht)
         mt = mt.filter_rows(~mt.filters.contains("NO_HQ_GENOTYPES"))
         mt = mt.select_rows()
