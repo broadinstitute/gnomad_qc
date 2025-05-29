@@ -138,7 +138,7 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
     v4_qc_sites_ht = v4_sample_qc.get_joint_qc().mt().rows()
-    aou_union_mt_path = get_aou_mt_union.path
+    aou_union_mt_path = get_aou_mt_union().path
     joint_qc_mt_path = get_joint_qc(test=test).path
 
     try:
