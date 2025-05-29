@@ -207,9 +207,7 @@ def main(args):
                 gnomad_mt = gnomad_mt._filter_partitions(range(2))
 
             logger.info("Loading AoU joint ACAF + exome MatrixTable...")
-            aou_mt = hl.read_matrix_table(
-                get_checkpoint_path("union_aou_mts", mt=True, environment="rwb")
-            )
+            aou_mt = hl.read_matrix_table(aou_union_mt_path)
 
             logger.info("Generating joint gnomAD + AoU QC MatrixTable...")
             joint_mt = generate_qc_mt(
