@@ -316,9 +316,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.expr.SetExpression:
         "verify_bam_id2_contamination": hl.tfloat,
         "biosample_collection_date": hl.tstr,
     }
-    ht = hl.import_table(f"gs://{AOU_GENOMIC_METRICS_PATH}", types=types).key_by(
-        "research_id"
-    )
+    ht = hl.import_table(AOU_GENOMIC_METRICS_PATH, types=types).key_by("research_id")
 
     low_cov_samples = ht.filter(
         (ht.mean_coverage < 30)
@@ -360,9 +358,7 @@ def get_samples_to_exclude(
         if not file_exists(low_quality_samples.path):
             # Load samples flagged in AoU Known Issues #1.
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
-            low_quality_ht = hl.import_table(f"gs://{AOU_LOW_QUALITY_PATH}").key_by(
-                "research_id"
-            )
+            low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
             low_quality_sample_ids = low_quality_ht.aggregate(
                 hl.agg.collect_as_set(low_quality_ht.research_id)
             )
