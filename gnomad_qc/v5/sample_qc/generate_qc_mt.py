@@ -15,6 +15,7 @@ import logging
 import hail as hl
 from gnomad.utils.filtering import filter_to_autosomes
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources import sample_qc as v4_sample_qc
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
@@ -137,9 +138,14 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
     v4_qc_sites_ht = v4_sample_qc.get_joint_qc().mt().rows()
+    aou_union_mt_path = get_aou_mt_union.path
+    joint_qc_mt_path = get_joint_qc(test=test).path
 
     try:
         if args.union_aou_mts:
+
+            # Check if AoU union MT already exists.
+            check_resource_existence(output_step_resources=aou_union_mt_path)
 
             logger.info(
                 "Loading AoU ACAF and exome MatrixTables and removing unnecessary entry annotations..."
@@ -161,7 +167,7 @@ def main(args):
 
             logger.info("Decreasing partitions and checkpointing...")
             mt = mt.naive_coalesce(n_partitions)
-            mt.write(get_aou_mt_union.path, overwrite=overwrite)
+            mt.write(aou_union_mt_path, overwrite=overwrite)
 
         if args.check_missing_sites:
             logger.info(
@@ -176,6 +182,10 @@ def main(args):
             )
 
         if args.generate_qc_mt:
+
+            # Check if joint QC MT already exists.
+            check_resource_existence(output_step_resources=joint_qc_mt_path)
+
             logger.info("Loading gnomAD v4 QC MatrixTable...")
             # NOTE: Dropping extra column and entry annotations because `union_cols` requires # noqa
             # that the column keys/schemas and entry schemas match across the two MTs.
@@ -208,7 +218,7 @@ def main(args):
             )
             joint_mt = joint_mt.naive_coalesce(n_partitions)
             joint_mt.write(
-                get_joint_qc(test=test).path,
+                joint_qc_mt_path,
                 overwrite=overwrite,
             )
 
