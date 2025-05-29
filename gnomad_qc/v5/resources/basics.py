@@ -113,6 +113,7 @@ def get_logging_path(
 
 def get_aou_vds(
     split: bool = False,
+    remove_hard_filtered_samples: bool = True,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -132,6 +133,8 @@ def get_aou_vds(
 
     :param split: Whether to split multi-allelic variants in the VDS. Note: this will perform a split on the VDS
         rather than grab an already split VDS. Default is False.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after hard filtering is complete). Default is True.
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
@@ -172,11 +175,13 @@ def get_aou_vds(
 
     # Remove samples that should have been excluded from the AoU v8 release
     # and samples with non-XX/XY ploidies.
-    # TODO: Add option to remove hard filtered samples on loading?
-    # This would require the user to pass in the hard filtered samples HT as an argument,
-    # since this script is unable to import from `sample_qc.py`
-    # (would cause a circular import error).
-    s_to_exclude = hl.eval(get_samples_to_exclude())
+    hard_filtered_samples_ht = None
+    if remove_hard_filtered_samples:
+        from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
+
+        logger.info("Removing hard filtered samples from AoU VDS...")
+        hard_filtered_samples_ht = hard_filtered_samples.ht()
+    s_to_exclude = hl.eval(get_samples_to_exclude(hard_filtered_samples_ht))
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
