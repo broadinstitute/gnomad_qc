@@ -1,5 +1,5 @@
 """
-Script to create a joint gnomAD v4 + AoU v8 dense MatrixTable filtered to predetermined QC sites.
+Script to create a joint gnomAD v4 (exomes + genomes) + AoU v8 dense MatrixTable filtered to predetermined QC sites.
 
 For more information about the predetermined QC sites, see:
 https://gnomad.broadinstitute.org/news/2023-11-gnomad-v4-0/#high-quality-sites-definition,
