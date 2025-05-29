@@ -181,7 +181,7 @@ def get_aou_vds(
 
         logger.info("Removing hard filtered samples from AoU VDS...")
         hard_filtered_samples_ht = hard_filtered_samples.ht()
-    s_to_exclude = hl.eval(get_samples_to_exclude(hard_filtered_samples_ht))
+    s_to_exclude = list(hl.eval(get_samples_to_exclude(hard_filtered_samples_ht)))
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
