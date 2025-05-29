@@ -41,7 +41,7 @@ def union_aou_mts(
     test: bool = False,
 ) -> hl.MatrixTable:
     """
-    Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, filter to `adj`, and union MTs.
+    Filter AoU ACAF and exome MTs to QC MT sites, remove samples to exclude, filter to `adj`, and union rows of the MTs.
 
     .. note::
 
