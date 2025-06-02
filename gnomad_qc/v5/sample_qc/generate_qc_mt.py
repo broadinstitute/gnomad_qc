@@ -145,7 +145,9 @@ def main(args):
         if args.union_aou_mts:
 
             # Check if AoU union MT already exists.
-            check_resource_existence(output_step_resources=aou_union_mt_path)
+            check_resource_existence(
+                output_step_resources={"aou_union_mt": aou_union_mt_path}
+            )
 
             logger.info(
                 "Loading AoU ACAF and exome MatrixTables and removing unnecessary entry annotations..."
