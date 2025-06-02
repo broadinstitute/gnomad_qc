@@ -186,7 +186,9 @@ def main(args):
         if args.generate_qc_mt:
 
             # Check if joint QC MT already exists.
-            check_resource_existence(output_step_resources=joint_qc_mt_path)
+            check_resource_existence(
+                output_step_resources={"joint_qc_mt": joint_qc_mt_path}
+            )
 
             logger.info("Loading gnomAD v4 QC MatrixTable...")
             # NOTE: Dropping extra column and entry annotations because `union_cols` requires # noqa
