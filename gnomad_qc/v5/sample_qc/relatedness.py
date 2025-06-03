@@ -95,8 +95,8 @@ def main(args):
 
     if args.print_cuking_command:
         print_cuking_command(
-            cuking_input_path,
-            cuking_output_path,
+            get_cuking_input_path,
+            get_cuking_output_path,
             min_emission_kinship,
             args.cuking_split_factor,
         )
@@ -108,7 +108,7 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-    joint_qc_mt = get_joint_qc.mt()
+    joint_qc_mt = get_joint_qc().mt()
 
     try:
         if args.prepare_cuking_inputs:
