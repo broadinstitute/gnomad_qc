@@ -95,8 +95,8 @@ def main(args):
 
     if args.print_cuking_command:
         print_cuking_command(
-            get_cuking_input_path,
-            get_cuking_output_path,
+            get_cuking_input_path(),
+            get_cuking_output_path(),
             min_emission_kinship,
             args.cuking_split_factor,
         )
@@ -125,7 +125,7 @@ def main(args):
 
             mt_to_cuking_inputs(
                 mt=joint_qc_mt,
-                parquet_uri=get_cuking_input_path,
+                parquet_uri=get_cuking_input_path(test=test),
                 overwrite=overwrite,
             )
 
