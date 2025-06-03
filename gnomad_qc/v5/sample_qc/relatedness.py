@@ -88,8 +88,8 @@ def print_cuking_command(
 
 def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
-    test = args.test
-    overwrite = args.overwrite
+    # test = args.test
+    # overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
 
     if args.print_cuking_command:
