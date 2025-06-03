@@ -125,7 +125,7 @@ def main(args):
 
             mt_to_cuking_inputs(
                 mt=joint_qc_mt,
-                parquet_uri=cuking_input_path,
+                parquet_uri=get_cuking_input_path,
                 overwrite=overwrite,
             )
 
