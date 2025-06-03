@@ -127,3 +127,27 @@ def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+######################################################################
+# Relatedness resources
+######################################################################
+
+
+def get_cuking_input_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    environment: str = "rwb",
+) -> str:
+    """
+    Return the path containing the input files read by cuKING.
+
+    Those files correspond to Parquet tables derived from the dense QC matrix.
+
+    :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
+    :param test: Whether to return a path corresponding to a test subset.
+    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'rwb'.
+    :return: Temporary path to hold Parquet input tables for running cuKING.
+    """
+    # cuKING inputs can be easily regenerated, so use a temp location.
+    return f"{qc_temp_prefix(version=version, environment=environment)}cuking_input{'_test' if test else ''}.parquet"
