@@ -145,9 +145,28 @@ def get_cuking_input_path(
     Those files correspond to Parquet tables derived from the dense QC matrix.
 
     :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
-    :param test: Whether to return a path corresponding to a test subset.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'rwb'.
+    :param test: Whether to return a path corresponding to a test subset. Default is False.
+    :param environment: Compute environment, either 'dataproc' or 'rwb'. Default is 'rwb'.
     :return: Temporary path to hold Parquet input tables for running cuKING.
     """
     # cuKING inputs can be easily regenerated, so use a temp location.
     return f"{qc_temp_prefix(version=version, environment=environment)}cuking_input{'_test' if test else ''}.parquet"
+
+
+def get_cuking_output_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    environment: str = "rwb",
+) -> str:
+    """
+    Return the path containing the output files written by cuKING.
+
+    Those files correspond to Parquet tables containing relatedness results.
+
+    :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
+    :param test: Whether to return a path corresponding to a test subset. Default is False.
+    :param environment: Compute environment, either 'dataproc' or 'rwb'. Default is 'rwb'.
+    :return: Temporary path to hold Parquet output tables for running cuKING.
+    """
+    # cuKING outputs can be easily regenerated, so use a temp location.
+    return f"{qc_temp_prefix(version=version, environment=environment)}cuking_output{'_test' if test else ''}.parquet"
