@@ -177,10 +177,4 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
-
-    if args.print_cuking_command and (args.prepare_cuking_inputs):
-        parser.error(
-            "--print-cuking-command can't be used simultaneously with other run modes."
-        )
-
     main(args)
