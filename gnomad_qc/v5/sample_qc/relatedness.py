@@ -142,6 +142,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=float,
     )
 
+    cuking_args = parser.add_argument_group(
+        "cuKING specific relatedness arguments",
+        "Arguments specific to computing relatedness estimates using cuKING.",
+    )
     print_cuking_cmd = cuking_args.add_argument_group(
         "Print cuKING Cloud Batch job submission command",
         "Arguments used to create the cuKING Cloud Batch job submission command "
