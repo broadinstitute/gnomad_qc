@@ -10,7 +10,11 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import get_cuking_input_path
+from gnomad_qc.v5.resources.sample_qc import (
+    get_cuking_input_path,
+    get_cuking_output_path,
+    get_joint_qc,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
@@ -91,8 +95,8 @@ def main(args):
 
     if args.print_cuking_command:
         print_cuking_command(
-            res.cuking_input_path,
-            res.cuking_output_path,
+            cuking_input_path,
+            cuking_output_path,
             min_emission_kinship,
             args.cuking_split_factor,
         )
@@ -104,7 +108,7 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-    joint_qc_mt = relatedness_resources.joint_qc_mt.mt()
+    joint_qc_mt = get_joint_qc.mt()
 
     try:
         if args.prepare_cuking_inputs:
@@ -121,7 +125,7 @@ def main(args):
 
             mt_to_cuking_inputs(
                 mt=joint_qc_mt,
-                parquet_uri=res.cuking_input_path,
+                parquet_uri=cuking_input_path,
                 overwrite=overwrite,
             )
 
