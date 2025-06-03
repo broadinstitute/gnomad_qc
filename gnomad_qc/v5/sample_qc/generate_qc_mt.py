@@ -176,7 +176,7 @@ def main(args):
                 "Checking how many sites from v4 QC MT are missing from joint AoU MT..."
             )
             aou_ht = get_aou_mt_union().mt().rows()
-            ht = v4_qc_sites_ht.select_rows()
+            ht = v4_qc_sites_ht.select()
             missing_sites = ht.anti_join(aou_ht)
             logger.info(
                 "Number of QC MT sites missing from joint AoU MT: %i",
