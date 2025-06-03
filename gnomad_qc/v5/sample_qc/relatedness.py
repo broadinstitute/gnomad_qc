@@ -6,8 +6,7 @@ import textwrap
 
 import hail as hl
 
-from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
+# from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
@@ -64,22 +63,22 @@ def print_cuking_command(
         "location where the command is being run and that $PROJECT_ID is set!"
     )
     SPLIT_FACTOR = cuking_split_factor
-    TOTAL_SHARDS = "$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2))"
+    TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2
     print(
         textwrap.dedent(
             f"""\
             for SHARD_INDEX in $(seq 0 $(({TOTAL_SHARDS} - 1))); do \\
-                cuKING_dsub \ \\
-                --location={location} \ \\
-                --machine-type={machine_type} \ \\
-                --accelerator-count={accelerator_count} \ \\
-                --accelerator-type={accelerator_type} \ \\
-                --command="cuking \ \\
-                --input_uri={cuking_input_path} \ \\
-                --output_uri={cuking_output_path} \ \\
-                --requester_pays_project={requester_pays_project} \ \\
-                --kin_threshold={min_emission_kinship} \ \\
-                --split-factor={SPLIT_FACTOR} \ \\
+                cuKING_dsub \\
+                --location={location} \\
+                --machine-type={machine_type} \\
+                --accelerator-count={accelerator_count} \\
+                --accelerator-type={accelerator_type} \\
+                --command="cuking \\
+                --input_uri={cuking_input_path} \\
+                --output_uri={cuking_output_path} \\
+                --requester_pays_project={requester_pays_project} \\
+                --kin_threshold={min_emission_kinship} \\
+                --split-factor={SPLIT_FACTOR} \\
                 --shard-index=SHARD_INDEX" \\
             done
             """
@@ -108,26 +107,11 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-    joint_qc_mt = get_joint_qc().mt()
+    # joint_qc_mt = get_joint_qc().mt()
 
     try:
-        if args.prepare_cuking_inputs:
-            check_resource_existence(
-                output_step_resources={"cuking_input_parquet": get_cuking_input_path}
-            )
-            logger.info(
-                "Converting joint dense QC MatrixTable to a Parquet format suitable "
-                "for cuKING."
-            )
-            if test:
-                logger.info("Filtering MT to the first 2 partitions for testing...")
-                joint_qc_mt = joint_qc_mt._filter_partitions(range(2))
-
-            mt_to_cuking_inputs(
-                mt=joint_qc_mt,
-                parquet_uri=get_cuking_input_path(test=test),
-                overwrite=overwrite,
-            )
+        # TODO: Remove this once actual code has been added here.
+        print(get_joint_qc().path)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -148,18 +132,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Filter to the first 2 partitions for testing.",
         action="store_true",
     )
-
-    cuking_args = parser.add_argument_group(
-        "cuKING specific relatedness arguments",
-        "Arguments specific to computing relatedness estimates using cuKING.",
-    )
-    cuking_args.add_argument(
-        "--prepare-cuking-inputs",
+    parser.add_argument(
+        "--min-emission-kinship",
         help=(
-            "Converts the dense QC MatrixTable to a Parquet format suitable for cuKING."
+            "Minimum kinship threshold for emitting a pair of samples in the "
+            "relatedness output."
         ),
-        action="store_true",
+        default=0.05,
+        type=float,
     )
+
     print_cuking_cmd = cuking_args.add_argument_group(
         "Print cuKING Cloud Batch job submission command",
         "Arguments used to create the cuKING Cloud Batch job submission command "
