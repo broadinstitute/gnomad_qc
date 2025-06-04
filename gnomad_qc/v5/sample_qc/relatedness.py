@@ -93,8 +93,8 @@ def main(args):
 
     if args.print_cuking_command:
         print_cuking_command(
-            get_cuking_input_path(),
-            get_cuking_output_path(),
+            get_cuking_input_path(test=test),
+            get_cuking_output_path(test=test),
             min_emission_kinship,
             args.cuking_split_factor,
         )
