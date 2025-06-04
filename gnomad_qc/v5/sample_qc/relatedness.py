@@ -6,12 +6,13 @@ import textwrap
 
 import hail as hl
 
-# from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
+    get_joint_qc,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -86,8 +87,8 @@ def print_cuking_command(
 
 def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
-    # test = args.test
-    # overwrite = args.overwrite
+    test = args.test
+    overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
 
     if args.print_cuking_command:
@@ -106,8 +107,33 @@ def main(args):
     hl.default_reference("GRCh38")
 
     try:
-        # TODO: Remove this once actual code has been added here.
-        print("hi")
+        if args.prepare_cuking_inputs:
+            from gnomad_qc.v4.sample_qc.relatedness.cuKING.mt_to_cuking_inputs import (
+                mt_to_cuking_inputs,
+            )
+
+            # NOTE: This step is going to be run in a notebook to avoid
+            # import error associated with the above import.
+            # We also cannot run `mt_to_cuking_inputs.py` directly because
+            # Hail needs to be initialized with a temporary directory
+            # to avoid memory errors.
+            joint_qc_mt = get_joint_qc(test=test).mt
+            check_resource_existence(
+                output_step_resources={"cuking_input_parquet": get_cuking_input_path()}
+            )
+            logger.info(
+                "Converting joint dense QC MatrixTable to a Parquet format suitable "
+                "for cuKING..."
+            )
+            if test:
+                logger.info("Filtering MT to the first 2 partitions for testing...")
+                joint_qc_mt = joint_qc_mt._filter_partitions(range(2))
+
+            mt_to_cuking_inputs(
+                mt=joint_qc_mt,
+                parquet_uri=get_cuking_input_path(test=test),
+                overwrite=overwrite,
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -141,6 +167,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     cuking_args = parser.add_argument_group(
         "cuKING specific relatedness arguments",
         "Arguments specific to computing relatedness estimates using cuKING.",
+    )
+    cuking_args.add_argument(
+        "--prepare-cuking-inputs",
+        help=(
+            "Converts the dense QC MatrixTable to a Parquet format suitable for cuKING."
+        ),
+        action="store_true",
     )
     print_cuking_cmd = cuking_args.add_argument_group(
         "Print cuKING Cloud Batch job submission command",
