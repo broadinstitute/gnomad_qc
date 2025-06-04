@@ -61,11 +61,11 @@ def print_cuking_command(
         "This printed command assumes that the cuKING directory is in the same "
         "location where the command is being run and that $PROJECT_ID is set!"
     )
-    SPLIT_FACTOR = cuking_split_factor
-    TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2
     print(
         textwrap.dedent(
             f"""\
+            SPLIT_FACTOR = cuking_split_factor \\
+            TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2 \\
             for SHARD_INDEX in $(seq 0 $(({TOTAL_SHARDS} - 1))); do \\
                 cuKING_dsub \\
                 --location={location} \\
