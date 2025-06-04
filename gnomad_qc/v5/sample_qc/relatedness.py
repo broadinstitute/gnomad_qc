@@ -57,6 +57,7 @@ def print_cuking_command(
         "Printing a command that can be used to submit a dsub job to run "
         "cuKING on the files created by --prepare-cuking-inputs."
     )
+    # TOTAL_SHARDS calculates the total number of shards using the formula k(k+1)/2.
     cuking_command = (
         f"""\
         SPLIT_FACTOR = {cuking_split_factor} \\"""
