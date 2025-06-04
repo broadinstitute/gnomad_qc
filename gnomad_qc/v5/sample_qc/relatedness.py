@@ -80,7 +80,6 @@ def print_cuking_command(
         done
         """
     )
-
     print(textwrap.dedent(cuking_command))
 
 
