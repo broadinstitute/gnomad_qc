@@ -61,6 +61,8 @@ def print_cuking_command(
         "This printed command assumes that the cuKING directory is in the same "
         "location where the command is being run and that $PROJECT_ID is set!"
     )
+    SPLIT_FACTOR = cuking_split_factor
+    TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2
     print(
         textwrap.dedent(
             f"""\
