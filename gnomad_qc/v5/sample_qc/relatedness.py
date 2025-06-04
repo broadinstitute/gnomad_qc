@@ -12,7 +12,6 @@ from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
-    get_joint_qc,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -107,11 +106,9 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-    # joint_qc_mt = get_joint_qc().mt()
-
     try:
         # TODO: Remove this once actual code has been added here.
-        print(get_joint_qc().path)
+        print("hi")
 
     finally:
         logger.info("Copying hail log to logging bucket...")
