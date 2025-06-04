@@ -117,7 +117,7 @@ def main(args):
             # We also cannot run `mt_to_cuking_inputs.py` directly because
             # Hail needs to be initialized with a temporary directory
             # to avoid memory errors.
-            joint_qc_mt = get_joint_qc(test=test).mt
+            joint_qc_mt = get_joint_qc(test=test).mt()
             check_resource_existence(
                 output_step_resources={"cuking_input_parquet": get_cuking_input_path()}
             )
