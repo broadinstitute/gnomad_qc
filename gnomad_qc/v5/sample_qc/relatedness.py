@@ -57,34 +57,30 @@ def print_cuking_command(
         "Printing a command that can be used to submit a dsub job to run "
         "cuKING on the files created by --prepare-cuking-inputs."
     )
-    logger.warning(
-        "This printed command assumes that the cuKING directory is in the same "
-        "location where the command is being run and that $PROJECT_ID is set!"
+    cuking_command = (
+        """\
+        SPLIT_FACTOR = cuking_split_factor \\
+        TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2 \\
+        for SHARD_INDEX in $(seq 0 $(({TOTAL_SHARDS} - 1))); do \\
+            cuKING_dsub \\"""
+        + f"""
+            --location={location} \\
+            --machine-type={machine_type} \\
+            --accelerator-count={accelerator_count} \\
+            --accelerator-type={accelerator_type} \\
+            --command="cuking \\
+            --input_uri="{cuking_input_path}" \\
+            --output_uri="{cuking_output_path}" \\
+            --requester_pays_project={requester_pays_project} \\
+            --kin_threshold={min_emission_kinship} \\"""
+        + """
+            --split-factor=${SPLIT_FACTOR} \\
+            --shard-index=${SHARD_INDEX}" \\
+        done
+        """
     )
-    SPLIT_FACTOR = cuking_split_factor
-    TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2
-    print(
-        textwrap.dedent(
-            f"""\
-            SPLIT_FACTOR = cuking_split_factor \\
-            TOTAL_SHARDS = SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2 \\
-            for SHARD_INDEX in $(seq 0 $(({TOTAL_SHARDS} - 1))); do \\
-                cuKING_dsub \\
-                --location={location} \\
-                --machine-type={machine_type} \\
-                --accelerator-count={accelerator_count} \\
-                --accelerator-type={accelerator_type} \\
-                --command="cuking \\
-                --input_uri="{cuking_input_path}" \\
-                --output_uri="{cuking_output_path}" \\
-                --requester_pays_project={requester_pays_project} \\
-                --kin_threshold={min_emission_kinship} \\
-                --split-factor={SPLIT_FACTOR} \\
-                --shard-index={SHARD_INDEX}" \\
-            done
-            """
-        )
-    )
+
+    print(textwrap.dedent(cuking_command))
 
 
 def main(args):
