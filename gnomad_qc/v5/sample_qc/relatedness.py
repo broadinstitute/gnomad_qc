@@ -108,7 +108,7 @@ def main(args):
 
     try:
         if args.prepare_cuking_inputs:
-            from gnomad_qc.v4.sample_qc.relatedness.cuKING.mt_to_cuking_inputs import (
+            from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import (
                 mt_to_cuking_inputs,
             )
 
