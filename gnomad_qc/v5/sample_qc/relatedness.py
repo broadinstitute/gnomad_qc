@@ -77,8 +77,8 @@ def print_cuking_command(
         --requester_pays_project={requester_pays_project} \\
         --kin_threshold={min_emission_kinship} \\"""
         + """
-        --split-factor=${SPLIT_FACTOR} \\
-        --shard-index=${SHARD_INDEX}"
+        --split_factor=${SPLIT_FACTOR} \\
+        --shard_index=${SHARD_INDEX}"
         done
         """
     )
