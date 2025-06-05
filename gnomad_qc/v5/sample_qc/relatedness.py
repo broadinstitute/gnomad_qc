@@ -9,11 +9,7 @@ import hail as hl
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import (
-    get_cuking_input_path,
-    get_cuking_output_path,
-    get_joint_qc,
-)
+from gnomad_qc.v5.resources.sample_qc import get_cuking_input_path, get_joint_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
@@ -22,12 +18,11 @@ logger.setLevel(logging.INFO)
 
 def print_cuking_command(
     cuking_input_path: str,
-    cuking_output_path: str,
     min_emission_kinship: float = 0.5,
     cuking_split_factor: int = 4,
     location: str = "us-central1",
-    machine_type: str = "a2-highgpu-1g",
-    accelerator_count: int = 1,
+    machine_type: str = "a2-highgpu-2g",
+    accelerator_count: int = 2,
     accelerator_type: str = "nvidia-tesla-a100",
     requester_pays_project: str = "terra-vpc-sc-93ccd8d2",
 ) -> None:
@@ -46,8 +41,9 @@ def print_cuking_command(
         'upper triangular' submatrices need to be evaluated due to the symmetry of the
         relatedness matrix, leading to 10 shards. Default is 4.
     :param location: Location to run the dsub job. Default is "us-central1".
-    :param machine_type: Machine type to use for the dsub job. Default is "a2-highgpu-1g".
-    :param accelerator_count: Number of accelerators to use for the dsub job. Default is 1.
+    :param machine_type: Machine type to use for the dsub job. Default is "a2-highgpu-2g".
+        The default for v4 was a2-highgpu-1g, but this was not sufficient for v5.
+    :param accelerator_count: Number of accelerators to use for the dsub job. Default is 2.
     :param accelerator_type: Type of accelerator to use for the dsub job.
         Default is "nvidia-tesla-a100".
     :param requester_pays_project: Project ID to use for requester pays buckets.
@@ -61,24 +57,26 @@ def print_cuking_command(
     # TOTAL_SHARDS calculates the total number of shards using the formula k(k+1)/2.
     cuking_command = (
         f"""\
-        SPLIT_FACTOR = {cuking_split_factor} \\"""
+        SPLIT_FACTOR={cuking_split_factor} \\"""
         + """
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
-        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do \\
-            cuKING_dsub \\"""
+        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do
+        cuKING_dsub \\"""
         + f"""
-            --location={location} \\
-            --machine-type={machine_type} \\
-            --accelerator-count={accelerator_count} \\
-            --accelerator-type={accelerator_type} \\
-            --command="cuking \\
-            --input_uri="{cuking_input_path}" \\
-            --output_uri="{cuking_output_path}" \\
-            --requester_pays_project={requester_pays_project} \\
-            --kin_threshold={min_emission_kinship} \\"""
+        --location={location} \\
+        --machine-type={machine_type} \\
+        --accelerator-count={accelerator_count} \\
+        --accelerator-type={accelerator_type} \\
+        --command="cuking \\
+        --input_uri="{cuking_input_path}" \\"""
         + """
-            --split-factor=${SPLIT_FACTOR} \\
-            --shard-index=${SHARD_INDEX}" \\
+        --output_uri="gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/gnomad.genomes.v5.0.qc_data/cuking_output.parquet/out_split_${SHARD_INDEX}.parquet" \\"""
+        + f"""
+        --requester_pays_project={requester_pays_project} \\
+        --kin_threshold={min_emission_kinship} \\"""
+        + """
+        --split_factor=${SPLIT_FACTOR} \\
+        --shard_index=${SHARD_INDEX}"
         done
         """
     )
@@ -94,7 +92,6 @@ def main(args):
     if args.print_cuking_command:
         print_cuking_command(
             get_cuking_input_path(test=test),
-            get_cuking_output_path(test=test),
             min_emission_kinship,
             args.cuking_split_factor,
         )
