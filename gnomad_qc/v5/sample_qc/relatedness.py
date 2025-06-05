@@ -65,20 +65,20 @@ def print_cuking_command(
         + """
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
         for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do
-            cuKING_dsub \\"""
+        cuKING_dsub \\"""
         + f"""
-            --location={location} \\
-            --machine-type={machine_type} \\
-            --accelerator-count={accelerator_count} \\
-            --accelerator-type={accelerator_type} \\
-            --command="cuking \\
-            --input_uri="{cuking_input_path}" \\
-            --output_uri="{cuking_output_path}" \\
-            --requester_pays_project={requester_pays_project} \\
-            --kin_threshold={min_emission_kinship} \\"""
+        --location={location} \\
+        --machine-type={machine_type} \\
+        --accelerator-count={accelerator_count} \\
+        --accelerator-type={accelerator_type} \\
+        --command="cuking \\
+        --input_uri="{cuking_input_path}" \\
+        --output_uri="{cuking_output_path}" \\
+        --requester_pays_project={requester_pays_project} \\
+        --kin_threshold={min_emission_kinship} \\"""
         + """
-            --split-factor=${SPLIT_FACTOR} \\
-            --shard-index=${SHARD_INDEX}" \\
+        --split-factor=${SPLIT_FACTOR} \\
+        --shard-index=${SHARD_INDEX}"
         done
         """
     )
