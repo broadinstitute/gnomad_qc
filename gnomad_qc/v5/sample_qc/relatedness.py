@@ -61,7 +61,7 @@ def print_cuking_command(
     # TOTAL_SHARDS calculates the total number of shards using the formula k(k+1)/2.
     cuking_command = (
         f"""\
-        SPLIT_FACTOR = {cuking_split_factor} \\"""
+        SPLIT_FACTOR={cuking_split_factor} \\"""
         + """
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
         for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do \\
