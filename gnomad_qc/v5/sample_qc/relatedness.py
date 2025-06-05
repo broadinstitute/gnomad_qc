@@ -64,7 +64,7 @@ def print_cuking_command(
         SPLIT_FACTOR={cuking_split_factor} \\"""
         + """
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
-        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do \\
+        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do
             cuKING_dsub \\"""
         + f"""
             --location={location} \\
