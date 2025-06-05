@@ -9,11 +9,7 @@ import hail as hl
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import (
-    get_cuking_input_path,
-    get_cuking_output_path,
-    get_joint_qc,
-)
+from gnomad_qc.v5.resources.sample_qc import get_cuking_input_path, get_joint_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
@@ -22,7 +18,6 @@ logger.setLevel(logging.INFO)
 
 def print_cuking_command(
     cuking_input_path: str,
-    cuking_output_path: str,
     min_emission_kinship: float = 0.5,
     cuking_split_factor: int = 4,
     location: str = "us-central1",
@@ -72,8 +67,10 @@ def print_cuking_command(
         --accelerator-count={accelerator_count} \\
         --accelerator-type={accelerator_type} \\
         --command="cuking \\
-        --input_uri="{cuking_input_path}" \\
-        --output_uri="{cuking_output_path}" \\
+        --input_uri="{cuking_input_path}" \\"""
+        + """
+        --output_uri="gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/gnomad.genomes.v5.0.qc_data/cuking_output.parquet/out_split_${SHARD_INDEX}.parquet" \\"""
+        + f"""
         --requester_pays_project={requester_pays_project} \\
         --kin_threshold={min_emission_kinship} \\"""
         + """
@@ -94,7 +91,6 @@ def main(args):
     if args.print_cuking_command:
         print_cuking_command(
             get_cuking_input_path(test=test),
-            get_cuking_output_path(test=test),
             min_emission_kinship,
             args.cuking_split_factor,
         )
