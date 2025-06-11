@@ -9,7 +9,11 @@ import hail as hl
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import get_cuking_input_path, get_joint_qc
+from gnomad_qc.v5.resources.sample_qc import (
+    get_cuking_input_path,
+    get_cuking_output_path,
+    get_joint_qc,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
@@ -18,6 +22,7 @@ logger.setLevel(logging.INFO)
 
 def print_cuking_command(
     cuking_input_path: str,
+    cuking_output_path: str,
     min_emission_kinship: float = 0.5,
     cuking_split_factor: int = 4,
     location: str = "us-central1",
@@ -55,31 +60,24 @@ def print_cuking_command(
         "cuKING on the files created by --prepare-cuking-inputs."
     )
     # TOTAL_SHARDS calculates the total number of shards using the formula k(k+1)/2.
-    cuking_command = (
-        f"""\
-        SPLIT_FACTOR={cuking_split_factor} \\"""
-        + """
+    cuking_command = f"""\
+        SPLIT_FACTOR={cuking_split_factor} \\
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
         for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do
-        cuKING_dsub \\"""
-        + f"""
+        cuKING_dsub \\
         --location={location} \\
         --machine-type={machine_type} \\
         --accelerator-count={accelerator_count} \\
         --accelerator-type={accelerator_type} \\
         --command="cuking \\
-        --input_uri="{cuking_input_path}" \\"""
-        + """
-        --output_uri="gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/gnomad.genomes.v5.0.qc_data/cuking_output.parquet/out_split_${SHARD_INDEX}.parquet" \\"""
-        + f"""
+        --input_uri="{cuking_input_path}" \\
+        --output_uri=f"{cuking_output_path}/out_split_${{SHARD_INDEX}}.parquet" \\
         --requester_pays_project={requester_pays_project} \\
-        --kin_threshold={min_emission_kinship} \\"""
-        + """
-        --split_factor=${SPLIT_FACTOR} \\
-        --shard_index=${SHARD_INDEX}"
+        --kin_threshold={min_emission_kinship} \\
+        --split_factor=${{SPLIT_FACTOR}} \\
+        --shard_index=${{SHARD_INDEX}}"
         done
         """
-    )
     print(textwrap.dedent(cuking_command))
 
 
@@ -92,6 +90,7 @@ def main(args):
     if args.print_cuking_command:
         print_cuking_command(
             get_cuking_input_path(test=test),
+            get_cuking_output_path(test=test),
             min_emission_kinship,
             args.cuking_split_factor,
         )
