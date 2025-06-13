@@ -95,8 +95,7 @@ def apply_filter(
     """
     # Create dict of expression parameters needed in filtering method.
     ann_exprs = {}
-    if gen_anc_ht is not None:
-        ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
+    ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
     if gen_anc_scores_ht is not None:
         ann_exprs["gen_anc_scores_expr"] = gen_anc_scores_ht[sample_qc_ht.key].scores
 
@@ -117,6 +116,7 @@ def apply_filter(
             "'nearest_neighbors'!"
         )
 
+    # TODO: Decide if this is still relevant
     # Apply the n_singleton median filter for the r_ti_tv_singleton filter.
     if apply_r_ti_tv_singleton_filter:
         ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
@@ -186,8 +186,8 @@ def apply_stratified_filtering_method(
 def apply_regressed_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
-    gen_anc_scores_expr: Optional[hl.expr.ArrayExpression] = None,
-    regress_gen_anc_n_pcs: Optional[int] = 30,
+    gen_anc_scores_expr: hl.expr.ArrayExpression,
+    regress_gen_anc_n_pcs: int = 30,
     include_unreleasable_in_regression: bool = False,
     include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
@@ -208,7 +208,7 @@ def apply_regressed_filtering_method(
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
-    :param gen_anc_scores_expr: Optional expression with genetic ancestry PCA scores.
+    :param gen_anc_scores_expr: Expression with genetic ancestry PCA scores.
     :param regress_gen_anc_n_pcs: Number of genetic ancestry PCA scores to use in regression.
         Default is 30.
     :param include_unreleasable_in_regression: Whether to include unreleasable samples
