@@ -43,8 +43,6 @@ def get_sample_qc_ht(
 
     The following modifications are made:
         - Add 'r_snp_indel' metric
-        - Convert each element of `bases_over_dp_threshold` to a top level annotation
-          with 'bases_dp_over_{dp_threshold}'
         - Exclude hard filtered samples
         - Sample 1% of the dataset if `test` is True
 
