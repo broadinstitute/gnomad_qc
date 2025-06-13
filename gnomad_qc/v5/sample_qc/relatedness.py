@@ -71,7 +71,7 @@ def print_cuking_command(
         --accelerator-type={accelerator_type} \\
         --command="cuking \\
         --input_uri="{cuking_input_path}" \\
-        --output_uri=f"{cuking_output_path}/out_split_${{SHARD_INDEX}}.parquet" \\
+        --output_uri="{cuking_output_path}/out_split_${{SHARD_INDEX}}.parquet" \\
         --requester_pays_project={requester_pays_project} \\
         --kin_threshold={min_emission_kinship} \\
         --split_factor=${{SPLIT_FACTOR}} \\
