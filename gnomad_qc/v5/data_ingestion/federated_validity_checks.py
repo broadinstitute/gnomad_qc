@@ -109,8 +109,18 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
 
     # Check that specified row annotations are present.
     row_fields = array_struct_annotations + config["struct_annotations_for_missingness"]
+
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
+
+    # Check that specified info annotations are present.
+    if config.get("check_mono_and_only_het"):
+        info_annotations = ["monoallelic", "only_het"]
+        info_fields = list(ht.info.dtype)
+        missing_info_fields = [f for f in info_annotations if f not in info_fields]
+        missing_fields["missing_info_fields"] = missing_info_fields
+    else:
+        missing_fields["missing_info_fields"] = []
 
     # Check that freq_annotations_to_sum values are present in the 'freq' struct.
     freq_fields = list(ht.freq.dtype.element_type)
@@ -130,7 +140,8 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     # Check that specified subsets are present as values within the
     # freq_meta_expr subset key.
     subset_values = {i["subset"] for i in freq_meta_list if "subset" in i}
-    missing_subsets = set(config["subsets"]) - subset_values
+    subsets = [subset for subset in config.get("subsets", []) if subset]
+    missing_subsets = set(subsets) - subset_values
     missing_fields["missing_subsets"] = missing_subsets
 
     if any(missing_fields.values()):
@@ -208,6 +219,7 @@ def validate_federated_data(
     subsets: List[str] = None,
     variant_filter_field: str = "AS_VQSR",
     problematic_regions: List[str] = ["lcr", "non_par", "segdup"],
+    site_gt_check_expr: Dict[str, hl.expr.BooleanExpression] = None,
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -223,6 +235,7 @@ def validate_federated_data(
     :param subsets: List of sample subsets.
     :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "AS_VQSR".
     :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
+    :param site_gt_check_expr: Optional dictionary of strings and boolean expressions typically used to log how many monoallelic or 100% heterozygous sites are in the Table.
     :return: None
     """
     # Summarize variants and check that all contigs exist.
@@ -236,6 +249,7 @@ def validate_federated_data(
         variant_filter_field=variant_filter_field,
         problematic_regions=problematic_regions,
         single_filter_count=True,
+        site_gt_check_expr=site_gt_check_expr,
     )
 
     # Check for missingness.
@@ -267,7 +281,7 @@ def validate_federated_data(
     sum_group_callstats(
         t=ht,
         sexes={i["sex"] for i in hl.eval(freq_meta_expr) if "sex" in i},
-        subsets=[""],
+        subsets=subsets,
         gen_anc_groups={
             i[gen_anc_label_name]
             for i in hl.eval(freq_meta_expr)
@@ -295,7 +309,7 @@ def validate_federated_data(
     logger.info("Checking raw and adj callstats...")
     check_raw_and_adj_callstats(
         t=ht,
-        subsets=[""],
+        subsets=subsets,
         verbose=verbose,
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
@@ -514,7 +528,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         freq_meta_sample_count=freq_meta_sample_count,
-        faf_meta_sample_count=freq_meta_sample_count,
+        faf_meta_sample_count=faf_meta_sample_count,
     )
 
     # Add in retired terms to globals.
@@ -568,6 +582,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     )
 
     ht = ht.annotate(grpmax=grpmax, fafmax=fafmax)
+    # Add monoallelic and only_het annotations.
+    ht = ht.annotate(monoallelic=hl.rand_bool(0.50), only_het=hl.rand_bool(0.10))
     ht = ht.key_by("locus", "alleles")
 
     return ht
@@ -688,7 +704,24 @@ def main(args):
             for field in ALLELE_TYPE_FIELDS:
                 info_dict[field] = ht["allele_info"][f"{field}"]
 
+        # Add monoallelic and only_het fields to info dict.
+        if "monoallelic" in ht.row:
+            info_dict["monoallelic"] = ht["monoallelic"]
+        if "only_het" in ht.row:
+            info_dict["only_het"] = ht["only_het"]
+
         ht = ht.annotate(info=ht.info.annotate(**info_dict))
+
+        # If config specifies to check for monoallelic and only heterozygous sites,
+        # create the site_gt_check_expr to pass to validate_federated_data.
+        if config.get("check_mono_and_only_het"):
+            site_gt_check_expr = {
+                "monoallelic": ht.info.monoallelic,
+                "only_het": ht.info.only_het,
+            }
+        else:
+            site_gt_check_expr = None
+        # TODO: Create resource functions when know organization of federated data.
 
         validate_federated_data(
             ht=ht,
@@ -704,6 +737,7 @@ def main(args):
             subsets=config["subsets"],
             variant_filter_field=config["variant_filter_field"],
             problematic_regions=REGION_FLAG_FIELDS,
+            site_gt_check_expr=site_gt_check_expr,
         )
 
         handler.flush()
@@ -773,8 +807,8 @@ if __name__ == "__main__":
             "nhomalt_metric: Name of metric denoting homozygous alternate count."
             "subsets: List of sample subsets to include for the subset validity check."
             "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
+            "check_mono_and_only_het: Boolean indicating whether to check for monoallelic and 100 percent heterozygous sites in the Table ('monoallelic' and 'only_het' annotations must be present)."
         ),
-        required=True,
         type=str,
     )
     parser.add_argument(
