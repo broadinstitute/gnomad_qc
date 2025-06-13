@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.identify_trios &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.identify_trios</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.identify_trios</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to identify trios from relatedness data and filter based on Mendel errors and de novos.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">Counter</span><span class="p">,</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.relatedness</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">create_fake_pedigree</span><span class="p">,</span>
+    <span class="n">filter_to_trios</span><span class="p">,</span>
+    <span class="n">get_duplicated_samples</span><span class="p">,</span>
+    <span class="n">get_duplicated_samples_ht</span><span class="p">,</span>
+    <span class="n">infer_families</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">SEXES</span>
+<span class="kn">from</span> <span class="nn">hail.utils.misc</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">get_gnomad_v4_vds</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta</span><span class="p">,</span> <span class="n">project_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">dense_trio_mt</span><span class="p">,</span>
+    <span class="n">duplicates</span><span class="p">,</span>
+    <span class="n">finalized_outlier_filtering</span><span class="p">,</span>
+    <span class="n">interval_qc_pass</span><span class="p">,</span>
+    <span class="n">ped_filter_param_json_path</span><span class="p">,</span>
+    <span class="n">ped_mendel_errors</span><span class="p">,</span>
+    <span class="n">pedigree</span><span class="p">,</span>
+    <span class="n">platform</span><span class="p">,</span>
+    <span class="n">relatedness</span><span class="p">,</span>
+    <span class="n">sample_rankings</span><span class="p">,</span>
+    <span class="n">sex</span><span class="p">,</span>
+    <span class="n">trios</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;identify_trios&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="families_to_trios"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.families_to_trios">[docs]</a><span class="k">def</span> <span class="nf">families_to_trios</span><span class="p">(</span><span class="n">ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a Pedigree with families to a Pedigree with only one random trio per family.</span>
+
+<span class="sd">    :param ped: Pedigree with families.</span>
+<span class="sd">    :param seed: Random seed for choosing trio to keep from each family. Default is 24.</span>
+<span class="sd">    :return: Pedigree with only one trio per family.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">trios_per_fam</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">list</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">trio</span> <span class="ow">in</span> <span class="n">ped</span><span class="o">.</span><span class="n">trios</span><span class="p">:</span>
+        <span class="n">trios_per_fam</span><span class="p">[</span><span class="n">trio</span><span class="o">.</span><span class="n">fam_id</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">trio</span><span class="p">)</span>
+
+    <span class="n">message</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="sa">f</span><span class="s2">&quot;Found a total of </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">ped</span><span class="o">.</span><span class="n">trios</span><span class="p">)</span><span class="si">}</span><span class="s2"> trios in </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">trios_per_fam</span><span class="p">)</span><span class="si">}</span><span class="s2"> families:&quot;</span>
+    <span class="p">]</span>
+    <span class="k">for</span> <span class="n">n_trios</span><span class="p">,</span> <span class="n">n_fam</span> <span class="ow">in</span> <span class="n">Counter</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trios_per_fam</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">message</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_fam</span><span class="si">}</span><span class="s2"> with </span><span class="si">{</span><span class="n">n_trios</span><span class="si">}</span><span class="s2"> trios.&quot;</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">message</span><span class="p">))</span>
+
+    <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">(</span><span class="n">trios</span><span class="o">=</span><span class="p">[</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">trios_per_fam</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span></div>
+
+
+<div class="viewcode-block" id="filter_relatedness_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.filter_relatedness_ht">[docs]</a><span class="k">def</span> <span class="nf">filter_relatedness_ht</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">filter_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter relatedness Table to only include pairs of samples that are both exomes and not QC-filtered.</span>
+
+<span class="sd">    :param ht: Relatedness Table.</span>
+<span class="sd">    :param filter_ht: Outlier filtering Table.</span>
+<span class="sd">    :return: Filtered relatedness Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">((</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="n">i</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">j</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+
+    <span class="c1"># Remove all pairs with a QC-filtered sample</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">filter_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">outlier_filtered</span> <span class="o">|</span> <span class="n">filter_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">outlier_filtered</span><span class="p">,</span>
+        <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="platform_table_to_dict"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.platform_table_to_dict">[docs]</a><span class="k">def</span> <span class="nf">platform_table_to_dict</span><span class="p">(</span><span class="n">platform_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert a Table with platform assignments to a sample:platform dictionary.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        This function assumes that the Table has a `qc_platform` field.</span>
+
+<span class="sd">    :param platform_ht: Table with platform assignments.</span>
+<span class="sd">    :return: Sample:platform dictionary.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span>
+        <span class="n">platform_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect</span><span class="p">((</span><span class="n">platform_ht</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">platform_ht</span><span class="o">.</span><span class="n">qc_platform</span><span class="p">)))</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_create_fake_pedigree"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.run_create_fake_pedigree">[docs]</a><span class="k">def</span> <span class="nf">run_create_fake_pedigree</span><span class="p">(</span>
+    <span class="n">ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">filter_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">platform_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">fake_fam_prop</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate a fake Pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.</span>
+
+<span class="sd">    :param ped: Pedigree to use for generating fake Pedigree.</span>
+<span class="sd">    :param filter_ht: Outlier filtering Table.</span>
+<span class="sd">    :param platform_ht: Optional table with platform assignments. Default is None.</span>
+<span class="sd">    :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake</span>
+<span class="sd">        Pedigree. Default is 0.1.</span>
+<span class="sd">    :return: Fake Pedigree.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">platform_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">platform_stratification</span> <span class="o">=</span> <span class="n">platform_table_to_dict</span><span class="p">(</span><span class="n">platform_ht</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">platform_stratification</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="n">n_fake_trios</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fake_fam_prop</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">ped</span><span class="o">.</span><span class="n">complete_trios</span><span class="p">()))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating fake Pedigree with </span><span class="si">%i</span><span class="s2"> trios.&quot;</span><span class="p">,</span> <span class="n">n_fake_trios</span><span class="p">)</span>
+    <span class="n">fake_ped</span> <span class="o">=</span> <span class="n">create_fake_pedigree</span><span class="p">(</span>
+        <span class="n">n</span><span class="o">=</span><span class="n">n_fake_trios</span><span class="p">,</span>
+        <span class="n">sample_list</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span>
+            <span class="n">filter_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_ht</span><span class="o">.</span><span class="n">outlier_filtered</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="p">),</span>
+        <span class="n">real_pedigree</span><span class="o">=</span><span class="n">ped</span><span class="p">,</span>
+        <span class="n">sample_list_stratification</span><span class="o">=</span><span class="n">platform_stratification</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">fake_ped</span></div>
+
+
+<div class="viewcode-block" id="run_mendel_errors"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.run_mendel_errors">[docs]</a><span class="k">def</span> <span class="nf">run_mendel_errors</span><span class="p">(</span>
+    <span class="n">ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">fake_ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">interval_qc_pass_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run Hail&#39;s `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.</span>
+
+<span class="sd">    :param ped: Inferred Pedigree.</span>
+<span class="sd">    :param fake_ped: Fake Pedigree.</span>
+<span class="sd">    :param interval_qc_pass_ht: Optional interval QC pass Table that contains an</span>
+<span class="sd">        &#39;interval_qc_pass&#39; annotation indicating whether the interval passes</span>
+<span class="sd">        high-quality criteria. This annotation is used to filter the MatrixTable before</span>
+<span class="sd">        running `mendel_errors`. Default is None.</span>
+<span class="sd">    :param test: Whether to run on five partitions of the VDS for testing. Default is</span>
+<span class="sd">        False.</span>
+<span class="sd">    :return: Table with Mendel errors on chr20.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">merged_ped</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">(</span><span class="n">trios</span><span class="o">=</span><span class="n">ped</span><span class="o">.</span><span class="n">trios</span> <span class="o">+</span> <span class="n">fake_ped</span><span class="o">.</span><span class="n">trios</span><span class="p">)</span>
+    <span class="n">ped_samples</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">merged_ped</span><span class="o">.</span><span class="n">trios</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">pat_id</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">mat_id</span><span class="p">]]</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sub-setting VDS to %i samples.&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">ped_samples</span><span class="p">))</span>
+    <span class="c1"># Partition VDS on read to a larger number of partitions to speed up computation.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">n_partitions</span><span class="o">=</span><span class="mi">150000</span><span class="p">,</span> <span class="n">remove_dead_alleles</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">)),</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">)),</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="s2">&quot;chr20&quot;</span><span class="p">)</span>
+
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">ped_samples</span><span class="p">)</span>
+    <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">select_entries</span><span class="p">(</span><span class="s2">&quot;LA&quot;</span><span class="p">,</span> <span class="s2">&quot;LGT&quot;</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">interval_qc_pass_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">interval_qc_pass_ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">)</span>
+
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">sparse_split_multi</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">filter_changed_loci</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Running Mendel errors for %s trios.&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_ped</span><span class="o">.</span><span class="n">trios</span><span class="p">))</span>
+    <span class="n">mendel_err_ht</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">mendel_errors</span><span class="p">(</span><span class="n">mt</span><span class="p">[</span><span class="s2">&quot;GT&quot;</span><span class="p">],</span> <span class="n">merged_ped</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mendel_err_ht</span></div>
+
+
+<div class="viewcode-block" id="filter_ped_to_same_platform"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.filter_ped_to_same_platform">[docs]</a><span class="k">def</span> <span class="nf">filter_ped_to_same_platform</span><span class="p">(</span>
+    <span class="n">ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">platform_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter a Pedigree to only trios where all samples are from the same platform.</span>
+
+<span class="sd">    :param ped: Pedigree to filter.</span>
+<span class="sd">    :param platform_ht: Table with platform assignments.</span>
+<span class="sd">    :return: Filtered Pedigree.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">sample_to_platform</span> <span class="o">=</span> <span class="n">platform_table_to_dict</span><span class="p">(</span><span class="n">platform_ht</span><span class="p">)</span>
+
+    <span class="n">all_trios</span> <span class="o">=</span> <span class="n">ped</span><span class="o">.</span><span class="n">trios</span>
+    <span class="n">filtered_trios</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">trio</span> <span class="ow">in</span> <span class="n">all_trios</span><span class="p">:</span>
+        <span class="n">trio_ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">trio</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">trio</span><span class="o">.</span><span class="n">pat_id</span><span class="p">,</span> <span class="n">trio</span><span class="o">.</span><span class="n">mat_id</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">({</span><span class="n">sample_to_platform</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">trio_ids</span><span class="p">})</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">filtered_trios</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">trio</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Found </span><span class="si">%i</span><span class="s2"> trios (out of </span><span class="si">%i</span><span class="s2">) with all samples having the same platform &quot;</span>
+        <span class="s2">&quot;assignment.&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">filtered_trios</span><span class="p">),</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">all_trios</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">(</span><span class="n">filtered_trios</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="filter_ped"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.filter_ped">[docs]</a><span class="k">def</span> <span class="nf">filter_ped</span><span class="p">(</span>
+    <span class="n">ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">mendel_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">max_mendel_z</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">max_de_novo_z</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">stratify_ukb</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">max_mendel_n</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ukb_max_mendel_n</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">max_de_novo_n</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ukb_max_de_novo_n</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter a Pedigree based on Mendel errors and de novo metrics.</span>
+
+<span class="sd">    :param ped: Pedigree to filter.</span>
+<span class="sd">    :param mendel_ht: Table with Mendel errors.</span>
+<span class="sd">    :param max_mendel_z: Optional maximum z-score for Mendel error metrics. Default is 3.</span>
+<span class="sd">    :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.</span>
+<span class="sd">    :param stratify_ukb: Whether to stratify z-score cutoffs by trio UK Biobank status.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :param max_mendel_n: Optional maximum Mendel error count. If specified and</span>
+<span class="sd">        `ukb_max_mendel_n` is not, `max_mendel_n` will be used for all samples. If both</span>
+<span class="sd">        `max_mendel_n` and `ukb_max_mendel_n` are specified, max_mendel_n` will be used</span>
+<span class="sd">        for non-UKB samples and `ukb_max_mendel_n` will be used for UKB samples.</span>
+<span class="sd">        Default is None.</span>
+<span class="sd">    :param ukb_max_mendel_n: Optional maximum Mendel error count for trios in UK</span>
+<span class="sd">        Biobank. If specified, `max_mendel_n` must also be specified for non-UKB</span>
+<span class="sd">        samples. If not specified, but `max_mendel_n` is, `max_mendel_n` will be used</span>
+<span class="sd">        for all samples. Default is None.</span>
+<span class="sd">    :param max_de_novo_n: Optional maximum de novo count. If specified and</span>
+<span class="sd">        `ukb_max_de_novo_n` is not, `max_de_novo_n` will be used for all samples. If</span>
+<span class="sd">        both `max_de_novo_n` and `ukb_max_de_novo_n` are specified, max_de_novo_n` will</span>
+<span class="sd">        be used for non-UKB samples and `ukb_max_de_novo_n` will be used for UKB</span>
+<span class="sd">        samples. Default is None.</span>
+<span class="sd">    :param ukb_max_de_novo_n: Optional maximum de novo count for trios in UK Biobank.</span>
+<span class="sd">        If specified, `max_de_novo_n` must also be specified for non-UKB samples. If not</span>
+<span class="sd">        specified, but `max_de_novo_n` is, `max_de_novo_n` will be used for all samples.</span>
+<span class="sd">        Default is None.</span>
+<span class="sd">    :return: Tuple of filtered Pedigree and dictionary of filtering parameters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ukb_max_mendel_n</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">max_mendel_n</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`max_mendel_n` must be specified if `ukb_max_mendel_n` is.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ukb_max_de_novo_n</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">max_de_novo_n</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;`max_de_novo_n` must be specified if `ukb_max_de_novo_n` is.&quot;</span><span class="p">)</span>
+
+    <span class="n">cutoffs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;mendel&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">max_mendel_z</span><span class="p">,</span>
+            <span class="p">(</span>
+                <span class="p">{</span><span class="s2">&quot;UKB&quot;</span><span class="p">:</span> <span class="n">ukb_max_mendel_n</span><span class="p">,</span> <span class="s2">&quot;non-UKB&quot;</span><span class="p">:</span> <span class="n">max_mendel_n</span><span class="p">}</span>
+                <span class="k">if</span> <span class="n">ukb_max_mendel_n</span>
+                <span class="k">else</span> <span class="n">max_mendel_n</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;de_novo&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">max_de_novo_z</span><span class="p">,</span>
+            <span class="p">(</span>
+                <span class="p">{</span><span class="s2">&quot;UKB&quot;</span><span class="p">:</span> <span class="n">ukb_max_de_novo_n</span><span class="p">,</span> <span class="s2">&quot;non-UKB&quot;</span><span class="p">:</span> <span class="n">max_de_novo_n</span><span class="p">}</span>
+                <span class="k">if</span> <span class="n">ukb_max_de_novo_n</span>
+                <span class="k">else</span> <span class="n">max_de_novo_n</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Check that only one of `max_mendel_z` or `max_mendel_n` and one of `max_de_novo_z`</span>
+    <span class="c1"># or `max_de_novo_n` are set. If both are set favor using the max number over max</span>
+    <span class="c1"># std dev.</span>
+    <span class="n">cutoffs_by_method</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="p">(</span><span class="n">max_z</span><span class="p">,</span> <span class="n">max_n</span><span class="p">)</span> <span class="ow">in</span> <span class="n">cutoffs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">max_n</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">max_z</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                    <span class="s2">&quot;Both `max_</span><span class="si">%s</span><span class="s2">_z` and `max_</span><span class="si">%s</span><span class="s2">_n` are set. Using `max_</span><span class="si">%s</span><span class="s2">_n` of </span><span class="si">%d%s</span><span class="s2">!&quot;</span><span class="p">,</span>
+                    <span class="o">*</span><span class="p">(</span><span class="n">m</span><span class="p">,)</span> <span class="o">*</span> <span class="mi">3</span><span class="p">,</span>
+                    <span class="n">max_n</span><span class="p">[</span><span class="s2">&quot;non-UKB&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">max_n</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">max_n</span><span class="p">,</span>
+                    <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot; and `ukb_max_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_n` of </span><span class="si">{</span><span class="n">max_n</span><span class="p">[</span><span class="s1">&#39;UKB&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+                        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">max_n</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span>
+                        <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+                    <span class="p">),</span>
+                <span class="p">)</span>
+            <span class="n">cutoffs_by_method</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_n</span>
+        <span class="k">elif</span> <span class="n">max_z</span><span class="p">:</span>
+            <span class="n">cutoffs_by_method</span><span class="p">[</span><span class="s2">&quot;stdev&quot;</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_z</span>
+
+    <span class="c1"># Filter Mendel errors Table to only errors in inferred families not from the</span>
+    <span class="c1"># fake Pedigree.</span>
+    <span class="n">mendel_ht</span> <span class="o">=</span> <span class="n">mendel_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">mendel_ht</span><span class="o">.</span><span class="n">fam_id</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;fake&quot;</span><span class="p">),</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="c1"># Aggregate Mendel errors Table by sample to get per sample mendel error and</span>
+    <span class="c1"># de novo counts.</span>
+    <span class="n">mendel_by_s</span> <span class="o">=</span> <span class="n">mendel_ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">mendel_ht</span><span class="o">.</span><span class="n">s</span><span class="p">,</span> <span class="n">mendel_ht</span><span class="o">.</span><span class="n">fam_id</span><span class="p">)</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">n_mendel</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">(),</span>
+        <span class="c1"># Code 2 is parents are hom ref, child is het.</span>
+        <span class="n">n_de_novo</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">mendel_ht</span><span class="o">.</span><span class="n">mendel_code</span> <span class="o">==</span> <span class="mi">2</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">mendel_by_s</span> <span class="o">=</span> <span class="n">mendel_by_s</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">ukb</span><span class="o">=</span><span class="n">mendel_by_s</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;UKB&quot;</span><span class="p">))</span>
+    <span class="n">mendel_by_s</span> <span class="o">=</span> <span class="n">mendel_by_s</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;filter_ped&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="c1"># Get aggregate stats (need mean and stdev) for each metric with std dev</span>
+    <span class="c1"># cutoffs set.</span>
+    <span class="n">z_stats_expr</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">cutoffs_by_method</span><span class="p">[</span><span class="s2">&quot;stdev&quot;</span><span class="p">]:</span>
+        <span class="n">stats_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">stats</span><span class="p">(</span><span class="n">mendel_by_s</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;n_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">])</span>
+        <span class="c1"># If stratifying by UKB status, get stats for UKB and non-UKB separately.</span>
+        <span class="k">if</span> <span class="n">stratify_ukb</span><span class="p">:</span>
+            <span class="n">stats_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="n">mendel_by_s</span><span class="o">.</span><span class="n">ukb</span><span class="p">,</span> <span class="n">stats_expr</span><span class="p">)</span>
+        <span class="n">z_stats_expr</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="n">stats_expr</span>
+
+    <span class="n">z_stats</span> <span class="o">=</span> <span class="n">mendel_by_s</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">z_stats_expr</span><span class="p">))</span>
+    <span class="c1"># Build filter expression to filter metrics by requested metrics and methods.</span>
+    <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">cutoffs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">max_z</span> <span class="ow">in</span> <span class="n">cutoffs_by_method</span><span class="p">[</span><span class="s2">&quot;stdev&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">cutoffs</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;max_z&quot;</span><span class="p">:</span> <span class="n">max_z</span><span class="p">}</span>
+        <span class="n">log_expr</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;Filtering </span><span class="si">%s</span><span class="s2">trios with more than </span><span class="si">%f</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> errors (</span><span class="si">%i</span><span class="s2"> standard deviations &quot;</span>
+            <span class="s2">&quot;from the mean)&quot;</span>
+        <span class="p">)</span>
+        <span class="c1"># If stratifying by UKB status, get cutoffs for UKB and non-UKB separately.</span>
+        <span class="k">if</span> <span class="n">stratify_ukb</span><span class="p">:</span>
+            <span class="n">cutoffs</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="s2">&quot;max_n&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="n">ukb_filter_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">ukb</span> <span class="ow">in</span> <span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">]:</span>
+                <span class="n">max_n</span> <span class="o">=</span> <span class="n">z_stats</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="n">ukb</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span> <span class="o">+</span> <span class="n">max_z</span> <span class="o">*</span> <span class="n">z_stats</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="n">ukb</span><span class="p">]</span><span class="o">.</span><span class="n">stdev</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                    <span class="n">log_expr</span><span class="p">,</span>
+                    <span class="s2">&quot;UKB &quot;</span> <span class="k">if</span> <span class="n">ukb</span> <span class="k">else</span> <span class="s2">&quot;non-UKB &quot;</span><span class="p">,</span>
+                    <span class="n">max_n</span><span class="p">,</span>
+                    <span class="n">m</span><span class="p">,</span>
+                    <span class="n">max_z</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">ukb_filter_expr</span> <span class="o">|=</span> <span class="p">(</span><span class="n">mendel_by_s</span><span class="o">.</span><span class="n">ukb</span> <span class="o">==</span> <span class="n">ukb</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span>
+                    <span class="n">mendel_by_s</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;n_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_n</span>
+                <span class="p">)</span>
+                <span class="n">cutoffs</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="s2">&quot;max_n&quot;</span><span class="p">][</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">ukb</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;non-&#39;</span><span class="si">}</span><span class="s2">UKB&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_n</span>
+            <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">ukb_filter_expr</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">max_n</span> <span class="o">=</span> <span class="n">z_stats</span><span class="p">[</span><span class="n">m</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span> <span class="o">+</span> <span class="n">max_z</span> <span class="o">*</span> <span class="n">z_stats</span><span class="p">[</span><span class="n">m</span><span class="p">]</span><span class="o">.</span><span class="n">stdev</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_expr</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">max_n</span><span class="p">,</span> <span class="n">m</span><span class="p">,</span> <span class="n">max_z</span><span class="p">)</span>
+            <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">mendel_by_s</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;n_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_n</span>
+            <span class="n">cutoffs</span><span class="p">[</span><span class="n">m</span><span class="p">][</span><span class="s2">&quot;max_n&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_n</span>
+
+    <span class="k">for</span> <span class="n">m</span><span class="p">,</span> <span class="n">max_n</span> <span class="ow">in</span> <span class="n">cutoffs_by_method</span><span class="p">[</span><span class="s2">&quot;count&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">log_expr</span> <span class="o">=</span> <span class="s2">&quot;Filtering </span><span class="si">%s</span><span class="s2">trios with more than </span><span class="si">%d</span><span class="s2"> </span><span class="si">%s</span><span class="s2"> errors.&quot;</span>
+        <span class="c1"># If stratifying by UKB status, use different cutoffs for UKB and non-UKB.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">max_n</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">ukb_filter_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">ukb</span> <span class="ow">in</span> <span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">]:</span>
+                <span class="n">ukb_max_n</span> <span class="o">=</span> <span class="n">max_n</span><span class="p">[</span><span class="s2">&quot;UKB&quot;</span> <span class="k">if</span> <span class="n">ukb</span> <span class="k">else</span> <span class="s2">&quot;non-UKB&quot;</span><span class="p">]</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_expr</span><span class="p">,</span> <span class="s2">&quot;UKB &quot;</span> <span class="k">if</span> <span class="n">ukb</span> <span class="k">else</span> <span class="s2">&quot;non-UKB &quot;</span><span class="p">,</span> <span class="n">ukb_max_n</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span>
+                <span class="n">ukb_filter_expr</span> <span class="o">|=</span> <span class="p">(</span><span class="n">mendel_by_s</span><span class="o">.</span><span class="n">ukb</span> <span class="o">==</span> <span class="n">ukb</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span>
+                    <span class="n">mendel_by_s</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;n_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">ukb_max_n</span>
+                <span class="p">)</span>
+            <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">ukb_filter_expr</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_expr</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">max_n</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span>
+            <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">mendel_by_s</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;n_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_n</span>
+        <span class="n">cutoffs</span><span class="p">[</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;max_n&quot;</span><span class="p">:</span> <span class="n">max_n</span><span class="p">}</span>
+
+    <span class="c1"># Filter inferred Pedigree to only trios that pass filters defined by `filter_expr`.</span>
+    <span class="n">trios</span> <span class="o">=</span> <span class="n">mendel_by_s</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect</span><span class="p">(</span><span class="n">mendel_by_s</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Found </span><span class="si">%i</span><span class="s2"> trios passing filters.&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">trios</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">([</span><span class="n">trio</span> <span class="k">for</span> <span class="n">trio</span> <span class="ow">in</span> <span class="n">ped</span><span class="o">.</span><span class="n">trios</span> <span class="k">if</span> <span class="n">trio</span><span class="o">.</span><span class="n">s</span> <span class="ow">in</span> <span class="n">trios</span><span class="p">]),</span> <span class="n">cutoffs</span></div>
+
+
+<div class="viewcode-block" id="create_dense_trio_mt"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.create_dense_trio_mt">[docs]</a><span class="k">def</span> <span class="nf">create_dense_trio_mt</span><span class="p">(</span>
+    <span class="n">fam_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">meta_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">releasable_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">naive_coalesce_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a dense MatrixTable for high quality trios.</span>
+
+<span class="sd">    :param fam_ht: Table with family information.</span>
+<span class="sd">    :param meta_ht: Table with metadata information.</span>
+<span class="sd">    :param releasable_only: Whether to only include trios that are releasable. Default</span>
+<span class="sd">        is True.</span>
+<span class="sd">    :param test: Whether to filter to chr20 for testing. Default is False.</span>
+<span class="sd">    :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS</span>
+<span class="sd">        to. Default is None.</span>
+<span class="sd">    :return: Dense MatrixTable with high quality trios.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">high_quality</span>
+    <span class="k">if</span> <span class="n">releasable_only</span><span class="p">:</span>
+        <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">releasable</span>
+
+    <span class="c1"># Filter the metadata table to only samples in high quality and releasable trios.</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">)</span>
+    <span class="n">fam_ht</span> <span class="o">=</span> <span class="n">fam_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">id</span><span class="p">])</span>
+        <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">pat_id</span><span class="p">])</span>
+        <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">fam_ht</span><span class="o">.</span><span class="n">mat_id</span><span class="p">])</span>
+    <span class="p">)</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">filter_to_trios</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">,</span> <span class="n">fam_ht</span><span class="p">)</span>
+
+    <span class="c1"># Get the gnomAD VDS filtered to high quality releasable trios.</span>
+    <span class="c1"># Using &#39;entries_to_keep&#39; to keep all entries that are not `gvcf_info` because it</span>
+    <span class="c1"># is likely not needed, and removal will reduce the size of the dense MatrixTable.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+        <span class="n">high_quality_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">chrom</span><span class="o">=</span><span class="s2">&quot;chr20&quot;</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">filter_samples_ht</span><span class="o">=</span><span class="n">meta_ht</span><span class="p">,</span>
+        <span class="n">entries_to_keep</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;LA&quot;</span><span class="p">,</span> <span class="s2">&quot;LGT&quot;</span><span class="p">,</span> <span class="s2">&quot;LAD&quot;</span><span class="p">,</span> <span class="s2">&quot;LPGT&quot;</span><span class="p">,</span> <span class="s2">&quot;LPL&quot;</span><span class="p">,</span> <span class="s2">&quot;DP&quot;</span><span class="p">,</span> <span class="s2">&quot;GQ&quot;</span><span class="p">,</span> <span class="s2">&quot;SB&quot;</span><span class="p">],</span>
+        <span class="n">naive_coalesce_partitions</span><span class="o">=</span><span class="n">naive_coalesce_partitions</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_trio_resources"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.get_trio_resources">[docs]</a><span class="k">def</span> <span class="nf">get_trio_resources</span><span class="p">(</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">dense_trio_mt_releasable_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the trio identification pipeline.</span>
+
+<span class="sd">    :param overwrite: Whether to overwrite existing resources.</span>
+<span class="sd">    :param test: Whether to use test resources.</span>
+<span class="sd">    :param dense_trio_mt_releasable_only: Whether to only include trios that are</span>
+<span class="sd">        releasable in the dense trio MT. Default is True.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        trio identification pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Adding resources from previous scripts that are used by multiple steps in the</span>
+    <span class="c1"># trio identification pipeline.</span>
+    <span class="n">rel_ht</span> <span class="o">=</span> <span class="n">relatedness</span><span class="p">()</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">finalized_outlier_filtering</span><span class="p">()</span>
+    <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">platform</span>
+
+    <span class="n">pipeline_resources</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;platform_inference.py --assign-platforms&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;platform_ht&quot;</span><span class="p">:</span> <span class="n">platform_ht</span><span class="p">},</span>
+        <span class="s2">&quot;outlier_filtering.py --create-finalized-outlier-filter&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;filter_ht&quot;</span><span class="p">:</span> <span class="n">filter_ht</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;relatedness.py --finalize-relatedness-ht&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rel_ht&quot;</span><span class="p">:</span> <span class="n">rel_ht</span><span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Initialize trio identification pipeline resource collection.</span>
+    <span class="n">trio_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;identify_trios&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_resources</span><span class="o">=</span><span class="n">pipeline_resources</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the trio identification pipeline.</span>
+    <span class="n">identify_duplicates</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--identify-duplicates&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;dup_ht&quot;</span><span class="p">:</span> <span class="n">duplicates</span><span class="p">()},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;relatedness.py --compute-related-samples-to-drop&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;rank_ht&quot;</span><span class="p">:</span> <span class="n">sample_rankings</span><span class="p">()</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">infer_families</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--infer-families&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;raw_ped&quot;</span><span class="p">:</span> <span class="n">pedigree</span><span class="p">(</span><span class="n">finalized</span><span class="o">=</span><span class="kc">False</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">identify_duplicates</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;sex_inference.py --annotate-sex-karyotype&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;sex_ht&quot;</span><span class="p">:</span> <span class="n">sex</span><span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">create_fake_pedigree</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-fake-pedigree&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;fake_ped&quot;</span><span class="p">:</span> <span class="n">pedigree</span><span class="p">(</span><span class="n">finalized</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fake</span><span class="o">=</span><span class="kc">True</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">infer_families</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">run_mendel_errors</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--run-mendel-errors&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;mendel_err_ht&quot;</span><span class="p">:</span> <span class="n">ped_mendel_errors</span><span class="p">(</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">infer_families</span><span class="p">,</span> <span class="n">create_fake_pedigree</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;interval_qc.py --generate-interval-qc-pass-ht&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;interval_qc_pass_ht&quot;</span><span class="p">:</span> <span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-ped&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;final_ped&quot;</span><span class="p">:</span> <span class="n">pedigree</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+            <span class="s2">&quot;final_trios&quot;</span><span class="p">:</span> <span class="n">trios</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+            <span class="s2">&quot;filter_json&quot;</span><span class="p">:</span> <span class="n">ped_filter_param_json_path</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">infer_families</span><span class="p">,</span> <span class="n">run_mendel_errors</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">create_dense_trio_mt</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-dense-trio-mt&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;dense_trio_mt&quot;</span><span class="p">:</span> <span class="n">dense_trio_mt</span><span class="p">(</span>
+                <span class="n">releasable</span><span class="o">=</span><span class="n">dense_trio_mt_releasable_only</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">finalize_ped</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Finalized metadata HT&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;meta_ht&quot;</span><span class="p">:</span> <span class="n">meta</span><span class="p">()}},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the trio identification pipeline resource collection.</span>
+    <span class="n">trio_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;identify_duplicates&quot;</span><span class="p">:</span> <span class="n">identify_duplicates</span><span class="p">,</span>
+            <span class="s2">&quot;infer_families&quot;</span><span class="p">:</span> <span class="n">infer_families</span><span class="p">,</span>
+            <span class="s2">&quot;create_fake_pedigree&quot;</span><span class="p">:</span> <span class="n">create_fake_pedigree</span><span class="p">,</span>
+            <span class="s2">&quot;run_mendel_errors&quot;</span><span class="p">:</span> <span class="n">run_mendel_errors</span><span class="p">,</span>
+            <span class="s2">&quot;finalize_ped&quot;</span><span class="p">:</span> <span class="n">finalize_ped</span><span class="p">,</span>
+            <span class="s2">&quot;create_dense_trio_mt&quot;</span><span class="p">:</span> <span class="n">create_dense_trio_mt</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">trio_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/identify_trios.html#gnomad_qc.v4.sample_qc.identify_trios.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Identify trios and filter based on Mendel errors and de novos.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/identify_trios.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">trio_resources</span> <span class="o">=</span> <span class="n">get_trio_resources</span><span class="p">(</span><span class="n">overwrite</span><span class="p">,</span> <span class="n">test</span><span class="p">)</span>
+    <span class="n">trio_resources</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+    <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">platform_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">filter_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="c1"># Setting samples in the ELGH2 project to &#39;outlier_filtered&#39; True, so they</span>
+    <span class="c1"># are treated like outlier filtered samples when identifying trios for QC. We</span>
+    <span class="c1"># identified that they do not have the full set of &#39;AS&#39; annotations in &#39;gvcf_info&#39;</span>
+    <span class="c1"># so we need to exclude them from variant QC and release.</span>
+    <span class="n">project_meta_ht</span> <span class="o">=</span> <span class="n">project_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">filter_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">outlier_filtered</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">project_meta_ht</span><span class="p">[</span><span class="n">filter_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">project</span> <span class="o">==</span> <span class="s2">&quot;elgh2&quot;</span><span class="p">,</span>
+            <span class="kc">True</span><span class="p">,</span>
+            <span class="n">filter_ht</span><span class="o">.</span><span class="n">outlier_filtered</span><span class="p">,</span>
+            <span class="n">missing_false</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">rel_ht</span> <span class="o">=</span> <span class="n">filter_relatedness_ht</span><span class="p">(</span><span class="n">trio_resources</span><span class="o">.</span><span class="n">rel_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">filter_ht</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">identify_duplicates</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Selecting best duplicate per duplicated sample set&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">identify_duplicates</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">get_duplicated_samples_ht</span><span class="p">(</span>
+            <span class="n">get_duplicated_samples</span><span class="p">(</span><span class="n">rel_ht</span><span class="p">),</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">rank_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">dup_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">infer_families</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Inferring families&quot;</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">infer_families</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">sex_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">sex_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">sex_ht</span> <span class="o">=</span> <span class="n">sex_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">SEXES</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">sex_ht</span><span class="o">.</span><span class="n">sex_karyotype</span><span class="p">))</span>
+        <span class="n">sex_ht</span> <span class="o">=</span> <span class="n">sex_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">is_female</span><span class="o">=</span><span class="n">sex_ht</span><span class="o">.</span><span class="n">sex_karyotype</span> <span class="o">==</span> <span class="s2">&quot;XX&quot;</span><span class="p">)</span>
+        <span class="n">ped</span> <span class="o">=</span> <span class="n">infer_families</span><span class="p">(</span><span class="n">rel_ht</span><span class="p">,</span> <span class="n">sex_ht</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">dup_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+        <span class="n">ped</span> <span class="o">=</span> <span class="n">filter_ped_to_same_platform</span><span class="p">(</span><span class="n">ped</span><span class="p">,</span> <span class="n">platform_ht</span><span class="p">)</span>
+        <span class="n">ped</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">raw_ped</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_fake_pedigree</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">create_fake_pedigree</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">run_create_fake_pedigree</span><span class="p">(</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">raw_ped</span><span class="o">.</span><span class="n">pedigree</span><span class="p">(),</span>
+            <span class="n">filter_ht</span><span class="p">,</span>
+            <span class="n">platform_ht</span><span class="p">,</span>
+            <span class="n">fake_fam_prop</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">fake_fam_prop</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">fake_ped</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_mendel_errors</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">run_mendel_errors</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">run_mendel_errors</span><span class="p">(</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">raw_ped</span><span class="o">.</span><span class="n">pedigree</span><span class="p">(),</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">fake_ped</span><span class="o">.</span><span class="n">pedigree</span><span class="p">(),</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">interval_qc_pass_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">mendel_err_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">finalize_ped</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">finalize_ped</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">ped</span><span class="p">,</span> <span class="n">filters</span> <span class="o">=</span> <span class="n">filter_ped</span><span class="p">(</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">raw_ped</span><span class="o">.</span><span class="n">pedigree</span><span class="p">(),</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">mendel_err_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">max_mendel_z</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">max_de_novo_z</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">stratify_ukb</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">max_mendel</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">ukb_max_mendel</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">max_de_novo</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">ukb_max_de_novo</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ped</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">final_ped</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">families_to_trios</span><span class="p">(</span><span class="n">ped</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">seed</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">final_trios</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+        <span class="c1"># Pedigree has no globals like a HT so write the parameters to a JSON file.</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Writing finalized pedigree filter dictionary to </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">filter_json</span>
+        <span class="p">)</span>
+        <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">filter_json</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">d</span><span class="p">:</span>
+            <span class="n">d</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">filters</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_dense_trio_mt</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">trio_resources</span><span class="o">.</span><span class="n">create_dense_trio_mt</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="n">create_dense_trio_mt</span><span class="p">(</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">final_ped</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">releasable_only</span><span class="p">,</span>
+            <span class="n">test</span><span class="p">,</span>
+            <span class="n">naive_coalesce_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">naive_coalesce_partitions</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">dense_trio_mt</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Runs mendel errors on only five partitions of the MT.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all data from this subset (default: False).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">identify_dup_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Duplicate identification&quot;</span><span class="p">)</span>
+    <span class="n">identify_dup_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--identify-duplicates&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create a table with duplicate samples indicating which one is the best to&quot;</span>
+            <span class="s2">&quot; use based on the ranking of all samples after sample QC metric outlier &quot;</span>
+            <span class="s2">&quot;filtering (ranking used to determine related samples to drop for the &quot;</span>
+            <span class="s2">&quot;release).&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">inter_fam_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Pedigree inference&quot;</span><span class="p">)</span>
+    <span class="n">inter_fam_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--infer-families&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Infer families and trios using the relatedness Table and duplicate Table.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">fake_ped_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Fake Pedigree creation&quot;</span><span class="p">)</span>
+    <span class="n">fake_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-fake-pedigree&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create a fake Pedigree from unrelated samples in the data for comparison &quot;</span>
+            <span class="s2">&quot;to the inferred Pedigree.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">fake_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--fake-fam-prop&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of fake trios to generate as a proportion of the total number of&quot;</span>
+            <span class="s2">&quot; trios found in the data. Default is 0.1.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">mendel_err_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Mendel error calculation&quot;</span><span class="p">)</span>
+    <span class="n">mendel_err_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-mendel-errors&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Calculate mendel errors for the inferred and fake Pedigrees on chr20.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Pedigree filtering for final Pedigree generation&quot;</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-ped&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create final families/trios ped files by excluding trios where the number &quot;</span>
+            <span class="s2">&quot;of Mendel errors or de novos are outliers. Outliers can be defined as &quot;</span>
+            <span class="s2">&quot;trios that have Mendel errors or de novos higher than those specified in &quot;</span>
+            <span class="s2">&quot;--max-mendel and --max-de-novo respectively. They can also be defined as &quot;</span>
+            <span class="s2">&quot;trios that have Mendel errors or de novos higher than --max-mendel-z or &quot;</span>
+            <span class="s2">&quot;--max-de-novo-z standard deviations above the mean across inferred trios.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-mendel-z&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Max number of standard deviations above the mean Mendel errors across &quot;</span>
+            <span class="s2">&quot;inferred trios to keep a trio. If flag is set, default is 3.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-de-novo-z&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Max number of standard deviations above the mean de novos across inferred &quot;</span>
+            <span class="s2">&quot;trios to keep a trio. If flag is set, default is 3.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--stratify-ukb&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Stratify Mendel errors and de novo standard deviations cutoffs to UKB and &quot;</span>
+            <span class="s2">&quot;non-UKB samples.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-mendel&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum number of raw Mendel errors for real trios. If specified and &quot;</span>
+            <span class="s2">&quot;--ukb-max-mendel is not, --max-mendel will be used for all samples. If &quot;</span>
+            <span class="s2">&quot;both --max-mendel and --ukb-max-mendel are specified, --max-mendel will &quot;</span>
+            <span class="s2">&quot;be used for non-UKB samples and --ukb-max-mendel will be used for UKB &quot;</span>
+            <span class="s2">&quot;samples.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ukb-max-mendel&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum number of raw Mendel errors for real trios in UKB samples. If &quot;</span>
+            <span class="s2">&quot;specified, --max-mendel must also be specified for non-UKB samples. If &quot;</span>
+            <span class="s2">&quot;not specified, but --max-mendel is, --max-mendel will be used for all &quot;</span>
+            <span class="s2">&quot;samples.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--max-de-novo&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum number of raw de novo mutations for real trios. If specified and&quot;</span>
+            <span class="s2">&quot; --ukb-max-de-novo is not, --max-de-novo will be used for all samples. If&quot;</span>
+            <span class="s2">&quot; both --max-de-novo and --ukb-max-de-novo are specified, --max-de-novo&quot;</span>
+            <span class="s2">&quot; will be used for non-UKB samples and --ukb-max-de-novo will be used for&quot;</span>
+            <span class="s2">&quot; UKB samples.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ukb-max-de-novo&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum number of raw de novo mutations for real trios in UKB samples. If &quot;</span>
+            <span class="s2">&quot;specified, --max-de-novo must also be specified for non-UKB samples. If &quot;</span>
+            <span class="s2">&quot;not specified, but --max-de-novo is, --max-de-novo will be used for all &quot;</span>
+            <span class="s2">&quot;samples.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_ped_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--seed&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Random seed for choosing one random trio per family to keep after &quot;</span>
+            <span class="s2">&quot;filtering.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">dense_trio_mt_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span><span class="s2">&quot;Create dense trio MT.&quot;</span><span class="p">)</span>
+    <span class="n">dense_trio_mt_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-dense-trio-mt&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Create a dense MT for high quality trios.&quot;</span><span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">dense_trio_mt_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--releasable-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Only include trios that are releasable.&quot;</span><span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">dense_trio_mt_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--naive-coalesce-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;Number of partitions to coalesce the VDS to.&quot;</span><span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">ukb_max_mendel</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">max_mendel</span><span class="p">:</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+            <span class="s2">&quot;--ukb-max-mendel requires --max-mendel to be specified for non-UKB &quot;</span>
+            <span class="s2">&quot;samples.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">ukb_max_de_novo</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">max_de_novo</span><span class="p">:</span>
+        <span class="n">parser</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+            <span class="s2">&quot;--ukb-max-de-novo requires --max-de-novo to be specified for non-UKB &quot;</span>
+            <span class="s2">&quot;samples.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

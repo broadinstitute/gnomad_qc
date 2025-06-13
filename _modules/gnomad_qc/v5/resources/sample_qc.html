@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.sample_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.sample_qc</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.resources.sample_qc</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing sample QC related resources.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MatrixTableResource</span><span class="p">,</span>
+    <span class="n">TableResource</span><span class="p">,</span>
+    <span class="n">VersionedMatrixTableResource</span><span class="p">,</span>
+    <span class="n">VersionedTableResource</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="n">qc_temp_prefix</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AOU_VERSIONS</span><span class="p">,</span>
+    <span class="n">CURRENT_AOU_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">GNOMAD_BUCKET</span><span class="p">,</span>
+    <span class="n">SAMPLE_QC_VERSIONS</span><span class="p">,</span>
+    <span class="n">WORKSPACE_BUCKET</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_sample_qc_root"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_sample_qc_root">[docs]</a><span class="k">def</span> <span class="nf">get_sample_qc_root</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">data_set</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the root GCS path to sample QC results.</span>
+
+<span class="sd">    :param version: Sample QC version (default: CURRENT_SAMPLE_QC_VERSION).</span>
+<span class="sd">    :param test: If True, return a temporary path (e.g., for testing or development).</span>
+<span class="sd">    :param data_type: Data type (e.g., &quot;genomes&quot; or &quot;exomes&quot;).</span>
+<span class="sd">    :param data_set: Dataset identifier (e.g., &quot;aou&quot;, &quot;hgdp_tgp&quot;).</span>
+<span class="sd">    :return: GCS path to the sample QC directory.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path_suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;sample_qc/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">data_set</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">environment</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span> <span class="k">if</span> <span class="n">data_set</span> <span class="o">==</span> <span class="s2">&quot;aou&quot;</span> <span class="k">else</span> <span class="s2">&quot;dataproc&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">base_bucket</span> <span class="o">=</span> <span class="n">WORKSPACE_BUCKET</span> <span class="k">if</span> <span class="n">data_set</span> <span class="o">==</span> <span class="s2">&quot;aou&quot;</span> <span class="k">else</span> <span class="n">GNOMAD_BUCKET</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">base_bucket</span><span class="si">}</span><span class="s2">/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Hard-filtering resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_sample_qc"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_sample_qc">[docs]</a><span class="k">def</span> <span class="nf">get_sample_qc</span><span class="p">(</span>
+    <span class="n">strat</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get AoU sample QC annotations generated by Hail for the specified stratification.</span>
+
+<span class="sd">    Possible values for `strat`:</span>
+<span class="sd">        - bi_allelic</span>
+<span class="sd">        - multi_allelic</span>
+<span class="sd">        - all</span>
+
+<span class="sd">    :param strat: Which stratification to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full VDS.</span>
+<span class="sd">    :return: Sample QC table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># NOTE: The sample QC tables currently do not have the `aou` prefix added to sample IDs</span>
+    <span class="c1"># that collide with gnomAD samples. This renaming step must be applied before merging</span>
+    <span class="c1"># with the metadata, using the `add_project_prefix_to_sample_collisions` function from</span>
+    <span class="c1"># `gnomad_qc.v5.resources.basics`.</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_AOU_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="s1">&#39;aou&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/hard_filtering/aou.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.sample_qc_all</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">strat</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;all&#39;</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="sa">f</span><span class="s1">&#39;_</span><span class="si">{</span><span class="n">strat</span><span class="si">}</span><span class="s1">&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">AOU_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="n">hard_filtered_samples</span> <span class="o">=</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+    <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="p">{</span>
+        <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">)</span><span class="si">}</span><span class="s2">/hard_filtering/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.hard_filtered_samples.ht&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># QC MT resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_aou_mt_union"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_aou_mt_union">[docs]</a><span class="k">def</span> <span class="nf">get_aou_mt_union</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MatrixTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the union of AoU ACAF and exome MatrixTables.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">        Default is True.</span>
+<span class="sd">    :return: MatrixTableResource containing the union of AoU ACAF and exome MTs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+        <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;genomes&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="s1">&#39;aou&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/union_aou/aou.acaf.exomes.union.mt&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_joint_qc"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_joint_qc">[docs]</a><span class="k">def</span> <span class="nf">get_joint_qc</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedMatrixTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :return: VersionedMatrixTableResource of QC sites.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedMatrixTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="s1">&#39;aou&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/qc_mt/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.qc.mt&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Relatedness resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_cuking_input_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_cuking_input_path">[docs]</a><span class="k">def</span> <span class="nf">get_cuking_input_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path containing the input files read by cuKING.</span>
+
+<span class="sd">    Those files correspond to Parquet tables derived from the dense QC matrix.</span>
+
+<span class="sd">    :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).</span>
+<span class="sd">    :param test: Whether to return a path corresponding to a test subset. Default is False.</span>
+<span class="sd">    :param environment: Compute environment, either &#39;dataproc&#39; or &#39;rwb&#39;. Default is &#39;rwb&#39;.</span>
+<span class="sd">    :return: Temporary path to hold Parquet input tables for running cuKING.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># cuKING inputs can be easily regenerated, so use a temp location.</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">cuking_input</span><span class="si">{</span><span class="s1">&#39;_test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.parquet&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_cuking_output_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_cuking_output_path">[docs]</a><span class="k">def</span> <span class="nf">get_cuking_output_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path containing the output files written by cuKING.</span>
+
+<span class="sd">    Those files correspond to Parquet tables containing relatedness results.</span>
+
+<span class="sd">    :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).</span>
+<span class="sd">    :param test: Whether to return a path corresponding to a test subset. Default is False.</span>
+<span class="sd">    :param environment: Compute environment, either &#39;dataproc&#39; or &#39;rwb&#39;. Default is &#39;rwb&#39;.</span>
+<span class="sd">    :return: Temporary path to hold Parquet output tables for running cuKING.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># cuKING outputs can be easily regenerated, so use a temp location.</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">cuking_output</span><span class="si">{</span><span class="s1">&#39;_test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.parquet&quot;</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
