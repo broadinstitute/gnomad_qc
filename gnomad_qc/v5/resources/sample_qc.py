@@ -86,7 +86,7 @@ hard_filtered_samples = VersionedTableResource(
     CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples.ht"
+            f"{get_sample_qc_root(version)}/hard_filtering/aou.genomes.v{version}.hard_filtered_samples.ht"
         )
         for version in SAMPLE_QC_VERSIONS
     },
