@@ -19,13 +19,12 @@ from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_scores,
     finalized_outlier_filtering,
-    get_pop_ht,
+    get_gen_anc_ht,
     get_sample_qc,
     hard_filtered_samples,
     joint_qc_meta,
     nearest_neighbors,
     nearest_neighbors_filtering,
-    platform,
     regressed_filtering,
     stratified_filtering,
 )
@@ -74,9 +73,8 @@ def apply_filter(
     qc_metrics: List[str],
     filtering_method: str,
     apply_r_ti_tv_singleton_filter: bool = False,
-    pop_scores_ht: Optional[hl.Table] = None,
-    pop_ht: Optional[hl.Table] = None,
-    platform_ht: Optional[hl.Table] = None,
+    gen_anc_scores_ht: Optional[hl.Table] = None,
+    gen_anc_ht: Optional[hl.Table] = None,
     **kwargs: Any,
 ) -> hl.Table:
     """
@@ -89,23 +87,18 @@ def apply_filter(
     :param apply_r_ti_tv_singleton_filter: Whether to apply the filtering method to
         only samples with: Number of singletons (or n_singleton residuals) >
         median(comparison group number of singletons/n_singleton residuals).
-    :param pop_scores_ht: Optional Table with population PCA scores.
-    :param pop_ht: Optional Table with population assignment.
-    :param platform_ht: Optional Table with platform assignment.
+    :param gen_anc_scores_ht: Optional Table with genetic ancestry PCA scores.
+    :param gen_anc_ht: Optional Table with genetic ancestry group assignment.
     :param kwargs: Additional parameters to pass to the requested filtering method
         function.
     :return: Table with outlier filter annotations.
     """
     # Create dict of expression parameters needed in filtering method.
     ann_exprs = {}
-    if pop_ht is not None:
-        ann_exprs["pop_expr"] = pop_ht[sample_qc_ht.key].pop
-    if platform_ht is not None:
-        ann_exprs["platform_expr"] = platform_ht[sample_qc_ht.key].qc_platform
-        if filtering_method == "regressed":
-            ann_exprs["platform_scores_expr"] = platform_ht[sample_qc_ht.key].scores
-    if pop_scores_ht is not None:
-        ann_exprs["pop_scores_expr"] = pop_scores_ht[sample_qc_ht.key].scores
+    if gen_anc_ht is not None:
+        ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
+    if gen_anc_scores_ht is not None:
+        ann_exprs["gen_anc_scores_expr"] = gen_anc_scores_ht[sample_qc_ht.key].scores
 
     # Run filtering method using defined expressions, and any other passed parameters.
     if filtering_method == "stratified":
@@ -141,16 +134,15 @@ def apply_filter(
 def apply_stratified_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
-    pop_expr: Optional[hl.expr.StringExpression] = None,
-    platform_expr: Optional[hl.expr.StringExpression] = None,
+    gen_anc_expr: hl.expr.StringExpression,
     include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
     """
-    Use population stratified QC metrics to determine what samples are outliers and should be filtered.
+    Use genetic ancestry-stratified QC metrics to determine what samples are outliers and should be filtered.
 
     Use `compute_stratified_metrics_filter` to compute the median, MAD, and upper and
-    lower thresholds for each `qc_metrics` stratified by assigned population and/or
-    platform and return a `qc_metrics_filters` annotation indicating if the sample
+    lower thresholds for each `qc_metrics` stratified by assigned genetic ancestry group
+    and return a `qc_metrics_filters` annotation indicating if the sample
     falls a certain number of MAD outside the distribution.
 
     .. note::
@@ -162,31 +154,23 @@ def apply_stratified_filtering_method(
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
-    :param pop_expr: Optional expression with population assignment.
-    :param platform_expr: Optional expression with platform assignment.
+    :param gen_anc_expr: Expression with genetic ancestry group assignment.
     :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
         the determination of filtering cutoffs.
     :return: Table with stratified metrics and filters.
     """
-    if pop_expr is None and platform_expr is None:
-        raise ValueError(
-            "At least one of 'pop_expr' or 'platform_expr' must be specified!"
-        )
     logger.info(
         "Computing QC metrics outlier filters with stratification, using metrics: %s",
         ", ".join(qc_metrics),
     )
+    logger.info("Outlier filtering is stratified by genetic ancestry...")
     strata = {}
-    if pop_expr is not None:
-        strata["pop"] = pop_expr
-    if platform_expr is not None:
-        strata["platform"] = platform_expr
-
-    logger.info("Outlier filtering is stratified by: %s", ", ".join(strata.keys()))
+    strata["gen_anc"] = gen_anc_expr
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
         strata=strata,
+        # TODO: Revisit this
         metric_threshold={
             "n_singleton": (math.inf, 8.0),
             "r_het_hom_var": (math.inf, 4.0),
@@ -202,34 +186,18 @@ def apply_stratified_filtering_method(
 def apply_regressed_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
-    pop_scores_expr: Optional[hl.expr.ArrayExpression] = None,
-    platform_scores_expr: Optional[hl.expr.ArrayExpression] = None,
-    platform_expr: Optional[hl.expr.StringExpression] = None,
-    regress_pop_n_pcs: Optional[int] = 30,
-    regress_platform_n_pcs: Optional[int] = 9,
-    regress_per_platform: bool = False,
+    gen_anc_scores_expr: Optional[hl.expr.ArrayExpression] = None,
+    regress_gen_anc_n_pcs: Optional[int] = 30,
     include_unreleasable_in_regression: bool = False,
     include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
 
-    The following are all possible filtering options:
-        - Include `pop_scores_expr`: Regress population PCs only and determine outliers
-          for each metric in `qc_metrics`.
-        - Include `platform_scores_expr`: Regress platform PCs only and determine
-          outliers for each metric in `qc_metrics`.
-        - Include `pop_scores_expr` and `platform_scores_expr`: Regress both population
-          PCs and platform PCs and determine outliers for each metric in `qc_metrics`.
-        - For all of the above filtering options, there is also a `regress_per_platform`
-          option, which will stratify the dataset by platform before performing the
-          regression and outlier filtering.
-
     After regression, `compute_stratified_metrics_filter` is used to compute the
     median, MAD, and upper and lower thresholds for each of the `qc_metrics` residuals,
-    optionally stratified by assigned platform, and return a `qc_metrics_filters`
-    annotation indicating if the sample falls a certain number of MAD outside the
-    distribution.
+    and return a `qc_metrics_filters` annotation indicating if the sample falls a
+    certain number of MAD outside the distribution.
 
     .. note::
 
@@ -240,64 +208,35 @@ def apply_regressed_filtering_method(
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
-    :param pop_scores_expr: Optional expression with population PCA scores.
-    :param platform_scores_expr: Optional expression with platform PCA scores.
-    :param platform_expr: Optional expression with platform assignment.
-    :param regress_pop_n_pcs: Number of population PCA scores to use in regression.
+    :param gen_anc_scores_expr: Optional expression with genetic ancestry PCA scores.
+    :param regress_gen_anc_n_pcs: Number of genetic ancestry PCA scores to use in regression.
         Default is 30.
-    :param regress_platform_n_pcs: Number of platform PCA scores to use in regression.
-        Default is 9.
-    :param regress_per_platform: Whether to perform the regression per platform.
-        Default is False.
     :param include_unreleasable_in_regression: Whether to include unreleasable samples
         in the regressions.
     :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
         the determination of filtering cutoffs.
     :return: Table with regression residuals and outlier filters.
     """
-    if pop_scores_expr is None and platform_expr is None:
-        raise ValueError(
-            "At least one of 'pop_scores_expr' or 'platform_scores_expr' must be "
-            "specified!"
-        )
-    if regress_per_platform and platform_expr is None:
-        raise ValueError(
-            "When using 'regress_per_platform', 'platform_expr' must be specified!"
-        )
     logger.info(
         "Computing QC metrics outlier filters with PC regression, using metrics: %s",
         ", ".join(qc_metrics),
     )
     ann_expr = {"scores": hl.empty_array(hl.tfloat64)}
     global_expr = {}
-    log_str = []
-    if pop_scores_expr is not None:
-        ann_expr["scores"] = ann_expr["scores"].extend(
-            pop_scores_expr[:regress_pop_n_pcs]
-        )
-        log_str.append("pop PCs")
-        global_expr["regress_pop_n_pcs"] = regress_pop_n_pcs
-    if regress_per_platform:
-        ann_expr["platform"] = platform_expr
-        log_str.append("is stratified by platform")
-    elif platform_scores_expr is not None:
-        ann_expr["scores"] = ann_expr["scores"].extend(
-            platform_scores_expr[:regress_platform_n_pcs]
-        )
-        log_str.append("platform PCs")
-        global_expr["regress_platform_n_pcs"] = regress_platform_n_pcs
-
+    ann_expr["scores"] = ann_expr["scores"].extend(
+        gen_anc_scores_expr[:regress_gen_anc_n_pcs]
+    )
+    log_str.append("gen anc PCs")
+    global_expr["regress_gen_anc_n_pcs"] = regress_gen_anc_n_pcs
     sample_qc_ht = sample_qc_ht.annotate(**ann_expr)
 
     logger.info(
-        "QC metric residuals are being computed using a regression with %s.",
-        " and ".join(log_str),
+        "QC metric residuals are being computed using a regression with genetic ancestry PCs...",
     )
     sample_qc_res_ht = compute_qc_metrics_residuals(
         sample_qc_ht,
         pc_scores=sample_qc_ht.scores,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
-        strata={"platform": sample_qc_ht.platform} if regress_per_platform else None,
         regression_sample_inclusion_expr=(
             sample_qc_ht.releasable
             if not include_unreleasable_in_regression
@@ -311,11 +250,6 @@ def apply_regressed_filtering_method(
             "n_singleton_residual": (math.inf, 8.0),
             "r_het_hom_var_residual": (math.inf, 4.0),
         },
-        strata=(
-            {"platform": sample_qc_ht[sample_qc_res_ht.key].platform}
-            if regress_per_platform
-            else None
-        ),
         comparison_sample_expr=(
             sample_qc_ht[sample_qc_res_ht.key].releasable
             if not include_unreleasable_in_cutoffs
@@ -326,7 +260,6 @@ def apply_regressed_filtering_method(
     filter_ht = sample_qc_res_ht.select_globals(
         **filter_ht.index_globals(),
         **global_expr,
-        regress_per_platform=regress_per_platform,
     )
 
     return filter_ht
@@ -429,10 +362,7 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     If `filtering_method` is 'regressed':
 
         - 'qc_metrics_stats' is defined as a global annotation on `ht`.
-        - If platform stratification was performed, the 'strata' global annotation is
-          ``tuple<'platform'>``, and 'qc_metrics_stats' is in the same form as described
-          for 'stratified', except metric -> metric_residual.
-        - If there was no platform stratification, 'qc_metrics_stats' is in the form:
+        - 'qc_metrics_stats' is in the form:
 
         .. code-block::
 
@@ -459,8 +389,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     :param sample_qc_ht: Sample QC HT.
     :param filtering_method: The filtering method to apply to `sample_qc_ht`. One of
         'stratified', 'regressed', or 'nearest_neighbors'.
-    :param ann_exprs: Dictionary of the expressions for population assignment and/or
-        platform assignment on `sample_qc_ht` to be used if filtering is stratified.
+    :param ann_exprs: Dictionary of the expressions for genetic ancestry assignment
+        on `sample_qc_ht` to be used if filtering is stratified.
     :return: Table with outlier filter annotations updated for r_ti_tv_singleton or
         r_ti_tv_singleton_residuals.
     """
@@ -483,14 +413,6 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
 
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
-
-    # Extract the strata annotations from input Table globals (pop and/or platform
-    # if present).
-    ht_globals = hl.eval(ht.index_globals())
-    if "strata" in ht_globals:
-        strata = ht_globals["strata"]
-    else:
-        strata = None
 
     # If filtering method is 'nearest_neighbors', the 'qc_metrics_stats' is per sample,
     # so it is stored in the rows of 'ht' instead of the globals.
@@ -814,19 +736,18 @@ def get_outlier_filtering_resources(
     # outlier filtering pipeline.
     sample_qc_ht = get_sample_qc("under_three_alt_alleles")
 
-    # Get ancestry PCA scores.
-    pop_scores_ht = ancestry_pca_scores()
-    pop_ht = get_pop_ht()
+    # Get genetic ancestry PCA scores.
+    gen_anc_scores_ht = genetic_ancestry_pca_scores()
+    gen_anc_ht = get_gen_anc_ht()
 
     sample_qc_input = {
         "hard_filters.py --sample-qc": {"sample_qc_ht": sample_qc_ht},
     }
-    pop_scores_input = {
-        "assign_ancestry.py --run-pca": {"pop_scores_ht": pop_scores_ht}
+    gen_anc_scores_input = {
+        "assign_ancestry.py --run-pca": {"gen_anc_scores_ht": gen_anc_scores_ht}
     }
-    pop_assign_input = {"assign_ancestry.py --assign-pops": {"pop_ht": pop_ht}}
-    platform_input = {
-        "platform_inference.py --assign-platforms": {"platform_ht": platform}
+    gen_anc_assign_input = {
+        "assign_ancestry.py --assign-gen_ancs": {"gen_anc_ht": gen_anc_ht}
     }
     joint_qc_meta_input = {
         "generate_qc_mt.py --generate-qc-meta": {"joint_qc_meta": joint_qc_meta}
@@ -837,9 +758,8 @@ def get_outlier_filtering_resources(
         pipeline_name="outlier_filtering",
         pipeline_resources={
             **sample_qc_input,
-            **pop_scores_input,
-            **pop_assign_input,
-            **platform_input,
+            **gen_anc_scores_input,
+            **gen_anc_assign_input,
             **joint_qc_meta_input,
         },
         overwrite=overwrite,
@@ -851,16 +771,13 @@ def get_outlier_filtering_resources(
         output_resources={
             "regressed_filter_ht": regressed_filtering(
                 test=test,
-                pop_pc_regressed=args.regress_population,
-                platform_pc_regressed=args.regress_platform,
-                platform_stratified=args.regress_per_platform,
+                gen_anc_pc_regressed=args.regress_gen_anc,
             )
         },
         input_resources={
             **sample_qc_input,
-            **pop_scores_input,
-            **pop_assign_input,
-            **platform_input,
+            **gen_anc_scores_input,
+            **gen_anc_assign_input,
             **joint_qc_meta_input,
         },
     )
@@ -869,23 +786,21 @@ def get_outlier_filtering_resources(
         output_resources={
             "stratified_filter_ht": stratified_filtering(
                 test=test,
-                pop_stratified=args.stratify_population,
-                platform_stratified=args.stratify_platform,
+                gen_anc_stratified=args.stratify_gen_anc,
             )
         },
-        input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
+        input_resources={**sample_qc_input, **gen_anc_assign_input},
     )
     determine_nearest_neighbors = PipelineStepResourceCollection(
         "--determine-nearest-neighbors",
         output_resources={
             "nn_ht": nearest_neighbors(
                 test=test,
-                platform_stratified=args.nearest_neighbors_per_platform,
                 approximation=args.use_nearest_neighbors_approximation,
                 include_unreleasable_samples=not exclude_releasable_samples_all_steps,
             )
         },
-        input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
+        input_resources={**sample_qc_input, **gen_anc_assign_input},
     )
     apply_nearest_neighbor_filters = PipelineStepResourceCollection(
         "--apply-nearest-neighbor-filters",
@@ -941,7 +856,6 @@ def main(args):
     unreleasable_in_cutoffs = args.include_unreleasable_in_cutoff_determination
     unreleasable_in_regression = args.include_unreleasable_in_regression
     exclude_releasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
-    nn_platform_stratified = args.nearest_neighbors_per_platform
     nn_approximation = args.use_nearest_neighbors_approximation
 
     if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
@@ -957,9 +871,8 @@ def main(args):
 
     outlier_resources = get_outlier_filtering_resources(args)
     outlier_resources.check_resource_existence()
-    pop_ht = outlier_resources.pop_ht.ht()
-    platform_ht = outlier_resources.platform_ht.ht()
-    pop_scores_ht = outlier_resources.pop_scores_ht.ht()
+    gen_anc_ht = outlier_resources.gen_anc_ht.ht()
+    gen_anc_scores_ht = outlier_resources.gen_anc_scores_ht.ht()
     joint_qc_meta_ht = outlier_resources.joint_qc_meta.ht()
     sample_qc_ht = get_sample_qc_ht(
         outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
@@ -990,15 +903,10 @@ def main(args):
             apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
             sample_qc_ht=sample_qc_ht,
             qc_metrics=filtering_qc_metrics,
-            pop_scores_ht=pop_scores_ht,
-            platform_ht=platform_ht,
-            regress_pop_n_pcs=(
-                args.regress_pop_n_pcs if args.regress_population else None
+            gen_anc_scores_ht=gen_anc_scores_ht,
+            regress_gen_anc_n_pcs=(
+                args.regress_gen_anc_n_pcs if args.regress_gen_anc else None
             ),
-            regress_platform_n_pcs=(
-                args.regress_platform_n_pcs if args.regress_platform else None
-            ),
-            regress_per_platform=args.regress_per_platform,
             include_unreleasable_in_regression=unreleasable_in_regression,
             include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
         )
@@ -1021,8 +929,7 @@ def main(args):
             apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
             sample_qc_ht=sample_qc_ht,
             qc_metrics=filtering_qc_metrics,
-            pop_ht=pop_ht if args.stratify_population else None,
-            platform_ht=platform_ht if args.stratify_platform else None,
+            gen_anc_ht=gen_anc_ht if args.stratify_gen_anc else None,
             include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
         )
         ht = ht.annotate_globals(
@@ -1038,15 +945,10 @@ def main(args):
         res = outlier_resources.determine_nearest_neighbors
         res.check_resource_existence()
 
-        if nn_platform_stratified:
-            strata = {"platform": res.platform_ht.ht()[sample_qc_ht.key].qc_platform}
-        else:
-            strata = None
         ht = determine_nearest_neighbors(
             sample_qc_ht,
-            pop_scores_ht[sample_qc_ht.key].scores,
-            strata=strata,
-            n_pcs=args.nearest_neighbors_pop_n_pcs,
+            gen_anc_scores_ht[sample_qc_ht.key].scores,
+            n_pcs=args.nearest_neighbors_gen_anc_n_pcs,
             n_neighbors=args.n_nearest_neighbors,
             n_jobs=args.n_jobs,
             add_neighbor_distances=args.get_neighbor_distances,
@@ -1071,7 +973,6 @@ def main(args):
         )
         ht.annotate_globals(
             exclude_unreleasable_samples=exclude_releasable_samples_all_steps,
-            nearest_neighbors_platform_stratified=nn_platform_stratified,
             nearest_neighbors_approximation=nn_approximation,
         ).write(res.nn_filter_ht.path, overwrite=overwrite)
 
@@ -1160,13 +1061,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     stratified_args.add_argument(
-        "--stratify-population",
-        help="Stratify by population for filtering.",
-        action="store_true",
-    )
-    stratified_args.add_argument(
-        "--stratify-platform",
-        help="Stratify by platform for filtering.",
+        "--stratify-gen-anc",
+        help="Stratify by genetic ancestry for filtering.",
         action="store_true",
     )
     unreleasable_cutoffs = stratified_args.add_argument(
@@ -1188,31 +1084,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     regressed_args.add_argument(
-        "--regress-population",
-        help="Use population PCs in sample QC metric regressions.",
+        "--regress-gen-anc",
+        help="Use genetic ancestry PCs in sample QC metric regressions.",
         action="store_true",
     )
     regressed_args.add_argument(
-        "--regress-platform",
-        help="Use platform PCs in sample QC metric regressions.",
-        action="store_true",
-    )
-    regressed_args.add_argument(
-        "--regress-pop-n-pcs",
-        help="Number of population PCs to use for sample QC metric regressions.",
+        "--regress-gen_anc-n-pcs",
+        help="Number of genetic ancestry PCs to use for sample QC metric regressions.",
         default=20,
         type=int,
-    )
-    regressed_args.add_argument(
-        "--regress-platform-n-pcs",
-        help="Number of platform PCs to use for sample QC metric regressions.",
-        default=9,
-        type=int,
-    )
-    regressed_args.add_argument(
-        "--regress-per-platform",
-        help="Perform sample QC metric regressions and outlier filtering per platform.",
-        action="store_true",
     )
     regressed_args.add_argument(
         "--include-unreleasable-in-regression",
@@ -1233,18 +1113,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     nn_args.add_argument(
-        "--nearest-neighbors-pop-n-pcs",
-        help="Number of population PCs to use for nearest neighbor determination.",
+        "--nearest-neighbors-gen_anc-n-pcs",
+        help="Number of genetic ancestry PCs to use for nearest neighbor determination.",
         default=20,
         type=int,
-    )
-    nn_per_platform = nn_args.add_argument(
-        "--nearest-neighbors-per-platform",
-        help=(
-            "Stratify samples by platform assignment when determining the population "
-            "PC nearest neighbors."
-        ),
-        action="store_true",
     )
     nn_args.add_argument(
         "--n-nearest-neighbors",
@@ -1316,10 +1188,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Apply nearest neighbors outlier filtering method.",
         action="store_true",
     )
-    # Indicate that the --nearest-neighbors-per-platform and
-    # --use-nearest-neighbors-approximation options apply to the
+    # Indicate that the --use-nearest-neighbors-approximation options apply to the
     # "nn_filter_args" argument group as well as the "nn_args" group.
-    nn_filter_args._group_actions.append(nn_per_platform)
     nn_filter_args._group_actions.append(nn_approx)
 
     final_filter_args = parser.add_argument_group(
@@ -1332,8 +1202,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Create the finalized outlier filtering Table. To specify filtering method "
             "to use for the finalized outlier filtering Table, use the parameter "
             "options from that method. e.g. To use the stratified outlier filtering "
-            "with population stratification include the following arguments: "
-            "--apply-stratified-filters --stratify-population. If an ensemble between "
+            "with genetic ancestry stratification include the following arguments: "
+            "--apply-stratified-filters --stratify-gen-anc. If an ensemble between "
             "two methods is desired, include arguments for both. The filtering Table "
             "for each method requested must already exist, the outlier filtering will "
             "not be rerun."
