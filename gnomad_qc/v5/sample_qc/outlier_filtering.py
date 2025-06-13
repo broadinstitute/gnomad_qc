@@ -22,7 +22,6 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_gen_anc_ht,
     get_sample_qc,
     hard_filtered_samples,
-    joint_qc_meta,
     nearest_neighbors,
     nearest_neighbors_filtering,
     regressed_filtering,
@@ -726,9 +725,6 @@ def get_outlier_filtering_resources(
     gen_anc_assign_input = {
         "assign_ancestry.py --assign-gen_ancs": {"gen_anc_ht": gen_anc_ht}
     }
-    joint_qc_meta_input = {
-        "generate_qc_mt.py --generate-qc-meta": {"joint_qc_meta": joint_qc_meta}
-    }
 
     # Initialize outlier filtering pipeline resource collection.
     outlier_filtering_pipeline = PipelineResourceCollection(
@@ -737,7 +733,6 @@ def get_outlier_filtering_resources(
             **sample_qc_input,
             **gen_anc_scores_input,
             **gen_anc_assign_input,
-            **joint_qc_meta_input,
         },
         overwrite=overwrite,
     )
@@ -755,7 +750,6 @@ def get_outlier_filtering_resources(
             **sample_qc_input,
             **gen_anc_scores_input,
             **gen_anc_assign_input,
-            **joint_qc_meta_input,
         },
     )
     apply_stratified_filters = PipelineStepResourceCollection(
@@ -846,7 +840,6 @@ def main(args):
     outlier_resources.check_resource_existence()
     gen_anc_ht = outlier_resources.gen_anc_ht.ht()
     gen_anc_scores_ht = outlier_resources.gen_anc_scores_ht.ht()
-    joint_qc_meta_ht = outlier_resources.joint_qc_meta.ht()
     sample_qc_ht = get_sample_qc_ht(
         outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
     )
