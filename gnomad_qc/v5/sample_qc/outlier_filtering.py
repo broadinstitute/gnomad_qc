@@ -135,7 +135,6 @@ def apply_stratified_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
     gen_anc_expr: hl.expr.StringExpression,
-    include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Use genetic ancestry-stratified QC metrics to determine what samples are outliers and should be filtered.
@@ -155,8 +154,6 @@ def apply_stratified_filtering_method(
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
     :param gen_anc_expr: Expression with genetic ancestry group assignment.
-    :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
-        the determination of filtering cutoffs.
     :return: Table with stratified metrics and filters.
     """
     logger.info(
@@ -175,9 +172,6 @@ def apply_stratified_filtering_method(
             "n_singleton": (math.inf, 8.0),
             "r_het_hom_var": (math.inf, 4.0),
         },
-        comparison_sample_expr=(
-            sample_qc_ht.releasable if not include_unreleasable_in_cutoffs else None
-        ),
     )
 
     return filter_ht
@@ -188,8 +182,6 @@ def apply_regressed_filtering_method(
     qc_metrics: List[str],
     gen_anc_scores_expr: hl.expr.ArrayExpression,
     regress_gen_anc_n_pcs: int = 30,
-    include_unreleasable_in_regression: bool = False,
-    include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
@@ -211,10 +203,6 @@ def apply_regressed_filtering_method(
     :param gen_anc_scores_expr: Expression with genetic ancestry PCA scores.
     :param regress_gen_anc_n_pcs: Number of genetic ancestry PCA scores to use in regression.
         Default is 30.
-    :param include_unreleasable_in_regression: Whether to include unreleasable samples
-        in the regressions.
-    :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
-        the determination of filtering cutoffs.
     :return: Table with regression residuals and outlier filters.
     """
     logger.info(
@@ -237,11 +225,6 @@ def apply_regressed_filtering_method(
         sample_qc_ht,
         pc_scores=sample_qc_ht.scores,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
-        regression_sample_inclusion_expr=(
-            sample_qc_ht.releasable
-            if not include_unreleasable_in_regression
-            else hl.bool(True)
-        ),
     )
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_res_ht,
@@ -250,11 +233,6 @@ def apply_regressed_filtering_method(
             "n_singleton_residual": (math.inf, 8.0),
             "r_het_hom_var_residual": (math.inf, 4.0),
         },
-        comparison_sample_expr=(
-            sample_qc_ht[sample_qc_res_ht.key].releasable
-            if not include_unreleasable_in_cutoffs
-            else None
-        ),
     )
     sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
     filter_ht = sample_qc_res_ht.select_globals(
@@ -730,7 +708,6 @@ def get_outlier_filtering_resources(
     """
     test = args.test
     overwrite = args.overwrite
-    exclude_releasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
 
     # Adding resources from previous scripts that are used by multiple steps in the
     # outlier filtering pipeline.
@@ -797,7 +774,6 @@ def get_outlier_filtering_resources(
             "nn_ht": nearest_neighbors(
                 test=test,
                 approximation=args.use_nearest_neighbors_approximation,
-                include_unreleasable_samples=not exclude_releasable_samples_all_steps,
             )
         },
         input_resources={**sample_qc_input, **gen_anc_assign_input},
@@ -853,9 +829,6 @@ def main(args):
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
-    unreleasable_in_cutoffs = args.include_unreleasable_in_cutoff_determination
-    unreleasable_in_regression = args.include_unreleasable_in_regression
-    exclude_releasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
     nn_approximation = args.use_nearest_neighbors_approximation
 
     if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
@@ -878,17 +851,6 @@ def main(args):
         outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
     )
 
-    # Add releasable information to the sample QC Table if unreleasable samples are
-    # included, otherwise filter to only releasable samples.
-    if exclude_releasable_samples_all_steps:
-        sample_qc_ht = sample_qc_ht.filter(
-            joint_qc_meta_ht[sample_qc_ht.key].releasable
-        )
-    elif not unreleasable_in_cutoffs or not unreleasable_in_regression:
-        sample_qc_ht = sample_qc_ht.annotate(
-            releasable=joint_qc_meta_ht[sample_qc_ht.key].releasable
-        )
-
     if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
         rerun_filtering = False
     else:
@@ -907,17 +869,7 @@ def main(args):
             regress_gen_anc_n_pcs=(
                 args.regress_gen_anc_n_pcs if args.regress_gen_anc else None
             ),
-            include_unreleasable_in_regression=unreleasable_in_regression,
-            include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
         )
-        ht = ht.annotate_globals(
-            exclude_unreleasable_samples=exclude_releasable_samples_all_steps
-        )
-        if not exclude_releasable_samples_all_steps:
-            ht = ht.annotate_globals(
-                include_unreleasable_in_regression=unreleasable_in_regression,
-                include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
-            )
         ht.write(res.regressed_filter_ht.path, overwrite=overwrite)
 
     if args.apply_stratified_filters and rerun_filtering:
@@ -930,15 +882,7 @@ def main(args):
             sample_qc_ht=sample_qc_ht,
             qc_metrics=filtering_qc_metrics,
             gen_anc_ht=gen_anc_ht if args.stratify_gen_anc else None,
-            include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
         )
-        ht = ht.annotate_globals(
-            exclude_unreleasable_samples=exclude_releasable_samples_all_steps
-        )
-        if not exclude_releasable_samples_all_steps:
-            ht = ht.annotate_globals(
-                include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
-            )
         ht.write(res.stratified_filter_ht.path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
@@ -956,9 +900,7 @@ def main(args):
             use_approximation=nn_approximation,
             n_trees=args.n_trees,
         )
-        ht.annotate_globals(
-            exclude_unreleasable_samples=exclude_releasable_samples_all_steps
-        ).write(res.nn_ht.path, overwrite=overwrite)
+        ht.write(res.nn_ht.path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters and rerun_filtering:
         res = outlier_resources.apply_nearest_neighbor_filters
@@ -972,7 +914,6 @@ def main(args):
             nn_ht=res.nn_ht.ht(),
         )
         ht.annotate_globals(
-            exclude_unreleasable_samples=exclude_releasable_samples_all_steps,
             nearest_neighbors_approximation=nn_approximation,
         ).write(res.nn_filter_ht.path, overwrite=overwrite)
 
@@ -1010,15 +951,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Random seed for making random test dataset.",
         type=int,
         default=24,
-    )
-    parser.add_argument(
-        "--exclude-unreleasable-samples-all-steps",
-        help=(
-            "Exclude unreleasable samples in all pipeline steps including the nearest "
-            "neighbors determination, sample QC metric regressions, and sample QC "
-            "filtering."
-        ),
-        action="store_true",
     )
 
     parser.add_argument(
@@ -1065,14 +997,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Stratify by genetic ancestry for filtering.",
         action="store_true",
     )
-    unreleasable_cutoffs = stratified_args.add_argument(
-        "--include-unreleasable-in-cutoff-determination",
-        help=(
-            "Whether to include unreleasable samples when determining the sample QC "
-            "filtering MAD cutoffs."
-        ),
-        action="store_true",
-    )
 
     regressed_args = parser.add_argument_group(
         "Apply regression filtering method.",
@@ -1094,14 +1018,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=20,
         type=int,
     )
-    regressed_args.add_argument(
-        "--include-unreleasable-in-regression",
-        help="Whether to include unreleasable samples in sample QC metric regressions.",
-        action="store_true",
-    )
-    # Indicate that the --include-unreleasable-in-cutoff-determination option applies
-    # to the "regressed_args" argument group as well as the "stratified_args" group.
-    regressed_args._group_actions.append(unreleasable_cutoffs)
 
     nn_args = parser.add_argument_group(
         "Determine nearest neighbors for each sample.",
