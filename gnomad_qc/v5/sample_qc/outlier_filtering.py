@@ -820,6 +820,8 @@ def main(args):
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
     hl.default_reference("GRCh38")
+
+    test = args.test
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
@@ -836,13 +838,9 @@ def main(args):
         if err_msg:
             raise ValueError(err_msg)
 
-    outlier_resources = get_outlier_filtering_resources(args)
-    outlier_resources.check_resource_existence()
-    gen_anc_ht = outlier_resources.gen_anc_ht.ht()
-    gen_anc_scores_ht = outlier_resources.gen_anc_scores_ht.ht()
-    sample_qc_ht = get_sample_qc_ht(
-        outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
-    )
+    sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+    gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
+    gen_anc_scores_ht = get_gen_anc_ht().ht()
 
     if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
         rerun_filtering = False
@@ -850,6 +848,7 @@ def main(args):
         rerun_filtering = True
 
     if args.apply_regressed_filters and rerun_filtering:
+
         res = outlier_resources.apply_regressed_filters
         res.check_resource_existence()
 
