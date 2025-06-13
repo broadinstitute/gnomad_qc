@@ -17,8 +17,8 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
-    ancestry_pca_scores,
     finalized_outlier_filtering,
+    genetic_ancestry_pca_scores,
     get_gen_anc_ht,
     get_sample_qc,
     hard_filtered_samples,
