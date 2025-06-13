@@ -26,8 +26,8 @@ def print_cuking_command(
     min_emission_kinship: float = 0.5,
     cuking_split_factor: int = 4,
     location: str = "us-central1",
-    machine_type: str = "a2-highgpu-1g",
-    accelerator_count: int = 1,
+    machine_type: str = "a2-highgpu-2g",
+    accelerator_count: int = 2,
     accelerator_type: str = "nvidia-tesla-a100",
     requester_pays_project: str = "terra-vpc-sc-93ccd8d2",
 ) -> None:
@@ -46,8 +46,9 @@ def print_cuking_command(
         'upper triangular' submatrices need to be evaluated due to the symmetry of the
         relatedness matrix, leading to 10 shards. Default is 4.
     :param location: Location to run the dsub job. Default is "us-central1".
-    :param machine_type: Machine type to use for the dsub job. Default is "a2-highgpu-1g".
-    :param accelerator_count: Number of accelerators to use for the dsub job. Default is 1.
+    :param machine_type: Machine type to use for the dsub job. Default is "a2-highgpu-2g".
+        The default for v4 was a2-highgpu-1g, but this was not sufficient for v5.
+    :param accelerator_count: Number of accelerators to use for the dsub job. Default is 2.
     :param accelerator_type: Type of accelerator to use for the dsub job.
         Default is "nvidia-tesla-a100".
     :param requester_pays_project: Project ID to use for requester pays buckets.
@@ -59,29 +60,24 @@ def print_cuking_command(
         "cuKING on the files created by --prepare-cuking-inputs."
     )
     # TOTAL_SHARDS calculates the total number of shards using the formula k(k+1)/2.
-    cuking_command = (
-        f"""\
-        SPLIT_FACTOR = {cuking_split_factor} \\"""
-        + """
+    cuking_command = f"""\
+        SPLIT_FACTOR={cuking_split_factor} \\
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
-        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do \\
-            cuKING_dsub \\"""
-        + f"""
-            --location={location} \\
-            --machine-type={machine_type} \\
-            --accelerator-count={accelerator_count} \\
-            --accelerator-type={accelerator_type} \\
-            --command="cuking \\
-            --input_uri="{cuking_input_path}" \\
-            --output_uri="{cuking_output_path}" \\
-            --requester_pays_project={requester_pays_project} \\
-            --kin_threshold={min_emission_kinship} \\"""
-        + """
-            --split-factor=${SPLIT_FACTOR} \\
-            --shard-index=${SHARD_INDEX}" \\
+        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do
+        cuKING_dsub \\
+        --location={location} \\
+        --machine-type={machine_type} \\
+        --accelerator-count={accelerator_count} \\
+        --accelerator-type={accelerator_type} \\
+        --command="cuking \\
+        --input_uri="{cuking_input_path}" \\
+        --output_uri="{cuking_output_path}/out_split_${{SHARD_INDEX}}.parquet" \\
+        --requester_pays_project={requester_pays_project} \\
+        --kin_threshold={min_emission_kinship} \\
+        --split_factor=${{SPLIT_FACTOR}} \\
+        --shard_index=${{SHARD_INDEX}}"
         done
         """
-    )
     print(textwrap.dedent(cuking_command))
 
 
