@@ -895,19 +895,22 @@ def main(args):
         ht.write(nn_ht_path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters and rerun_filtering:
-        res = outlier_resources.apply_nearest_neighbor_filters
-        res.check_resource_existence()
+        nn_ht = nearest_neighbors(test=test, approximation=nn_approximation).ht()
+        nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
+        check_resource_existence(
+            output_step_resources={"nn_filter_ht": nn_filter_ht_path}
+        )
 
         ht = apply_filter(
             filtering_method="nearest_neighbors",
             apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
             sample_qc_ht=sample_qc_ht,
             qc_metrics=filtering_qc_metrics,
-            nn_ht=res.nn_ht.ht(),
+            nn_ht=nn_ht,
         )
         ht.annotate_globals(
             nearest_neighbors_approximation=nn_approximation,
-        ).write(res.nn_filter_ht.path, overwrite=overwrite)
+        ).write(nn_filter_ht_path, overwrite=overwrite)
 
     if args.create_finalized_outlier_filter:
         res = outlier_resources.create_finalized_outlier_filter
