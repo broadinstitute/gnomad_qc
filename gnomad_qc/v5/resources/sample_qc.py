@@ -199,38 +199,18 @@ def stratified_filtering(
 
 def regressed_filtering(
     test: bool = False,
-    pop_pc_regressed: bool = False,
-    platform_pc_regressed: bool = False,
-    platform_stratified: bool = False,
-    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
-    Get VersionedTableResource for regression platform/population-based metrics filtering.
+    Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param pop_pc_regressed: Whether to get resource that includes population PCs in
-        regression filtering.
-    :param platform_pc_regressed: Whether to get resource that includes platform PCs in
-        regression filtering.
-    :param platform_stratified: Whether to get resource that includes platform
-        stratification in regression filtering.
-    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :return: VersionedTableResource.
     """
-    postfix = ""
-    if pop_pc_regressed:
-        postfix += ".pop_pc_regressed"
-    if platform_pc_regressed:
-        postfix += ".platform_pc_regressed"
-    if platform_stratified:
-        postfix += ".platform_stratified"
-    if include_unreleasable_samples:
-        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.regressed_filtering{postfix}.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/aou.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
