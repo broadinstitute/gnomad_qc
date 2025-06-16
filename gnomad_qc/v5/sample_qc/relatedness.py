@@ -86,6 +86,10 @@ def convert_cuking_output_to_ht(cuking_output_path: str) -> hl.Table:
     """
     Convert cuKING output Parquet files to a Hail Table.
 
+    .. note ::
+    
+        We cannot import this function from the cuKING script, which is why it is duplicated here.
+        
     :param cuking_output_path: Path to the cuKING output Parquet files.
     :return: Hail Table containing the relatedness estimates.
     """
