@@ -20,6 +20,7 @@ from gnomad_qc.v4.resources.sample_qc import (
 )
 from gnomad_qc.v4.resources.sample_qc import get_pop_ht as get_gen_anc_ht
 from gnomad_qc.v4.resources.sample_qc import get_sample_qc, hard_filtered_samples
+from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (  # genetic_ancestry_pca_scores,; get_gen_anc_ht,; get_sample_qc,; hard_filtered_samples,
     finalized_outlier_filtering,
@@ -718,130 +719,140 @@ def main(args):
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     nn_approximation = args.use_nearest_neighbors_approximation
 
-    if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
-        err_msg = ""
-        for metric in {"n_singleton", "r_ti_tv_singleton"}:
-            if metric not in filtering_qc_metrics:
-                err_msg += (
-                    "'--apply-n-singleton-filter-to-r-ti-tv-singleton' flag is set, but"
-                    f" {metric} is not in requested 'filtering_qc_metrics'!\n"
-                )
-        if err_msg:
-            raise ValueError(err_msg)
+    try:
+        if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
+            err_msg = ""
+            for metric in {"n_singleton", "r_ti_tv_singleton"}:
+                if metric not in filtering_qc_metrics:
+                    err_msg += (
+                        "'--apply-n-singleton-filter-to-r-ti-tv-singleton' flag is set, but"
+                        f" {metric} is not in requested 'filtering_qc_metrics'!\n"
+                    )
+            if err_msg:
+                raise ValueError(err_msg)
 
-    sample_qc_ht = get_sample_qc_ht(
-        # TODO: Revert this to use commented line after testing is complete
-        # sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
-        sample_qc_ht=get_sample_qc("under_three_alt_alleles").ht(),
-        test=test,
-        seed=args.seed,
-    )
-    gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
-    gen_anc_ht = get_gen_anc_ht().ht()
-    # TODO: Remove the next line (added for testing)
-    gen_anc_ht = gen_anc_ht.transmute(gen_anc=gen_anc_ht.pop)
-
-    if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
-        rerun_filtering = False
-    else:
-        rerun_filtering = True
-
-    if args.apply_regressed_filters and rerun_filtering:
-        regressed_filter_ht_path = regressed_filtering(test=test).path
-        check_resource_existence(
-            output_step_resources={"regressed_filter_ht": regressed_filter_ht_path}
+        sample_qc_ht = get_sample_qc_ht(
+            # TODO: Revert this to use commented line after testing is complete
+            # sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+            sample_qc_ht=get_sample_qc("under_three_alt_alleles").ht(),
+            test=test,
+            seed=args.seed,
         )
+        gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
+        gen_anc_ht = get_gen_anc_ht().ht()
+        # TODO: Remove the next line (added for testing)
+        gen_anc_ht = gen_anc_ht.transmute(gen_anc=gen_anc_ht.pop)
 
-        ht = apply_filter(
-            filtering_method="regressed",
-            apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
-            sample_qc_ht=sample_qc_ht,
-            qc_metrics=filtering_qc_metrics,
-            gen_anc_scores_ht=gen_anc_scores_ht,
-            regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
-        )
-        ht.write(regressed_filter_ht_path, overwrite=overwrite)
+        if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
+            rerun_filtering = False
+        else:
+            rerun_filtering = True
 
-    if args.apply_stratified_filters and rerun_filtering:
-        stratified_filter_ht_path = stratified_filtering(test=test).path
-        check_resource_existence(
-            output_step_resources={"stratified_filter_ht": stratified_filter_ht_path}
-        )
-        ht = apply_filter(
-            filtering_method="stratified",
-            apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
-            sample_qc_ht=sample_qc_ht,
-            qc_metrics=filtering_qc_metrics,
-            gen_anc_ht=gen_anc_ht,
-        )
-        ht.write(stratified_filter_ht_path, overwrite=overwrite)
-
-    if args.determine_nearest_neighbors:
-        nn_ht_path = nearest_neighbors(test=test, approximation=nn_approximation).path
-        check_resource_existence(output_step_resources={"nn_ht": nn_ht_path})
-
-        ht = determine_nearest_neighbors(
-            sample_qc_ht,
-            gen_anc_scores_ht[sample_qc_ht.key].scores,
-            n_pcs=args.nearest_neighbors_gen_anc_n_pcs,
-            n_neighbors=args.n_nearest_neighbors,
-            n_jobs=args.n_jobs,
-            add_neighbor_distances=args.get_neighbor_distances,
-            distance_metric=args.distance_metric,
-            use_approximation=nn_approximation,
-            n_trees=args.n_trees,
-        )
-        ht.write(nn_ht_path, overwrite=overwrite)
-
-    if args.apply_nearest_neighbor_filters and rerun_filtering:
-        nn_ht = nearest_neighbors(test=test, approximation=nn_approximation).ht()
-        nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
-        check_resource_existence(
-            output_step_resources={"nn_filter_ht": nn_filter_ht_path}
-        )
-
-        ht = apply_filter(
-            filtering_method="nearest_neighbors",
-            apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
-            sample_qc_ht=sample_qc_ht,
-            qc_metrics=filtering_qc_metrics,
-            nn_ht=nn_ht,
-        )
-        ht.annotate_globals(
-            nearest_neighbors_approximation=nn_approximation,
-        ).write(nn_filter_ht_path, overwrite=overwrite)
-
-    if args.create_finalized_outlier_filter:
-        final_ht_path = finalized_outlier_filtering(test=test).path
-        check_resource_existence(output_step_resources={"finalized_ht": final_ht_path})
-
-        finalized_input_steps = {}
-        if args.apply_regressed_filters:
-            finalized_input_steps["regressed_filter_ht"] = regressed_filtering(
-                test=test
-            ).ht()
-        if args.apply_stratified_filters:
-            finalized_input_steps["stratified_filter_ht"] = stratified_filtering(
-                test=test
-            ).ht()
-        if args.apply_nearest_neighbor_filters:
-            finalized_input_steps["nn_filter_ht"] = nearest_neighbors_filtering(
-                test=test
-            ).ht()
-
-        if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
-            raise ValueError(
-                "At least one filtering method and relevant options must be supplied "
-                "when using '--create-finalized-outlier-filter'"
+        if args.apply_regressed_filters and rerun_filtering:
+            regressed_filter_ht_path = regressed_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={"regressed_filter_ht": regressed_filter_ht_path}
             )
 
-        # Reformat input step names for use as annotation labels.
-        ht = create_finalized_outlier_filter_ht(
-            finalized_outlier_hts=finalized_input_steps,
-            qc_metrics=args.final_filtering_qc_metrics,
-            ensemble_operator=args.ensemble_method_logical_operator,
-        )
-        ht.write(final_ht_path, overwrite=overwrite)
+            ht = apply_filter(
+                filtering_method="regressed",
+                apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+                sample_qc_ht=sample_qc_ht,
+                qc_metrics=filtering_qc_metrics,
+                gen_anc_scores_ht=gen_anc_scores_ht,
+                regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
+            )
+            ht.write(regressed_filter_ht_path, overwrite=overwrite)
+
+        if args.apply_stratified_filters and rerun_filtering:
+            stratified_filter_ht_path = stratified_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={
+                    "stratified_filter_ht": stratified_filter_ht_path
+                }
+            )
+            ht = apply_filter(
+                filtering_method="stratified",
+                apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+                sample_qc_ht=sample_qc_ht,
+                qc_metrics=filtering_qc_metrics,
+                gen_anc_ht=gen_anc_ht,
+            )
+            ht.write(stratified_filter_ht_path, overwrite=overwrite)
+
+        if args.determine_nearest_neighbors:
+            nn_ht_path = nearest_neighbors(
+                test=test, approximation=nn_approximation
+            ).path
+            check_resource_existence(output_step_resources={"nn_ht": nn_ht_path})
+
+            ht = determine_nearest_neighbors(
+                sample_qc_ht,
+                gen_anc_scores_ht[sample_qc_ht.key].scores,
+                n_pcs=args.nearest_neighbors_gen_anc_n_pcs,
+                n_neighbors=args.n_nearest_neighbors,
+                n_jobs=args.n_jobs,
+                add_neighbor_distances=args.get_neighbor_distances,
+                distance_metric=args.distance_metric,
+                use_approximation=nn_approximation,
+                n_trees=args.n_trees,
+            )
+            ht.write(nn_ht_path, overwrite=overwrite)
+
+        if args.apply_nearest_neighbor_filters and rerun_filtering:
+            nn_ht = nearest_neighbors(test=test, approximation=nn_approximation).ht()
+            nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={"nn_filter_ht": nn_filter_ht_path}
+            )
+
+            ht = apply_filter(
+                filtering_method="nearest_neighbors",
+                apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+                sample_qc_ht=sample_qc_ht,
+                qc_metrics=filtering_qc_metrics,
+                nn_ht=nn_ht,
+            )
+            ht.annotate_globals(
+                nearest_neighbors_approximation=nn_approximation,
+            ).write(nn_filter_ht_path, overwrite=overwrite)
+
+        if args.create_finalized_outlier_filter:
+            final_ht_path = finalized_outlier_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={"finalized_ht": final_ht_path}
+            )
+
+            finalized_input_steps = {}
+            if args.apply_regressed_filters:
+                finalized_input_steps["regressed_filter_ht"] = regressed_filtering(
+                    test=test
+                ).ht()
+            if args.apply_stratified_filters:
+                finalized_input_steps["stratified_filter_ht"] = stratified_filtering(
+                    test=test
+                ).ht()
+            if args.apply_nearest_neighbor_filters:
+                finalized_input_steps["nn_filter_ht"] = nearest_neighbors_filtering(
+                    test=test
+                ).ht()
+
+            if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
+                raise ValueError(
+                    "At least one filtering method and relevant options must be supplied "
+                    "when using '--create-finalized-outlier-filter'"
+                )
+
+            # Reformat input step names for use as annotation labels.
+            ht = create_finalized_outlier_filter_ht(
+                finalized_outlier_hts=finalized_input_steps,
+                qc_metrics=args.final_filtering_qc_metrics,
+                ensemble_operator=args.ensemble_method_logical_operator,
+            )
+            ht.write(final_ht_path, overwrite=overwrite)
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("generate_qc_mt", environment="rwb"))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
