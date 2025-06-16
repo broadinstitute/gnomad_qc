@@ -87,9 +87,9 @@ def convert_cuking_output_to_ht(cuking_output_path: str) -> hl.Table:
     Convert cuKING output Parquet files to a Hail Table.
 
     .. note ::
-    
+
         We cannot import this function from the cuKING script, which is why it is duplicated here.
-        
+
     :param cuking_output_path: Path to the cuKING output Parquet files.
     :return: Hail Table containing the relatedness estimates.
     """
@@ -151,13 +151,13 @@ def main(args):
                 overwrite=overwrite,
             )
         if args.create_cuking_relatedness_table:
-            logger.info("Converting cuKING outputs to Hail Table.")
+            logger.info("Converting cuKING outputs to Hail Table...")
             check_resource_existence(
                 output_step_resources={"relatedness_ht": relatedness(test=test).path}
             )
             ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(relatedness(test=test).path, overwrite=overwrite)
+            ht.write(relatedness(test=test, raw=True).path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
