@@ -254,7 +254,7 @@ def nearest_neighbors_filtering(test: bool = False) -> VersionedTableResource:
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors_filtering.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/aou.genomes.v{version}.nearest_neighbors_filtering.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -272,7 +272,7 @@ def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.final_outlier_filtering.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/aou.genomes.v{version}.final_outlier_filtering.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
