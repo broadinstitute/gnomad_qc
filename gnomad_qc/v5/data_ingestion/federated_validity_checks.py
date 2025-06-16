@@ -62,7 +62,7 @@ ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
 REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
-# Define fucntion that returns the field requirements for the Hail Table. Preferable to have fucntion rather than defining a dictionary
+# Define function that returns the field requirements for the Hail Table. Preferable to have function rather than defining a dictionary
 # here to avoid initializing hail before main.
 def return_field_requirements() -> Dict[str, Dict[str, Any]]:
     """
