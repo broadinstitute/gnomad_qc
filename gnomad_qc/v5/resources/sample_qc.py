@@ -1,5 +1,7 @@
 """Script containing sample QC related resources."""
 
+from typing import Optional
+
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     TableResource,
@@ -170,3 +172,21 @@ def get_cuking_output_path(
     """
     # cuKING outputs can be easily regenerated, so use a temp location.
     return f"{qc_temp_prefix(version=version, environment=environment)}cuking_output{'_test' if test else ''}.parquet"
+
+
+def relatedness(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for relatedness results.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )

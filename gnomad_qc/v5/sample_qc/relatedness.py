@@ -13,6 +13,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
+    relatedness,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -81,6 +82,20 @@ def print_cuking_command(
     print(textwrap.dedent(cuking_command))
 
 
+def convert_cuking_output_to_ht(cuking_output_path: str) -> hl.Table:
+    """
+    Convert cuKING output Parquet files to a Hail Table.
+
+    :param cuking_output_path: Path to the cuKING output Parquet files.
+    :return: Hail Table containing the relatedness estimates.
+    """
+    spark = hl.utils.java.Env.spark_session()
+    df = spark.read.parquet(f"{cuking_output_path}/*.parquet")
+    ht = hl.Table.from_spark(df)
+    ht = ht.key_by(i=hl.struct(s=ht.i), j=hl.struct(s=ht.j))
+    return ht
+
+
 def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
@@ -130,6 +145,14 @@ def main(args):
                 parquet_uri=get_cuking_input_path(test=test),
                 overwrite=overwrite,
             )
+        if args.create_cuking_relatedness_table:
+            logger.info("Converting cuKING outputs to Hail Table.")
+            check_resource_existence(
+                output_step_resources={"relatedness_ht": relatedness(test=test).path}
+            )
+            ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
+            ht = ht.repartition(args.relatedness_n_partitions)
+            ht.write(relatedness(test=test).path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -195,7 +218,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=4,
         type=int,
     )
-
+    cuking_args.add_argument(
+        "--create-cuking-relatedness-table",
+        help="Create a Hail Table from the cuKING output.",
+        action="store_true",
+    )
+    cuking_args.add_argument(
+        "--relatedness-n-partitions",
+        help="Number of partitions to use for the relatedness Table.",
+        default=100,
+        type=int,
+    )
     return parser
 
 
