@@ -639,7 +639,7 @@ def create_finalized_outlier_filter_ht(
             else:
                 global_ann = {
                     s: hl.struct(**{x: global_ann[s][x] for x in metrics_keep})
-                    for s in hl.eval(global_ann.keys())
+                    for s in global_ann.keys()
                 }
             return global_ann
 
