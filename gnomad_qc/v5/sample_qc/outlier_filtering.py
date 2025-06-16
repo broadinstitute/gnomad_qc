@@ -19,11 +19,10 @@ from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_scores as genetic_ancestry_pca_scores,
 )
 from gnomad_qc.v4.resources.sample_qc import get_pop_ht as get_gen_anc_ht
+from gnomad_qc.v4.resources.sample_qc import get_sample_qc, hard_filtered_samples
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import (  # genetic_ancestry_pca_scores,; get_gen_anc_ht,
+from gnomad_qc.v5.resources.sample_qc import (  # genetic_ancestry_pca_scores,; get_gen_anc_ht,; get_sample_qc,; hard_filtered_samples,
     finalized_outlier_filtering,
-    get_sample_qc,
-    hard_filtered_samples,
     nearest_neighbors,
     nearest_neighbors_filtering,
     regressed_filtering,
