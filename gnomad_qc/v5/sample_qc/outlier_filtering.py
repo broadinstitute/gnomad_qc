@@ -390,12 +390,19 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
 
+    # Extract the strata annotations from input Table globals if present (genetic ancestry group for
+    # stratified filtering method).
+    ht_globals = hl.eval(ht.index_globals())
+    if "strata" in ht_globals:
+        strata = ht_globals["strata"]
+    else:
+        strata = None
+
     # If filtering method is 'nearest_neighbors', the 'qc_metrics_stats' is per sample,
     # so it is stored in the rows of 'ht' instead of the globals.
     if filtering_method == "nearest_neighbors":
         qc_metrics_stats = ht[sample_qc_ht.key].qc_metrics_stats
     else:
-        ht_globals = hl.eval(ht.index_globals())
         qc_metrics_stats = ht_globals["qc_metrics_stats"]
 
     # If the filtering method is 'regressed', the metrics will have '_residual' on the
