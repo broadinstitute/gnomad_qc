@@ -95,7 +95,8 @@ def apply_filter(
     """
     # Create dict of expression parameters needed in filtering method.
     ann_exprs = {}
-    ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
+    if gen_anc_ht is not None:
+        ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
     if gen_anc_scores_ht is not None:
         ann_exprs["gen_anc_scores_expr"] = gen_anc_scores_ht[sample_qc_ht.key].scores
 
