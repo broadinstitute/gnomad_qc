@@ -694,125 +694,6 @@ def create_finalized_outlier_filter_ht(
     return ht
 
 
-def get_outlier_filtering_resources(
-    args: argparse.Namespace,
-) -> PipelineResourceCollection:
-    """
-    Get PipelineResourceCollection for all resources needed in the outlier filtering pipeline.
-
-    :param args: argparse Namespace for arguments passed to the outlier_filtering.py
-        script.
-    :return: PipelineResourceCollection containing resources for all steps of the
-        outlier filtering pipeline.
-    """
-    test = args.test
-    overwrite = args.overwrite
-
-    # Adding resources from previous scripts that are used by multiple steps in the
-    # outlier filtering pipeline.
-    sample_qc_ht = get_sample_qc("under_three_alt_alleles")
-
-    # Get genetic ancestry PCA scores.
-    gen_anc_scores_ht = genetic_ancestry_pca_scores()
-    gen_anc_ht = get_gen_anc_ht()
-
-    sample_qc_input = {
-        "hard_filters.py --sample-qc": {"sample_qc_ht": sample_qc_ht},
-    }
-    gen_anc_scores_input = {
-        "assign_ancestry.py --run-pca": {"gen_anc_scores_ht": gen_anc_scores_ht}
-    }
-    gen_anc_assign_input = {
-        "assign_ancestry.py --assign-gen_ancs": {"gen_anc_ht": gen_anc_ht}
-    }
-
-    # Initialize outlier filtering pipeline resource collection.
-    outlier_filtering_pipeline = PipelineResourceCollection(
-        pipeline_name="outlier_filtering",
-        pipeline_resources={
-            **sample_qc_input,
-            **gen_anc_scores_input,
-            **gen_anc_assign_input,
-        },
-        overwrite=overwrite,
-    )
-
-    # Create resource collection for each step of the outlier filtering pipeline.
-    apply_regressed_filters = PipelineStepResourceCollection(
-        "--apply-regressed-filters",
-        output_resources={
-            "regressed_filter_ht": regressed_filtering(
-                test=test,
-                gen_anc_pc_regressed=args.regress_gen_anc,
-            )
-        },
-        input_resources={
-            **sample_qc_input,
-            **gen_anc_scores_input,
-            **gen_anc_assign_input,
-        },
-    )
-    apply_stratified_filters = PipelineStepResourceCollection(
-        "--apply-stratified-filters",
-        output_resources={
-            "stratified_filter_ht": stratified_filtering(
-                test=test,
-                gen_anc_stratified=args.stratify_gen_anc,
-            )
-        },
-        input_resources={**sample_qc_input, **gen_anc_assign_input},
-    )
-    determine_nearest_neighbors = PipelineStepResourceCollection(
-        "--determine-nearest-neighbors",
-        output_resources={
-            "nn_ht": nearest_neighbors(
-                test=test,
-                approximation=args.use_nearest_neighbors_approximation,
-            )
-        },
-        input_resources={**sample_qc_input, **gen_anc_assign_input},
-    )
-    apply_nearest_neighbor_filters = PipelineStepResourceCollection(
-        "--apply-nearest-neighbor-filters",
-        output_resources={"nn_filter_ht": nearest_neighbors_filtering(test=test)},
-        pipeline_input_steps=[determine_nearest_neighbors],
-        add_input_resources=sample_qc_input,
-    )
-
-    finalized_input_steps = []
-    if args.apply_regressed_filters:
-        finalized_input_steps.append(apply_regressed_filters)
-    if args.apply_stratified_filters:
-        finalized_input_steps.append(apply_stratified_filters)
-    if args.apply_nearest_neighbor_filters:
-        finalized_input_steps.append(apply_nearest_neighbor_filters)
-
-    if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
-        raise ValueError(
-            "At least one filtering method and relevant options must be supplied "
-            "when using '--create-finalized-outlier-filter'"
-        )
-
-    create_finalized_outlier_filter = PipelineStepResourceCollection(
-        "--create-finalized-outlier-filter",
-        output_resources={"finalized_ht": finalized_outlier_filtering(test=test)},
-        pipeline_input_steps=finalized_input_steps,
-    )
-
-    # Add all steps to the outlier filtering pipeline resource collection.
-    outlier_filtering_pipeline.add_steps(
-        {
-            "apply_regressed_filters": apply_regressed_filters,
-            "apply_stratified_filters": apply_stratified_filters,
-            "determine_nearest_neighbors": determine_nearest_neighbors,
-            "apply_nearest_neighbor_filters": apply_nearest_neighbor_filters,
-            "create_finalized_outlier_filter": create_finalized_outlier_filter,
-        }
-    )
-
-    return outlier_filtering_pipeline
-
-
 def main(args):
     """Determine sample QC metric outliers that should be filtered."""
     hl.init(
@@ -840,7 +721,7 @@ def main(args):
 
     sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
     gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
-    gen_anc_scores_ht = get_gen_anc_ht().ht()
+    gen_anc_ht = get_gen_anc_ht().ht()
 
     if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
         rerun_filtering = False
