@@ -848,7 +848,6 @@ def main(args):
         rerun_filtering = True
 
     if args.apply_regressed_filters and rerun_filtering:
-
         regressed_filter_ht_path = regressed_filtering(test=test).path
         check_resource_existence(
             output_step_resources={"regressed_filter_ht": regressed_filter_ht_path}
@@ -867,9 +866,10 @@ def main(args):
         ht.write(regressed_filter_ht_path, overwrite=overwrite)
 
     if args.apply_stratified_filters and rerun_filtering:
-        res = outlier_resources.apply_stratified_filters
-        res.check_resource_existence()
-
+        stratified_filter_ht_path = stratified_filtering(test=test).path
+        check_resource_existence(
+            output_step_resources={"stratified_filter_ht": stratified_filter_ht_path}
+        )
         ht = apply_filter(
             filtering_method="stratified",
             apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
@@ -877,7 +877,7 @@ def main(args):
             qc_metrics=filtering_qc_metrics,
             gen_anc_ht=gen_anc_ht if args.stratify_gen_anc else None,
         )
-        ht.write(res.stratified_filter_ht.path, overwrite=overwrite)
+        ht.write(stratified_filter_ht_path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
         res = outlier_resources.determine_nearest_neighbors
