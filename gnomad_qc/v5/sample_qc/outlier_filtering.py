@@ -95,8 +95,6 @@ def apply_filter(
     """
     # Create dict of expression parameters needed in filtering method.
     ann_exprs = {}
-    # TODO: Remove the next line (added for testing)
-    gen_anc_ht = gen_anc_ht.transmute(gen_anc=gen_anc_ht.pop)
     ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
     if gen_anc_scores_ht is not None:
         ann_exprs["gen_anc_scores_expr"] = gen_anc_scores_ht[sample_qc_ht.key].scores
@@ -738,6 +736,8 @@ def main(args):
     )
     gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
     gen_anc_ht = get_gen_anc_ht().ht()
+    # TODO: Remove the next line (added for testing)
+    gen_anc_ht = gen_anc_ht.transmute(gen_anc=gen_anc_ht.pop)
 
     if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
         rerun_filtering = False
