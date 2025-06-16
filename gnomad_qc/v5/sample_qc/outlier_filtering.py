@@ -4,7 +4,7 @@ import argparse
 import logging
 import math
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.sample_qc.filtering import (
@@ -622,9 +622,9 @@ def create_finalized_outlier_filter_ht(
         ht = ht.select(**select_expr)
 
         def _update_globals(
-            global_ann: hl.struct,
+            global_ann: Union[hl.struct, hl.dict],
             metrics_keep: List[str],
-        ) -> hl.struct:
+        ) -> Union[hl.struct, hl.dict]:
             """
             Update a global annotation to have values for only the requested metrics.
 
@@ -632,7 +632,15 @@ def create_finalized_outlier_filter_ht(
             :param metrics_keep: Metrics to keep in the global annotation.
             :return: Updated global annotation Dict or Struct.
             """
-            return global_ann.select(*metrics_keep)
+            global_ann = global_ann.select(*metrics_keep)
+            if isinstance(global_ann, hl.tstruct):
+                global_ann = global_ann.select(*metrics_keep)
+            else:
+                global_ann = {
+                    s: hl.struct(**{x: global_ann[s][x] for x in metrics_keep})
+                    for s in hl.eval(global_ann.keys())
+                }
+            return global_ann
 
         # If multiple filtering Tables are provided, group all Table annotations under a
         # filtering method annotation rather than keeping it top level. This is needed
