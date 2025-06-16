@@ -395,6 +395,7 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     if filtering_method == "nearest_neighbors":
         qc_metrics_stats = ht[sample_qc_ht.key].qc_metrics_stats
     else:
+        ht_globals = hl.eval(ht.index_globals())
         qc_metrics_stats = ht_globals["qc_metrics_stats"]
 
     # If the filtering method is 'regressed', the metrics will have '_residual' on the
