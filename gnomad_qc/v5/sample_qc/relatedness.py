@@ -90,6 +90,7 @@ def convert_cuking_output_to_ht(cuking_output_path: str) -> hl.Table:
     :return: Hail Table containing the relatedness estimates.
     """
     spark = hl.utils.java.Env.spark_session()
+    # The cuking output is sharded and stored in a single directory
     df = spark.read.parquet(f"{cuking_output_path}/*.parquet")
     ht = hl.Table.from_spark(df)
     ht = ht.key_by(i=hl.struct(s=ht.i), j=hl.struct(s=ht.j))
@@ -156,7 +157,7 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("relatedness"))
+        hl.copy_log(get_logging_path("relatedness", environment=args.environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -172,6 +173,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Filter to the first 2 partitions for testing.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
     )
     parser.add_argument(
         "--min-emission-kinship",
