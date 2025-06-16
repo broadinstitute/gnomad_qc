@@ -728,7 +728,11 @@ def main(args):
         if err_msg:
             raise ValueError(err_msg)
 
-    sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+    sample_qc_ht = get_sample_qc_ht(
+        sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+        test=test,
+        seed=args.seed,
+    )
     gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
     gen_anc_ht = get_gen_anc_ht().ht()
 
