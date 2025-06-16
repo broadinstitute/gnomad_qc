@@ -4,7 +4,7 @@ import argparse
 import logging
 import math
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import hail as hl
 from gnomad.sample_qc.filtering import (
