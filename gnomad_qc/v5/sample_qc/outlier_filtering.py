@@ -849,8 +849,10 @@ def main(args):
 
     if args.apply_regressed_filters and rerun_filtering:
 
-        res = outlier_resources.apply_regressed_filters
-        res.check_resource_existence()
+        regressed_filter_ht_path = regressed_filtering(test=test).path
+        check_resource_existence(
+            output_step_resources={"regressed_filter_ht": regressed_filter_ht_path}
+        )
 
         ht = apply_filter(
             filtering_method="regressed",
@@ -862,7 +864,7 @@ def main(args):
                 args.regress_gen_anc_n_pcs if args.regress_gen_anc else None
             ),
         )
-        ht.write(res.regressed_filter_ht.path, overwrite=overwrite)
+        ht.write(regressed_filter_ht_path, overwrite=overwrite)
 
     if args.apply_stratified_filters and rerun_filtering:
         res = outlier_resources.apply_stratified_filters
