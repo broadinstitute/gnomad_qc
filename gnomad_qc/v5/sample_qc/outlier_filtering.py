@@ -213,7 +213,6 @@ def apply_regressed_filtering_method(
     ann_expr["scores"] = ann_expr["scores"].extend(
         gen_anc_scores_expr[:regress_gen_anc_n_pcs]
     )
-    log_str.append("gen anc PCs")
     global_expr["regress_gen_anc_n_pcs"] = regress_gen_anc_n_pcs
     sample_qc_ht = sample_qc_ht.annotate(**ann_expr)
 
