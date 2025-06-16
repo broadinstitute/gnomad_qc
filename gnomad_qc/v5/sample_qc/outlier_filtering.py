@@ -730,7 +730,9 @@ def main(args):
             raise ValueError(err_msg)
 
     sample_qc_ht = get_sample_qc_ht(
-        sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+        # TODO: Revert this to use commented line after testing is complete
+        # sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+        sample_qc_ht=get_sample_qc("under_three_alt_alleles").ht(),
         test=test,
         seed=args.seed,
     )
