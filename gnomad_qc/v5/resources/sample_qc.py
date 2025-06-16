@@ -219,34 +219,24 @@ def regressed_filtering(
 
 def nearest_neighbors(
     test: bool = False,
-    platform_stratified: bool = False,
     approximation: bool = False,
-    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for population PCA nearest neighbors.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param platform_stratified: Whether to get resource that includes platform
-        stratified nearest neighbors.
     :param approximation: Whether to get resource that is approximate nearest
         neighbors.
-    :param include_unreleasable_samples: Whether to get resource that included
-        unreleasable samples in nearest neighbors determination.
     :return: VersionedTableResource.
     """
     postfix = ""
-    if platform_stratified:
-        postfix += ".platform_stratified"
     if approximation:
         postfix += ".approximation"
-    if include_unreleasable_samples:
-        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors{postfix}.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/aou.genomes.v{version}.nearest_neighbors{postfix}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
