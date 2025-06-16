@@ -61,139 +61,115 @@ logger.addHandler(memory_handler)
 ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
 REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
-field_requirements = {
-    "global_field_requirements": {
-        "freq_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
-        "freq_index_dict": hl.tdict(hl.tstr, hl.tint32),
-        "freq_meta_sample_count": hl.tarray(hl.tint32),
-        "age_distribution": hl.tstruct(
-            bin_edges=hl.tarray(hl.tfloat64),
-            bin_freq=hl.tarray(hl.tint32),
-            n_smaller=hl.tint32,
-            n_larger=hl.tint32,
-        ),
-        "age_distribution.bin_edges": hl.tarray(hl.tfloat64),
-        "age_distribution.bin_freq": hl.tarray(hl.tint32),
-        "age_distribution.n_smaller": hl.tint32,
-        "age_distribution.n_larger": hl.tint32,
-        "vrs_versions": hl.tstruct(
-            vrs_schema_version=hl.tstr,
-            vrs_python_version=hl.tstr,
-            seqrepo_version=hl.tstr,
-        ),
-        "vrs_versions.vrs_schema_version": hl.tstr,
-        "vrs_versions.vrs_python_version": hl.tstr,
-        "vrs_versions.seqrepo_version": hl.tstr,
-        "date": hl.tstr,
-    },
-    "row_field_requirements": {
-        "locus": hl.tlocus("GRCh38"),
-        "alleles": hl.tarray(hl.tstr),
-        "freq.AC": hl.tint32,
-        "freq.AF": hl.tfloat64,
-        "freq.AN": hl.tint32,
-        "freq.homozygote_count": hl.tint32,
-        "was_split": hl.tbool,
-        "filters": hl.tset(hl.tstr),
-        "info.FS": hl.tfloat64,
-        "info.MQ": hl.tfloat64,
-        "info.MQRankSum": hl.tfloat64,
-        "info.MQRankSum_cdf": hl.tstruct(
-            levels=hl.tarray(hl.tint32),
-            items=hl.tarray(hl.tfloat64),
-            _compaction_counts=hl.tarray(hl.tint32),
-        ),
-        "info.MQRankSum_cdf.levels": hl.tarray(hl.tint32),
-        "info.MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
-        "info.MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-        "info.QUALapprox": hl.tint64,
-        "info.QD": hl.tfloat32,
-        "info.ReadPosRankSum": hl.tfloat64,
-        "info.ReadPosRankSum_cdf": hl.tstruct(
-            levels=hl.tarray(hl.tint32),
-            items=hl.tarray(hl.tfloat64),
-            _compaction_counts=hl.tarray(hl.tint32),
-        ),
-        "info.ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
-        "info.ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
-        "info.ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-        "info.SB": hl.tarray(hl.tint32),
-        "info.SOR": hl.tfloat64,
-        "info.VarDP": hl.tint32,
-        "info.AS_FS": hl.tfloat64,
-        "info.AS_MQ": hl.tfloat64,
-        "info.AS_MQRankSum": hl.tfloat64,
-        "info.AS_MQRankSum_cdf": hl.tstruct(
-            levels=hl.tarray(hl.tint32),
-            items=hl.tarray(hl.tfloat64),
-            _compaction_counts=hl.tarray(hl.tint32),
-        ),
-        "info.AS_MQRankSum_cdf.levels": hl.tarray(hl.tint32),
-        "info.AS_MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
-        "info.AS_MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-        "info.AS_pab_max": hl.tfloat64,
-        "info.AS_QUALapprox": hl.tint64,
-        "info.AS_QD": hl.tfloat32,
-        "info.AS_ReadPosRankSum": hl.tfloat64,
-        "info.AS_ReadPosRankSum_cdf": hl.tstruct(
-            levels=hl.tarray(hl.tint32),
-            items=hl.tarray(hl.tfloat64),
-            _compaction_counts=hl.tarray(hl.tint32),
-        ),
-        "info.AS_ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
-        "info.AS_ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
-        "info.AS_ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-        "info.AS_SB_TABLE": hl.tarray(hl.tint32),
-        "info.AS_SOR": hl.tfloat64,
-        "info.AS_VarDP": hl.tint32,
-        "info.singleton": hl.tbool,
-        "info.transmitted_singleton": hl.tbool,
-        "vrs.VRS_Allele_IDs": hl.tarray(hl.tstr),
-        "vrs.VRS_Starts": hl.tarray(hl.tint32),
-        "vrs.VRS_Ends": hl.tarray(hl.tint32),
-        "vrs.VRS_States": hl.tarray(hl.tstr),
-        "histograms.qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
-        "histograms.qual_hists.gq_hist_all.n_smaller": hl.tint64,
-        "histograms.qual_hists.gq_hist_all.n_larger": hl.tint64,
-        "histograms.qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
-        "histograms.qual_hists.dp_hist_all.n_smaller": hl.tint64,
-        "histograms.qual_hists.dp_hist_all.n_larger": hl.tint64,
-        "histograms.qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
-        "histograms.qual_hists.gq_hist_alt.n_smaller": hl.tint64,
-        "histograms.qual_hists.gq_hist_alt.n_larger": hl.tint64,
-        "histograms.qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
-        "histograms.qual_hists.dp_hist_alt.n_smaller": hl.tint64,
-        "histograms.qual_hists.dp_hist_alt.n_larger": hl.tint64,
-        "histograms.qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
-        "histograms.qual_hists.ab_hist_alt.n_smaller": hl.tint64,
-        "histograms.qual_hists.ab_hist_alt.n_larger": hl.tint64,
-        "histograms.raw_qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.raw_qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
-        "histograms.raw_qual_hists.gq_hist_all.n_smaller": hl.tint64,
-        "histograms.raw_qual_hists.gq_hist_all.n_larger": hl.tint64,
-        "histograms.raw_qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.raw_qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
-        "histograms.raw_qual_hists.dp_hist_all.n_smaller": hl.tint64,
-        "histograms.raw_qual_hists.dp_hist_all.n_larger": hl.tint64,
-        "histograms.raw_qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.raw_qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
-        "histograms.raw_qual_hists.gq_hist_alt.n_smaller": hl.tint64,
-        "histograms.raw_qual_hists.gq_hist_alt.n_larger": hl.tint64,
-        "histograms.raw_qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.raw_qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
-        "histograms.raw_qual_hists.dp_hist_alt.n_smaller": hl.tint64,
-        "histograms.raw_qual_hists.dp_hist_alt.n_larger": hl.tint64,
-        "histograms.raw_qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-        "histograms.raw_qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
-        "histograms.raw_qual_hists.ab_hist_alt.n_smaller": hl.tint64,
-        "histograms.raw_qual_hists.ab_hist_alt.n_larger": hl.tint64,
-    },
-}
+
+# Define fucntion that returns the field requirements for the Hail Table. Preferable to have fucntion rather than defining a dictionary
+# here to avoid initializing hail before main.
+def return_field_requirements() -> Dict[str, Dict[str, Any]]:
+    """
+    Return the field requirements for the Hail Table.
+    """
+    return {
+        "global_field_requirements": {
+            "freq_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
+            "freq_index_dict": hl.tdict(hl.tstr, hl.tint32),
+            "freq_meta_sample_count": hl.tarray(hl.tint32),
+            "age_distribution.bin_edges": hl.tarray(hl.tfloat64),
+            "age_distribution.bin_freq": hl.tarray(hl.tint32),
+            "age_distribution.n_smaller": hl.tint32,
+            "age_distribution.n_larger": hl.tint32,
+            "vrs_versions.vrs_schema_version": hl.tstr,
+            "vrs_versions.vrs_python_version": hl.tstr,
+            "vrs_versions.seqrepo_version": hl.tstr,
+            "date": hl.tstr,
+        },
+        "row_field_requirements": {
+            "locus": hl.tlocus("GRCh38"),
+            "alleles": hl.tarray(hl.tstr),
+            "freq.AC": hl.tarray(hl.tint32),  # Use arrays to check freq annotations.
+            "freq.AF": hl.tarray(hl.tfloat64),
+            "freq.AN": hl.tarray(hl.tint32),
+            "freq.homozygote_count": hl.tarray(hl.tint32),
+            "was_split": hl.tbool,
+            "filters": hl.tset(hl.tstr),
+            "info.FS": hl.tfloat64,
+            "info.MQ": hl.tfloat64,
+            "info.MQRankSum": hl.tfloat64,
+            "info.MQRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.QUALapprox": hl.tint64,
+            "info.QD": hl.tfloat32,
+            "info.ReadPosRankSum": hl.tfloat64,
+            "info.ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.SB": hl.tarray(hl.tint32),
+            "info.SOR": hl.tfloat64,
+            "info.VarDP": hl.tint32,
+            "info.AS_FS": hl.tfloat64,
+            "info.AS_MQ": hl.tfloat64,
+            "info.AS_MQRankSum": hl.tfloat64,
+            "info.AS_MQRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.AS_MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.AS_MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.AS_pab_max": hl.tfloat64,
+            "info.AS_QUALapprox": hl.tint64,
+            "info.AS_QD": hl.tfloat32,
+            "info.AS_ReadPosRankSum": hl.tfloat64,
+            "info.AS_ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.AS_ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.AS_ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.AS_SB_TABLE": hl.tarray(hl.tint32),
+            "info.AS_SOR": hl.tfloat64,
+            "info.AS_VarDP": hl.tint32,
+            "info.singleton": hl.tbool,
+            "info.transmitted_singleton": hl.tbool,
+            "info.vrs.VRS_Allele_IDs": hl.tarray(hl.tstr),
+            "info.vrs.VRS_Starts": hl.tarray(hl.tint32),
+            "info.vrs.VRS_Ends": hl.tarray(hl.tint32),
+            "info.vrs.VRS_States": hl.tarray(hl.tstr),
+            "histograms.qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.gq_hist_all.n_smaller": hl.tint64,
+            "histograms.qual_hists.gq_hist_all.n_larger": hl.tint64,
+            "histograms.qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.dp_hist_all.n_smaller": hl.tint64,
+            "histograms.qual_hists.dp_hist_all.n_larger": hl.tint64,
+            "histograms.qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.gq_hist_alt.n_smaller": hl.tint64,
+            "histograms.qual_hists.gq_hist_alt.n_larger": hl.tint64,
+            "histograms.qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.dp_hist_alt.n_smaller": hl.tint64,
+            "histograms.qual_hists.dp_hist_alt.n_larger": hl.tint64,
+            "histograms.qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.ab_hist_alt.n_smaller": hl.tint64,
+            "histograms.qual_hists.ab_hist_alt.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.gq_hist_all.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_all.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.dp_hist_all.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_all.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.gq_hist_alt.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_alt.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.dp_hist_alt.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_alt.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.ab_hist_alt.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.ab_hist_alt.n_larger": hl.tint64,
+        },
+    }
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -307,7 +283,7 @@ def validate_required_fields(
     def _check_field_exists_and_type(
         root_expr: hl.expr.Expression,
         field_path: str,
-        expected_type: hl.expr.DataType,
+        expected_type: Any,
         annotation_kind: str = "row",
     ) -> None:
         """
@@ -356,6 +332,22 @@ def validate_required_fields(
                 return
 
         # Check that the field type matches expectation.
+        if isinstance(expected_type, hl.tarray) and isinstance(
+            current_field.dtype, hl.tarray
+        ):
+            if expected_type.element_type != current_field.dtype.element_type:
+                issues.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' is an array with incorrect element type: "
+                    f"expected {expected_type.element_type}, found {current_field.dtype.element_type}"
+                )
+                return
+        else:
+            if current_field.dtype != expected_type:
+                issues.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
+                )
+                return
+
         if current_field.dtype != expected_type:
             issues.append(
                 f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
@@ -363,18 +355,18 @@ def validate_required_fields(
             return
         else:
             validated.append(
-                f"{annotation_kind.capitalize()} field '{field_path}'IS of type {expected_type}, found {current_field.dtype}"
+                f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
             )
 
     # Validate global fields.
     for field, expected_type in field_requirements["global_field_requirements"].items():
-        check_field_exists_and_type(ht.globals, field, expected_type, "global")
+        _check_field_exists_and_type(ht.globals, field, expected_type, "global")
 
     # Validate row fields.
     for field, expected_type in field_requirements["row_field_requirements"].items():
-        check_field_exists_and_type(ht.row, field, expected_type, "row")
+        _check_field_exists_and_type(ht.row, field, expected_type, "row")
 
-    return (issues, validated)
+    return (set(issues), set(validated))
 
 
 def check_missingness(
@@ -911,7 +903,14 @@ def main(args):
             ]["faf_meta"]
 
         logger.info("Validate required fields...")
-        validate_required_fields(ht=ht, field_requirements=field_requirements)
+        field_requirements = return_field_requirements()
+        validation_errors, validated_fields = validate_required_fields(
+            ht=ht, field_requirements=field_requirements
+        )
+        if len(validation_errors) > 0:
+            logger.info(f"Failed validation of required fields: {validation_errors}")
+        if len(validated_fields) > 0:
+            logger.info(f"Validated fields: {validated_fields}")
 
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
