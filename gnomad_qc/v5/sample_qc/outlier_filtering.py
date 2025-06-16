@@ -878,8 +878,8 @@ def main(args):
         ht.write(stratified_filter_ht_path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
-        res = outlier_resources.determine_nearest_neighbors
-        res.check_resource_existence()
+        nn_ht_path = nearest_neighbors(test=test, approximation=nn_approximation).path
+        check_resource_existence(output_step_resources={"nn_ht": nn_ht_path})
 
         ht = determine_nearest_neighbors(
             sample_qc_ht,
@@ -892,7 +892,7 @@ def main(args):
             use_approximation=nn_approximation,
             n_trees=args.n_trees,
         )
-        ht.write(res.nn_ht.path, overwrite=overwrite)
+        ht.write(nn_ht_path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters and rerun_filtering:
         res = outlier_resources.apply_nearest_neighbor_filters
