@@ -859,9 +859,7 @@ def main(args):
             sample_qc_ht=sample_qc_ht,
             qc_metrics=filtering_qc_metrics,
             gen_anc_scores_ht=gen_anc_scores_ht,
-            regress_gen_anc_n_pcs=(
-                args.regress_gen_anc_n_pcs if args.regress_gen_anc else None
-            ),
+            regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
         )
         ht.write(regressed_filter_ht_path, overwrite=overwrite)
 
@@ -875,7 +873,7 @@ def main(args):
             apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
             sample_qc_ht=sample_qc_ht,
             qc_metrics=filtering_qc_metrics,
-            gen_anc_ht=gen_anc_ht if args.stratify_gen_anc else None,
+            gen_anc_ht=gen_anc_ht,
         )
         ht.write(stratified_filter_ht_path, overwrite=overwrite)
 
@@ -986,11 +984,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Apply stratified outlier filtering method.",
         action="store_true",
     )
-    stratified_args.add_argument(
-        "--stratify-gen-anc",
-        help="Stratify by genetic ancestry for filtering.",
-        action="store_true",
-    )
 
     regressed_args = parser.add_argument_group(
         "Apply regression filtering method.",
@@ -999,11 +992,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     regressed_args.add_argument(
         "--apply-regressed-filters",
         help="Apply regression outlier filtering method.",
-        action="store_true",
-    )
-    regressed_args.add_argument(
-        "--regress-gen-anc",
-        help="Use genetic ancestry PCs in sample QC metric regressions.",
         action="store_true",
     )
     regressed_args.add_argument(
