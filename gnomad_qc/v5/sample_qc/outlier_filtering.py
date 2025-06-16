@@ -634,7 +634,7 @@ def create_finalized_outlier_filter_ht(
             :return: Updated global annotation Dict or Struct.
             """
             global_ann = global_ann.select(*metrics_keep)
-            if isinstance(global_ann, hl.tstruct):
+            if isinstance(global_ann, hl.expr.StructExpression):
                 global_ann = global_ann.select(*metrics_keep)
             else:
                 global_ann = {
