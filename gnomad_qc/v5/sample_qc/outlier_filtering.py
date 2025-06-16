@@ -913,18 +913,36 @@ def main(args):
         ).write(nn_filter_ht_path, overwrite=overwrite)
 
     if args.create_finalized_outlier_filter:
-        res = outlier_resources.create_finalized_outlier_filter
-        res.check_resource_existence()
+        final_ht_path = finalized_outlier_filtering(test=test).path
+        check_resource_existence(output_step_resources={"finalized_ht": final_ht_path})
+
+        finalized_input_steps = {}
+        if args.apply_regressed_filters:
+            finalized_input_steps["regressed_filter_ht"] = regressed_filtering(
+                test=test
+            ).ht()
+        if args.apply_stratified_filters:
+            finalized_input_steps["stratified_filter_ht"] = stratified_filtering(
+                test=test
+            ).ht()
+        if args.apply_nearest_neighbor_filters:
+            finalized_input_steps["nn_filter_ht"] = nearest_neighbors_filtering(
+                test=test
+            ).ht()
+
+        if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
+            raise ValueError(
+                "At least one filtering method and relevant options must be supplied "
+                "when using '--create-finalized-outlier-filter'"
+            )
+
         # Reformat input step names for use as annotation labels.
         ht = create_finalized_outlier_filter_ht(
-            {
-                k.split("--apply-")[1].replace("-", "_"): v[0].ht()
-                for k, v in res.input_resources.items()
-            },
+            finalized_outlier_hts=finalized_input_steps,
             qc_metrics=args.final_filtering_qc_metrics,
             ensemble_operator=args.ensemble_method_logical_operator,
         )
-        ht.write(res.finalized_ht.path, overwrite=overwrite)
+        ht.write(final_ht_path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
