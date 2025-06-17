@@ -65,9 +65,7 @@ REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 # Define function that returns the field requirements for the Hail Table. Preferable to have function rather than defining a dictionary
 # here to avoid initializing hail before main.
 def return_field_requirements() -> Dict[str, Dict[str, Any]]:
-    """
-    Return the field requirements for the Hail Table.
-    """
+    """Return the field requirements for the Hail Table."""
     return {
         "global_field_requirements": {
             "freq_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
