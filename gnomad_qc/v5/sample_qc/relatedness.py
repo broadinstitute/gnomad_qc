@@ -13,6 +13,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
+    relatedness,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -26,8 +27,8 @@ def print_cuking_command(
     min_emission_kinship: float = 0.5,
     cuking_split_factor: int = 4,
     location: str = "us-central1",
-    machine_type: str = "a2-highgpu-1g",
-    accelerator_count: int = 1,
+    machine_type: str = "a2-highgpu-2g",
+    accelerator_count: int = 2,
     accelerator_type: str = "nvidia-tesla-a100",
     requester_pays_project: str = "terra-vpc-sc-93ccd8d2",
 ) -> None:
@@ -46,8 +47,9 @@ def print_cuking_command(
         'upper triangular' submatrices need to be evaluated due to the symmetry of the
         relatedness matrix, leading to 10 shards. Default is 4.
     :param location: Location to run the dsub job. Default is "us-central1".
-    :param machine_type: Machine type to use for the dsub job. Default is "a2-highgpu-1g".
-    :param accelerator_count: Number of accelerators to use for the dsub job. Default is 1.
+    :param machine_type: Machine type to use for the dsub job. Default is "a2-highgpu-2g".
+        The default for v4 was a2-highgpu-1g, but this was not sufficient for v5.
+    :param accelerator_count: Number of accelerators to use for the dsub job. Default is 2.
     :param accelerator_type: Type of accelerator to use for the dsub job.
         Default is "nvidia-tesla-a100".
     :param requester_pays_project: Project ID to use for requester pays buckets.
@@ -59,30 +61,44 @@ def print_cuking_command(
         "cuKING on the files created by --prepare-cuking-inputs."
     )
     # TOTAL_SHARDS calculates the total number of shards using the formula k(k+1)/2.
-    cuking_command = (
-        f"""\
-        SPLIT_FACTOR = {cuking_split_factor} \\"""
-        + """
+    cuking_command = f"""\
+        SPLIT_FACTOR={cuking_split_factor} \\
         TOTAL_SHARDS=$((SPLIT_FACTOR * (SPLIT_FACTOR + 1) / 2)) \\
-        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do \\
-            cuKING_dsub \\"""
-        + f"""
-            --location={location} \\
-            --machine-type={machine_type} \\
-            --accelerator-count={accelerator_count} \\
-            --accelerator-type={accelerator_type} \\
-            --command="cuking \\
-            --input_uri="{cuking_input_path}" \\
-            --output_uri="{cuking_output_path}" \\
-            --requester_pays_project={requester_pays_project} \\
-            --kin_threshold={min_emission_kinship} \\"""
-        + """
-            --split-factor=${SPLIT_FACTOR} \\
-            --shard-index=${SHARD_INDEX}" \\
+        for SHARD_INDEX in $(seq 0 $((TOTAL_SHARDS - 1))); do
+        cuKING_dsub \\
+        --location={location} \\
+        --machine-type={machine_type} \\
+        --accelerator-count={accelerator_count} \\
+        --accelerator-type={accelerator_type} \\
+        --command="cuking \\
+        --input_uri="{cuking_input_path}" \\
+        --output_uri="{cuking_output_path}/out_split_${{SHARD_INDEX}}.parquet" \\
+        --requester_pays_project={requester_pays_project} \\
+        --kin_threshold={min_emission_kinship} \\
+        --split_factor=${{SPLIT_FACTOR}} \\
+        --shard_index=${{SHARD_INDEX}}"
         done
         """
-    )
     print(textwrap.dedent(cuking_command))
+
+
+def convert_cuking_output_to_ht(cuking_output_path: str) -> hl.Table:
+    """
+    Convert cuKING output Parquet files to a Hail Table.
+
+    .. note ::
+
+        We cannot import this function from the cuKING script, which is why it is duplicated here.
+
+    :param cuking_output_path: Path to the cuKING output Parquet files.
+    :return: Hail Table containing the relatedness estimates.
+    """
+    spark = hl.utils.java.Env.spark_session()
+    # The cuking output is sharded and stored in a single directory
+    df = spark.read.parquet(f"{cuking_output_path}/*.parquet")
+    ht = hl.Table.from_spark(df)
+    ht = ht.key_by(i=hl.struct(s=ht.i), j=hl.struct(s=ht.j))
+    return ht
 
 
 def main(args):
@@ -134,10 +150,18 @@ def main(args):
                 parquet_uri=get_cuking_input_path(test=test),
                 overwrite=overwrite,
             )
+        if args.create_cuking_relatedness_table:
+            logger.info("Converting cuKING outputs to Hail Table...")
+            check_resource_existence(
+                output_step_resources={"relatedness_ht": relatedness(test=test).path}
+            )
+            ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
+            ht = ht.repartition(args.relatedness_n_partitions)
+            ht.write(relatedness(test=test, raw=True).path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("relatedness"))
+        hl.copy_log(get_logging_path("relatedness", environment=args.environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -153,6 +177,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Filter to the first 2 partitions for testing.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
     )
     parser.add_argument(
         "--min-emission-kinship",
@@ -199,7 +229,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=4,
         type=int,
     )
-
+    cuking_args.add_argument(
+        "--create-cuking-relatedness-table",
+        help="Create a Hail Table from the cuKING output.",
+        action="store_true",
+    )
+    cuking_args.add_argument(
+        "--relatedness-n-partitions",
+        help="Number of partitions to use for the relatedness Table.",
+        default=100,
+        type=int,
+    )
     return parser
 
 

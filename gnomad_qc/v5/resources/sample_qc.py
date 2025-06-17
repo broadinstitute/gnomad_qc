@@ -172,6 +172,27 @@ def get_cuking_output_path(
     return f"{qc_temp_prefix(version=version, environment=environment)}cuking_output{'_test' if test else ''}.parquet"
 
 
+def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for relatedness results.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :param raw: Whether to return the raw cuKING output in Hail Table format. If False,
+        returns the processed relatedness table. Default is False.
+    :return: VersionedTableResource.
+    """
+    suffix = ".raw" if raw else ""
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness{suffix}.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+  
+  
 ######################################################################
 # Outlier detection resources
 ######################################################################
@@ -277,3 +298,4 @@ def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
             for version in SAMPLE_QC_VERSIONS
         },
     )
+  
