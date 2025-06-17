@@ -623,7 +623,7 @@ def create_finalized_outlier_filter_ht(
         ht = ht.select(**select_expr)
 
         def _update_globals(
-            global_ann: Union[hl.hl.expr.StructExpression, hl.expr.DictExpression],
+            global_ann: Union[hl.expr.StructExpression, hl.expr.DictExpression],
             metrics_keep: List[str],
         ) -> Union[hl.expr.StructExpression, hl.expr.DictExpression]:
             """
