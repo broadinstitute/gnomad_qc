@@ -191,8 +191,8 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
             for version in SAMPLE_QC_VERSIONS
         },
     )
-  
-  
+
+
 ######################################################################
 # Outlier detection resources
 ######################################################################
@@ -298,4 +298,3 @@ def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
             for version in SAMPLE_QC_VERSIONS
         },
     )
-  
