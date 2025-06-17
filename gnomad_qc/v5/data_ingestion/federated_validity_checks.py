@@ -339,6 +339,10 @@ def validate_required_fields(
                     f"expected {expected_type.element_type}, found {current_field.dtype.element_type}"
                 )
                 return
+            else:
+                validated.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' IS an array with correct element type {expected_type.element_type}"
+                )
         else:
             if current_field.dtype != expected_type:
                 issues.append(
