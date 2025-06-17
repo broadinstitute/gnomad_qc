@@ -623,9 +623,9 @@ def create_finalized_outlier_filter_ht(
         ht = ht.select(**select_expr)
 
         def _update_globals(
-            global_ann: Union[hl.struct, hl.dict],
+            global_ann: Union[hl.hl.expr.StructExpression, hl.expr.DictExpression],
             metrics_keep: List[str],
-        ) -> Union[hl.struct, hl.dict]:
+        ) -> Union[hl.expr.StructExpression, hl.expr.DictExpression]:
             """
             Update a global annotation to have values for only the requested metrics.
 
@@ -633,13 +633,12 @@ def create_finalized_outlier_filter_ht(
             :param metrics_keep: Metrics to keep in the global annotation.
             :return: Updated global annotation Dict or Struct.
             """
-            global_ann = global_ann.select(*metrics_keep)
             if isinstance(global_ann, hl.expr.StructExpression):
                 global_ann = global_ann.select(*metrics_keep)
             else:
                 global_ann = {
                     s: hl.struct(**{x: global_ann[s][x] for x in metrics_keep})
-                    for s in global_ann.keys()
+                    for s in hl.eval(global_ann.keys())
                 }
             return global_ann
 
