@@ -345,10 +345,10 @@ def validate_required_fields(
                     f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
                 )
                 return
-
-        validated.append(
-            f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
-        )
+            else:
+                validated.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
+                )
 
     # Validate global fields.
     for field, expected_type in field_requirements["global_field_requirements"].items():
