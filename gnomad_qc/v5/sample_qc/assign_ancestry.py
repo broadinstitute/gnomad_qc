@@ -31,3 +31,35 @@ from gnomad_qc.v5.resources.sample_qc import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
+
+
+def run_pca(
+    related_samples_to_drop: hl.Table,
+    include_unreleasable_samples: hl.bool = False,
+    n_pcs: int = 30,
+    test: hl.bool = False,
+) -> Tuple[List[float], hl.Table, hl.Table]:
+    """
+    Run population PCA using `run_pca_with_relateds`.
+
+    :param related_samples_to_drop: Table of related samples to drop from PCA run.
+    :param include_unreleasable_samples: Should unreleasable samples be included in the
+        PCA.
+    :param n_pcs: Number of PCs to compute.
+    :param test: Subset QC MT to small test dataset.
+    :return: Eigenvalues, scores and loadings from PCA.
+    """
+    logger.info("Running population PCA")
+    qc_mt = get_joint_qc(test=test).mt()
+    joint_meta = joint_qc_meta.ht()
+    samples_to_drop = related_samples_to_drop.select()
+
+    if not include_unreleasable_samples:
+        logger.info("Excluding unreleasable samples for PCA.")
+        samples_to_drop = samples_to_drop.union(
+            qc_mt.filter_cols(~joint_meta[qc_mt.col_key].releasable).cols().select()
+        )
+    else:
+        logger.info("Including unreleasable samples for PCA.")
+
+    return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
