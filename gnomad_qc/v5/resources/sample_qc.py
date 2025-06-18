@@ -191,3 +191,175 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+######################################################################
+# Ancestry inference resources
+######################################################################
+
+
+def _get_ancestry_pca_ht_path(
+    part: str,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    include_unreleasable_samples: bool = False,
+    test: bool = False,
+    data_type: str = "joint",
+) -> str:
+    """
+    Get path to files related to ancestry PCA.
+
+    :param part: String indicating the type of PCA file to return (loadings,
+        eigenvalues, or scores).
+    :param version: Version of sample QC path to return.
+    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
+    :return: Path to requested ancestry PCA file.
+    """
+    return f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+
+
+def ancestry_pca_loadings(
+    include_unreleasable_samples: bool = False,
+    test: bool = False,
+    data_type: str = "joint",
+) -> VersionedTableResource:
+    """
+    Get the ancestry PCA loadings VersionedTableResource.
+
+    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA
+        that used unreleasable samples.
+    :param test: Whether to use a temp path.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
+    :return: Ancestry PCA loadings
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                _get_ancestry_pca_ht_path(
+                    "loadings", version, include_unreleasable_samples, test, data_type
+                )
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def ancestry_pca_scores(
+    include_unreleasable_samples: bool = False,
+    test: bool = False,
+    data_type: str = "joint",
+) -> VersionedTableResource:
+    """
+    Get the ancestry PCA scores VersionedTableResource.
+
+    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA
+        that used unreleasable samples.
+    :param test: Whether to use a temp path.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Ancestry PCA scores.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                _get_ancestry_pca_ht_path(
+                    "scores", version, include_unreleasable_samples, test, data_type
+                )
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def ancestry_pca_eigenvalues(
+    include_unreleasable_samples: bool = False,
+    test: bool = False,
+    data_type: str = "joint",
+) -> VersionedTableResource:
+    """
+    Get the ancestry PCA eigenvalues VersionedTableResource.
+
+    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the
+        PCA that used unreleasable samples.
+    :param test: Whether to use a temp path.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Ancestry PCA eigenvalues.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                _get_ancestry_pca_ht_path(
+                    "eigenvalues",
+                    version,
+                    include_unreleasable_samples,
+                    test,
+                    data_type,
+                )
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def pop_rf_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+) -> str:
+    """
+    Path to RF model used for inferring sample populations.
+
+    :param version: gnomAD Version.
+    :param test: Whether the RF assignment was from a test dataset.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: String path to sample pop RF model.
+    """
+    return f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
+
+
+def get_pop_ht(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+):
+    """
+    Get the TableResource of samples' inferred population for the indicated gnomAD version.
+
+    :param version: Version of pop TableResource to return.
+    :param test: Whether to use the test version of the pop TableResource.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: TableResource of sample pops.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.ht"
+    )
+
+
+def get_pop_pr_ht(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+):
+    """
+    Get the TableResource of ancestry inference precision and recall values.
+
+    :param version: Version of pop PR TableResource to return.
+    :param test: Whether to use the test version of the pop PR TableResource.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: TableResource of ancestry inference PR values.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop_pr.ht"
+    )
+
+
+def per_pop_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
+    """
+    Get path to JSON file containing per ancestry group minimum RF probabilities.
+
+    :param version: Version of the JSON to return.
+    :return: Path to per ancestry group minimum RF probabilities JSON.
+    """
+    return f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
