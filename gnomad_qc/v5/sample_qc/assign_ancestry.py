@@ -14,7 +14,17 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
-from gnomad_qc.v5.resources.basics import get_checkpoint_path
+from gnomad_qc.v4.resources.sample_qc import (
+    joint_qc_meta as v4_joint_qc_meta,
+    related_samples_to_drop as v4_related_samples_to_drop,
+)
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_checkpoint_path,
+    get_logging_path,
+)
+from gnomad_qc.v5.resources.meta import sample_id_collisions
+
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
@@ -22,11 +32,11 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_joint_qc,
     get_pop_ht,
     get_pop_pr_ht,
-    # joint_qc_meta,
     per_pop_min_rf_probs_json_path,
     pop_rf_path,
-    # related_samples_to_drop,
+    # related_samples_to_drop, #TODO: switch from v4 related_samples_to_drop to v5 related_samples_to_drop once ready
 )
+
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
@@ -63,3 +73,184 @@ def run_pca(
         logger.info("Including unreleasable samples for PCA.")
 
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
+
+
+def main(args):
+    """Assign global ancestry labels to samples."""
+    hl.init(
+        log="/assign_ancestry.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+    try:
+        include_unreleasable_samples = args.include_unreleasable_samples
+        overwrite = args.overwrite
+        test = args.test
+        include_v2_known_in_training = args.include_v2_known_in_training
+
+        if args.run_pca:
+            pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
+                related_samples_to_drop(release=False).ht(),
+                include_unreleasable_samples,
+                args.n_pcs,
+                test,
+            )
+
+            write_pca_results(
+                pop_eigenvalues,
+                pop_scores_ht,
+                pop_loadings_ht,
+                overwrite,
+                include_unreleasable_samples,
+                test,
+            )
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
+
+
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--test", help="Run script on test dataset.", action="store_true"
+    )
+    parser.add_argument(
+        "--overwrite", help="Overwrite output files.", action="store_true"
+    )
+    parser.add_argument("--run-pca", help="Compute ancestry PCA", action="store_true")
+    parser.add_argument(
+        "--n-pcs",
+        help="Number of PCs to compute for ancestry PCA. Defaults to 30.",
+        default=30,
+        type=int,
+    )
+    parser.add_argument(
+        "--include-unreleasable-samples",
+        help="Include unreleasable samples when computing PCA.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--assign-pops", help="Assigns pops from PCA.", action="store_true"
+    )
+    parser.add_argument(
+        "--pop-pcs",
+        help=(
+            "List of PCs to use for ancestry assignment. The values provided should be"
+            " 1-based. If a single integer is passed, the script assumes this"
+            " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
+            " 1,2,3,4,5,and 6. Defaults to 20 PCs."
+        ),
+        default=[20],
+        type=int,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--min-pop-prob",
+        help="Minimum RF prob for pop assignment. Defaults to 0.75.",
+        default=0.75,
+        type=float,
+    )
+    parser.add_argument(
+        "--include-v2-known-in-training",
+        help=(
+            "Whether to train RF classifier using v2 known pop labels. Default is"
+            " False."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--v4-population-spike",
+        help="List of v4 populations to spike into the RF training populations.",
+        type=str,
+        nargs="+",
+        choices=["Arab", "Bedouin", "Persian", "Qatari"],
+    )
+    parser.add_argument(
+        "--v3-population-spike",
+        help="List of v3 populations to spike into the RF training populations.",
+        type=str,
+        nargs="+",
+        choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"],
+    )
+    parser.add_argument(
+        "--compute-precision-recall",
+        help=(
+            "Compute precision and recall for the RF model using evaluation samples. "
+            "This is computed for all evaluation samples as well as per population."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--number-pr-points",
+        help=(
+            "Number of min prob cutoffs to compute PR metrics for. e.g. 100 will "
+            "compute PR metrics for min prob of 0 to 1 in increments of 0.01. Default "
+            "is 100."
+        ),
+        default=100,
+        type=int,
+    )
+    parser.add_argument(
+        "--apply-per-pop-min-rf-probs",
+        help=(
+            "Apply per ancestry group minimum RF probabilities for finalized pop "
+            "assignment instead of using '--min-pop-prob' for all samples. There must "
+            "be a JSON file located in the path defined by the "
+            "'per_pop_min_rf_probs_json_path' resource, or "
+            "'--infer-per-pop-min-rf-probs' must be used."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--infer-per-pop-min-rf-probs",
+        help=(
+            "Whether to infer per ancestry group minimum RF probabilities and write "
+            "them out to 'per_pop_min_rf_probs_json_path' before determining the "
+            "finalized pop assignment."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--min-recall",
+        help=(
+            "Minimum recall value to choose per ancestry group minimum RF "
+            "probabilities. This cutoff is applied first, and if the chosen cutoff "
+            "results in a precision lower than '--min-precision', the minimum RF "
+            "probabilities with the highest recall that meets '--min-precision' is "
+            "used. Default is 0.99."
+        ),
+        default=0.99,
+        type=float,
+    )
+    parser.add_argument(
+        "--min-precision",
+        help=(
+            "Minimum precision value to choose per ancestry group minimum RF "
+            "probabilities. This cutoff is applied if the chosen minimum RF "
+            "probabilities cutoff using '--min-recall' results in a precision lower "
+            "than this value. The minimum RF probabilities with the highest recall "
+            "that meets '--min-precision' is used. Default is 0.99."
+        ),
+        default=0.99,
+        type=float,
+    )
+    parser.add_argument(
+        "--set-ami-exomes-to-remaining",
+        help=(
+            "Whether to change the ancestry group for any exomes inferred as 'ami' to"
+            " 'remaining'. Should be used in cases where only a few exomes were"
+            " inferred as amish to avoid having ancestry groups with only a few"
+            " samples."
+        ),
+        action="store_true",
+    )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    args = parser.parse_args()
+
+    main(args)
