@@ -16,14 +16,14 @@ from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v4.resources.sample_qc import (
     joint_qc_meta as v4_joint_qc_meta,
-    related_samples_to_drop as v4_related_samples_to_drop,
+    related_samples_to_drop,  # TODO: remove when switch to v5.
 )
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_checkpoint_path,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.meta import sample_id_collisions
+from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
 
 from gnomad_qc.v5.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -34,7 +34,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_pop_pr_ht,
     per_pop_min_rf_probs_json_path,
     pop_rf_path,
-    # related_samples_to_drop, #TODO: switch from v4 related_samples_to_drop to v5 related_samples_to_drop once ready
+    # related_samples_to_drop, #TODO: switch from v4 related_samples_to_drop to v5 related_samples_to_drop once ready.
 )
 
 
@@ -45,6 +45,7 @@ logger.setLevel(logging.INFO)
 
 def run_pca(
     related_samples_to_drop: hl.Table,
+    meta_ht: hl.Table,
     include_unreleasable_samples: hl.bool = False,
     n_pcs: int = 30,
     test: hl.bool = False,
@@ -53,6 +54,7 @@ def run_pca(
     Run population PCA using `run_pca_with_relateds`.
 
     :param related_samples_to_drop: Table of related samples to drop from PCA run.
+    :param meta_ht: Table of meta data containing 'releasable' field, used to drop samples that are not releasable unless include_unreleasable_samples is True.
     :param include_unreleasable_samples: Should unreleasable samples be included in the
         PCA.
     :param n_pcs: Number of PCs to compute.
@@ -61,13 +63,18 @@ def run_pca(
     """
     logger.info("Running population PCA")
     qc_mt = get_joint_qc(test=test).mt()
-    joint_meta = joint_qc_meta.ht()
+
+    if args.test_on_chr20:
+        qc_mt = hl.filter_intervals(
+            qc_mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
+        )
+
     samples_to_drop = related_samples_to_drop.select()
 
     if not include_unreleasable_samples:
         logger.info("Excluding unreleasable samples for PCA.")
         samples_to_drop = samples_to_drop.union(
-            qc_mt.filter_cols(~joint_meta[qc_mt.col_key].releasable).cols().select()
+            qc_mt.filter_cols(~meta_ht[qc_mt.col_key].releasable).cols().select()
         )
     else:
         logger.info("Including unreleasable samples for PCA.")
@@ -79,10 +86,11 @@ def main(args):
     """Assign global ancestry labels to samples."""
     hl.init(
         log="/assign_ancestry.log",
-        default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    hl.default_reference("GRCh38")
     try:
+
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
         test = args.test
@@ -90,10 +98,11 @@ def main(args):
 
         if args.run_pca:
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-                related_samples_to_drop(release=False).ht(),
-                include_unreleasable_samples,
-                args.n_pcs,
-                test,
+                meta_ht=project_meta.ht(),
+                related_samples_to_drop=related_samples_to_drop(release=False).ht(),
+                include_unreleasable_samples=include_unreleasable_samples,
+                n_pcs=args.n_pcs,
+                test=test,
             )
 
             write_pca_results(
@@ -103,6 +112,14 @@ def main(args):
                 overwrite,
                 include_unreleasable_samples,
                 test,
+            )
+        if args.assign_pops:
+            # Rename sample collision in v4 joint qc meta.
+            v4_joint_qc_meta = v4_joint_qc_meta.ht()
+            v4_joint_qc_meta = add_project_prefix_to_sample_collisions(
+                t=v4_joint_qc_meta,
+                sample_collisions=sample_id_collisions.ht(),
+                project="gnomad",
             )
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -128,6 +145,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-unreleasable-samples",
         help="Include unreleasable samples when computing PCA.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-on-chr20",
+        help="Filter the QC Matrix Table to chromosome 20 before running PCA.",
         action="store_true",
     )
     parser.add_argument(
