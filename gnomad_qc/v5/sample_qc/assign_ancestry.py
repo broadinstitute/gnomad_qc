@@ -16,7 +16,6 @@ from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.sample_qc.assign_ancestry import (
     V3_SPIKE_PROJECTS,
     V4_POP_SPIKE_DICT,
-    write_pca_results,
 )
 from gnomad_qc.v4.resources.sample_qc import (
     joint_qc_meta as v4_joint_qc_meta,
@@ -88,6 +87,45 @@ def run_pca(
         logger.info("Including unreleasable samples for PCA.")
 
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
+
+
+def write_pca_results(
+    pop_pca_eigenvalues: List[float],
+    pop_pca_scores_ht: hl.Table,
+    pop_pca_loadings_ht: hl.Table,
+    overwrite: hl.bool = False,
+    included_unreleasables: hl.bool = False,
+    test: hl.bool = False,
+):
+    """
+    Write out the eigenvalue hail Table, scores hail Table, and loadings hail Table returned by run_pca().
+
+    :param pop_pca_eigenvalues: List of eigenvalues returned by run_pca.
+    :param pop_pca_scores_ht: Table of scores returned by run_pca.
+    :param pop_pca_loadings_ht: Table of loadings returned by run_pca.
+    :param overwrite: Whether to overwrite an existing file.
+    :param included_unreleasables: Whether run_pca included unreleasable samples.
+    :param test: Whether the test QC MT was used in the PCA.
+    :return: None
+    """
+    pop_pca_eigenvalues_ht = hl.Table.parallelize(
+        hl.literal(
+            [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_eigenvalues)],
+            "array<struct{PC: int, eigenvalue: float}>",
+        )
+    )
+    pop_pca_eigenvalues_ht.write(
+        ancestry_pca_eigenvalues(included_unreleasables, test).path,
+        overwrite=overwrite,
+    )
+    pop_pca_scores_ht.write(
+        ancestry_pca_scores(included_unreleasables, test).path,
+        overwrite=overwrite,
+    )
+    pop_pca_loadings_ht.write(
+        ancestry_pca_loadings(included_unreleasables, test).path,
+        overwrite=overwrite,
+    )
 
 
 def main(args):
