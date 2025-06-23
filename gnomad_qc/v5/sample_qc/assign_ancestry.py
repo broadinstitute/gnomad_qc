@@ -13,7 +13,11 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
-from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
+from gnomad_qc.v4.sample_qc.assign_ancestry import (
+    V3_SPIKE_PROJECTS,
+    V4_POP_SPIKE_DICT,
+    write_pca_results,
+)
 from gnomad_qc.v4.resources.sample_qc import (
     joint_qc_meta as v4_joint_qc_meta,
     related_samples_to_drop,  # TODO: remove when switch to v5.
@@ -37,6 +41,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     # related_samples_to_drop, #TODO: switch from v4 related_samples_to_drop to v5 related_samples_to_drop once ready.
 )
 
+# TODO: Switch from using pop to gen_anc?
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
@@ -94,6 +99,12 @@ def main(args):
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
         test = args.test
+
+        if test and args.test_on_chr20:
+            raise ValueError("Both test and test_on_chr20 cannot be set to True.")
+
+        # Use tmp path if either test dataset or test on chr20 is specified.
+        use_tmp_path = args.test_on_chr20 | test
         include_v2_known_in_training = args.include_v2_known_in_training
 
         if args.run_pca:
@@ -111,7 +122,7 @@ def main(args):
                 pop_loadings_ht,
                 overwrite,
                 include_unreleasable_samples,
-                test,
+                use_tmp_path,
             )
         if args.assign_pops:
             # Rename sample collision in v4 joint qc meta.
