@@ -4,21 +4,12 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.assessment.summary_stats import (
-    default_generate_gene_lof_matrix,
-    default_generate_gene_lof_summary,
-    get_summary_counts,
-)
-from gnomad.utils.filtering import filter_to_adj
+from gnomad.assessment.summary_stats import get_summary_counts
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.assessment import release_lof, release_summary_stats
-from gnomad_qc.v4.resources.basics import (
-    get_gnomad_v4_genomes_vds,
-    get_gnomad_v4_vds,
-    get_logging_path,
-)
+from gnomad_qc.v4.resources.assessment import release_summary_stats
+from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_sites
 
@@ -110,66 +101,12 @@ def main(args):
             )
 
         if args.generate_gene_lof_matrix:
-            if data_type == "exomes":
-                vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True)
-            elif data_type == "genomes":
-                vds = get_gnomad_v4_genomes_vds(release_only=True, annotate_meta=True)
-            else:
-                raise ValueError(
-                    f"Invalid data type: {data_type}. Must be 'exomes' or 'genomes'."
-                )
-
-            rmt = vds.reference_data
-            vmt = vds.variant_data.select_entries("LA", "LGT", "LAD", "GQ", "DP")
-            if test:
-                rmt = rmt._filter_partitions(range(2))
-                vmt = vmt._filter_partitions(range(2))
-
-            vds = hl.vds.VariantDataset(rmt, vmt)
-            vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-            mt = hl.vds.to_dense_mt(vds)
-            mt = filter_to_adj(mt)
-
-            release_ht = release_sites(data_type=data_type).ht()
-            mt = mt.annotate_rows(
-                freq=release_ht[mt.row_key].freq,
-                vep=release_ht[mt.row_key].vep,
-                filters=release_ht[mt.row_key].filters,
-                fail_interval_qc=release_ht[mt.row_key].region_flags.fail_interval_qc,
-                broad_ukb_union_intervals=(
-                    ~ht.region_flags.outside_ukb_capture_region
-                    | ~ht.region_flags.outside_broad_capture_region
-                ),
-                broad_ukb_intersection_intervals=~(
-                    ht.region_flags.outside_ukb_capture_region
-                    | ht.region_flags.outside_broad_capture_region
-                ),
-            )
-
-            mt = default_generate_gene_lof_matrix(
-                mt=mt,
-                tx_ht=None,
-                additional_grps=[
-                    "broad_ukb_union_intervals",
-                    "broad_ukb_intersection_intervals",
-                    "fail_interval_qc",
-                ],
-            )
-            mt.write(
-                release_lof(test=test, data_type=data_type, mt=True).path,
-                overwrite,
+            raise NotImplementedError(
+                "Gene LoF matrix generation is not yet implemented."
             )
 
         if args.summarize_gene_lof_matrix:
-            mt = release_lof(test=test, data_type=data_type, mt=True).mt()
-            mt = mt.annotate_cols(
-                meta=mt.meta.annotate(pop=mt.meta.population_inference.pop)
-            )
-            ht = default_generate_gene_lof_summary(mt)
-            ht.write(
-                release_lof(test=test, data_type=data_type).path,
-                overwrite,
-            )
+            raise NotImplementedError("Gene LoF matrix summary is not yet implemented.")
 
     finally:
         logger.info("Copying log to logging bucket...")
