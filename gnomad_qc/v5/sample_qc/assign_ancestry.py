@@ -22,6 +22,8 @@ from gnomad_qc.v4.resources.sample_qc import (
     joint_qc_meta as v4_joint_qc_meta,
     related_samples_to_drop,  # TODO: remove when switch to v5.
 )
+from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
+
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_checkpoint_path,
@@ -70,6 +72,7 @@ def run_pca(
     qc_mt = get_joint_qc(test=test).mt()
 
     if args.test_on_chr20:
+        logger.info("Filtering QC MT to chromosome 20...")
         qc_mt = hl.filter_intervals(
             qc_mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
         )
@@ -90,8 +93,8 @@ def run_pca(
 def main(args):
     """Assign global ancestry labels to samples."""
     hl.init(
-        log="/assign_ancestry.log",
-        tmp_dir="gs://gnomad-tmp-4day",
+        log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
+        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
     hl.default_reference("GRCh38")
     try:
