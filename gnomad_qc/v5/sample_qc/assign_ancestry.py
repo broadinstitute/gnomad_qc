@@ -93,6 +93,7 @@ def run_pca(
 def main(args):
     """Assign global ancestry labels to samples."""
     hl.init(
+        spark_conf={"spark.memory.offHeap.enabled": "false"},
         log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
