@@ -1,5 +1,7 @@
 """Script containing assessment related resources."""
 
+from typing import Optional
+
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
@@ -105,6 +107,57 @@ def get_per_sample_counts(
                 f"{'.aggregated' if aggregated else ''}"
                 f"{'_by_ancestry' if by_ancestry else ''}"
                 f"{'_by_subset' if by_subset else ''}.ht"
+            )
+            for version in RELEASES
+        },
+    )
+
+
+def release_summary_stats(
+    test: bool = False,
+    data_type: str = "exomes",
+    filter_name: Optional[str] = None,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for release summary stats Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :return: Summary stats Table.
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            version: TableResource(
+                path=(
+                    f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.summary_stats{f'.{filter_name}' if filter_name else ''}.ht"
+                )
+            )
+            for version in RELEASES
+        },
+    )
+
+
+def release_lof(
+    test: bool = False,
+    data_type: str = "exomes",
+    mt: bool = False,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for release LOF stats MatrixTable or Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param mt: Whether to return the lof MatrixTable instead of Table. Default is False.
+    :return: release LOF stats MatrixTable or Table.
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            version: TableResource(
+                path=(
+                    f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.lof.{'mt' if mt else 'ht'}"
+                )
             )
             for version in RELEASES
         },

@@ -1,4 +1,5 @@
 """Run summary stats on gnomAD v4 data."""
+
 import argparse
 import logging
 
@@ -12,13 +13,14 @@ from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
-from gnomad_qc.v4.resources.meta import meta
-from gnomad_qc.v4.resources.release import (
-    release_lof,
-    release_sites,
-    release_summary_stats,
+from gnomad_qc.v4.resources.assessment import release_lof, release_summary_stats
+from gnomad_qc.v4.resources.basics import (
+    get_gnomad_v4_genomes_vds,
+    get_gnomad_v4_vds,
+    get_logging_path,
 )
+from gnomad_qc.v4.resources.meta import meta
+from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -31,19 +33,21 @@ logger.setLevel(logging.INFO)
 def main(args):
     """Collect summary stats of gnomAD v4 data."""
     hl.init(
-        log="/generate_frequency_data.log",
-        default_reference="GRCh38",
+        log="/summary_stats.log",
         tmp_dir="gs://gnomad-tmp-30day",
     )
+    hl.default_reference("GRCh38")
+
     # SSA Logs are easier to troubleshoot with.
     hl._set_flags(use_ssa_logs="1")
 
     test = args.test
     overwrite = args.overwrite
+    data_type = args.data_type
 
     try:
         if args.get_summary_counts:
-            ht = release_sites().ht()
+            ht = release_sites(data_type=data_type).ht()
             filter_name = None
             if test:
                 ht = ht._filter_partitions(range(2))
@@ -93,31 +97,40 @@ def main(args):
                 mane_select_only=True,
                 index=freq_index,
             )
-            meta_ht = meta.ht()
+            meta_ht = meta(data_type=data_type).ht()
             meta_ht = meta_ht.filter(meta_ht.release)
 
             logger.info(f"Number of release samples: {meta_ht.count()}")
             ht = ht.annotate_globals(num_release_samples=meta_ht.count())
             ht.write(
                 release_summary_stats(
-                    test=test, data_type="exomes", filter_name=filter_name
+                    test=test, data_type=data_type, filter_name=filter_name
                 ).path,
                 overwrite,
             )
 
         if args.generate_gene_lof_matrix:
-            vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True)
-            rmt = (vds.reference_data,)
+            if data_type == "exomes":
+                vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True)
+            elif data_type == "genomes":
+                vds = get_gnomad_v4_genomes_vds(release_only=True, annotate_meta=True)
+            else:
+                raise ValueError(
+                    f"Invalid data type: {data_type}. Must be 'exomes' or 'genomes'."
+                )
+
+            rmt = vds.reference_data
             vmt = vds.variant_data.select_entries("LA", "LGT", "LAD", "GQ", "DP")
             if test:
                 rmt = rmt._filter_partitions(range(2))
                 vmt = vmt._filter_partitions(range(2))
+
             vds = hl.vds.VariantDataset(rmt, vmt)
             vds = hl.vds.split_multi(vds, filter_changed_loci=True)
             mt = hl.vds.to_dense_mt(vds)
             mt = filter_to_adj(mt)
 
-            release_ht = release_sites().ht()
+            release_ht = release_sites(data_type=data_type).ht()
             mt = mt.annotate_rows(
                 freq=release_ht[mt.row_key].freq,
                 vep=release_ht[mt.row_key].vep,
@@ -143,18 +156,18 @@ def main(args):
                 ],
             )
             mt.write(
-                release_lof(test=test, data_type="exomes", mt=True).path,
+                release_lof(test=test, data_type=data_type, mt=True).path,
                 overwrite,
             )
 
         if args.summarize_gene_lof_matrix:
-            mt = release_lof(test=test, data_type="exomes", mt=True).mt()
+            mt = release_lof(test=test, data_type=data_type, mt=True).mt()
             mt = mt.annotate_cols(
                 meta=mt.meta.annotate(pop=mt.meta.population_inference.pop)
             )
             ht = default_generate_gene_lof_summary(mt)
             ht.write(
-                release_lof(test=test, data_type="exomes").path,
+                release_lof(test=test, data_type=data_type).path,
                 overwrite,
             )
 
@@ -178,6 +191,12 @@ if __name__ == "__main__":
         "--test",
         help="Test on a small number of variants",
         action="store_true",
+    )
+    parser.add_argument(
+        "--data-type",
+        default="exomes",
+        choices=["exomes", "genomes"],
+        help="Data type (exomes or genomes) to produce summary stats for.",
     )
     parser.add_argument(
         "--get-summary-counts",
