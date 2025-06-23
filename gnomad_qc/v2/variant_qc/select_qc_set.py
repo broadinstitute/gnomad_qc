@@ -99,8 +99,9 @@ def main(args):
         )
         n_high_quality_related = mt.aggregate_cols(hl.agg.count_where(mt.keep_related))
         logger.info(
-            "Keeping {0} high-quality individuals out of {1} individuals in trios"
-            .format(n_high_quality_related, hl.eval(hl.len(keep_relateds)))
+            "Keeping {0} high-quality individuals out of {1} individuals in trios".format(
+                n_high_quality_related, hl.eval(hl.len(keep_relateds))
+            )
         )
 
         # Randomly sample high-quality unrelateds up to total number desired
@@ -160,8 +161,9 @@ def main(args):
         )
         # ht = add_full_rankings(ht, ht.info.VQSLOD) # FIXME:  This is stale
         ht.write(
-            "gs://gnomad/variant_qc/temp/gnomad.{0}.{1}_samples.vqsr.full_rankings.ht"
-            .format(data_type, N),
+            "gs://gnomad/variant_qc/temp/gnomad.{0}.{1}_samples.vqsr.full_rankings.ht".format(
+                data_type, N
+            ),
             overwrite=True,
         )  # TODO: move file locations once script is finalized
 

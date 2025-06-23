@@ -1,5 +1,6 @@
 # noqa: D100
 import logging
+from typing import List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -9,6 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedVariantDatasetResource,
 )
 
+import gnomad_qc.v4.resources.basics as v4_basics
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
@@ -22,20 +24,99 @@ def get_gnomad_v3_vds(
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     samples_meta: bool = False,
+    test: bool = False,
+    filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
+    autosomes_only: bool = False,
+    sex_chr_only: bool = False,
+    filter_variant_ht: Optional[hl.Table] = None,
+    filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
+    split_reference_blocks: bool = True,
+    entries_to_keep: Optional[List[str]] = None,
+    annotate_het_non_ref: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+    filter_samples_ht: Optional[hl.Table] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD VariantDataset with desired filtering and metadata annotations.
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
-        rather than grab an already split VDS
+        rather than grab an already split VDS.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
-        filters (only relevant after sample QC)
+        filters (only relevant after sample QC).
     :param release_only: Whether to filter the VDS to only samples available for
-        release (can only be used if metadata is present)
-    :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column
-    :return: gnomAD v3 dataset with chosen annotations and filters
+        release (can only be used if metadata is present).
+    :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column.
+    :param test: Whether to use the test VDS instead of the full v3 VDS.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions
+        in the provided list.
+    :param chrom: Optional argument to filter the VDS to specific chromosomes.
+    :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
+        False.
+    :param sex_chr_only: Whether to filter the VDS to sex chromosomes only. Default is
+        False.
+    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of
+        variants. Only supported when splitting the VDS.
+    :param filter_intervals: Optional argument to filter the VDS to specific intervals.
+    :param split_reference_blocks: Whether to split the reference data at the edges of
+        the intervals defined by `filter_intervals`. Default is True.
+    :param entries_to_keep: Optional argument to keep only specific entries in the
+        returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
+        of the local entries (e.g. 'LGT') to keep.
+    :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
+        '_het_non_ref') to the variant data. Default is False.
+    :param naive_coalesce_partitions: Optional argument to coalesce the VDS to a
+        specific number of partitions using naive coalesce.
+    :param filter_samples_ht: Optional Table of samples to filter the VDS to.
+    :return: gnomAD v3 dataset with chosen annotations and filters.
     """
-    vds = gnomad_v3_genotypes_vds.vds()
+    if test:
+        vds = gnomad_v3_testset_vds.vds()
+    else:
+        vds = gnomad_v3_genotypes_vds.vds()
+
+    if isinstance(chrom, str):
+        chrom = [chrom]
+
+    if autosomes_only and sex_chr_only:
+        raise ValueError(
+            "Only one of 'autosomes_only' or 'sex_chr_only' can be set to True."
+        )
+    if autosomes_only or sex_chr_only:
+        rg = vds.reference_genome
+        sex_chrom = set(rg.x_contigs + rg.y_contigs)
+        if sex_chr_only:
+            chrom = list(sex_chrom)
+        else:
+            chrom = list(set(rg.contigs) - (sex_chrom | set(rg.mt_contigs)))
+
+    if chrom is not None:
+        logger.info("Filtering to chromosome(s) %s...", chrom)
+        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+
+    if naive_coalesce_partitions:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
+            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
+        )
+
+    if filter_partitions:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
+
+    if filter_intervals:
+        logger.info("Filtering to %s intervals...", len(filter_intervals))
+        if isinstance(filter_intervals[0], str):
+            filter_intervals = [
+                hl.parse_locus_interval(x, reference_genome="GRCh38")
+                for x in filter_intervals
+            ]
+        vds = hl.vds.filter_intervals(
+            vds, filter_intervals, split_reference_blocks=split_reference_blocks
+        )
 
     if remove_hard_filtered_samples:
         vds = hl.vds.filter_samples(
@@ -43,6 +124,13 @@ def get_gnomad_v3_vds(
             hard_filtered_samples.ht(),
             keep=False,
         )
+
+    if filter_samples_ht:
+        logger.info(
+            "Filtering VDS to %d samples in provided Table...",
+            filter_samples_ht.count(),
+        )
+        vds = hl.vds.filter_samples(vds, filter_samples_ht)
 
     if samples_meta or release_only:
         meta_ht = meta.ht()
@@ -58,19 +146,23 @@ def get_gnomad_v3_vds(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
 
+    vd = vds.variant_data
+    if annotate_het_non_ref:
+        logger.info("Annotating non_ref hets to unsplit variant data...")
+        vd = vd.annotate_entries(_het_non_ref=vd.LGT.is_het_non_ref())
+        entries_to_keep = (
+            None if entries_to_keep is None else entries_to_keep + ["_het_non_ref"]
+        )
+
     if split:
-        vd = vds.variant_data
-        vd = vd.annotate_rows(
-            n_unsplit_alleles=hl.len(vd.alleles),
-            mixed_site=(hl.len(vd.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        vd = v4_basics._split_and_filter_variant_data_for_loading(
+            vd, filter_variant_ht, entries_to_keep
         )
-        vd = hl.experimental.sparse_split_multi(vd, filter_changed_loci=True)
-        vds = hl.vds.VariantDataset(
-            vds.reference_data,
-            vd,
-        )
+
+    if entries_to_keep is not None:
+        vd = vd.select_entries(*entries_to_keep)
+
+    vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
     return vds
 
@@ -100,41 +192,16 @@ def get_gnomad_v3_mt(
         " We recommend direct use of the VariantDataset by calling 'get_gnomad_v3_vds' "
         "instead."
     )
-
-    if test:
-        mt = gnomad_v3_testset.mt()
-        if key_by_locus_and_alleles:
-            # Prevents hail from running sort on genotype MT which is already sorted
-            # by a unique locus
-            mt = hl.MatrixTable(
-                hl.ir.MatrixKeyRowsBy(mt._mir, ["locus", "alleles"], is_sorted=True)
-            )
-        if remove_hard_filtered_samples:
-            mt = mt.filter_cols(hl.is_missing(hard_filtered_samples.ht()[mt.col_key]))
-        if samples_meta or release_only:
-            meta_ht = meta.ht()
-            if samples_meta:
-                mt = mt.annotate_cols(meta=meta_ht[mt.col_key])
-            if release_only:
-                mt = mt.filter_cols(meta_ht[mt.col_key].release)
-        if split:
-            mt = mt.annotate_rows(
-                n_unsplit_alleles=hl.len(mt.alleles),
-                mixed_site=(hl.len(mt.alleles) > 2)
-                & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
-                & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
-            )
-            mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-    else:
-        vds = get_gnomad_v3_vds(
-            split=split,
-            remove_hard_filtered_samples=remove_hard_filtered_samples,
-            release_only=release_only,
-            samples_meta=samples_meta,
-        )
-        mt = hl.vds.to_merged_sparse_mt(vds)
-        if not key_by_locus_and_alleles:
-            mt = mt.key_rows_by(mt.locus)
+    vds = get_gnomad_v3_vds(
+        split=split,
+        remove_hard_filtered_samples=remove_hard_filtered_samples,
+        release_only=release_only,
+        samples_meta=samples_meta,
+        test=test,
+    )
+    mt = hl.vds.to_merged_sparse_mt(vds)
+    if not key_by_locus_and_alleles:
+        mt = mt.key_rows_by(mt.locus)
 
     return mt
 
@@ -154,6 +221,10 @@ _gnomad_v3_genotypes = {
 gnomad_v3_genotypes_vds = VersionedVariantDatasetResource(
     CURRENT_VERSION,
     {"3.1": VariantDatasetResource("gs://gnomad/v3.1/raw/gnomad_v3.1.vds")},
+)
+# v3 test dataset VDS
+gnomad_v3_testset_vds = VariantDatasetResource(
+    "gs://gnomad/v3.1/raw/gnomad_v3.1.test.vds"
 )
 
 

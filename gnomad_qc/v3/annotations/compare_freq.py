@@ -26,7 +26,6 @@ from gnomad.resources.grch37.gnomad import (
     public_pca_loadings,
 )
 from gnomad.resources.grch37.gnomad import public_release as v2_public_release
-from gnomad.resources.grch38.gnomad import CURRENT_GENOME_RELEASE as V3_CURRENT_RELEASE
 from gnomad.resources.grch38.gnomad import POPS
 from gnomad.resources.grch38.gnomad import public_release as v3_public_release
 from gnomad.utils.annotations import get_adj_expr
@@ -50,7 +49,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compare_freq")
 logger.setLevel(logging.INFO)
 
-POPS = POPS["v3"]
+POPS = POPS["v3"]["genomes"]
 POPS_MAP = {
     "v2_exomes": {pop.lower() for pop in EXOME_POPS},
     "v2_genomes": {pop.lower() for pop in GENOME_POPS},
@@ -64,7 +63,9 @@ POP_FORMAT = {
 CURRENT_RELEASE_MAP = {
     "v2_exomes": CURRENT_EXOME_RELEASE,
     "v2_genomes": CURRENT_GENOME_RELEASE,
-    "v3_genomes": V3_CURRENT_RELEASE,
+    "v3_genomes": (
+        "3.1.2"
+    ),  # The last v3 release was 3.1.2, subsequent updates to the v3 genomes were rebranded as v4 genomes.
 }
 
 

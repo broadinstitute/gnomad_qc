@@ -71,9 +71,7 @@ def release_ht_path(
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
-        return (
-            f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
-        )
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
 
 
 def release_sites(
@@ -185,9 +183,7 @@ def append_to_vcf_header_path(
             "Extra fields to append to VCF header TSV only exists for releases"
             " after v3!"
         )
-    return (
-        f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
-    )
+    return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
 def hgdp_tgp_subset(
@@ -249,6 +245,4 @@ def hgdp_tgp_subset_sample_tsv(
     :param test: If true, will return the sample tsv path for testing purposes
     :return: Path to file
     """
-    return (
-        f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
-    )
+    return f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"

@@ -1,0 +1,231 @@
+# Global Fields Specification
+
+
+This table provides a view of each global (non-row) field. Every leaf field (i.e., non-struct field) is listed on its own row with the full annotation. The parent portion is shown in a lighter color to indicate context. Cell colors indicate the field necessity: <span style="background-color:#fff0f0; padding:2px 6px; border-radius:4px;">"Required" in red</span>, <span style="background-color:#f0faff; padding:2px 6px; border-radius:4px;">"Optional" in blue</span>, <span style="background-color:#dedbe4; padding:2px 6px; border-radius:4px;">"Not Needed" in grey</span>.
+
+**`adj` definition:**
+A variant is considered to fail the "adj" criteria if any of the following conditions are met:
+ **GQ** < 20, **DP** < 10, or **AB** < 0.2 (heterozygous calls).
+
+All histograms annotations must use the same bin edges as defined in their respective 'Description' columns.
+
+| Field | Type | Description | Example | Field Necessity |
+| --------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------- |
+| **freq_meta** | `array<dict<str, str>>` | Array of frequency metadata dictionaries containing the frequency aggregation group for each element of the ‘freq’ array row annotation. Each dictionary should have the following keys: 'gen_anc', 'group', 'sex'. The 'adj' group should always be the first value of the array, and the 'raw' group should be the second value. Required 'group' values are 'adj' and 'raw'. Required 'sex' values are 'XX' and 'XY'. Specific values are not required for 'gen_anc'. | `[{'group': 'adj'},{'group': 'raw'},{'gen_anc': 'afr', 'group': 'adj'},{'gen_anc': 'amr', 'group': 'adj'},{'group': 'adj', 'sex': 'XX'},{'group': 'adj', 'sex': 'XY'}, ...]` | Required |
+| **freq_index_dict** | `dict<str, int32>` | Dictionary keyed by specified label grouping combinations ('group': 'adj'/'raw', 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype), with values describing the corresponding index of each grouping entry in the ‘freq’ array row annotation. <br><br>If provided, keys need to be formatted in the order of 'gen_anc'\_ 'sex'\_'group'. The 'adj' value should always be at index 0 and the 'raw' value at index 1. A more detailed description can be found at https://gnomad.broadinstitute.org/help/v4-hts. | `{"adj": 0, "raw": 1, "afr_adj": 2, "amr_adj": 3, "XX_adj": 4, "XX_adj": 5, ...}` | Optional |
+| **freq_meta_sample_count** | `array<int32>` | A sample count per sample grouping defined in the 'freq_meta' global annotation. Must be in the same order as 'freq'/'freq_meta'. | `[730947, 730947, 16740, 15001, 50000, 680947, ...]` | Required |
+| **faf_meta** | `array<dict<str, str>>` | Filtering allele frequency metadata. An ordered list containing the frequency aggregation group for each element of the ‘faf’ array row annotation. | — | Not Needed |
+| **faf_index_dict** | `dict<str, int32>` | Dictionary keyed by specified label grouping combinations ('group': 'adj'/'raw', 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype), with values describing the corresponding index of each grouping entry in the filtering allele frequency (‘faf’) row annotation. | — | Not Needed |
+| **age_distribution** | `struct { ... }` | Callset-wide age histogram. Cohorts for gnomAD vary in how they report age (some report the age at diagnosis, others report the age of last visit, etc), so the ages associated with the gnomAD data can be thought of as the last known age of the individual. Information on age is not available for all gnomAD samples. This field is required with the acknowledgement that age data may not be available for all samples. If no age is available for any samples, set all `bin_freq` values to `0`. | — | Required |
+| <span style="color:#999;">age_distribution.</span>bin_edges | `array<float64>` | Bin edges for age histogram: `30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0`. | `[30.0, 35.0, 40.0, 45.0, ...]` | Required |
+| <span style="color:#999;">age_distribution.</span>bin_freq | `array<int32>` | Bin frequencies for the age histogram. This is the number of records found in each bin. | `[101, 122, 85, 4, ...]` | Required |
+| <span style="color:#999;">age_distribution.</span>n_smaller | `int32` | Count of age values falling below lowest histogram bin edge. | `1000` | Required |
+| <span style="color:#999;">age_distribution.</span>n_larger | `int32` | Count of age values falling above highest histogram bin edge. | `30` | Required |
+| **filtering_model** | `struct { ... }` | The variant filtering model used and its specific cutoffs. | — | Not Needed |
+| <span style="color:#999;">filtering_model.</span>filter_name | `str` | Variant filtering model name used in the 'filters' row annotation, indicating the variant was filtered by this model during variant QC. | — | Not Needed |
+| <span style="color:#999;">filtering_model.</span>score_name | `str` | Name of the score used in filtering. | — | Not Needed |
+| <span style="color:#999;">filtering_model.</span>snv_cutoff | `struct { ... }` | SNV filtering cutoff information. | — | Not Needed |
+| <span style="color:#999;">filtering_model.snv_cutoff.</span>bin | `int32` | Filtering percentile cutoff for SNVs. | — | Not Needed |
+| <span style="color:#999;">filtering_model.snv_cutoff.</span>min_score | `float64` | Minimum score at SNV filtering percentile cutoff. | — | Not Needed |
+| <span style="color:#999;">filtering_model.</span>indel_cutoff | `struct { ... }` | Indel filtering cutoff information. | — | Not Needed |
+| <span style="color:#999;">filtering_model.indel_cutoff.</span>bin | `int32` | Filtering percentile cutoff for indels. | — | Not Needed |
+| <span style="color:#999;">filtering_model.indel_cutoff.</span>min_score | `float64` | Minimum score at indel filtering percentile cutoff. | — | Not Needed |
+| <span style="color:#999;">filtering_model.</span>snv_training_variables | `array<str>` | Variant annotations used as features in the SNV filtering model. | — | Not Needed |
+| <span style="color:#999;">filtering_model.</span>indel_training_variables | `array<str>` | Variant annotations used as features in the indel filtering model. | — | Not Needed |
+| **inbreeding_coeff_cutoff** | `float64` | Inbreeding Coefficient threshold used to hard filter variants | — | Not Needed |
+| **tool_versions** | `struct { ... }` | Versions of in silico predictors used in the callset. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.cadd_version | `str` | Combined Annotation Dependent Depletion (CADD) version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.revel_version | `str` | Rare Exome Variant Ensemble Learner (REVEL) version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.spliceai_version | `str` | SpliceAI version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.pangolin_version | `array<str>` | Pangolin version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.phylop_version | `str` | phyloP version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.dbsnp_version | `str` | dbSNP version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.sift_version | `str` | Sorting Intolerant from Tolerant (SIFT) version. | — | Not Needed |
+| <span style="color:#999;">tool_versions</span>.polyphen_version | `str` | Polymorphism Phenotyping v2 (Polyphen-v2) version. | — | Not Needed |
+| **vrs_versions** | `struct { ... }` | The Variant Representation Specification version that was used to compute IDs on the callset. Global and row VRS annotations are optional, but the global annotaions must be filled out if the row annotations are provided. | — | Optional |
+| <span style="color:#999;">vrs_versions</span>.vrs_schema_version | `str` | The version of the VRS schema that is used to represent variants and compute identifiers. Must be `1.3.0`. | `"1.3.0"` | Optional |
+| <span style="color:#999;">vrs_versions</span>.vrs_python_version | `str` | The version of the vrs-python library that was used to compute IDs on the callset. Must be `0.8.4`. | `"0.8.4"` | Optional |
+| <span style="color:#999;">vrs_versions</span>.seqrepo_version | `str` | The version of the SeqRepo database that was used in VRS computations. Must be `2018-11-26`. | `"2018-11-26"` | Optional |
+| **vep_globals** | `struct { ... }` | Information about VEP annotations. | — | Not Needed |
+| <span style="color:#999;">vep_globals</span>.vep_version | `str` | VEP version that was run on the callset. | — | Not Needed |
+| <span style="color:#999;">vep_globals</span>.vep_help | `str` | Output from vep --help. | — | Not Needed |
+| <span style="color:#999;">vep_globals</span>.vep_config | `str` | VEP configuration to run VEP version with Hail. File created using command within VEP init shell script in https://github.com/broadinstitute/gnomad_methods/tree/main. | — | Not Needed |
+| <span style="color:#999;">vep_globals</span>.gencode_version | `str` | GENCODE version used in VEP. | — | Not Needed |
+| <span style="color:#999;">vep_globals</span>.mane_select_version | `str` | MANE select version used in VEP. | — | Not Needed |
+| **frequency_README** | `str` | Explanation of how to use the 'freq_index_dict' global annotation to extract frequencies from the 'freq' row annotation. | — | Not Needed |
+| **date** | `str` | Date Hail Table was created. | `"2025-04-09"` | Required |
+| **version** | `str` | Version of the file. | — | Not Needed |
+                                                                               
+
+# Row Fields Specification
+
+This table provides a view of each row field. Every leaf field (i.e., non-struct field) is listed on its own row with the full annotation. The parent portion is shown in a lighter color to indicate context. Cell colors indicate the field necessity: <span style="background-color:#fff0f0; padding:2px 6px; border-radius:4px;">"Required" in red</span>, <span style="background-color:#f0faff; padding:2px 6px; border-radius:4px;">"Optional" in blue</span>, <span style="background-color:#dedbe4; padding:2px 6px; border-radius:4px;">"Not Needed" in grey</span>.
+
+All histograms annotations must use the same bin edges as defined in their respective 'Description' columns.
+
+Data must be supplied as a "split" dataset, where multiallelic variants are split so that information for each alternate allele is in a separate row.
+
+| Field | Type | Description | Example | Field Necessity |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------- |
+| **locus** | `locus<GRCh38>` | Variant locus. Contains contig and position information. Must be build GRCh38. | `chr1:12345` | Required |
+| **alleles** | `array<str>` | Variant alleles (reference and alternate). | `["A", "G"]` | Required |
+| **freq** | `array<struct {...}>` | Array of allele frequency information (AC, AN, AF, homozygote count) for each frequency aggregation group corresponding to each frequency metadata group. The 'adj' value should always be the first value of the array, and the 'raw' value should be the second value. | — | Required |
+| <span style="color:#999;">freq</span>.AC | `int32` | Alternate allele count. | `10` | Required |
+| <span style="color:#999;">freq</span>.AF | `float64` | Alternate allele frequency, (AC/AN). | `0.1` | Required |
+| <span style="color:#999;">freq</span>.AN | `int32` | Total number of alleles. | `100` | Required |
+| <span style="color:#999;">freq</span>.homozygote_count | `int32` | Count of homozygous alternate individuals for the alternate allele. | `2` | Required |
+| **grpmax** | `struct {...}` | Allele frequency information (AC, AN, AF, homozygote count) for the group with maximum allele frequency. | — | Not Needed |
+| <span style="color:#999;">grpmax</span>.AC | `int32` | Alternate allele count in the group with the maximum allele frequency. | — | Not Needed |
+| <span style="color:#999;">grpmax</span>.AF | `float64` | Maximum alternate allele frequency, (AC/AN), across all groups. | — | Not Needed |
+| <span style="color:#999;">grpmax</span>.AN | `int32` | Total number of alleles in the group with the maximum allele frequency. | — | Not Needed |
+| <span style="color:#999;">grpmax</span>.homozygote_count | `int32` | Count of homozygous individuals in the group with the maximum allele frequency. | — | Not Needed |
+| <span style="color:#999;">grpmax</span>.gen_anc | `str` | Genetic ancestry corresponding to the maximum frequency group. | — | Not Needed |
+| **faf** | `array<struct {...}>` | Filtering allele frequency. | — | Not Needed |
+| <span style="color:#999;">faf</span>.faf95 | `float64` | FAF95: Filtering allele frequency (using Poisson 95% CI). | — | Not Needed |
+| <span style="color:#999;">faf</span>.faf99 | `float64` | FAF99: Filtering allele frequency (using Poisson 99% CI) frequency. | — | Not Needed |
+| **fafmax** | `struct {...}` | Information about the genetic ancestry group with the maximum filtering allele frequency. | — | Not Needed |
+| <span style="color:#999;">fafmax</span>.faf95_max | `float64` | Maximum filtering allele frequency (using Poisson 95% CI). | — | Not Needed |
+| <span style="color:#999;">fafmax</span>.faf95_max_gen_anc | `str` | Genetic ancestry group with the maximum filtering allele frequency (95% CI). | — | Not Needed |
+| <span style="color:#999;">fafmax</span>.faf99_max | `float64` | Maximum filtering allele frequency (using Poisson 99% CI). | — | Not Needed |
+| <span style="color:#999;">fafmax</span>.faf99_max_gen_anc | `str` | Genetic ancestry group with the maximum filtering allele frequency (99% CI). | — | Not Needed |
+| **a_index** | `int32` | The original index of this alternate allele in the multiallelic representation (1 is the first alternate allele or the only alternate allele in a biallelic variant). | `1` | Required |
+| **was_split** | `bool` | True if this variant was originally multiallelic, otherwise False. | `False` | Required |
+| **rsid** | `set<str>` | dbSNP reference SNP identification (rsID) numbers. | — | Not Needed |
+| **filters** | `set<str>` | Variant filters; 'AC0': Allele count is zero after filtering out low-confidence genotypes (GQ < 20; DP < 10; or AB < 0.2 for het calls), 'AS_VQSR': Failed allele-specific VQSR filtering thresholds, 'InbreedingCoeff': GATK InbreedingCoeff < -0.3. An empty set in this field indicates that the variant passed all variant filters. | `{"AC0","AS_VQSR"}` | Optional |
+| **info** | `struct {...}` | Struct containing typical GATK allele-specific (AS) info fields and additional variant QC fields. | — | Required |
+| <span style="color:#999;">info</span>.FS | `float64` | Phred-scaled p-value of Fisher's exact test for strand bias. | `7.30e+00` | Required |
+| <span style="color:#999;">info</span>.MQ | `float64` | Root mean square of the mapping quality of reads across all samples. | `3.48e+01` | Required |
+| <span style="color:#999;">info</span>.MQRankSum | `float64` | Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities. | `6.70e-02` | Required |
+| <span style="color:#999;">info.</span>MQRankSum_cdf | `struct { ...}` | CDF summary of overall MQRankSum values. The `_raw` parameter must be set to True to return an internal representation of the CDF approximation. This annotation is generated using Hail's function: `hl.agg.approx_cdf(x, k=XX, _raw=True)`. The `k` value must be set to XX in order to merge with the gnomAD dataset. This method is non-deterministic: computing approx_cdf multiple times will give slightly different results each time. It is currently not possible to seed the aggregator. | — | Required |
+| <span style="color:#999;">info.MQRankSum_cdf.</span>levels | `array<int32>` | List indicating how many items are stored at each compression level. | `[0,3]` | Required |
+| <span style="color:#999;">info.MQRankSum_cdf.</span>items | `array<float64>` | Ordered sample of values from the MQRankSum distribution. | `[-9.38e-01,-2.27e+00,-1.34e+00]` | Required |
+| <span style="color:#999;">info.MQRankSum_cdf.</span>_compaction_counts | `array<int32>` | Used internally to support downstream error estimation. | `[0]` | Required |
+| <span style="color:#999;">info</span>.QUALapprox | `int64` | Sum of PL[0] values; used to approximate the QUAL score. | `96` | Required |
+| <span style="color:#999;">info</span>.QD | `float32` | Variant call confidence normalized by depth of sample reads supporting a variant. | `2.74e+00` | Required |
+| <span style="color:#999;">info</span>.ReadPosRankSum | `float64` | Z-score from Wilcoxon rank sum test of alternate vs. reference read position bias. | `-1.07e+00` | Required |
+| <span style="color:#999;">info.</span>ReadPosRankSum_cdf | `struct { ...}` | CDF summary of overall ReadPosRankSum values. The `_raw` parameter must be set to True to return an internal representation of the CDF approximation. This annotation is generated using Hail's function: `hl.agg.approx_cdf(x, k=XX, _raw=True)`. The `k` value must be set to XX in order to merge with the gnomAD dataset. This method is non-deterministic: computing approx_cdf multiple times will give slightly different results each time. It is currently not possible to seed the aggregator. | — | Required |
+| <span style="color:#999;">info.ReadPosRankSum_cdf.</span>levels | `array<int32>` | List indicating how many items are stored at each compression level. | `[0,3]` | Required |
+| <span style="color:#999;">info.ReadPosRankSum_cdf.</span>items | `array<float64>` | Ordered sample of values from the ReadPosRankSum distribution. | `[9.67e-01,-9.67e-01,9.67e-01]` | Required |
+| <span style="color:#999;">info.ReadPosRankSum_cdf.</span>_compaction_counts | `array<int32>` | Used internally to support downstream error estimation. | `[0]` | Required |
+| <span style="color:#999;">info</span>.SB | `array<int32>` | Aggregate counts of strand depth across all non-homozygous-reference calls. The values are the depth of reference allele on forward strand, depth of the reference allele on reverse strand, depth of all alternate alleles on forward strand, depth of all alternate alleles on reverse strand. | `[21,6,4,4]` | Required |
+| <span style="color:#999;">info</span>.SOR | `float64` | Strand bias estimated by the symmetric odds ratio test. | `9.60e-02` | Required |
+| <span style="color:#999;">info</span>.VarDP | `int32` | Depth over variant genotypes (does not include depth of reference samples). | `35` | Required |
+| <span style="color:#999;">info</span>.AS_FS | `float64` | Allele-specific phred-scaled p-value of Fisher's exact test for strand bias. | `5.10e+00` | Required |
+| <span style="color:#999;">info</span>.AS_MQ | `float64` | Allele-specific root mean square of the mapping quality of reads across all samples. | `3.51e+01` | Required |
+| <span style="color:#999;">info</span>.AS_MQRankSum | `float64` | Allele-specific z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities. | `-5.72e-01` | Required |
+| <span style="color:#999;">info.</span>AS_MQRankSum_cdf | `struct { ...}` | CDF summary of allele-specific MQRankSum values. The `_raw` parameter must be set to True to return an internal representation of the CDF approximation. This annotation is generated using Hail's function: `hl.agg.approx_cdf(x, k=XX, _raw=True)`. The `k` value must be set to XX in order to merge with the gnomAD dataset. This method is non-deterministic: computing approx_cdf multiple times will give slightly different results each time. It is currently not possible to seed the aggregator. | — | Required |
+| <span style="color:#999;">info.AS_MQRankSum_cdf.</span>levels | `array<int32>` | List indicating how many items are stored at each compression level. | `[0,3]` | Required |
+| <span style="color:#999;">info.AS_MQRankSum_cdf.</span>items | `array<float64>` | Ordered sample of values from the allele-specific MQRankSum distribution. | `[-1.38e+00,4.31e-01,-9.67e-01]` | Required |
+| <span style="color:#999;">info.AS_MQRankSum_cdf.</span>_compaction_counts | `array<int32>` | Used internally to support downstream error estimation for allele-specific MQRankSum CDF. | `[0]` | Required |
+| <span style="color:#999;">info</span>.AS_pab_max | `float64` | Maximum p-value over callset for binomial test of observed allele balance for a heterozygous genotype, given expectation of 0.5. | `6.87e-01` | Required |
+| <span style="color:#999;">info</span>.AS_QUALapprox | `int64` | Allele-specific sum of PL[0] values; used to approximate the QUAL score. | `77` | Required |
+| <span style="color:#999;">info</span>.AS_QD | `float32` | Allele-specific variant call confidence normalized by depth of sample reads supporting a variant. | `2.96e+00` | Required |
+| <span style="color:#999;">info</span>.AS_ReadPosRankSum | `float64` | Allele-specific z-score from Wilcoxon rank sum test of alternate vs. reference read position bias. | `-1.38e+00` | Required |
+| <span style="color:#999;">info.</span>AS_ReadPosRankSum_cdf | `struct { ...}` | CDF summary of allele-specific ReadPosRankSum values. The `_raw` parameter must be set to True to return an internal representation of the CDF approximation. This annotation is generated using Hail's function: `hl.agg.approx_cdf(x, k=XX, _raw=True)`. The `k` value must be set to XX in order to merge with the gnomAD dataset. This method is non-deterministic: computing approx_cdf multiple times will give slightly different results each time. It is currently not possible to seed the aggregator. | — | Required |
+| <span style="color:#999;">info.AS_ReadPosRankSum_cdf.</span>levels | `array<int32>` | List indicating how many items are stored at each compression level. | `[0,1]` | Required |
+| <span style="color:#999;">info.AS_ReadPosRankSum_cdf.</span>items | `array<float64>` | Ordered sample of values from the allele-specific ReadPosRankSum distribution. | `[-1.78e-01]` | Required |
+| <span style="color:#999;">info.AS_ReadPosRankSum_cdf.</span>_compaction_counts | `array<int32>` | Used internally to support downstream error estimation for allele-specific ReadPosRankSum CDF. | `[0]` | Required |
+| <span style="color:#999;">info</span>.AS_SB_TABLE | `array<int32>` | Allele-specific forward/reverse read counts for strand bias tests. | `[21,6,3,3]` | Required |
+| <span style="color:#999;">info</span>.AS_SOR | `float64` | Allele-specific strand bias estimated by the symmetric odds ratio test. | `9.64e-02` | Required |
+| <span style="color:#999;">info</span>.AS_VarDP | `int32` | Allele-specific depth over variant genotypes (does not include depth of reference samples). | `26` | Required |
+| <span style="color:#999;">info</span>.singleton | `bool` | Variant is seen once in the callset. | `True` | Optional |
+| <span style="color:#999;">info</span>.transmitted_singleton | `bool` | Variant was a callset-wide doubleton that was transmitted within a family from a parent to a child (i.e., a singleton amongst unrelated samples in cohort). | `True` | Optional |
+| <span style="color:#999;">info</span>.omni | `bool` | Variant is present on the Omni 2.5 genotyping array and found in 1000 Genomes data. | — | Not Needed |
+| <span style="color:#999;">info</span>.mills | `bool` | Indel is present in the Mills and Devine data. | — | Not Needed |
+| <span style="color:#999;">info</span>.monoallelic | `bool` | All samples are homozygous alternate for the variant. | — | Not Needed |
+| <span style="color:#999;">info</span>.only_het | `bool` | All samples are heterozygous for the variant (no homozygous reference or alternate genotype calls). | — | Not Needed |
+| <span style="color:#999;">info</span>.inbreeding_coeff | `float64` | Inbreeding coefficient, the excess heterozygosity at a variant site, computed as `1 - (the number of heterozygous genotypes) / (the number of heterozygous genotypes expected under Hardy-Weinberg equilibrium)`. | — | Not Needed |
+| **vrs** | `struct { ... }` | Struct containing information related to the Global Alliance for Genomic Health (GA4GH) Variant Representation Specification (VRS) standard. VRS annotations must be created using the following tool versions: (vrs_schema_version=`1.3.0`, vrs_python_version=`0.8.4`, seqrepo_version=`2018-11-26`). <br><br> Will potentially update the VRS versions for v4? | — | Optional |
+| <span style="color:#999;">vrs</span>.VRS_Allele_IDs | `array<str>` | The computed identifiers for the GA4GH VRS Alleles corresponding to the values in the alleles column. | `["ga4gh:VA.oTAtTrgYxm81O9fu6Mrhfo1t3eHsgg4L","ga4gh:VA.Y283OnlLjyi1T1IT_JzvW255rC6YJsW6"]` | Optional |
+| <span style="color:#999;">vrs</span>.VRS_Starts | `array<int32>` | Interresidue coordinates used as the location starts for the GA4GH VRS Alleles corresponding to the values in the alleles column. | `[10030,10030]` | Optional |
+| <span style="color:#999;">vrs</span>.VRS_Ends | `array<int32>` | Interresidue coordinates used as the location ends for the GA4GH VRS Alleles corresponding to the values in the alleles column. | `[10031,10031]` | Optional |
+| <span style="color:#999;">vrs</span>.VRS_States | `array<str>` | The literal sequence states used for the GA4GH VRS Alleles corresponding to the values in the alleles column. | `["T","C"]` | Optional |
+| **vep** | `struct { ... }` | VEP annotations generated by the VEP tool (to be re-annotated). | — | Not Needed |
+| **vqsr_results** | `struct` | VQSR related variant annotations. | — | Not Needed |
+| <span style="color:#999;">vqsr_results</span>.AS_VQSLOD | `float64` | Allele-specific log-odds ratio of being a true variant versus being a false positive under the trained VQSR Gaussian mixture model. | — | Not Needed |
+| <span style="color:#999;">vqsr_results</span>.AS_culprit | `str` | Allele-specific worst-performing annotation in the VQSR Gaussian mixture model. | — | Not Needed |
+| <span style="color:#999;">vqsr_results</span>.positive_train_site | `bool` | Variant was used to build the positive training set of high-quality variants for VQSR. | — | Not Needed |
+| <span style="color:#999;">vqsr_results</span>.negative_train_site | `bool` | Variant was used to build the negative training set of low-quality variants for VQSR. | — | Not Needed |
+| **region_flags** | `struct` | Struct containing flags about regions. | — | Not Needed |
+| <span style="color:#999;">region_flags</span>.non_par | `bool` | Variant falls within a non-pseudoautosomal region. | — | Not Needed |
+| <span style="color:#999;">region_flags</span>.lcr | `bool` | Variant falls within a low complexity region. | — | Not Needed |
+| <span style="color:#999;">region_flags</span>.segdup | `bool` | Variant falls within a segmental duplication region. | — | Not Needed |
+| **allele_info** | `struct` | Allele information. | — | Not Needed |
+| <span style="color:#999;">allele_info</span>.allele_type | `str` | Allele type (one of: 'snv', 'insertion', 'deletion', or 'mixed'). | — | Not Needed |
+| <span style="color:#999;">allele_info</span>.n_alt_alleles | `int32` | Total number of alternate alleles observed at variant locus. | — | Not Needed |
+| <span style="color:#999;">allele_info</span>.variant_type | `str` | Variant type (one of: 'snv', 'indel', 'multi-snv', 'multi-indel', or 'mixed'). | — | Not Needed |
+| <span style="color:#999;">allele_info</span>.was_mixed | `bool` | Variant type was mixed. | — | Not Needed |
+| **histograms** | `struct { ... }` | Variant information histograms. | — | Required |
+| <span style="color:#999;">histograms.</span>qual_hists | `struct { ... }` | Genotype quality metric histograms for high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.qual_hists.</span>gq_hist_all | `struct { ... }` | Histogram for GQ calculated on high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_all.</span>bin_edges | `array<float64>` | Bin edges for the GQ histogram calculated on high quality genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_all.</span>bin_freq | `array<int64>` | Bin frequencies for the GQ histogram calculated on high quality genotypes. The number of records found in each bin. | `[50, 56, 101, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_all.</span>n_smaller | `int64` | Count of GQ values falling below the lowest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_all.</span>n_larger | `int64` | Count of GQ values falling above the highest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.</span>dp_hist_all | `struct { ... }` | Histogram for DP calculated on high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_all.</span>bin_edges | `array<float64>` | Bin edges for the DP histogram calculated on high quality genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_all.</span>bin_freq | `array<int64>` | Bin frequencies for the DP histogram calculated on high quality genotypes. The number of records found in each bin. | `[2, 2, 16, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_all.</span>n_smaller | `int64` | Count of DP values falling below the lowest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_all.</span>n_larger | `int64` | Count of DP values falling above the highest histogram bin edge, calculated on high quality genotypes. | `500` | Required |
+| <span style="color:#999;">histograms.qual_hists.</span>gq_hist_alt | `struct { ... }` | Histogram for GQ in non-reference individuals calculated on high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_alt.</span>bin_edges | `array<float64>` | Bin edges for the histogram of GQ in non-reference individuals calculated on high quality genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_alt.</span>bin_freq | `array<int64>` | Bin frequencies for the histogram of GQ in non-reference individuals calculated on high quality genotypes. The number of records found in each bin. | `[0, 0 , 1, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_alt.</span>n_smaller | `int64` | Count of GQ values in non-reference individuals falling below the lowest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.gq_hist_alt.</span>n_larger | `int64` | Count of GQ values in non-reference individuals falling above the highest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.</span>dp_hist_alt | `struct { ... }` | Histogram for DP in non-reference individuals calculated on high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_alt.</span>bin_edges | `array<float64>` | Bin edges for the histogram of DP in non-reference individuals calculated on high quality genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_alt.</span>bin_freq | `array<int64>` | Bin frequencies for the histogram of DP in non-reference individuals calculated on high quality genotypes. The number of records found in each bin. | `[1, 1, 10, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_alt.</span>n_smaller | `int64` | Count of DP values in non-reference individuals falling below the lowest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.dp_hist_alt.</span>n_larger | `int64` | Count of DP values in non-reference individuals falling above highest histogram bin edge, calculated on high quality genotypes. | `10` | Required |
+| <span style="color:#999;">histograms.qual_hists.</span>ab_hist_alt | `struct { ... }` | Histogram for AB in heterozygous individuals calculated on high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.qual_hists.ab_hist_alt.</span>bin_edges | `array<float64>` | Bin edges for the histogram of AB in heterozygous individuals calculated on high quality genotypes are: `0.00 | 0.05 | 0.10 | 0.20 | 0.25 | 0.30 | 0.35 | 0.40 | 0.45 | 0.50 | 0.55 | 0.60 | 0.65 | 0.70 | 0.75 | 0.80 | 0.85 | 0.90 | 0.95 | 1.00`. | `[0.00 , 0.05 , 0.10, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.ab_hist_alt.</span>bin_freq | `array<int64>` | Bin frequencies for the histogram of AB in heterozygous individuals calculated on high quality genotypes. The number of records found in each bin. | `[0 , 0 , 5, ...]` | Required |
+| <span style="color:#999;">histograms.qual_hists.ab_hist_alt.</span>n_smaller | `int64` | Count of AB values in heterozygous individuals falling below the lowest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.qual_hists.ab_hist_alt.</span>n_larger | `int64` | Count of AB values in heterozygous individuals falling above the highest histogram bin edge, calculated on high quality genotypes. | `0` | Required |
+| <span style="color:#999;">histograms.</span>raw_qual_hists | `struct { ... }` | Genotype quality metric histograms for all genotypes as opposed to high quality genotypes. | — | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.</span>gq_hist_all | `struct { ... }` | Histogram for GQ calculated on all genotypes. | — | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_all.</span>bin_edges | `array<float64>` | Bin edges for the GQ histogram calculated on all genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_all.</span>bin_freq | `array<int64>` | Bin frequencies for the GQ histogram calculated on all genotypes. The number of records found in each bin. | `[60, 76, 130, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_all.</span>n_smaller | `int64` | Count of GQ values falling below lowest histogram bin edge, for GQ calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_all.</span>n_larger | `int64` | Count of GQ values falling above highest histogram bin edge, for GQ calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.</span>dp_hist_all | `struct { ... }` | Histogram for DP calculated on all genotypes. | — | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_all.</span>bin_edges | `array<float64>` | Bin edges for the DP histogram calculated on all genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_all.</span>bin_freq | `array<int64>` | Bin frequencies for the DP histogram calculated on all genotypes. The number of records found in each bin. | `[4, 7, 20, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_all.</span>n_smaller | `int64` | Count of DP values falling below lowest histogram bin edge, for DP calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_all.</span>n_larger | `int64` | Count of DP values falling above highest histogram bin edge, for DP calculated on all genotypes. | `600` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.</span>gq_hist_alt | `struct { ... }` | Histogram for GQ in non-reference individuals calculated on all genotypes. | — | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_alt.</span>bin_edges | `array<float64>` | Bin edges for the histogram of GQ in non-reference individuals calculated on all genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_alt.</span>bin_freq | `array<int64>` | Bin frequencies for the histogram of GQ in non-reference individuals calculated on all genotypes. The number of records found in each bin. | `[3, 4, 10, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_alt.</span>n_smaller | `int64` | Count of GQ values in non-reference individuals falling below lowest histogram bin edge, calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.gq_hist_alt.</span>n_larger | `int64` | Count of GQ values in non-reference individuals falling above highest histogram bin edge, calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.</span>dp_hist_alt | `struct { ... }` | Histogram for DP in non-reference individuals calculated on all genotypes. | — | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_alt.</span>bin_edges | `array<float64>` | Bin edges for the histogram of DP in non-reference individuals calculated on all genotypes are: `0.0 | 5.0 | 10.0 | 20.0 | 25.0 | 30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0 | 85.0 | 90.0 | 95.0 | 100.0`. | `[0.0, 5.0, 10.0, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_alt.</span>bin_freq | `array<int64>` | Bin frequencies for the histogram of DP in non-reference individuals calculated on all genotypes. The number of records found in each bin. | `[2, 2, 6, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_alt.</span>n_smaller | `int64` | Count of DP values in non-reference individuals falling below lowest histogram bin edge, calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.dp_hist_alt.</span>n_larger | `int64` | Count of DP values in non-reference individuals falling above highest histogram bin edge, calculated on all genotypes. | `11` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.</span>ab_hist_alt | `struct { ... }` | Histogram for AB in heterozygous individuals calculated on all genotypes. | — | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.ab_hist_alt.</span>bin_edges | `array<float64>` | Bin edges for the histogram of AB in heterozygous individuals calculated on all genotypes are: `0.00 | 0.05 | 0.10 | 0.20 | 0.25 | 0.30 | 0.35 | 0.40 | 0.45 | 0.50 | 0.55 | 0.60 | 0.65 | 0.70 | 0.75 | 0.80 | 0.85 | 0.90 | 0.95 | 1.00`. | `[0.00 , 0.05 , 0.10, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.ab_hist_alt.</span>bin_freq | `array<int64>` | Bin frequencies for the histogram of AB in heterozygous individuals calculated on all genotypes. The number of records found in each bin. | `[0 , 0 , 6, ...]` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.ab_hist_alt.</span>n_smaller | `int64` | Count of AB values in heterozygous individuals falling below lowest histogram bin edge, calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.raw_qual_hists.ab_hist_alt.</span>n_larger | `int64` | Count of AB values in heterozygous individuals falling above highest histogram bin edge, calculated on all genotypes. | `0` | Optional |
+| <span style="color:#999;">histograms.</span>age_hists | `struct { ... }` | Histograms containing age information for high quality genotypes.  Cohorts for gnomAD vary in how they report age (some report the age at diagnosis, others report the age of last visit, etc), so the ages associated with the gnomAD data can be thought of as the last known age of the individual. Information on age is not available for all gnomAD samples. This field is required with the acknowledgement that age data may not be available for all samples. If no age is available for any samples, set all `bin_freq` values to `0`. | — | Required |
+| <span style="color:#999;">histograms.age_hists.</span>age_hist_het | `struct { ... }` | Histogram for age in all heterozygous samples calculated on high quality genotypes. | — | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_het.</span>bin_edges | `array<float64>` | Bin edges for the age histogram: `30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0`. | `[30.0, 35.0,  40.0, ...]` | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_het.</span>bin_freq | `array<int64>` | Bin frequencies for the age histogram. This is the number of records found in each bin. | `[0, 3,  4, ...]` | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_het.</span>n_smaller | `int64` | Count of age values falling below lowest histogram bin edge. | `1` | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_het.</span>n_larger | `int64` | Count of age values falling above highest histogram bin edge. | `0` | Required |
+| <span style="color:#999;">histograms.age_hists.</span>age_hist_hom | `struct { ... }` | Histogram for age in all homozygous samples calculated on high quality genotypes. If variant is in the pseudoautosomal regions of chrX or chrY, this histogram also includes age counts of hemizygous samples. | — | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_hom.</span>bin_edges | `array<float64>` | Bin edges for the age histogram: `30.0 | 35.0 | 40.0 | 45.0 | 50.0 | 55.0 | 60.0 | 65.0 | 70.0 | 75.0 | 80.0`. | `[30.0, 35.0,  40.0, ...]`| Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_hom.</span>bin_freq | `array<int64>` | Bin frequencies for the age histogram. This is the number of records found in each bin. | `[0, 2,  2, ...]` | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_hom.</span>n_smaller | `int64` | Count of age values falling below lowest histogram bin edge. | `0` | Required |
+| <span style="color:#999;">histograms.age_hists.age_hist_hom.</span>n_larger | `int64` | Count of age values falling above highest histogram bin edge. | `0` | Required |
+| **in_silico_predictors** | `struct { ... }` | Variant prediction annotations. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>cadd | `struct { ... }` | Score used to predict deleteriousness of SNVs and indels. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.cadd.</span>phred | `float32` | CADD Phred-like scaled C-scores ranging from 1 to 99 based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Larger values indicate increased predicted deleteriousness. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.cadd.</span>raw_score | `float32` | Unscaled CADD scores indicating whether a variant is likely to be "observed" (negative values) vs "simulated" (positive values). Larger values indicate increased predicted deleteriousness. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>revel_max | `float64` | An ensemble score for predicting the pathogenicity of missense variants (based on 13 other variant predictors). | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>spliceai_ds_max | `float32` | Maximum delta score across 4 splicing consequences, which reflects the probability of the variant being splice-altering. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>pangolin_largest_ds | `float64` | Largest delta score across 2 splicing consequences, which reflects the probability of the variant being splice-altering. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>phylop | `float64` | Base-wise conservation score across the 241 placental mammals in the Zoonomia project. Score ranges from -20 to 9.28, and reflects acceleration (faster evolution than expected under neutral drift, assigned negative scores) as well as conservation (slower than expected evolution, assigned positive scores). | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>sift_max | `float64` | Score reflecting the scaled probability of the amino acid substitution being tolerated, ranging from 0 to 1. | — | Not Needed |
+| <span style="color:#999;">in_silico_predictors.</span>polyphen_max | `float64` | Score that predicts the possible impact of an amino acid substitution on the structure and function of a human protein, ranging from 0.0 (tolerated) to 1.0 (deleterious). | — | Not Needed |

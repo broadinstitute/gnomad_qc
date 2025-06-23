@@ -1,4 +1,5 @@
 """Script to create final filter Table for v4 genomes release."""
+
 import argparse
 import logging
 from copy import deepcopy
@@ -181,9 +182,11 @@ def main(args):
     ts_ac_filter_expr = freq_idx.freq[1].AC == 1
 
     # Generate expressions for mono-allelic and only-het status.
-    mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
-    only_het_flag_expr = ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN) & (
-        freq_idx.freq[0].homozygote_count == 0
+    mono_allelic_flag_expr = (freq_idx.freq[0].AC > 0) & (freq_idx.freq[1].AF == 1)
+    only_het_flag_expr = (
+        (freq_idx.freq[0].AC > 0)
+        & ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN)
+        & (freq_idx.freq[0].homozygote_count == 0)
     )
 
     # Construct dictionary of filters for final 'filters' annotation.
@@ -277,7 +280,8 @@ def main(args):
     ht.write(res.final_ht.path, overwrite=args.overwrite)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -336,6 +340,11 @@ if __name__ == "__main__":
         help="RF or VQSR score to use as cutoff for indels.",
         type=float,
     )
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

@@ -1,8 +1,10 @@
 """Script containing release related resources."""
+
 import logging
+from datetime import datetime
 from typing import Optional
 
-from gnomad.resources.grch38.gnomad import coverage, public_release
+from gnomad.resources.grch38.gnomad import all_sites_an, coverage, public_release
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
@@ -11,11 +13,13 @@ from gnomad.resources.resource_utils import (
 from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.constants import (
-    COMBINED_FAF_RELEASES,
+    ALL_SITES_AN_RELEASES,
     COVERAGE_RELEASES,
-    CURRENT_COMBINED_FAF_RELEASE,
+    CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
+    CURRENT_DE_NOVO_RELEASE,
     CURRENT_RELEASE,
+    DE_NOVO_RELEASES,
     RELEASES,
 )
 
@@ -31,9 +35,7 @@ group, e.g. “adj”, “raw”
 sex_group, e.g. “XX_adj”
 subset_group, e.g. “non_ukb_raw”
 gen-anc_group, e.g. “afr_adj”
-gen-anc_sex_group, e.g. “ami_XX_adj”
-downsampling_group_gen-anc, e.g. “200_eas_adj”,
-downsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”
+gen-anc_sex_group, e.g. “ami_XX_adj”{}
 subset_gen-anc_group, e.g. “non_ukb_sas_adj”
 subset_gen-anc_group, e.g. “non_ukb_XY_adj”
 subset_gen-anc_sex_group, e.g. “non_ukb_mid_XX_adj”,
@@ -83,61 +85,57 @@ def _release_root(
     )
 
 
-def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
+def annotation_hists_params_path(
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
+) -> str:
     """
-    Return path to file containing ANNOTATIONS_HISTS dictionary.
+    Return path to file containing dictionary of parameters for site metric histograms.
 
-    Dictionary contains histogram values for each metric.
+    The keys of the dictionary are the names of the site quality metrics
+    while the values are: [lower bound, upper bound, number  of bins].
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 
+    :param release_version: Release version. Defaults to CURRENT RELEASE.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Path to file with annotation histograms
     """
-    return f"gs://gnomad/release/{release_version}/json/annotation_hists.json"
+    return f"{_release_root(version=release_version, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}_annotation_hist_params.json"
 
 
-def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
+def qual_hists_json_path(
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
+    test: bool = False,
+) -> str:
     """
     Fetch filepath for qual histograms JSON.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param data_type: Data type 'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for histogram JSON
     """
-    return f"gs://gnomad/release/{release_version}/json/gnomad.exomes.v{release_version}.json"
-
-
-def get_combined_faf_release(test: bool = False) -> VersionedTableResource:
-    """
-    Retrieve versioned resource for the combined genome + exome FAF release Table.
-
-    :param test: Whether to use a tmp path for testing. Default is False.
-    :return: Combined genome + exome FAF release VersionedTableResource.
-    """
-    return VersionedTableResource(
-        default_version=CURRENT_COMBINED_FAF_RELEASE,
-        versions={
-            release: TableResource(
-                path=(
-                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf.ht"
-                )
-            )
-            for release in COMBINED_FAF_RELEASES
-        },
-    )
+    return f"{_release_root(release_version, test, data_type, extension='json')}/gnomad.{data_type}.v{release_version}_qual_hists.json"
 
 
 def release_ht_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_RELEASE,
     public: bool = False,
+    test: bool = False,
 ) -> str:
     """
     Fetch filepath for release (variant-only) Hail Tables.
 
     :param data_type: Data type of release resource to return. Should be one of
-        'exomes' or 'genomes'. Default is 'exomes'.
+        'exomes', 'genomes' or 'joint'. Default is 'exomes'.
     :param release_version: Release version. Default is CURRENT_RELEASE.
     :param public: Whether release sites Table path returned is from public or private
         bucket. Default is False.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for desired release Hail Table.
     """
     if public:
@@ -146,19 +144,22 @@ def release_ht_path(
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
+        # Note: This function was not used to write out the v4.0 joint release HT. That
+        # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
+        return f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def release_sites(
-    data_type: str = "exomes", public: bool = False
+    data_type: str = "exomes", public: bool = False, test: bool = False
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
 
     :param data_type: Data type of release resource to return. Should be one of
-        'exomes' or 'genomes'. Default is 'exomes'.
+        'exomes', 'genomes', or 'joint'. Default is 'exomes'.
     :param public: Whether release sites Table path returned is from public or private
         bucket. Default is False.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Sites-only release Table.
     """
     return VersionedTableResource(
@@ -169,6 +170,7 @@ def release_sites(
                     data_type=data_type,
                     release_version=release,
                     public=public,
+                    test=test,
                 )
             )
             for release in RELEASES
@@ -178,55 +180,69 @@ def release_sites(
 
 def release_vcf_path(
     release_version: Optional[str] = None,
+    test: bool = False,
+    data_type: str = "exomes",
     contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
-    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used.
-    :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
-        sites VCF path
-    :return: Filepath for the desired VCF
+    :param release_version: Release version. When no release_version is supplied
+        CURRENT_RELEASE is used.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: Data type of release resource to return. Should be one of
+        'exomes' or 'genomes'. Default is 'exomes'.
+    :param contig: String containing the name of the desired reference contig. Default
+        is the full (all contigs) sites VCF path.
+    :return: Filepath for the desired VCF.
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
 
     if contig:
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.{contig}.vcf.bgz"
+        return f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.{contig}.vcf.bgz"
     else:
         # If contig is None, return path to sharded vcf bucket.
         # NOTE: need to add .bgz or else hail will not bgzip shards.
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.vcf.bgz"
+        return f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.vcf.bgz"
 
 
-def release_header_path(release_version: Optional[str] = None) -> str:
+def release_header_path(
+    release_version: Optional[str] = None, data_type: str = "exomes", test: bool = False
+) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
-    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used
-    :return: Filepath for header dictionary pickle
+    :param release_version: Release version. When no release_version is supplied
+        CURRENT_RELEASE is used
+    :param data_type: Data type of release resource to return. Should be one of
+        'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: Filepath for header dictionary pickle.
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
 
-    return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}_header_dict.pickle"
+    return f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}_header_dict.pickle"
 
 
 def append_to_vcf_header_path(
-    subset: str, release_version: str = CURRENT_RELEASE
+    subset: str = None,
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
 ) -> str:
     """
     Fetch path to TSV file containing extra fields to append to VCF header.
 
     Extra fields are VEP and dbSNP versions.
 
-    :param subset: One of the possible release subsets
-    :param release_version: Release version. Defaults to CURRENT RELEASE
-    :return: Filepath for extra fields TSV file
+    :param subset: One of the possible release subsets.
+    :param release_version: Release version. Defaults to CURRENT RELEASE.
+    :param data_type: Data type of release resource to return. Should be one of .
+        'exomes' or 'genomes'. Default is 'exomes'.
+    :return: Filepath for extra fields TSV file.
     """
-    return (
-        f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
-    )
+    return f"gs://gnomad/release/{release_version}/vcf/{data_type}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
 def release_coverage_path(
@@ -234,22 +250,29 @@ def release_coverage_path(
     release_version: str = CURRENT_RELEASE,
     public: bool = True,
     test: bool = False,
+    stratify: bool = True,
+    coverage_type: str = "coverage",
 ) -> str:
     """
-    Fetch filepath for coverage release Table.
+    Fetch filepath for all sites coverage or allele number release Table.
 
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param release_version: Release version.
     :param public: Determines whether release coverage Table is read from public or
         private bucket. Default is public.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param stratify: Whether to stratify results by platform and subset. Default is True.
+    :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: File path for desired coverage Hail Table.
     """
     if public:
         if test:
             raise ValueError("Cannot use test=True with public=True!")
         try:
-            cov = coverage(data_type)
+            if coverage_type == "coverage":
+                cov = coverage(data_type)
+            else:
+                cov = all_sites_an(data_type)
             if release_version in cov.versions:
                 path = cov.versions[release_version].path
             else:
@@ -263,13 +286,11 @@ def release_coverage_path(
                 data_type,
                 release_version,
             )
-            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
         else:
             return path
     else:
-        return (
-            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.coverage.ht"
-        )
+        return f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
 
 
 def release_coverage_tsv_path(
@@ -285,13 +306,36 @@ def release_coverage_tsv_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Coverage TSV path.
     """
-    return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.tsv.bgz"
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
+
+
+def release_all_sites_an_tsv_path(
+    data_type: str = "exomes",
+    release_version: str = None,
+    test: bool = False,
+) -> str:
+    """
+    Fetch path to all sites AN TSV file.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param release_version: Release version. Default is
+        CURRENT_ALL_SITES_AN_RELEASE[data_type].
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites AN TSV path.
+    """
+    release_version = (
+        release_version
+        if release_version is not None
+        else CURRENT_ALL_SITES_AN_RELEASE[data_type]
     )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
 
 
 def release_coverage(
-    data_type: str = "exomes", public: bool = False, test: bool = False
+    data_type: str = "exomes",
+    public: bool = False,
+    test: bool = False,
+    stratify: bool = True,
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -300,6 +344,7 @@ def release_coverage(
     :param public: Determines whether release coverage Table is read from public or
         private bucket. Default is private.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param stratify: Whether to stratify results by platform and subset. Default is True.
     :return: Coverage release Table.
     """
     return VersionedTableResource(
@@ -311,9 +356,68 @@ def release_coverage(
                     release_version=release,
                     public=public,
                     test=test,
+                    stratify=stratify,
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
+        },
+    )
+
+
+def release_all_sites_an(
+    data_type: str = "exomes",
+    public: bool = False,
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for all sites allele number release Table.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param public: Determines whether release allele number Table is read from public or
+        private bucket. Default is private.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites allele number release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_ALL_SITES_AN_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=release_coverage_path(
+                    data_type=data_type,
+                    release_version=release,
+                    public=public,
+                    test=test,
+                    stratify=True,
+                    coverage_type="allele_number",
+                )
+            )
+            for release in ALL_SITES_AN_RELEASES[data_type]
+        },
+    )
+
+
+def release_de_novo(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for exomes de novo release Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: De novo release Table.
+    """
+    data_type = "exomes"
+
+    confidence_suffix = ".high_quality_coding"
+    return VersionedTableResource(
+        default_version=CURRENT_DE_NOVO_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=(
+                    f"{_release_root(version=release, test=test, data_type=data_type)}"
+                    f"/gnomad.{data_type}.v{release}.de_novo{confidence_suffix}.ht"
+                )
+            )
+            for release in DE_NOVO_RELEASES[data_type]
         },
     )
 
@@ -331,9 +435,7 @@ def included_datasets_json_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: File path for release versions included datasets JSON
     """
-    return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.exomes.v{release_version}.included_datasets.json"
-    )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}.included_datasets.json"
 
 
 def validated_release_ht(
@@ -358,6 +460,38 @@ def validated_release_ht(
             for version in RELEASES
         },
     )
+
+
+def get_freq_array_readme(data_type: str = "exomes") -> str:
+    """
+    Fetch README for freq array for the specified data_type.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :return: README for freq array.
+    """
+    # Add information about downsamplings only to exomes
+    # (genomes release does not contain downsampling)
+    if data_type == "exomes":
+        return FREQUENCY_README.format(
+            "\ndownsampling_group_gen-anc, e.g."
+            " “200_eas_adj”,\ndownsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”"
+        )
+    else:
+        return FREQUENCY_README.format("")
+
+
+def get_false_dup_genes_path(
+    release_version: str = CURRENT_RELEASE,
+    test: bool = False,
+) -> str:
+    """
+    Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.
+
+    :param release_version: Release version. Defaults to CURRENT RELEASE.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: Combined custom liftover table path for the three genes in false duplication.
+    """
+    return f"{_release_root(version=release_version, test=test, data_type='joint')}/gnomad.v{release_version}_three_false_dup_genes_liftover.ht"
 
 
 def release_summary_stats(

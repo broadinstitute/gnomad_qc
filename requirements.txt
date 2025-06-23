@@ -5,4 +5,5 @@ networkx
 scikit-learn
 scipy
 hail
-statsmodels
+papermill
+bs4

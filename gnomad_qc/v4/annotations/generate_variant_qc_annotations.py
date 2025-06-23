@@ -1,4 +1,5 @@
 """Script to generate annotations for variant QC on gnomAD v4."""
+
 import argparse
 import logging
 from typing import Dict, Optional
@@ -8,7 +9,7 @@ from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_i
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.resources.resource_utils import TableResource
-from gnomad.sample_qc.relatedness import filter_mt_to_trios
+from gnomad.sample_qc.relatedness import filter_to_trios
 from gnomad.utils.annotations import annotate_adj, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -178,6 +179,7 @@ def correct_as_annotations(
 
     For some entries in the MatrixTable, the following annotations are longer than LA,
     when they should be the same length as LA:
+
         - AS_SB_TABLE
         - AS_RAW_MQ
         - AS_RAW_ReadPosRankSum
@@ -222,6 +224,8 @@ def run_compute_info(
     mt: hl.MatrixTable,
     max_n_alleles: Optional[int] = None,
     min_n_alleles: Optional[int] = None,
+    retain_cdfs: bool = False,
+    cdf_k: int = 200,
 ) -> hl.Table:
     """
     Run compute info on a MatrixTable.
@@ -248,6 +252,13 @@ def run_compute_info(
         computations.
     :param min_n_alleles: Minimum number of alleles for the site to be included in
         computations.
+    :param retain_cdfs: If True, retains the cumulative distribution functions (CDFs)
+        for all info annotations that are computed as a median aggregation. Keeping the
+        CDFs is useful for annotations that require calculating the median across
+        combined datasets at a later stage. Default is False.
+    :param cdf_k: Parameter controlling the accuracy vs. memory usage tradeoff when
+        retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF
+        approximation but increases memory usage and computation time. Default is 200.
     :return: Table with info annotations.
     """
     if max_n_alleles:
@@ -266,6 +277,8 @@ def run_compute_info(
             "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
         },
         n_partitions=None,
+        retain_cdfs=retain_cdfs,
+        cdf_k=cdf_k,
     )
     quasi_info_ht = ht.checkpoint(
         hl.utils.new_temp_file("quasi_compute_info", extension="ht")
@@ -281,6 +294,7 @@ def run_compute_info(
             **correct_as_annotations(mt),
         )
     )
+
     ht = correct_mt.select_rows(
         **get_as_info_expr(
             correct_mt,
@@ -288,6 +302,8 @@ def run_compute_info(
             # median_agg_fields, and array_sum_agg_fields parameters.
             **AS_INFO_AGG_FIELDS,
             treat_fields_as_allele_specific=True,
+            retain_cdfs=retain_cdfs,
+            cdf_k=cdf_k,
         )
     ).rows()
     info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
@@ -306,6 +322,8 @@ def run_compute_info(
             median_agg_fields=["AS_RAW_ReadPosRankSum", "AS_RAW_MQRankSum"],
             array_sum_agg_fields=["AS_SB_TABLE"],
             treat_fields_as_allele_specific=True,
+            retain_cdfs=retain_cdfs,
+            cdf_k=cdf_k,
         )
     ).rows()
     ht = ht.checkpoint(
@@ -428,6 +446,7 @@ def run_generate_trio_stats(
     vds: hl.vds.VariantDataset,
     fam_ped: hl.Pedigree,
     fam_ht: hl.Table,
+    releasable_only: bool = False,
 ) -> hl.Table:
     """
     Generate trio transmission stats from a VariantDataset and pedigree info.
@@ -435,21 +454,37 @@ def run_generate_trio_stats(
     :param vds: VariantDataset to generate trio stats from.
     :param fam_ped: Pedigree containing trio info.
     :param fam_ht: Table containing trio info.
+    :param releasable_only: Whether to only include releasable trios. Releasable trios are those where all three samples (proband, maternal, and paternal) are marked as 'releasable'.
     :return: Table containing trio stats.
     """
     # Filter the VDS to autosomes.
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+
+    if releasable_only:
+        logger.info("Filtering to only releasable trios...")
+        meta = vds.variant_data.cols()
+        fam_ht = fam_ht.annotate(
+            id_releasable=meta[fam_ht.key].meta.project_meta.releasable,
+            pat_releasable=meta[fam_ht.pat_id].meta.project_meta.releasable,
+            mat_releasable=meta[fam_ht.mat_id].meta.project_meta.releasable,
+        )
+        fam_ht = fam_ht.filter(
+            fam_ht.id_releasable & fam_ht.pat_releasable & fam_ht.mat_releasable
+        )
+
+    # Filter the variant data and reference data to only the trios.
+    vds = filter_to_trios(vds, fam_ht)
+
     vmt = vds.variant_data
     rmt = vds.reference_data
 
     # Filter the variant data to bi-allelic sites.
     vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
 
-    # Filter the variant data and reference data to only the trios.
-    vmt = filter_mt_to_trios(vmt, fam_ht)
-    rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
+    vds = hl.vds.VariantDataset(reference_data=rmt, variant_data=vmt)
 
-    mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
+    mt = hl.vds.to_dense_mt(vds)
+
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
@@ -525,7 +560,7 @@ def create_variant_qc_annotation_ht(
             m_info_ht = ht.select("variant_type", **ht[m])
             m_info_ht = median_impute_features(
                 m_info_ht, {"variant_type": m_info_ht.variant_type}
-            ).checkpoint(hl.utils.new_temp_file("median_impute"), overwrite=True)
+            ).checkpoint(hl.utils.new_temp_file("median_impute", "ht"))
             feature_imputed[m] = m_info_ht[ht.key]
             feature_medians[m] = hl.eval(m_info_ht.feature_medians)
 
@@ -585,9 +620,7 @@ def create_variant_qc_annotation_ht(
     )
 
     ht = ht.repartition(n_partitions, shuffle=False)
-    ht = ht.checkpoint(
-        hl.utils.new_temp_file("variant_qc_annotations", "ht"), overwrite=True
-    )
+    ht = ht.checkpoint(hl.utils.new_temp_file("variant_qc_annotations", "ht"))
     ht.describe()
 
     summary = ht.group_by(
@@ -630,7 +663,6 @@ def get_tp_ht_for_vcf_export(
         filtered_ht = ht.filter(filter_expr).select().select_globals()
         filtered_ht = filtered_ht.checkpoint(
             hl.utils.new_temp_file("true_positive_variants", "ht"),
-            overwrite=True,
         )
         logger.info(
             "True positive %s Table for VCF export contains %d variants",
@@ -648,6 +680,7 @@ def get_variant_qc_annotation_resources(
     over_n_alleles: Optional[bool] = None,
     combine_compute_info: bool = False,
     true_positive_type: Optional[str] = None,
+    releasable_trios_only: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
@@ -664,6 +697,7 @@ def get_variant_qc_annotation_resources(
         produced by running --compute-info with --compute-info-split-n-alleles.
     :param true_positive_type: Type of true positive variants to use for true positive
         VCF path resource. Default is None.
+    :param releasable_trios_only: Whether to only include releasable trios in the trio stats.
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
@@ -733,7 +767,11 @@ def get_variant_qc_annotation_resources(
     )
     trio_stats = PipelineStepResourceCollection(
         "--generate-trio-stats",
-        output_resources={"trio_stats_ht": get_trio_stats(test=test)},
+        output_resources={
+            "trio_stats_ht": get_trio_stats(
+                test=test, releasable_only=releasable_trios_only
+            )
+        },
         input_resources={"identify_trios.py --finalize-ped": {"final_ped": pedigree()}},
     )
     sib_stats = PipelineStepResourceCollection(
@@ -799,6 +837,9 @@ def main(args):
     overwrite = args.overwrite
     transmitted_singletons = args.transmitted_singletons
     sibling_singletons = args.sibling_singletons
+    retain_cdfs = args.retain_cdfs
+    cdf_k = args.cdf_k
+    releasable_trios_only = args.releasable_trios_only
 
     max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
@@ -824,6 +865,7 @@ def main(args):
         over_n_alleles=over_n_alleles,
         combine_compute_info=combine_compute_info,
         true_positive_type=true_positive_type,
+        releasable_trios_only=releasable_trios_only,
     )
     vds = get_gnomad_v4_vds(
         test=test_dataset,
@@ -852,7 +894,13 @@ def main(args):
                     overwrite=True,
                 )
             else:
-                ht = run_compute_info(mt, max_n_alleles, min_n_alleles)
+                ht = run_compute_info(
+                    mt,
+                    max_n_alleles,
+                    min_n_alleles,
+                    retain_cdfs=retain_cdfs,
+                    cdf_k=cdf_k,
+                )
 
             if split_n_alleles is None or combine_compute_info:
                 ht = ht.naive_coalesce(args.compute_info_n_partitions)
@@ -900,7 +948,10 @@ def main(args):
             res = vqc_resources.generate_trio_stats
             res.check_resource_existence()
             ht = run_generate_trio_stats(
-                vds, res.final_ped.pedigree(), res.final_ped.ht()
+                vds,
+                res.final_ped.pedigree(),
+                res.final_ped.ht(),
+                releasable_only=args.releasable_trios_only,
             )
             ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
@@ -938,7 +989,8 @@ def main(args):
         hl.copy_log(get_logging_path("variant_qc_annotations.log"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -998,7 +1050,27 @@ if __name__ == "__main__":
         default=5000,
         type=int,
     )
-
+    compute_info_args.add_argument(
+        "--retain-cdfs",
+        help=(
+            "If True, retains the cumulative distribution functions (CDFs) for all "
+            "info annotations that are computed as a median aggregation. Keeping the "
+            "CDFs is useful for annotations that require calculating the median across"
+            "combined datasets at a later stage. Default is False."
+        ),
+        action="store_true",
+    )
+    compute_info_args.add_argument(
+        "--cdf-k",
+        help=(
+            "Parameter controlling the accuracy vs. memory usage tradeoff when "
+            "retaining CDFs. A higher value of `cdf_k` results in a more accurate CDF "
+            "approximation but increases memory usage and computation time. Default is "
+            "200."
+        ),
+        default=200,
+        type=int,
+    )
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
@@ -1022,15 +1094,20 @@ if __name__ == "__main__":
         help="Version of VEPed context Table to use in vep_or_lookup_vep.",
         default="105",
     )
-    parser.add_argument(
+    trio_stat_args = parser.add_argument_group("Arguments used to generate trio stats.")
+    trio_stat_args.add_argument(
         "--generate-trio-stats", help="Calculates trio stats", action="store_true"
+    )
+    trio_stat_args.add_argument(
+        "--releasable-trios-only",
+        help="Only include releasable trios. This option is only valid when --generate-trio-stats is true.",
+        action="store_true",
     )
     parser.add_argument(
         "--generate-sibling-stats",
         help="Calculate sibling variant sharing stats.",
         action="store_true",
     )
-
     variant_qc_annotation_args = parser.add_argument_group(
         "Variant QC annotation HT parameters"
     )
@@ -1080,6 +1157,11 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

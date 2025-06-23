@@ -1,4 +1,5 @@
 """Script containing sample QC related resources."""
+
 from typing import Optional
 
 from gnomad.resources.resource_utils import (
@@ -11,19 +12,23 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_SAMPLE_QC_VERSION,
+    SAMPLE_QC_VERSIONS,
+)
 
 
 def get_sample_qc_root(
-    version: str = CURRENT_VERSION, test: bool = False, data_type="exomes"
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False, data_type="exomes"
 ) -> str:
     """
     Return path to sample QC root folder.
 
-    :param version: Version of sample QC path to return
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Root to sample QC path
+    :param version: Version of sample QC path to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Root to sample QC path.
     """
     return (
         f"gs://gnomad-tmp/gnomad_v{version}_testing/sample_qc/{data_type}"
@@ -48,83 +53,84 @@ def get_sample_qc(
         - multi_allelic
         - all
 
-    :param strat: Which stratification to return
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Sample QC table
+    :param strat: Which stratification to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Sample QC table.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
 
 # v4 samples that failed fingerprinting.
 fingerprinting_failed = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.fingerprintcheck_failures.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Mean chr20 DP per sample using Hail's interval_coverage results.
 sample_chr20_mean_dp = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.sample_chr20_mean_dp.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Sample callrate on variants in the v4 precomputed QC MT.
 sample_qc_mt_callrate = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.sample_qc_mt_callrate.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Sample contamination estimate Table.
 contamination = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.contamination.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 hard_filtered_samples_no_sex = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples_no_sex.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 hard_filtered_samples = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
@@ -134,29 +140,32 @@ hard_filtered_samples = VersionedTableResource(
 
 # VDS Hail interval_coverage results.
 interval_coverage = VersionedMatrixTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: MatrixTableResource(
             f"{get_sample_qc_root(version)}/platform_inference/gnomad.exomes.v{version}.interval_coverage.mt"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 
-def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
+def _get_platform_pca_ht_path(
+    part: str, version: str = CURRENT_SAMPLE_QC_VERSION
+) -> str:
     """
     Get path to files related to platform PCA.
 
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
-    :param version: Version of sample QC path to return
-    :return: Path to requested platform PCA file
+    :param part: String indicating the type of PCA file to return (loadings,
+        eigenvalues, or scores).
+    :param version: Version of sample QC path to return.
+    :return: Path to requested platform PCA file.
     """
     return f"{get_sample_qc_root(version)}/platform_inference/gnomad.exomes.v{version}.platform_pca_{part}.ht"
 
 
 platform_pca_loadings = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             _get_platform_pca_ht_path(
@@ -164,12 +173,12 @@ platform_pca_loadings = VersionedTableResource(
                 version,
             )
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 platform_pca_scores = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             _get_platform_pca_ht_path(
@@ -177,12 +186,12 @@ platform_pca_scores = VersionedTableResource(
                 version,
             )
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 platform_pca_eigenvalues = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             _get_platform_pca_ht_path(
@@ -190,18 +199,18 @@ platform_pca_eigenvalues = VersionedTableResource(
                 version,
             )
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Inferred sample platforms.
 platform = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/platform_inference/gnomad.exomes.v{version}.platform.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
@@ -211,52 +220,52 @@ platform = VersionedTableResource(
 
 # HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation.
 f_stat_sites = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.f_stat_sites.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: MatrixTableResource(
             f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.sex_chr_coverage.mt"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Table containing aggregate stats for interval QC specific to sex imputation.
 sex_imputation_interval_qc = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.sex_imputation_interval_qc.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 # Ploidy imputation results.
 ploidy = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.ploidy.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 
 # Sex imputation results.
 def get_ploidy_cutoff_json_path(
-    version: str = CURRENT_VERSION, test: bool = False
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
 ) -> str:
     """
     Get the sex karyotype ploidy cutoff JSON path for the indicated gnomAD version.
@@ -272,12 +281,12 @@ def get_ploidy_cutoff_json_path(
 
 
 sex = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.sex.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
@@ -287,12 +296,12 @@ sex = VersionedTableResource(
 
 # Table containing aggregate stats for interval QC.
 interval_qc = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/interval_qc/gnomad.exomes.v{version}.interval_qc.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
@@ -321,12 +330,12 @@ def interval_qc_pass(
         postfix = ""
 
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version)}/interval_qc/gnomad.exomes.v{version}.interval_qc_pass{postfix}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -337,7 +346,7 @@ def interval_qc_pass(
 
 
 def get_predetermined_qc(
-    version: str = CURRENT_VERSION, test: bool = False
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
 ) -> MatrixTableResource:
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
@@ -369,12 +378,12 @@ v3_predetermined_qc = MatrixTableResource(
 
 # gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`.
 v4_predetermined_qc = VersionedMatrixTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: MatrixTableResource(
             f"{get_sample_qc_root(version)}/qc_mt/gnomad.exomes.v{version}.pre_ld_prune_qc_sites.dense.mt"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
@@ -387,24 +396,24 @@ def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
     :return: MatrixTableResource of QC sites.
     """
     return VersionedMatrixTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: MatrixTableResource(
                 f"{get_sample_qc_root(version, test, data_type='joint')}/qc_mt/gnomad.joint.v{version}.qc.mt"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
 
 # v3 and v4 combined sample metadata Table for relatedness and population inference.
 joint_qc_meta = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version, data_type='joint')}/qc_mt/gnomad.joint.v{version}.qc_meta.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
@@ -414,7 +423,9 @@ joint_qc_meta = VersionedTableResource(
 ######################################################################
 
 
-def get_cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_cuking_input_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
+) -> str:
     """
     Return the path containing the input files read by cuKING.
 
@@ -428,7 +439,9 @@ def get_cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) ->
     return f"{qc_temp_prefix(version)}cuking_input{'_test' if test else ''}.parquet"
 
 
-def get_cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_cuking_output_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
+) -> str:
     """
     Return the path containing the output files written by cuKING.
 
@@ -450,12 +463,12 @@ def pc_relate_pca_scores(test: bool = False) -> VersionedTableResource:
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -480,12 +493,12 @@ def relatedness(
         method = f".{method}"
 
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness{method}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -498,12 +511,12 @@ def ibd(test: bool = False) -> VersionedTableResource:
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.ibd.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -524,12 +537,12 @@ def related_samples_to_drop(
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.{'release' if release else 'pca'}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -549,12 +562,12 @@ def sample_rankings(test: bool = False, release: bool = True) -> VersionedTableR
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.{'release' if release else 'pca'}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -566,7 +579,7 @@ def sample_rankings(test: bool = False, release: bool = True) -> VersionedTableR
 
 def _get_ancestry_pca_ht_path(
     part: str,
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
@@ -574,15 +587,14 @@ def _get_ancestry_pca_ht_path(
     """
     Get path to files related to ancestry PCA.
 
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores).
+    :param part: String indicating the type of PCA file to return (loadings,
+        eigenvalues, or scores).
     :param version: Version of sample QC path to return.
     :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Path to requested ancestry PCA file.
     """
-    return (
-        f"{get_sample_qc_root(version, test, data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
-    )
+    return f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
 
 
 def ancestry_pca_loadings(
@@ -593,20 +605,21 @@ def ancestry_pca_loadings(
     """
     Get the ancestry PCA loadings VersionedTableResource.
 
-    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA that used unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA
+        that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA loadings
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
                     "loadings", version, include_unreleasable_samples, test, data_type
                 )
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -619,20 +632,21 @@ def ancestry_pca_scores(
     """
     Get the ancestry PCA scores VersionedTableResource.
 
-    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA that used unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA
+        that used unreleasable samples.
     :param test: Whether to use a temp path.
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Ancestry PCA scores
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Ancestry PCA scores.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
                     "scores", version, include_unreleasable_samples, test, data_type
                 )
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -645,13 +659,14 @@ def ancestry_pca_eigenvalues(
     """
     Get the ancestry PCA eigenvalues VersionedTableResource.
 
-    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the PCA that used unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the
+        PCA that used unreleasable samples.
     :param test: Whether to use a temp path.
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Ancestry PCA eigenvalues
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Ancestry PCA eigenvalues.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
@@ -662,31 +677,29 @@ def ancestry_pca_eigenvalues(
                     data_type,
                 )
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
 
 def pop_rf_path(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "joint",
 ) -> str:
     """
     Path to RF model used for inferring sample populations.
 
-    :param version: gnomAD Version
+    :param version: gnomAD Version.
     :param test: Whether the RF assignment was from a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :return: String path to sample pop RF model
+    :return: String path to sample pop RF model.
     """
-    return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
-    )
+    return f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
 
 
 def get_pop_ht(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "joint",
 ):
@@ -704,7 +717,7 @@ def get_pop_ht(
 
 
 def get_pop_pr_ht(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "joint",
 ):
@@ -721,16 +734,14 @@ def get_pop_pr_ht(
     )
 
 
-def per_pop_min_rf_probs_json_path(version: str = CURRENT_VERSION):
+def per_pop_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     """
     Get path to JSON file containing per ancestry group minimum RF probabilities.
 
     :param version: Version of the JSON to return.
     :return: Path to per ancestry group minimum RF probabilities JSON.
     """
-    return (
-        f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
-    )
+    return f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
 
 
 ######################################################################
@@ -757,12 +768,12 @@ def stratified_filtering(
     if platform_stratified:
         postfix += ".platform_stratified"
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.stratified_filtering{postfix}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -797,12 +808,12 @@ def regressed_filtering(
     if include_unreleasable_samples:
         postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.regressed_filtering{postfix}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -833,12 +844,12 @@ def nearest_neighbors(
     if include_unreleasable_samples:
         postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors{postfix}.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -851,12 +862,12 @@ def nearest_neighbors_filtering(test: bool = False) -> VersionedTableResource:
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors_filtering.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -869,12 +880,12 @@ def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.final_outlier_filtering.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -890,12 +901,12 @@ def duplicates() -> VersionedTableResource:
     """
     data_type = "exomes"
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.duplicates.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -910,7 +921,8 @@ def pedigree(
     :param fake: Whether to return the fake pedigree resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
         for the finalized pedigree, which depends on `ped_mendel_errors`.
-    :return: VersionedPedigreeResource of trio pedigree including multiple trios per family.
+    :return: VersionedPedigreeResource of trio pedigree including multiple trios per
+        family.
     """
     if finalized and fake:
         raise ValueError("Only one of 'finalized' or 'fake' can be True!")
@@ -921,13 +933,13 @@ def pedigree(
         )
     data_type = "exomes"
     return VersionedPedigreeResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: PedigreeResource(
                 f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
                 delimiter="\t",
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -943,12 +955,12 @@ def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
     """
     data_type = "exomes"
     return VersionedPedigreeResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: PedigreeResource(
                 f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.trios{'.fake' if fake else ''}.fam"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
@@ -962,17 +974,19 @@ def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
     """
     data_type = "exomes"
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.mendel_errors.samples.ht"
             )
-            for version in VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
 
-def ped_filter_param_json_path(version: str = CURRENT_VERSION, test: bool = False):
+def ped_filter_param_json_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
+):
     """
     Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.
 
@@ -983,22 +997,73 @@ def ped_filter_param_json_path(version: str = CURRENT_VERSION, test: bool = Fals
     return f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.exomes.v{version}.ped_filters.json"
 
 
+def dense_trio_mt(
+    releasable: bool = True,
+    split: bool = False,
+    test: bool = False,
+) -> VersionedMatrixTableResource:
+    """
+    Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+
+    :param releasable: Whether to get the resource for the releasable trios only.
+    :param split: Whether to get the resource for the split trio MatrixTable.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource of dense trio MatrixTable.
+    """
+    data_type = "exomes"
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.trios"
+                f"{'.releasable' if releasable else ''}.dense"
+                f"{'.split' if split else ''}.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def trio_denovo_ht(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for the trio de novo Table.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource of trio de novo Table.
+    """
+    data_type = "exomes"
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}"
+                f"/relatedness/trios/gnomad.{data_type}.v{version}.trios."
+                f"releasable.denovo.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Other resources
 ######################################################################
 # Number of clinvar variants per sample.
 sample_clinvar_count = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     {
         version: TableResource(
             f"gs://gnomad/v{version}/sample_qc/additional_resources/gnomad.exomes.v{version}.clinvar.ht"
         )
-        for version in VERSIONS
+        for version in SAMPLE_QC_VERSIONS
     },
 )
 
 
-def get_sample_qc_field_def_json_path(version: str = CURRENT_VERSION) -> str:
+def get_sample_qc_field_def_json_path(version: str = CURRENT_SAMPLE_QC_VERSION) -> str:
     """
     Get path to JSON file containing sample QC metadata HT field definitions.
 
@@ -1048,4 +1113,10 @@ hgdp_tgp_related_to_nonsubset = TableResource(
 # List of HGDP + 1KG/TGP samples that are duplicated in the v4.0 exome release.
 hgdp_tgp_duplicated_to_exomes = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_duplicated_in_exomes.ht",
+)
+
+# Table with HGDP + 1KG/TGP relatedness information from Alicia Martin's
+# group sample QC.
+hgdp_tgp_relatedness = TableResource(
+    path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_relatedness.ht",
 )

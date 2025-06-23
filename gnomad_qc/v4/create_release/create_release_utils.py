@@ -1,4 +1,5 @@
 """Common utils for creating gnomAD v4 exomes and genomes releases."""
+
 import hail as hl
 
 # Tool versions used in the release that were not on the source tables
@@ -16,10 +17,12 @@ def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpress
     """
     Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.
 
-    See https://github.com/broadinstitute/gnomad_production/issues/936 for more information.
+    See https://github.com/broadinstitute/gnomad_production/issues/936 for more
+    information.
 
     :param vep_expr: StructExpression containing VEP 105 annotations.
-    :return: StructExpression containing VEP 105 annotations with missing fields removed.
+    :return: StructExpression containing VEP 105 annotations with missing fields
+        removed.
     """
     vep_expr = vep_expr.drop("colocated_variants", "context")
 

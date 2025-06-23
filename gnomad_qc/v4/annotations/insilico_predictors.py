@@ -1,15 +1,17 @@
 """Script to generate Hail Tables with in silico predictors."""
+
 import argparse
 import logging
 
 import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vep import filter_vep_transcript_csqs
+from gnomad.utils.vep import filter_vep_transcript_csqs, process_consequences
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_insilico_predictors
+from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -75,11 +77,13 @@ def create_cadd_grch38_ht() -> hl.Table:
           (13M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 904,906 indels
           that are new in gnomAD v4 genomes because of the addition of HGDP/TGP samples.
 
-         .. note::
+    .. note::
+
          ~1,9M indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD v3.1 and
          v4.0. However, CADD only generates a score per loci. We keep only the latest
          prediction, v4.0, for these loci.
          The output generated a CADD HT with 9,110,177,520 rows.
+
     :return: Hail Table with CADD scores for GRCh38.
     """
 
@@ -235,9 +239,10 @@ def create_pangolin_grch38_ht() -> hl.Table:
     Create a Hail Table with Pangolin score for splicing for GRCh38.
 
     .. note::
-    The score was based on the splicing prediction tool Pangolin:
-    Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
-     Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
+
+        The score was based on the splicing prediction tool Pangolin:
+        Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
+        Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
 
     There's no precomputed score for all possible variants, the scores were
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
@@ -365,17 +370,24 @@ def create_revel_grch38_ht() -> hl.Table:
     Create a Hail Table with REVEL scores for GRCh38.
 
     .. note::
-    Starting with gnomAD v4, we use REVEL scores for only MANE Select and
-    canonical transcripts. Even when a variant falls on multiple MANE/canonical
-    transcripts of different genes, the scores are equal.
+
+        Starting with gnomAD v4, we use REVEL scores for only MANE Select and
+        canonical transcripts. Even when a variant falls on multiple MANE/canonical
+        transcripts of different genes, the scores are equal.
+
     REVEL scores were downloaded from:
-       https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip
-       size ~648M, ~82,100,677 variants
+    https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip
+    size ~648M, ~82,100,677 variants
+
     REVEL's Ensembl ID is not from Ensembl 105, so we filter to transcripts
     that are in Ensembl 105. The Ensembl 105 ID file was downloaded from Ensembl
     105 archive. It contains the following columns:
-       Transcript stable ID, Ensembl Canonical, MANE Select
-    This deprecates the `has_duplicate` field present in gnomAD v3.
+
+        - Transcript stable ID
+        - Ensembl Canonical
+        - MANE Select
+
+    This deprecates the `has_duplicate` field present in gnomAD v3.1.
 
     :return: Hail Table with REVEL scores for GRCh38.
     """
@@ -434,7 +446,7 @@ def create_revel_grch38_ht() -> hl.Table:
     logger.info("Taking max REVEL scores for MANE Select transcripts...")
     mane_ht = ht.filter(hl.is_defined(ht.revel_mane), keep=True)
     max_revel_mane = mane_ht.group_by(*mane_ht.key).aggregate(
-        revel_max=hl.agg.max(mane_ht.revel_mane),
+        revel_mane_max=hl.agg.max(mane_ht.revel_mane),
     )
 
     logger.info("Taking max REVEL scores for canonical transcripts...")
@@ -442,13 +454,16 @@ def create_revel_grch38_ht() -> hl.Table:
         (~hl.is_defined(ht.revel_mane)) & (hl.is_defined(ht.revel_canonical)), keep=True
     )
     max_revel_canonical = canonical_ht.group_by(*canonical_ht.key).aggregate(
-        revel_max=hl.agg.max(canonical_ht.revel_canonical),
+        revel_canonical_max=hl.agg.max(canonical_ht.revel_canonical),
     )
     logger.info(
         "Merge max REVEL scores for MANE Select transcripts and canonical transcripts"
         " to one HT..."
     )
-    final_ht = max_revel_mane.union(max_revel_canonical)
+    final_ht = max_revel_mane.join(max_revel_canonical, how="outer")
+    final_ht = final_ht.select(
+        revel_max=hl.or_else(final_ht.revel_mane_max, final_ht.revel_canonical_max)
+    )
     logger.info("Number of rows in final REVEL HT: %s", final_ht.count())
     final_ht = final_ht.annotate_globals(revel_version="v1.3")
     return final_ht
@@ -458,17 +473,19 @@ def create_phylop_grch38_ht() -> hl.Table:
     """
     Convert PhyloP scores to Hail Table.
 
-    .. note::
     BigWig format of Phylop was download from here:
     https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig
     and converted it to bedGraph format with bigWigToBedGraph from the kent packages
     of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
     `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
     The bedGraph file is bigzipped before importing to Hail.
-    Different to other in silico predictors, the Phylop HT is keyed by locus only. Since
-     the PhyloP scores have one value per position, we exploded the interval to store
-     the HT by locus. In result, we have Phylop scores for 2,852,623,265 locus from
-     2,648,607,958 intervals.
+
+    .. note::
+
+        Different to other in silico predictors, the Phylop HT is keyed by locus only.
+        Since the PhyloP scores have one value per position, we exploded the interval
+        to store the HT by locus. In result, we have Phylop scores for 2,852,623,265
+        locus from 2,648,607,958 intervals.
 
     :return: Hail Table with Phylop Scores for GRCh38
     """
@@ -491,6 +508,95 @@ def create_phylop_grch38_ht() -> hl.Table:
     ht = ht.annotate_globals(phylop_version="v2")
 
     return ht
+
+
+def get_revel_for_unmatched_transcripts() -> None:
+    """
+    Create Tables with alternative REVEL scores for variants in v4.1 release.
+
+    ..note:
+
+        REVEL was computed using transcripts from Ensembl v64. In the gnomAD v4.0
+        and v4.1 release Tables, transcript information from Ensembl v105 and variant
+        information (locus and alleles combination) were used to ascertain variant
+        REVEL scores for MANE select or canonical transcripts only. This means that
+        variants within 2,414 MANE select transcripts in gnomAD v4.0 and v4.1 are
+        missing REVEL scores because they are not present in Ensembl v64.
+
+        To address this, we annotated the variants within the 2,414 genes with the
+        maximum REVEL score found at the specific locus and allele, rather than the
+        score for the MANE Select transcript.
+
+        The exomes TSV adds REVEL scores to 1,936,321 out of 2,284,296 (87.77%)
+        missense variants within the 2,414 genes. The genomes TSV adds REVEL scores
+        to 528,204 out of 620,799 ( 85.08%) missense variants within the 2,414 genes.
+    """
+
+    def _process_revel():
+        """Process REVEL scores."""
+        revel_csv = "gs://gnomad-insilico/revel/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz"
+
+        ht = hl.import_table(
+            revel_csv,
+            delimiter=",",
+            min_partitions=1000,
+            types={"grch38_pos": hl.tstr, "REVEL": hl.tfloat64},
+        )
+        # drop variants that have no position in GRCh38 when lifted over from GRCh37
+        ht = ht.filter(ht.grch38_pos.contains("."), keep=False)
+        ht = ht.select(
+            locus=hl.locus(
+                "chr" + ht.chr, hl.int(ht.grch38_pos), reference_genome="GRCh38"
+            ),
+            alleles=hl.array([ht.ref, ht.alt]),
+            REVEL=ht.REVEL,
+            Transcript_stable_ID=ht.Ensembl_transcriptid.strip().split(";"),
+        )
+        ht = ht.key_by("locus", "alleles")
+        ht = ht.group_by("locus", "alleles").aggregate(REVEL_max=hl.agg.max(ht.REVEL))
+        return ht
+
+    def _filter_release_ht(data_type, genes_list):
+        """Filter release sites to only include genes with missing revel scores."""
+        ht = release_sites(data_type=data_type).ht()
+        ht = process_consequences(ht, has_polyphen=False)
+        ht = filter_vep_transcript_csqs(
+            ht,
+            synonymous=False,
+            mane_select=True,
+            genes=genes_list,
+            csqs=["missense_variant"],
+        )
+        ht = ht.select(
+            gene_id=ht.vep.transcript_consequences.gene_id,
+            most_severe_consequence=ht.vep.transcript_consequences.most_severe_consequence,
+        )
+        return ht
+
+    # Get the max REVEL score for each variant
+    revel = _process_revel()
+    revel = revel.checkpoint(hl.utils.new_temp_file("revel_tmp", "ht"))
+
+    # Get genes missing revel scores
+    genes = hl.import_table(
+        "gs://gnomad-insilico/revel/Ensembl105MANE_without_REVEL.txt",
+        impute=True,
+        comment="#",
+    )
+    genes_list = genes.Gene_stable_ID.collect()
+
+    for data_type in ["exomes", "genomes"]:
+        # Filter release sites to only include genes with missing revel
+        ht = _filter_release_ht(data_type, genes_list)
+        ht = ht.checkpoint(hl.utils.new_temp_file(f"{data_type}_tmp_filtered", "ht"))
+        # Join REVEL scores with release sites
+        ht = ht.annotate(REVEL_max=revel[ht.key].REVEL_max)
+        # Filter out variants without a REVEL score
+        ht = ht.filter(hl.is_defined(ht.REVEL_max))
+        ht.export(
+            "gs://gnomad-insilico/revel/gnomad.v4.1."
+            f"{data_type}.revel_unmatched_transcripts.tsv.bgz"
+        )
 
 
 def main(args):
@@ -539,6 +645,12 @@ def main(args):
             overwrite=args.overwrite,
         )
         logger.info("REVEL Hail Table for GRCh38 created.")
+    if args.revel_unmatched_transcripts:
+        logger.info(
+            "Get REVEL score for variants in missing MANE transcripts in v4.1"
+            " release..."
+        )
+        get_revel_for_unmatched_transcripts()
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
         ht = create_phylop_grch38_ht()
@@ -548,7 +660,8 @@ def main(args):
         )
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -559,7 +672,22 @@ if __name__ == "__main__":
     parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
     parser.add_argument("--phylop", help="Create PhyloP HT.", action="store_true")
+    parser.add_argument(
+        "--revel-unmatched-transcripts",
+        help=(
+            "Get alternative REVEL score for variants "
+            "in MANE transcripts in v4.1 release."
+        ),
+        action="store_true",
+    )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
+
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)

@@ -1,0 +1,9 @@
+myst-parser
+requests
+Sphinx>=4.2.0,<7.0.0
+urllib3<2
+sphinx-argparse
+sphinx-autodoc-typehints
+sphinx-rtd-theme
+sphinxcontrib-mermaid
+Jinja2

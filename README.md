@@ -10,5 +10,6 @@ A more extensive overview and explanation of the gnomAD QC process is available 
   * [v2.1](https://gnomad.broadinstitute.org/news/2018-10-gnomad-v2-1/)
   * [v3](https://gnomad.broadinstitute.org/news/2019-10-gnomad-v3-0/)
   * [v3.1](https://gnomad.broadinstitute.org/news/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/)
+  * [v4.0](https://gnomad.broadinstitute.org/news/2023-11-gnomad-v4-0/)
 
 Note also that many basic functions and file paths used in the code are imported from a separate repo, [gnomad_methods](https://github.com/broadinstitute/gnomad_methods).

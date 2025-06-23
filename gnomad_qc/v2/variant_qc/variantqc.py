@@ -324,7 +324,8 @@ def create_rf_ht(
         return {
             "transmitted_singleton": (
                 ht.family_stats[family_stats_group_index].tdt.t == 1
-            ) & (
+            )
+            & (
                 ht.family_stats[family_stats_group_index].unrelated_qc_callstats.AC[1]
                 == 1
             ),

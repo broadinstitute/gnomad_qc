@@ -64,9 +64,8 @@ def compute_per_base_cds_coverage(overwrite: bool):
                 mean=0.5 * hl.agg.sum(mt.mean * mt.n) / hl.agg.sum(mt.n),
                 median=0.5 * hl.median(hl.agg.collect(mt.median)),
                 **{
-                    f"over_{i / 2}": hl.agg.sum(mt[f"over_{float(i)}"]) / hl.agg.sum(
-                        mt.n
-                    )
+                    f"over_{i / 2}": hl.agg.sum(mt[f"over_{float(i)}"])
+                    / hl.agg.sum(mt.n)
                     for i in COVERAGE_BINS
                 },
             ),

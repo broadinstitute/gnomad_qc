@@ -49,7 +49,7 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 DOWNSAMPLINGS = DOWNSAMPLINGS["v3"]
-POPS = POPS["v3"]
+POPS = POPS["v3"]["genomes"]
 SUBSETS = SUBSETS["v3"]
 
 
@@ -198,8 +198,13 @@ def main(args):  # noqa: D103
         # Load v3.0 allele frequencies to avoid an extra frequency calculation
         # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments # noqa
         freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
-        mt = hom_alt_depletion_fix(
-            mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
+        mt = mt.annotate_entries(
+            GT=hom_alt_depletion_fix(
+                mt.GT,
+                het_non_ref_expr=mt._het_non_ref,
+                af_expr=freq_ht[mt.row_key].freq[0].AF,
+                ab_expr=mt.AD[1] / mt.DP,
+            )
         )
         mt = mt.drop("_het_non_ref")
 
@@ -299,13 +304,15 @@ def main(args):  # noqa: D103
 
             logger.info("Computing filtering allele frequencies and popmax...")
             faf, faf_meta = faf_expr(
-                mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX
+                mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX["v3"]
             )
             mt = mt.select_rows(
                 "InbreedingCoeff",
                 "freq",
                 faf=faf,
-                popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
+                popmax=pop_max_expr(
+                    mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX["v3"]
+                ),
             )
             mt = mt.annotate_globals(
                 faf_meta=faf_meta,

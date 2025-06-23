@@ -1,7 +1,7 @@
 """Script containing annotation related resources."""
+
 from typing import Optional
 
-from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
@@ -10,12 +10,15 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
-    COMBINED_FAF_RELEASES,
-    CURRENT_COMBINED_FAF_RELEASE,
+    ALL_SITES_AN_RELEASES,
+    ANNOTATION_VERSIONS,
+    CURRENT_ALL_SITES_AN_RELEASE,
+    CURRENT_ANNOTATION_VERSION,
+    CURRENT_FREQ_VERSION,
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_VERSION,
+    FREQ_VERSIONS,
     HGDP_TGP_RELEASES,
     VERSIONS,
 )
@@ -24,7 +27,7 @@ SUBSETS = SUBSETS["v4"]
 
 
 def _annotations_root(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     data_type: str = "exomes",
 ) -> str:
@@ -54,14 +57,14 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     :return: gnomAD v4 info VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
                     f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -70,19 +73,21 @@ def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableReso
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
-    :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
-    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test Table instead of
+        the full v4 Table.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
                     f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.ht"
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -93,37 +98,43 @@ def validate_vep_path(
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
 
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
-    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
                     f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.validate.ht"
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
 
-def get_trio_stats(test: bool = False) -> VersionedTableResource:
+def get_trio_stats(
+    test: bool = False, releasable_only: bool = False
+) -> VersionedTableResource:
     """
     Get the gnomAD v4 trio stats VersionedTableResource.
 
-    :param test: Whether to use a tmp path for testing.
+    :param test: Whether to use a temporary path for testing.
+    :param releasable_only: Whether to use only releasable data.
     :return: gnomAD v4 trio stats VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}."
+                f"{'releasable.' if releasable_only else ''}trio_stats.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -136,12 +147,12 @@ def get_sib_stats(test: bool = False) -> VersionedTableResource:
     :return: gnomAD v4 sibling stats VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -172,19 +183,19 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
     :return: Table with variant QC annotations.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
 
 def info_vcf_path(
     info_method: str = "AS",
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_ANNOTATION_VERSION,
     split: bool = False,
     test: bool = False,
 ) -> str:
@@ -204,13 +215,11 @@ def info_vcf_path(
             f"Invalid info_method: {info_method}. Must be one of 'AS', 'quasi', or "
             "'long_AS_missing_info'."
         )
-    return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}{'.split' if split else ''}.vcf.bgz"
-    )
+    return f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}{'.split' if split else ''}.vcf.bgz"
 
 
 def get_true_positive_vcf_path(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     adj: bool = False,
     true_positive_type: str = "transmitted_singleton",
@@ -233,28 +242,26 @@ def get_true_positive_vcf_path(
     ]
     if true_positive_type not in tp_types:
         raise ValueError(f"true_positive_type must be one of {tp_types}")
-    return (
-        f'{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
-    )
+    return f'{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
 
 
 freq = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_FREQ_VERSION["exomes"],
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies.ht"
         )
-        for version in VERSIONS
+        for version in FREQ_VERSIONS["exomes"]
     },
 )
 
 qual_hist = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_FREQ_VERSION["exomes"],
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
         )
-        for version in VERSIONS
+        for version in FREQ_VERSIONS["exomes"]
     },
 )
 
@@ -271,25 +278,25 @@ def get_downsampling(
     :return: Hail Table containing subset or overall dataset downsampling annotations.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
 
 def get_freq(
-    version: str = CURRENT_VERSION,
+    version: str = None,
     data_type: str = "exomes",
     test: bool = False,
     hom_alt_adjusted=False,
     chrom: Optional[str] = None,
     intermediate_subset: Optional[str] = None,
     finalized: bool = True,
-) -> VersionedTableResource:
+) -> TableResource:
     """
     Get the frequency annotation table for a specified release.
 
@@ -304,6 +311,9 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
+    if version is None:
+        version = CURRENT_FREQ_VERSION[data_type]
+
     ht_name = f"gnomad.{data_type}.v{version}.frequencies"
     if data_type == "exomes" and not finalized:
         if chrom:
@@ -323,30 +333,55 @@ def get_freq(
             ht_name += ".test"
         ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
 
-    return VersionedTableResource(
-        version, {version: TableResource(ht_path) for version in VERSIONS}
-    )
+    return TableResource(ht_path)
 
 
-def get_combined_frequency(test: bool = False) -> VersionedTableResource:
+def get_all_sites_an_and_qual_hists(
+    data_type: str = "exomes", test: bool = False
+) -> VersionedTableResource:
     """
-    Get the combined v4 genome and exome frequency annotation VersionedTableResource.
+    Get the all sites AN and qual hists TableResource.
 
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param test: Whether to use a tmp path for testing.
-    :return: Hail Table containing combined frequency annotations.
+    :return: Hail Table containing all sites AN and qual hists annotations.
     """
     return VersionedTableResource(
-        CURRENT_COMBINED_FAF_RELEASE,
+        CURRENT_ALL_SITES_AN_RELEASE[data_type],
         {
             version: TableResource(
-                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies.ht"
+                f"{_annotations_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.all_sites_an_and_qual_hists.ht"
             )
-            for version in COMBINED_FAF_RELEASES
+            for version in ALL_SITES_AN_RELEASES[data_type]
         },
     )
 
 
-def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResource:
+def get_combined_frequency(
+    test: bool = False, filtered: bool = True
+) -> VersionedTableResource:
+    """
+    Get the combined v4 genome and exome frequency annotation VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :param filtered: Whether to return the resource for the filtered combined frequency.
+        Default is True.
+    :return: Hail Table containing combined frequency annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies{'.filtered' if filtered else ''}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_freq_comparison(
+    method: str, test: bool = False, filtered: bool = True
+) -> VersionedTableResource:
     """
     Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.
 
@@ -359,6 +394,8 @@ def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResour
     :param method: Method used to compare frequencies between v4 genomes and exomes.
         Can be one of `contingency_table_test` or `cmh_test`.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param filtered: Whether to return the filtered frequency comparison Table. Default
+        is True.
     :return: VersionedTableResource containing results from the specified comparison
         `method`.
     """
@@ -369,40 +406,36 @@ def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResour
         )
 
     return VersionedTableResource(
-        CURRENT_COMBINED_FAF_RELEASE,
-        {
-            version: TableResource(
-                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}.ht"
-            )
-            for version in COMBINED_FAF_RELEASES
-        },
-    )
-
-
-def get_insilico_predictors(
-    version: str = CURRENT_VERSION,
-    predictor: str = "cadd",
-) -> VersionedTableResource:
-    """
-    Get the path to the in silico predictors TableResource for a specified release.
-
-    :param version: Version of annotation path to return.
-    :param predictor: One of the in silico predictors available in gnomAD v4, including cadd, revel, primate_ai, splice_ai, and pangolin.
-    :return: in silico predictor VersionedTableResource for gnomAD v4.
-    """
-    return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                path=f"gs://gnomad/v{version}/annotations/in_silico_predictors/gnomad.v{version}.{predictor}.grch38.ht"
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}{'.filtered' if filtered else ''}.ht"
             )
             for version in VERSIONS
         },
     )
 
 
+def get_insilico_predictors(predictor: str = "cadd") -> VersionedTableResource:
+    """
+    Get the path to the in silico predictors TableResource for a specified release.
+
+    :param predictor: One of the in silico predictors available in gnomAD v4, including
+        cadd, revel, primate_ai, splice_ai, and pangolin.
+    :return: in silico predictor VersionedTableResource for gnomAD v4.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                path=f"gs://gnomad/v{version}/annotations/in_silico_predictors/gnomad.v{version}.{predictor}.grch38.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
 def get_vrs(
-    version: str = CURRENT_VERSION,
     original_annotations: bool = False,
     test: bool = False,
     data_type: str = "exomes",
@@ -410,7 +443,6 @@ def get_vrs(
     """
     Get the gnomAD v4 VersionedTableResource containing VRS annotations.
 
-    :param version: Version of annotation path to return.
     :param original_annotations: Whether to obtain the original input Table with
            all its annotations in addition to the added on VRS annotations.
            If set to False, obtain a Table with only the VRS annotations.
@@ -421,7 +453,7 @@ def get_vrs(
     :return: gnomAD v4 VRS VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
@@ -432,7 +464,7 @@ def get_vrs(
                     )
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -441,14 +473,23 @@ def hgdp_tgp_updated_callstats(
     subset: str, test: bool = False
 ) -> VersionedTableResource:
     """
-    Get the HGDP + 1KG/TGP subset updated callstats TableResource.
+    Get the HGDP + 1KG/TGP subset updated call stats TableResource.
 
     :param subset: The subset of the HGDP + 1KG/TGP release to return,
-       must be "added", "subtracted", "pop_diff", "join", or "v3_release_an".
+        must be "added", "subtracted", "pop_diff", "join", "v3_release_an",
+        "v3_pop_diff_an", or "pre_validity_check".
     :param test: Whether to return the annotation resource for testing purposes.
     :return: MatrixTableResource for specified subset.
     """
-    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an"]
+    subsets = [
+        "added",
+        "subtracted",
+        "pop_diff",
+        "join",
+        "v3_release_an",
+        "v3_pop_diff_an",
+        "pre_validity_check",
+    ]
     if subset not in subsets:
         raise ValueError(f"Operation must be one of {subsets}")
 
@@ -464,7 +505,7 @@ def hgdp_tgp_updated_callstats(
 
 
 def get_split_vds(
-    version: str = CURRENT_VERSION,
+    version: str = None,
     data_type: str = "exomes",
     test: bool = False,
 ) -> VariantDatasetResource:
@@ -482,6 +523,9 @@ def get_split_vds(
            of the full v4 Table.
     :return: gnomAD v4 VariantDatasetResource.
     """
+    if version is None:
+        version = CURRENT_FREQ_VERSION[data_type]
+
     return VariantDatasetResource(
         f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split_multi.vds"
     )

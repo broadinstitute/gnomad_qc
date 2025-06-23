@@ -1,4 +1,5 @@
 """Script for running random forest model on gnomAD v4 variant QC data."""
+
 import argparse
 import json
 import logging
@@ -356,7 +357,8 @@ def main(args):
         ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."
@@ -474,6 +476,11 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if not args.model_id and not args.train_rf and args.apply_rf:
