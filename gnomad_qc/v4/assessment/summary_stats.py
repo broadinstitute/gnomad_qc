@@ -35,10 +35,11 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
     data_type = args.data_type
+    public = args.get_public_sites
 
     try:
         if args.get_summary_counts:
-            ht = release_sites(data_type=data_type).ht()
+            ht = release_sites(data_type=data_type, public=public).ht()
             filter_name = None
             if test:
                 ht = ht._filter_partitions(range(2))
@@ -175,6 +176,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--summarize-gene-lof-matrix",
         help="Creates gene LoF matrix summary Table.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--get-public-sites",
+        help="Get sites table from public bucket.",
         action="store_true",
     )
     args = parser.parse_args()
