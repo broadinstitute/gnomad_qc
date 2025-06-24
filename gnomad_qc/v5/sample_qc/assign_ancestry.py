@@ -146,7 +146,7 @@ def main(args):
             raise ValueError("Both test and test_on_chr20 cannot be set to True.")
 
         # Use tmp path if either test dataset or test on chr20 is specified.
-        use_tmp_path = args.test_on_chr20 | test
+        use_tmp_path = args.test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
 
         if args.run_pca:
