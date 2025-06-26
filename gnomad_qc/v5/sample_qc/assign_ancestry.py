@@ -34,7 +34,6 @@ from gnomad_qc.v5.resources.sample_qc import (  # related_samples_to_drop, #TODO
     pop_rf_path,
 )
 
-# TODO: Switch from using pop to gen_anc?
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("genetic_ancestry_assignment")
@@ -42,32 +41,24 @@ logger.setLevel(logging.INFO)
 
 
 def run_pca(
+    qc_mt: hl.MatrixTable,
     related_samples_to_drop: hl.Table,
     meta_ht: hl.Table,
     include_unreleasable_samples: hl.bool = False,
     n_pcs: int = 30,
-    test: hl.bool = False,
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     """
     Run genetic ancestry PCA using `run_pca_with_relateds`.
 
+    :param qc_mt: QC Matrix Table to run PCA on.
     :param related_samples_to_drop: Table of related samples to drop from PCA run.
     :param meta_ht: Table of meta data containing 'releasable' field, used to drop samples that are not releasable unless `include_unreleasable_samples` is True.
     :param include_unreleasable_samples: Should unreleasable samples be included in the
         PCA.
     :param n_pcs: Number of PCs to compute.
-    :param test: Subset QC MT to small test dataset.
     :return: Eigenvalues, scores and loadings from PCA.
     """
     logger.info("Running population PCA")
-    qc_mt = get_joint_qc(test=test).mt()
-
-    if args.test_on_chr20:
-        logger.info("Filtering QC MT to chromosome 20...")
-        qc_mt = hl.filter_intervals(
-            qc_mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
-        )
-
     samples_to_drop = related_samples_to_drop.select()
 
     if not include_unreleasable_samples:
@@ -133,21 +124,30 @@ def main(args):
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
         test = args.test
+        test_on_chr20 = args.test_on_chr20
 
-        if test and args.test_on_chr20:
+        if test and test_on_chr20:
             raise ValueError("Both test and test_on_chr20 cannot be set to True.")
 
         # Use tmp path if either test dataset or test on chr20 is specified.
-        use_tmp_path = args.test_on_chr20 or test
+        use_tmp_path = test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
 
         if args.run_pca:
+            qc_mt = get_joint_qc(test=test).mt()
+
+            if test_on_chr20:
+                logger.info("Filtering QC MT to chromosome 20...")
+                qc_mt = hl.filter_intervals(
+                    qc_mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
+                )
+
             gen_anc_eigenvalues, gen_anc_scores_ht, gen_anc_loadings_ht = run_pca(
+                qc_mt=qc_mt,
                 meta_ht=project_meta.ht(),
                 related_samples_to_drop=related_samples_to_drop(release=False).ht(),
                 include_unreleasable_samples=include_unreleasable_samples,
                 n_pcs=args.n_pcs,
-                test=test,
             )
 
             write_pca_results(
@@ -180,7 +180,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--overwrite", help="Overwrite output files.", action="store_true"
     )
-    parser.add_argument("--run-pca", help="Compute genetic ancestry PCA", action="store_true")
+    parser.add_argument(
+        "--run-pca", help="Compute genetic ancestry PCA", action="store_true"
+    )
     parser.add_argument(
         "--n-pcs",
         help="Number of PCs to compute for ancestry PCA. Defaults to 30.",
@@ -198,7 +200,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--assign-gen-anc", help="Assigns genetic ancestry groups from PCA.", action="store_true"
+        "--assign-gen-anc",
+        help="Assigns genetic ancestry groups from PCA.",
+        action="store_true",
     )
     parser.add_argument(
         "--gen-anc-pcs",
