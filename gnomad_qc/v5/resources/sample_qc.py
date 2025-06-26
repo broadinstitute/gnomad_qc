@@ -236,7 +236,7 @@ def genetic_ancestry_pca_loadings(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                _get_ancestry_pca_ht_path(
+                _get_geneticancestry_pca_ht_path(
                     "loadings", version, include_unreleasable_samples, test, data_type
                 )
             )
