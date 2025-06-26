@@ -29,7 +29,7 @@ from gnomad_qc.v5.resources.sample_qc import (  # related_samples_to_drop, #TODO
     genetic_ancestry_pca_loadings,
     genetic_ancestry_pca_scores,
     get_gen_anc_ht,
-    get_gen_pr_ht,
+    get_gen_anc_pr_ht,
     get_joint_qc,
     per_gen_anc_min_rf_probs_json_path,
 )
@@ -116,7 +116,7 @@ def write_pca_results(
 def main(args):
     """Assign genetic ancestry group labels to samples."""
     hl.init(
-        #spark_conf={"spark.memory.offHeap.enabled": "false"},
+        # spark_conf={"spark.memory.offHeap.enabled": "false"},
         log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
