@@ -198,7 +198,7 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
 ######################################################################
 
 
-def _get_geneticancestry_pca_ht_path(
+def _get_genetic_ancestry_pca_ht_path(
     part: str,
     version: str = CURRENT_SAMPLE_QC_VERSION,
     include_unreleasable_samples: bool = False,
