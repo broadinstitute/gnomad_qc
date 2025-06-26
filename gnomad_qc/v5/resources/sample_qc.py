@@ -198,7 +198,7 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
 ######################################################################
 
 
-def _get_ancestry_pca_ht_path(
+def _get_geneticancestry_pca_ht_path(
     part: str,
     version: str = CURRENT_SAMPLE_QC_VERSION,
     include_unreleasable_samples: bool = False,
@@ -218,7 +218,7 @@ def _get_ancestry_pca_ht_path(
     return f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
 
 
-def ancestry_pca_loadings(
+def genetic_ancestry_pca_loadings(
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
@@ -245,7 +245,7 @@ def ancestry_pca_loadings(
     )
 
 
-def ancestry_pca_scores(
+def genetic_ancestry_pca_scores(
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
@@ -272,7 +272,7 @@ def ancestry_pca_scores(
     )
 
 
-def ancestry_pca_eigenvalues(
+def genetic_ancestry_pca_eigenvalues(
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
@@ -328,7 +328,7 @@ def get_gen_anc_ht(
     Get the TableResource of samples' inferred genetic ancestry group for the indicated gnomAD version.
 
     :param version: Version of gen anc group TableResource to return.
-    :param test: Whether to use the test version of the pop TableResource.
+    :param test: Whether to use the test version of the genetic ancestry TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: TableResource of sample gen anc groups.
     """
