@@ -24,16 +24,15 @@ from gnomad_qc.v5.resources.basics import (
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (  # related_samples_to_drop, #TODO: switch from v4 related_samples_to_drop to v5 related_samples_to_drop once ready.
-    ancestry_pca_eigenvalues,
-    ancestry_pca_loadings,
-    ancestry_pca_scores,
+    gen_anc_rf_path,
+    genetic_ancestry_pca_eigenvalues,
+    genetic_ancestry_pca_loadings,
+    genetic_ancestry_pca_scores,
+    get_gen_anc_ht,
+    get_gen_pr_ht,
     get_joint_qc,
-    get_pop_ht,
-    get_pop_pr_ht,
-    per_pop_min_rf_probs_json_path,
-    pop_rf_path,
+    per_gen_anc_min_rf_probs_json_path,
 )
-
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("genetic_ancestry_assignment")
@@ -42,8 +41,8 @@ logger.setLevel(logging.INFO)
 
 def run_pca(
     qc_mt: hl.MatrixTable,
-    related_samples_to_drop: hl.Table,
     meta_ht: hl.Table,
+    related_samples_to_drop: hl.Table,
     include_unreleasable_samples: hl.bool = False,
     n_pcs: int = 30,
 ) -> Tuple[List[float], hl.Table, hl.Table]:
@@ -91,22 +90,25 @@ def write_pca_results(
     :param test: Whether the test QC MT was used in the PCA.
     :return: None.
     """
-    pop_pca_eigenvalues_ht = hl.Table.parallelize(
+    gen_anc_pca_eigenvalues_ht = hl.Table.parallelize(
         hl.literal(
-            [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_eigenvalues)],
+            [
+                {"PC": i + 1, "eigenvalue": x}
+                for i, x in enumerate(gen_anc_pca_eigenvalues)
+            ],
             "array<struct{PC: int, eigenvalue: float}>",
         )
     )
-    pop_pca_eigenvalues_ht.write(
-        ancestry_pca_eigenvalues(included_unreleasables, test).path,
+    gen_anc_pca_eigenvalues_ht.write(
+        genetic_ancestry_pca_eigenvalues(included_unreleasables, test).path,
         overwrite=overwrite,
     )
-    pop_pca_scores_ht.write(
-        ancestry_pca_scores(included_unreleasables, test).path,
+    gen_anc_pca_scores_ht.write(
+        genetic_ancestry_pca_scores(included_unreleasables, test).path,
         overwrite=overwrite,
     )
-    pop_pca_loadings_ht.write(
-        ancestry_pca_loadings(included_unreleasables, test).path,
+    gen_anc_pca_loadings_ht.write(
+        genetic_ancestry_pca_loadings(included_unreleasables, test).path,
         overwrite=overwrite,
     )
 
@@ -209,7 +211,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "List of PCs to use for genetic ancestry assignment. The values provided should be"
             " 1-based. If a single integer is passed, the script assumes this"
-            " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
+            " represents the total PCs to use e.g. --gen-anc-pcs=6 will use PCs"
             " 1,2,3,4,5,and 6. Defaults to 20 PCs."
         ),
         default=[20],
@@ -218,14 +220,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--min-gen-anc-prob",
-        help="Minimum RF prob for pop assignment. Defaults to 0.75.",
+        help="Minimum RF prob for genetic ancestry assignment. Defaults to 0.75.",
         default=0.75,
         type=float,
     )
     parser.add_argument(
         "--include-v2-known-in-training",
         help=(
-            "Whether to train RF classifier using v2 known pop labels. Default is"
+            "Whether to train RF classifier using v2 known genetic ancestry labels. Default is"
             " False."
         ),
         action="store_true",
