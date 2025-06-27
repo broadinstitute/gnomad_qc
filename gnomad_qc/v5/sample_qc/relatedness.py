@@ -451,6 +451,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "Arguments for finalizing the relatedness table with relationship annotation.",
     )
     finalize_args.add_argument(
+        "--finalize-relatedness-ht",
+        help="Finalize the relatedness HT by adding relationship annotations.",
+        action="store_true",
+    )
+    finalize_args.add_argument(
         "--parent-child-max-ibs0-over-ibs2",
         help="Maximum value of IBS0/IBS2 for a parent-child pair.",
         default=5.2e-5,
@@ -491,6 +496,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship when filtering related individuals.",
         default=0.08838835,
         type=float,
+    )
+    drop_related_samples = parser.add_argument_group(
+        "Compute related samples to drop",
+        "Arguments used to determine related samples that should be dropped from "
+        "the ancestry PCA or release.",
+    )
+    drop_related_samples.add_argument(
+        "--compute-related-samples-to-drop",
+        help=(
+            "Determine the minimal set of related samples to prune for ancestry PCA or "
+            "release if '--release' is used."
+        ),
+        action="store_true",
     )
     return parser
 
