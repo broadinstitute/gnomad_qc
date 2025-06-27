@@ -22,7 +22,7 @@ from gnomad.utils.annotations import (
     get_adj_expr,
     pop_max_expr,
     qual_hist_expr,
-    set_female_y_metrics_to_na_expr,
+    set_xx_y_metrics_to_na_expr,
 )
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict
@@ -239,7 +239,7 @@ def main(args):  # noqa: D103
                     subsets=["|".join(subsets)],
                 )
             )
-            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
+            mt = mt.annotate_rows(freq=set_xx_y_metrics_to_na_expr(mt))
             freq_ht = mt.rows()
 
             logger.info(
@@ -294,7 +294,7 @@ def main(args):  # noqa: D103
                     label_delimiter="-",
                 )
             )
-            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
+            mt = mt.annotate_rows(freq=set_xx_y_metrics_to_na_expr(mt))
 
             logger.info("Calculating InbreedingCoeff...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa

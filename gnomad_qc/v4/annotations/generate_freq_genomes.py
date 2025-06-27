@@ -28,7 +28,7 @@ from gnomad.utils.annotations import (
     merge_freq_arrays,
     missing_callstats_expr,
     pop_max_expr,
-    set_female_y_metrics_to_na_expr,
+    set_xx_y_metrics_to_na_expr,
     update_structured_annotations,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
@@ -893,7 +893,7 @@ def compute_an_by_group_membership(
     mt = hl.vds.to_dense_mt(vds)
     # mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
     mt = annotate_adj(mt)
-    mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
+    mt = adjust_sex_ploidy(mt, mt.sex_karyotype, xy_str="XY", xx_str="XX")
     mt = mt.select_entries("GT", "adj")
 
     # Convert MT to HT with a row annotation that is an array of all samples entries
@@ -1034,7 +1034,7 @@ def generate_v4_genomes_callstats(
         "AN == 0..."
     )
     ht = ht.annotate(
-        freq=set_female_y_metrics_to_na_expr(ht).map(
+        freq=set_xx_y_metrics_to_na_expr(ht).map(
             lambda x: x.annotate(AF=hl.or_missing(x.AN > 0, x.AF))
         )
     )
