@@ -210,11 +210,11 @@ def prep_ht_for_rf(
             ),
         )
 
-    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+    gen_anc_pca_scores_ht = gen_anc_pca_scores_ht.annotate(
         **joint_meta_ht.select(
             training_gen_anc=training_gen_anc,
             hgdp_or_tgp=joint_meta_ht.hgdp_or_tgp,
-        )[pop_pca_scores_ht.key]
+        )[gen_anc_pca_scores_ht.key]
     )
 
     return gen_anc_pca_scores_ht
