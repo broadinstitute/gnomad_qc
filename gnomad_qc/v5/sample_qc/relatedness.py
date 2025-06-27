@@ -3,17 +3,27 @@
 import argparse
 import logging
 import textwrap
+from typing import Dict, Optional, Tuple
 
 import hail as hl
+from gnomad.sample_qc.relatedness import (
+    DUPLICATE_OR_TWINS,
+    compute_related_samples_to_drop,
+    get_slope_int_relationship_expr,
+)
+from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import project_meta
 from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
+    related_samples_to_drop,
     relatedness,
+    sample_rankings,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -101,11 +111,162 @@ def convert_cuking_output_to_ht(cuking_output_path: str) -> hl.Table:
     return ht
 
 
+def finalize_relatedness_ht(
+    ht: hl.Table,
+    meta_ht: hl.Table,
+    relatedness_args: Dict[str, float],
+) -> hl.Table:
+    """
+    Create the finalized relatedness Table including adding a 'relationship' annotation for each pair.
+
+    The `relatedness_args` dictionary should have the following keys:
+        - 'second_degree_min_kin': Minimum kinship threshold for filtering a pair of
+          samples with a second degree relationship when filtering related individuals.
+          Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship
+          of 0.08838835 for a second degree relationship cutoff. This cutoff should be
+          determined by evaluation of the kinship distribution.
+        - 'parent_child_max_ibd0_or_ibs0_over_ibs2': Maximum value of IBD0 (if
+          `relatedness_method` is 'pc_relate') or IBS0/IBS2 (if `relatedness_method` is
+          'cuking') for a parent-child pair.
+        - 'second_degree_sibling_lower_cutoff_slope': Slope of the line to use as a
+          lower cutoff for second degree relatives and siblings from parent-child pairs.
+        - 'second_degree_sibling_lower_cutoff_intercept': Intercept of the line to use
+          as a lower cutoff for second degree relatives and siblings from parent-child
+          pairs.
+        - 'second_degree_upper_sibling_lower_cutoff_slope': Slope of the line to use as
+          an upper cutoff for second degree relatives and a lower cutoff for siblings.
+        - 'second_degree_upper_sibling_lower_cutoff_intercept': Intercept of the line to
+          use as an upper cutoff for second degree relatives and a lower cutoff for
+          siblings.
+        - 'duplicate_twin_min_kin': Minimum kinship for duplicate or twin pairs.
+
+
+    The following annotations are added to `ht`:
+        - 'relationship': Relationship annotation for the pair. Returned by
+          `get_slope_int_relationship_expr`.
+        - 'gnomad_v4_duplicate': Whether the sample is a duplicate of a sample found in
+          the gnomAD v4 genomes.
+        - 'gnomad_v4_release_duplicate': Whether the sample is a duplicate of a sample
+          found in the gnomAD v4 release genomes.
+
+    :param ht: Input relatedness Table.
+    :param meta_ht: Input metadata Table. Used to add v4 overlap annotations.
+    :param relatedness_args: Dictionary of arguments to be passed to
+        `get_slope_int_relationship_expr`.
+    :return: Finalized relatedness Table
+    """
+    y_expr = ht.ibs0 / ht.ibs2
+    ibd1_expr = None
+    parent_child_max_ann = "parent_child_max_ibs0_over_ibs2"
+
+    ht = ht.annotate(
+        relationship=get_slope_int_relationship_expr(
+            kin_expr=ht.kin,
+            y_expr=y_expr,
+            **relatedness_args,
+            ibd1_expr=ibd1_expr,
+        )
+    )
+    relatedness_args[parent_child_max_ann] = relatedness_args.pop("parent_child_max_y")
+    ht = ht.annotate_globals(
+        relationship_inference_method="cuking",
+        relationship_cutoffs=hl.struct(**relatedness_args),
+    )
+    ht = ht.key_by(
+        i=ht.i.annotate(data_type=meta_ht[ht.i.s].data_type),
+        j=ht.j.annotate(data_type=meta_ht[ht.j.s].data_type),
+    )
+    gnomad_v4_duplicate_expr = (ht.relationship == DUPLICATE_OR_TWINS) & (
+        hl.set({ht.i.data_type, ht.j.data_type}) == hl.set(["exomes", "genomes"])
+    )
+    gnomad_v4_release_expr = hl.coalesce(
+        meta_ht[ht.i.s].release | meta_ht[ht.j.s].release,
+        False,
+    )
+    ht = ht.annotate(
+        gnomad_v4_duplicate=gnomad_v4_duplicate_expr,
+        gnomad_v4_release_duplicate=gnomad_v4_duplicate_expr & gnomad_v4_release_expr,
+    )
+
+    return ht
+
+
+def compute_rank_ht(ht: hl.Table) -> hl.Table:
+    """
+    Add a rank to each sample for use when breaking maximal independent set ties.
+
+    Favor AoU samples, then v4 release samples, then genomes, then higher mean depth
+    ('chr20_mean_dp' from gnomad and 'mean_coverage' from AoU).
+
+    :param ht: Table to add rank to.
+    :return: Table containing sample ID and rank.
+    """
+    ht = ht.select(
+        "mean_depth",
+        is_genome=hl.is_defined(ht.data_type) & ht.data_type == "genomes",
+        in_aou=hl.is_defined(ht.project) & ht.project == "aou",
+        in_v4_release=hl.is_defined(ht.release) & ht.release,
+    )
+    rank_order = []
+    ht_select = ["rank"]
+    rank_order.extend(
+        [
+            hl.desc(ht.in_aou),
+            hl.desc(ht.in_v4_release),
+            hl.desc(ht.is_genome),
+            hl.desc(ht.mean_depth),
+        ]
+    )
+    ht = ht.order_by(*rank_order).add_index(name="rank")
+    ht = ht.key_by(ht.s)
+
+    return ht.select(*ht_select)
+
+
+def run_compute_related_samples_to_drop(
+    ht: hl.Table,
+    meta_ht: hl.Table,
+) -> Tuple[hl.Table, hl.Table]:
+    """
+    Determine the minimal set of related samples to prune for ancestry PCA.
+
+    Runs `compute_related_samples_to_drop` from gnomad_methods after computing the
+    sample rankings using `compute_rank_ht`.
+
+    :param ht: Input relatedness Table.
+    :param meta_ht: Metadata Table with 'project', 'data_type', 'release', and
+        'mean_depth' annotations to be used in ranking and filtering of related
+        individuals.
+    :return: Table with sample rank and a Table with related samples to drop for PCA.
+    """
+    # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
+    # pruning samples.
+    rank_ht = compute_rank_ht(meta_ht)
+    rank_ht = rank_ht.checkpoint(new_temp_file("rank", extension="ht"))
+
+    second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
+    ht = ht.key_by(i=ht.i.s, j=ht.j.s)
+
+    samples_to_drop_ht = compute_related_samples_to_drop(
+        ht,
+        rank_ht,
+        second_degree_min_kin,
+    )
+    samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
+        second_degree_min_kin=second_degree_min_kin,
+    )
+
+    return rank_ht, samples_to_drop_ht
+
+
 def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
     overwrite = args.overwrite
+    release = args.release
     min_emission_kinship = args.min_emission_kinship
+    second_degree_min_kin = args.second_degree_min_kin
+    joint_meta = project_meta.ht()
 
     if args.print_cuking_command:
         print_cuking_command(
@@ -153,11 +314,54 @@ def main(args):
         if args.create_cuking_relatedness_table:
             logger.info("Converting cuKING outputs to Hail Table...")
             check_resource_existence(
-                output_step_resources={"relatedness_ht": relatedness(test=test).path}
+                output_step_resources={
+                    "relatedness_ht": relatedness(test=test, raw=True).path
+                }
             )
             ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
             ht.write(relatedness(test=test, raw=True).path, overwrite=overwrite)
+
+        if args.finalize_relatedness_ht:
+            check_resource_existence(
+                output_step_resources={
+                    "final_relatedness_ht": relatedness(test=test).path
+                }
+            )
+            relatedness_args = {
+                "parent_child_max_y": args.parent_child_max_ibs0_over_ibs2,
+                "second_degree_sibling_lower_cutoff_slope": (
+                    args.second_degree_sibling_lower_cutoff_slope
+                ),
+                "second_degree_sibling_lower_cutoff_intercept": (
+                    args.second_degree_sibling_lower_cutoff_intercept
+                ),
+                "second_degree_upper_sibling_lower_cutoff_slope": (
+                    args.second_degree_upper_sibling_lower_cutoff_slope
+                ),
+                "second_degree_upper_sibling_lower_cutoff_intercept": (
+                    args.second_degree_upper_sibling_lower_cutoff_intercept
+                ),
+                "duplicate_twin_min_kin": args.duplicate_twin_min_kin,
+                "second_degree_min_kin": second_degree_min_kin,
+            }
+            finalize_relatedness_ht(
+                relatedness(test=test, raw=True).ht(), joint_meta, relatedness_args
+            ).write(relatedness(test=test).path, overwrite=overwrite)
+
+        if args.compute_related_samples_to_drop:
+            check_resource_existence(
+                output_resources={
+                    "sample_rankings_ht": sample_rankings(test=test),
+                    "related_samples_to_drop_ht": related_samples_to_drop(test=test),
+                }
+            )
+            rank_ht, drop_ht = run_compute_related_samples_to_drop(
+                relatedness(test=test).ht(),
+                joint_meta.select_globals().semi_join(joint_qc_mt.cols()),
+            )
+            rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
+            drop_ht.write(related_samples_to_drop(test=test).path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -239,6 +443,54 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to use for the relatedness Table.",
         default=100,
         type=int,
+    )
+
+    # Finalize relatedness arguments
+    finalize_args = parser.add_argument_group(
+        "Finalize relatedness arguments",
+        "Arguments for finalizing the relatedness table with relationship annotation.",
+    )
+    finalize_args.add_argument(
+        "--parent-child-max-ibs0-over-ibs2",
+        help="Maximum value of IBS0/IBS2 for a parent-child pair.",
+        default=5.2e-5,
+        type=float,
+    )
+    finalize_args.add_argument(
+        "--second-degree-sibling-lower-cutoff-slope",
+        help="Slope of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs.",
+        default=-1.9e-3,
+        type=float,
+    )
+    finalize_args.add_argument(
+        "--second-degree-sibling-lower-cutoff-intercept",
+        help="Intercept of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs.",
+        default=5.8e-4,
+        type=float,
+    )
+    finalize_args.add_argument(
+        "--second-degree-upper-sibling-lower-cutoff-slope",
+        help="Slope of the line to use as an upper cutoff for second degree relatives and a lower cutoff for siblings.",
+        default=-1e-2,
+        type=float,
+    )
+    finalize_args.add_argument(
+        "--second-degree-upper-sibling-lower-cutoff-intercept",
+        help="Intercept of the line to use as an upper cutoff for second degree relatives and a lower cutoff for siblings.",
+        default=2.2e-3,
+        type=float,
+    )
+    finalize_args.add_argument(
+        "--duplicate-twin-min-kin",
+        help="Minimum kinship for duplicate or twin pairs.",
+        default=0.42,
+        type=float,
+    )
+    finalize_args.add_argument(
+        "--second-degree-min-kin",
+        help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship when filtering related individuals.",
+        default=0.08838835,
+        type=float,
     )
     return parser
 
