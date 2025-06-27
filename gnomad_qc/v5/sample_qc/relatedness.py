@@ -263,7 +263,6 @@ def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
     overwrite = args.overwrite
-    release = args.release
     min_emission_kinship = args.min_emission_kinship
     second_degree_min_kin = args.second_degree_min_kin
     joint_meta = project_meta.ht()
