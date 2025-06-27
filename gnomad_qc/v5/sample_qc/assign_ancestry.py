@@ -113,88 +113,201 @@ def write_pca_results(
     )
 
 
-def assign_pops(
+def prep_ht_for_rf(
+    gen_anc_pca_scores_ht: hl.Table,
+    joint_meta_ht: hl.Table,
+    include_unreleasable_samples: bool = False,
+    include_v2_known_in_training: bool = False,
+    v4_gen_anc_spike: Optional[List[str]] = None,
+    v3_gen_anc_spike: Optional[List[str]] = None,
+) -> hl.Table:
+    """
+    Prepare the PCA scores hail Table for the random forest genetic ancestry group assignment runs.
+
+    Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels.
+
+    Can also specify list of genetic ancestry groups with known v3/v4 labels to include
+    (v3_gen_anc_spike/v4_gen_anc_spike) for training. Genetic ancestry groups supplied for v4 are
+    specified by race/ethnicity and converted to a genetic ancestry group using
+    V4_POP_SPIKE_DICT.
+
+    :param gen_anc_pca_scores_ht: Table of PCA scores to use for RF training.
+    :param joint_meta_ht: Table of joint QC meta data.
+    :param include_unreleasable_samples: Should unreleasable samples be included in the
+        PCA.
+    :param include_v2_known_in_training: Whether to train RF classifier using v2 known
+        genetic ancestry labels. Default is False.
+    :param v4_gen_anc_spike: Optional List of genetic ancestry groups to spike into training.
+        Must be in V4_POP_SPIKE_DICT dictionary. Default is None.
+    :param v3_gen_anc_spike: Optional List of genetic ancestry groups to spike into training.
+        Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
+    :return: Table with input for the random forest.
+    """
+
+    # Collect sample names of hgdp/tgp outliers to remove (these are outliers
+    # found by Alicia Martin's group during pop-specific PCA analyses as well
+    # as one duplicate sample)
+    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
+
+    joint_meta_ht = joint_meta_ht.annotate(
+        hgdp_or_tgp=hl.or_else(
+            joint_meta_ht.v3_meta.v3_subsets.hgdp
+            | joint_meta_ht.v3_meta.v3_subsets.tgp,
+            False,
+        )
+    )
+    # Note: Excluding v3_project_pop="oth" samples from training. These are samples from
+    #  Oceania and there are only a few known Oceania samples, and in past inference
+    #  analyses no new samples are inferred as belonging to this group.
+    training_gen_anc = hl.or_missing(
+        joint_meta_ht.hgdp_or_tgp
+        & (joint_meta_ht.v3_meta.v3_project_pop != "oth")
+        & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
+        joint_meta_ht.v3_meta.v3_project_pop,
+    )
+
+    if include_v2_known_in_training:
+        training_gen_anc = hl.coalesce(
+            training_gen_anc,
+            hl.or_missing(
+                joint_meta_ht.data_type == "exomes", joint_meta_ht.v2_meta.v2_known_pop
+            ),
+        )
+
+    if v4_gen_anc_spike:
+        logger.info(
+            "Spiking v4 genetic ancestry groups, %s, into the RF training data...",
+            v4_gen_anc_spike,
+        )
+
+        v4_spike_err = set(v4_gen_anc_spike) - set(V4_POP_SPIKE_DICT.keys())
+        if len(v4_spike_err) > 0:
+            raise ValueError(f"Pops: {v4_spike_err}, are not in V4_POP_SPIKE_DICT")
+
+        v4_gen_anc_spike = {r: V4_POP_SPIKE_DICT[r] for r in v4_gen_anc_spike}
+
+        training_gen_anc = hl.coalesce(
+            training_gen_anc,
+            hl.literal(v4_gen_anc_spike).get(joint_meta_ht.v4_race_ethnicity),
+        )
+
+    if v3_gen_anc_spike:
+        logger.info(
+            "Spiking v3 genetic ancestry groups, %s, into the RF training data",
+            v3_gen_anc_spike,
+        )
+        v3_spike_err = set(v3_gen_anc_spike) - set(V3_SPIKE_PROJECTS.keys())
+        if len(v3_spike_err) > 0:
+            raise ValueError(f"Pops: {v3_spike_err}, are not in V3_SPIKE_PROJECTS")
+
+        # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins
+        training_gen_anc = hl.coalesce(
+            training_gen_anc,
+            hl.or_missing(
+                hl.literal(V3_SPIKE_PROJECTS)
+                .get(joint_meta_ht.v3_meta.v3_project_pop, hl.empty_array(hl.tstr))
+                .contains(joint_meta_ht.v3_meta.v3_research_project),
+                joint_meta_ht.v3_meta.v3_project_pop,
+            ),
+        )
+
+    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+        **joint_meta_ht.select(
+            training_gen_anc=training_gen_anc,
+            hgdp_or_tgp=joint_meta_ht.hgdp_or_tgp,
+        )[pop_pca_scores_ht.key]
+    )
+
+    return gen_anc_pca_scores_ht
+
+
+def assign_gen_anc(
+    gen_anc_pca_scores_ht: hl.Table,
+    joint_meta_ht: hl.Table,
     min_prob: float,
     include_unreleasable_samples: bool = False,
     pcs: List[int] = list(range(1, 21)),
     missing_label: str = "remaining",
-    test: bool = False,
     overwrite: bool = False,
     include_v2_known_in_training: bool = False,
-    v4_population_spike: Optional[List[str]] = None,
-    v3_population_spike: Optional[List[str]] = None,
+    v4_gen_anc_spike: Optional[List[str]] = None,
+    v3_gen_anc_spike: Optional[List[str]] = None,
 ) -> Tuple[hl.Table, Any]:
     """
-    Use a random forest model to assign global population labels based on the results from `run_pca`.
+    Use a random forest model to assign global genetic ancestry group labels based on the results from `run_pca`.
 
     Training data is the known label for HGDP and 1KG samples and all v2 samples with
-    known pops unless specificied to restrict only to 1KG and HGDP samples. Can also
-    specify a list of pops with known v3/v4 labels to include
-    (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are
-    specified by race/ethnicity and converted to a ancestry group using
-    V4_POP_SPIKE_DICT. The method assigns a population label to all samples in the
+    known genetic ancestry unless specificied to restrict only to 1KG and HGDP samples. Can also
+    specify a list of genetic ancestry groups with known v3/v4 labels to include
+    (v3_gen_anc_spike/v4_gen_anc_spike) for training. Genetic ancestry groups supplied for v4 are
+    specified by race/ethnicity and converted to a genetic ancestry group using
+    V4_POP_SPIKE_DICT. The method assigns a genetic ancestry group label to all samples in the
     dataset.
 
-    :param min_prob: Minimum RF probability for pop assignment.
+    :param gen_anc_pca_scores_ht: Table of PCA scores to use for RF training.
+    :param joint_meta_ht: Table of joint QC meta data.
+    :param min_prob: Minimum RF probability for genetic ancestry assignment.
     :param include_unreleasable_samples: Whether unreleasable samples were included in
         PCA.
     :param pcs: List of PCs to use in the RF.
     :param missing_label: Label for samples for which the assignment probability is
         smaller than `min_prob`.
-    :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
     :param include_v2_known_in_training: Whether to train RF classifier using v2 known
-        pop labels. Default is False.
-    :param v4_population_spike: Optional List of v4 populations to spike into the RF.
-        Must be in v4_pop_spike dictionary. Defaults to None.
-    :param v3_population_spike: Optional List of v3 populations to spike into the RF.
-        Must be in v4_pop_spike dictionary. Defaults to None.
-    :return: Table of pop assignments and the RF model.
+        genetic ancestry labels. Default is False.
+    :param v4_gen_anc_spike: Optional List of v4 genetic ancestry groups to spike into the RF.
+        Must be in v4_gen_anc_spike dictionary. Defaults to None.
+    :param v3_gen_anc_spike: Optional List of v3 genetic ancestry groups to spike into the RF.
+        Must be in v3_gen_anc_spike dictionary. Defaults to None.
+    :return: Table of genetic ancestry group assignments and the RF model.
     """
     logger.info("Prepping HT for RF...")
-    pop_pca_scores_ht = prep_ht_for_rf(
+    gen_anc_pca_scores_ht = prep_ht_for_rf(
+        gen_anc_pca_scores_ht,
+        joint_meta_ht,
         include_unreleasable_samples,
-        test,
         include_v2_known_in_training,
-        v4_population_spike,
-        v3_population_spike,
+        v4_gen_anc_spike,
+        v3_gen_anc_spike,
     )
-    pop_field = "pop"
+    gen_anc_field = "gen_anc"
     logger.info(
         "Running RF with PCs %s using %d training examples: %s",
         pcs,
-        pop_pca_scores_ht.aggregate(
-            hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
+        gen_anc_pca_scores_ht.aggregate(
+            hl.agg.count_where(hl.is_defined(gen_anc_pca_scores_ht.training_gen_anc))
         ),
-        pop_pca_scores_ht.aggregate(hl.agg.counter(pop_pca_scores_ht.training_pop)),
+        gen_anc_pca_scores_ht.aggregate(
+            hl.agg.counter(gen_anc_pca_scores_ht.training_gen_anc)
+        ),
     )
     # Run the pop RF.
-    pop_ht, pops_rf_model = assign_population_pcs(
-        pop_pca_scores_ht,
+    gen_anc_ht, gen_anc_rf_model = assign_population_pcs(
+        gen_anc_pca_scores_ht,
         pc_cols=pcs,
-        known_col="training_pop",
-        output_col=pop_field,
+        known_col="training_gen_anc",
+        output_col=gen_anc_field,
         min_prob=min_prob,
         missing_label=missing_label,
     )
 
-    pop_ht = pop_ht.annotate_globals(
+    gen_anc_ht = gen_anc_ht.annotate_globals(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
         pcs=pcs,
         include_v2_known_in_training=include_v2_known_in_training,
     )
 
-    if v3_population_spike:
-        pop_ht = pop_ht.annotate_globals(
-            v3_population_spike=v3_population_spike,
+    if v3_gen_anc_spike:
+        gen_anc_ht = gen_anc_ht.annotate_globals(
+            v3_gen_anc_spike=v3_gen_anc_spike,
         )
-    if v4_population_spike:
-        pop_ht = pop_ht.annotate_globals(
-            v4_population_spike=v4_population_spike,
+    if v4_gen_anc_spike:
+        gen_anc_ht = gen_anc_ht.annotate_globals(
+            v4_gen_anc_spike=v4_gen_anc_spike,
         )
 
-    return pop_ht, pops_rf_model
+    return gen_anc_ht, gen_anc_rf_model
 
 
 def main(args):
@@ -244,6 +357,10 @@ def main(args):
                 use_tmp_path,
             )
         if args.assign_gen_anc:
+
+            gen_anc_pca_scores_ht = ancestry_pca_scores(
+                include_unreleasable_samples, use_tmp_path
+            ).ht()
             # Rename sample collision in v4 joint qc meta.
             v4_joint_qc_meta = v4_joint_qc_meta.ht()
             v4_joint_qc_meta = add_project_prefix_to_sample_collisions(
@@ -252,22 +369,29 @@ def main(args):
                 project="gnomad",
             )
 
-            pop_pcs = args.pop_pcs
-            pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
-            logger.info("Using following PCs: %s", pop_pcs)
-            pop_ht, pops_rf_model = assign_pops(
-                args.min_pop_prob,
-                include_unreleasable_samples,
-                pcs=pop_pcs,
+            gen_anc_pcs = args.gen_anc_pcs
+            gen_anc_pcs = (
+                list(range(1, gen_anc_pcs[0] + 1))
+                if len(gen_anc_pcs) == 1
+                else gen_anc_pcs
+            )
+            logger.info("Using following PCs: %s", gen_anc_pcs)
+            gen_anc_ht, gen_anc_rf_model = assign_gen_anc(
+                joint_meta_ht=v4_joint_qc_meta,
+                min_prob=args.min_gen_anc_prob,
+                include_unreleasable_samples=include_unreleasable_samples,
+                pcs=gen_anc_pcs,
                 test=test,
                 overwrite=overwrite,
                 include_v2_known_in_training=include_v2_known_in_training,
-                v4_population_spike=args.v4_population_spike,
-                v3_population_spike=args.v3_population_spike,
+                v4_gen_anc_spike=args.v4_gen_anc_spike,
+                v3_gen_anc_spike=args.v3_gen_anc_spike,
             )
 
-            logger.info("Writing pop ht...")
-            pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+            logger.info("Writing genetic ancestry group ht...")
+            gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
+            )
 
             with hl.hadoop_open(
                 pop_rf_path(test=test),
