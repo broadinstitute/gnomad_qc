@@ -13,7 +13,7 @@ from gnomad.sample_qc.relatedness import (
 )
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.resource_utils import check_resource_existence
+# from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
