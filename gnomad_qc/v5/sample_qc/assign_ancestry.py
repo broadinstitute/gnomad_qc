@@ -113,6 +113,90 @@ def write_pca_results(
     )
 
 
+def assign_pops(
+    min_prob: float,
+    include_unreleasable_samples: bool = False,
+    pcs: List[int] = list(range(1, 21)),
+    missing_label: str = "remaining",
+    test: bool = False,
+    overwrite: bool = False,
+    include_v2_known_in_training: bool = False,
+    v4_population_spike: Optional[List[str]] = None,
+    v3_population_spike: Optional[List[str]] = None,
+) -> Tuple[hl.Table, Any]:
+    """
+    Use a random forest model to assign global population labels based on the results from `run_pca`.
+
+    Training data is the known label for HGDP and 1KG samples and all v2 samples with
+    known pops unless specificied to restrict only to 1KG and HGDP samples. Can also
+    specify a list of pops with known v3/v4 labels to include
+    (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are
+    specified by race/ethnicity and converted to a ancestry group using
+    V4_POP_SPIKE_DICT. The method assigns a population label to all samples in the
+    dataset.
+
+    :param min_prob: Minimum RF probability for pop assignment.
+    :param include_unreleasable_samples: Whether unreleasable samples were included in
+        PCA.
+    :param pcs: List of PCs to use in the RF.
+    :param missing_label: Label for samples for which the assignment probability is
+        smaller than `min_prob`.
+    :param test: Whether running assigment on a test dataset.
+    :param overwrite: Whether to overwrite existing files.
+    :param include_v2_known_in_training: Whether to train RF classifier using v2 known
+        pop labels. Default is False.
+    :param v4_population_spike: Optional List of v4 populations to spike into the RF.
+        Must be in v4_pop_spike dictionary. Defaults to None.
+    :param v3_population_spike: Optional List of v3 populations to spike into the RF.
+        Must be in v4_pop_spike dictionary. Defaults to None.
+    :return: Table of pop assignments and the RF model.
+    """
+    logger.info("Prepping HT for RF...")
+    pop_pca_scores_ht = prep_ht_for_rf(
+        include_unreleasable_samples,
+        test,
+        include_v2_known_in_training,
+        v4_population_spike,
+        v3_population_spike,
+    )
+    pop_field = "pop"
+    logger.info(
+        "Running RF with PCs %s using %d training examples: %s",
+        pcs,
+        pop_pca_scores_ht.aggregate(
+            hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
+        ),
+        pop_pca_scores_ht.aggregate(hl.agg.counter(pop_pca_scores_ht.training_pop)),
+    )
+    # Run the pop RF.
+    pop_ht, pops_rf_model = assign_population_pcs(
+        pop_pca_scores_ht,
+        pc_cols=pcs,
+        known_col="training_pop",
+        output_col=pop_field,
+        min_prob=min_prob,
+        missing_label=missing_label,
+    )
+
+    pop_ht = pop_ht.annotate_globals(
+        min_prob=min_prob,
+        include_unreleasable_samples=include_unreleasable_samples,
+        pcs=pcs,
+        include_v2_known_in_training=include_v2_known_in_training,
+    )
+
+    if v3_population_spike:
+        pop_ht = pop_ht.annotate_globals(
+            v3_population_spike=v3_population_spike,
+        )
+    if v4_population_spike:
+        pop_ht = pop_ht.annotate_globals(
+            v4_population_spike=v4_population_spike,
+        )
+
+    return pop_ht, pops_rf_model
+
+
 def main(args):
     """Assign genetic ancestry group labels to samples."""
     hl.init(
@@ -167,6 +251,29 @@ def main(args):
                 sample_collisions=sample_id_collisions.ht(),
                 project="gnomad",
             )
+
+            pop_pcs = args.pop_pcs
+            pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
+            logger.info("Using following PCs: %s", pop_pcs)
+            pop_ht, pops_rf_model = assign_pops(
+                args.min_pop_prob,
+                include_unreleasable_samples,
+                pcs=pop_pcs,
+                test=test,
+                overwrite=overwrite,
+                include_v2_known_in_training=include_v2_known_in_training,
+                v4_population_spike=args.v4_population_spike,
+                v3_population_spike=args.v3_population_spike,
+            )
+
+            logger.info("Writing pop ht...")
+            pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+
+            with hl.hadoop_open(
+                pop_rf_path(test=test),
+                "wb",
+            ) as out:
+                pickle.dump(pops_rf_model, out)
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
