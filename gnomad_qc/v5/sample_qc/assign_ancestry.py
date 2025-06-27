@@ -10,7 +10,7 @@ import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
+from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.resources.sample_qc import (
     related_samples_to_drop,  # TODO: remove when switch to v5.
@@ -116,7 +116,6 @@ def write_pca_results(
 def prep_ht_for_rf(
     gen_anc_pca_scores_ht: hl.Table,
     joint_meta_ht: hl.Table,
-    include_unreleasable_samples: bool = False,
     include_v2_known_in_training: bool = False,
     v4_gen_anc_spike: Optional[List[str]] = None,
     v3_gen_anc_spike: Optional[List[str]] = None,
@@ -133,8 +132,6 @@ def prep_ht_for_rf(
 
     :param gen_anc_pca_scores_ht: Table of PCA scores to use for RF training.
     :param joint_meta_ht: Table of joint QC meta data.
-    :param include_unreleasable_samples: Should unreleasable samples be included in the
-        PCA.
     :param include_v2_known_in_training: Whether to train RF classifier using v2 known
         genetic ancestry labels. Default is False.
     :param v4_gen_anc_spike: Optional List of genetic ancestry groups to spike into training.
@@ -173,6 +170,8 @@ def prep_ht_for_rf(
                 joint_meta_ht.data_type == "exomes", joint_meta_ht.v2_meta.v2_known_pop
             ),
         )
+
+    # From here just use pop_ht to set training?
 
     if v4_gen_anc_spike:
         logger.info(
@@ -265,7 +264,6 @@ def assign_gen_anc(
     gen_anc_pca_scores_ht = prep_ht_for_rf(
         gen_anc_pca_scores_ht,
         joint_meta_ht,
-        include_unreleasable_samples,
         include_v2_known_in_training,
         v4_gen_anc_spike,
         v3_gen_anc_spike,
@@ -358,7 +356,7 @@ def main(args):
             )
         if args.assign_gen_anc:
 
-            gen_anc_pca_scores_ht = ancestry_pca_scores(
+            gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
                 include_unreleasable_samples, use_tmp_path
             ).ht()
             # Rename sample collision in v4 joint qc meta.
