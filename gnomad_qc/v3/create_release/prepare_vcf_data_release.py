@@ -8,16 +8,16 @@ from typing import Dict, List, Optional, Set, Union
 import hail as hl
 from gnomad.assessment.validity_checks import validate_release_t, vcf_field_check
 from gnomad.resources.grch38.gnomad import (
-    COHORTS_WITH_POP_STORED_AS_SUBPOP,
-    HGDP_POPS,
-    POPS,
+    COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP,
+    GEN_ANC_GROUPS,
+    HGDP_GEN_ANC_GROUPS,
     SEXES,
     SUBSETS,
-    TGP_POP_NAMES,
-    TGP_POPS,
+    TGP_GEN_ANC_GROUP_NAMES,
+    TGP_GEN_ANC_GROUPS,
 )
 from gnomad.resources.resource_utils import DataException
-from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.sample_qc.ancestry import GEN_ANC_NAMES
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.vcf import (
@@ -25,7 +25,7 @@ from gnomad.utils.vcf import (
     AS_FIELDS,
     AS_VQSR_FIELDS,
     ENTRIES,
-    FAF_POPS,
+    FAF_GEN_ANC_GROUPS,
     FORMAT_DICT,
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
@@ -85,7 +85,7 @@ SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
 MISSING_AS_FIELDS = ["AS_VarDP"]
 AS_FIELDS = remove_fields_from_constant(AS_FIELDS, MISSING_AS_FIELDS)
 
-POPS = POPS["v3"]["genomes"]
+GEN_ANC_GROUPS = GEN_ANC_GROUPS["v3"]["genomes"]
 SUBSETS = SUBSETS["v3"]
 
 # Make subset list (used in properly filling out VCF header descriptions
@@ -97,7 +97,7 @@ SUBSET_LIST_FOR_VCF.append("")
 # Inclusion of these subsets significantly increases the size of storage
 # in the VCFs because of the many subpops
 SUBSET_LIST_FOR_VCF = remove_fields_from_constant(
-    SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP
+    SUBSET_LIST_FOR_VCF, COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP
 )
 
 # Remove decoy from region field flag
@@ -115,20 +115,20 @@ MISSING_INFO_FIELDS = (
     + RF_FIELDS
 )
 
-# Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS}
+# Remove unnecessary pop names from GEN_ANC_NAMES dict
+GEN_ANC_GROUPS = {pop: GEN_ANC_NAMES[pop] for pop in GEN_ANC_GROUPS}
 
-# Remove unnecessary pop names from FAF_POPS dict
-FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS["v3"]}
+# Remove unnecessary pop names from FAF_GEN_ANC_GROUPS dict
+FAF_GEN_ANC_GROUPS = {pop: GEN_ANC_NAMES[pop] for pop in FAF_GEN_ANC_GROUPS["v3"]}
 
 # Get HGDP + TGP(KG) subset pop names
-HGDP_TGP_KEEP_POPS = TGP_POPS + HGDP_POPS
-HGDP_TGP_POPS = {}
+HGDP_TGP_KEEP_POPS = TGP_GEN_ANC_GROUPS + HGDP_GEN_ANC_GROUPS
+HGDP_TGP_GEN_ANC_GROUPS = {}
 for pop in HGDP_TGP_KEEP_POPS:
-    if pop in TGP_POP_NAMES:
-        HGDP_TGP_POPS[pop] = TGP_POP_NAMES[pop]
+    if pop in TGP_GEN_ANC_GROUP_NAMES:
+        HGDP_TGP_GEN_ANC_GROUPS[pop] = TGP_GEN_ANC_GROUP_NAMES[pop]
     else:
-        HGDP_TGP_POPS[pop] = pop.capitalize()
+        HGDP_TGP_GEN_ANC_GROUPS[pop] = pop.capitalize()
 
 # Used for HGDP + TGP subset MT VCF output only
 FORMAT_DICT.update(
@@ -167,8 +167,8 @@ HGDP_TGP_VCF_INFO_REORDER = [
 def populate_subset_info_dict(
     subset: str,
     description_text: str,
-    pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    pops: Dict[str, str] = GEN_ANC_GROUPS,
+    FAF_GEN_ANC_GROUPS: Dict[str, str] = FAF_GEN_ANC_GROUPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
@@ -181,20 +181,20 @@ def populate_subset_info_dict(
 
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
-    :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param pops: Dict of sample global population names for gnomAD genomes. Default is GEN_ANC_GROUPS.
+    :param FAF_GEN_ANC_GROUPS: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_GEN_ANC_GROUPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
-    faf_label_groups = create_label_groups(pops=faf_pops, sexes=sexes)
+    faf_label_groups = create_label_groups(pops=FAF_GEN_ANC_GROUPS, sexes=sexes)
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
                 prefix_before_metric=True if "gnomad" in subset else False,
-                pop_names=faf_pops,
+                gen_anc_names=FAF_GEN_ANC_GROUPS,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
                 faf=True,
@@ -208,7 +208,7 @@ def populate_subset_info_dict(
             make_info_dict(
                 prefix=subset,
                 prefix_before_metric=True if "gnomad" in subset else False,
-                pop_names=pops,
+                gen_anc_names=pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
                 description_text=description_text,
@@ -220,8 +220,8 @@ def populate_subset_info_dict(
         make_info_dict(
             prefix=subset,
             label_delimiter=label_delimiter,
-            pop_names=pops,
-            popmax=True,
+            gen_anc_names=pops,
+            grpmax=True,
             description_text=description_text,
         )
     )
@@ -234,9 +234,9 @@ def populate_info_dict(
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
-    subset_pops: Dict[str, str] = POPS,
-    gnomad_pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    subset_pops: Dict[str, str] = GEN_ANC_GROUPS,
+    gnomad_pops: Dict[str, str] = GEN_ANC_GROUPS,
+    FAF_GEN_ANC_GROUPS: Dict[str, str] = FAF_GEN_ANC_GROUPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
@@ -259,9 +259,9 @@ def populate_info_dict(
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
-        is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
-    :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
+        is 'gnomad', in that case `gnomad_pops` is used. Default is GEN_ANC_GROUPS.
+    :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is GEN_ANC_GROUPS.
+    :param FAF_GEN_ANC_GROUPS: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_GEN_ANC_GROUPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
@@ -292,7 +292,7 @@ def populate_info_dict(
                 subset=subset,
                 description_text=description_text,
                 pops=pops,
-                faf_pops=faf_pops,
+                FAF_GEN_ANC_GROUPS=FAF_GEN_ANC_GROUPS,
                 sexes=sexes,
                 label_delimiter=label_delimiter,
             )
@@ -805,7 +805,7 @@ def build_parameter_dict(
     """
     if hgdp_tgp:
         parameter_dict = {
-            "pops": HGDP_TGP_POPS,
+            "pops": HGDP_TGP_GEN_ANC_GROUPS,
             "subsets": ["", "gnomad"],
             "is_subset": True,
             "temp_ht_path": get_checkpoint_path(
@@ -813,7 +813,10 @@ def build_parameter_dict(
             ),
             "drop_hists": None,
             "include_age_hists": False,
-            "sample_sum_sets_and_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
+            "sample_sum_sets_and_pops": {
+                "gnomad": GEN_ANC_GROUPS,
+                "": HGDP_TGP_GEN_ANC_GROUPS,
+            },
             "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
             "ht": hgdp_tgp_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
@@ -823,13 +826,16 @@ def build_parameter_dict(
 
     else:
         parameter_dict = {
-            "pops": POPS,
+            "pops": GEN_ANC_GROUPS,
             "subsets": SUBSET_LIST_FOR_VCF,
             "is_subset": False,
             "temp_ht_path": get_checkpoint_path(f"vcf_prep{'_test' if test else ''}"),
             "drop_hists": ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"],
             "include_age_hists": True,
-            "sample_sum_sets_and_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
+            "sample_sum_sets_and_pops": {
+                "hgdp": HGDP_GEN_ANC_GROUPS,
+                "tgp": TGP_GEN_ANC_GROUPS,
+            },
             "vcf_info_reorder": VCF_INFO_REORDER,
             "ht": release_sites().ht(),
         }
@@ -840,7 +846,7 @@ def build_parameter_dict(
             for x in hl.eval(parameter_dict["ht"].freq_meta)
             if "downsampling" in x
         }
-        freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
+        freq_entries_to_remove.update(set(COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP))
         parameter_dict["freq_entries_to_remove"] = freq_entries_to_remove
         parameter_dict["age_hist_distribution"] = hl.eval(
             parameter_dict["ht"].age_distribution
@@ -928,7 +934,9 @@ def main(args):  # noqa: D103
                 prepared_vcf_ht,
                 subsets=["gnomad"] if hgdp_tgp else SUBSETS,
                 metric_first_field=False if hgdp_tgp else True,
-                sample_sum_sets_and_pops=parameter_dict["sample_sum_sets_and_pops"],
+                sample_sum_sets_and_gen_anc_groups=parameter_dict[
+                    "sample_sum_sets_and_pops"
+                ],
                 missingness_threshold=0.5,
                 variant_filter_field="AS_VQSR",
                 site_gt_check_expr={"monoallelic": prepared_vcf_ht.info.monoallelic},
