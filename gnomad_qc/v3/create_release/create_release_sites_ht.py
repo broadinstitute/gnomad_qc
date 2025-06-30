@@ -41,7 +41,7 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
-POPS = POPS["v3"]["genomes"]
+GEN_ANC_GROUPS = GEN_ANC_GROUPS["v3"]["genomes"]
 SUBSETS = SUBSETS["v3"]
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately
@@ -50,10 +50,10 @@ AS_FIELDS.remove("InbreedingCoeff")
 
 # Add fine-resolution populations specific to 1KG/TGP and HGDP to standard
 # gnomAD pops; used to create frequency index dictionary
-POPS.extend(POPS_STORED_AS_SUBPOPS)
+GEN_ANC_GROUPS.extend(COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP)
 # Add 'global' tag used to distinguish cohort-wide vs. subset annotations
 # in frequency index dictionary
-POPS.extend(["global"])
+GEN_ANC_GROUPS.extend(["global"])
 
 
 def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
