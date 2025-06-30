@@ -15,14 +15,17 @@ import logging
 from typing import Callable, Dict, List, Optional, Set
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
+from gnomad.resources.grch38.gnomad import (
+    GEN_ANC_GROUPS,
+    GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX,
+)
 from gnomad.resources.resource_utils import TableResource
 from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
+    grpmax_expr,
     merge_freq_arrays,
     merge_histograms,
-    pop_max_expr,
     set_xx_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
@@ -307,7 +310,7 @@ def get_joint_freq_and_faf(
     exomes_ht: hl.Table,
     genomes_all_sites_ht: hl.Table,
     exomes_all_sites_ht: hl.Table,
-    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX["v4"],
+    faf_pops_to_exclude: Set[str] = GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
 ) -> hl.Table:
     """
     Get joint genomes and exomes frequency and FAF information.
@@ -374,16 +377,16 @@ def get_joint_freq_and_faf(
         ht.joint_freq,
         ht.joint_freq_meta,
         ht.locus,
-        pops_to_exclude=faf_pops_to_exclude,
-        pop_label="gen_anc",
+        gen_anc_groups_to_exclude=faf_pops_to_exclude,
+        gen_anc_label="gen_anc",
     )
 
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
-    grpmax = pop_max_expr(
+    grpmax = grpmax_expr(
         ht.joint_freq,
         ht.joint_freq_meta,
-        pops_to_exclude=faf_pops_to_exclude,
-        pop_label="gen_anc",
+        gen_anc_groups_to_exclude=faf_pops_to_exclude,
+        gen_anc_label="gen_anc",
     )
 
     # Annotate Table with all joint exomes + genomes computations.
@@ -833,8 +836,10 @@ def main(args):
     test = args.test_gene or args.test_y_gene
     overwrite = args.overwrite
     apply_release_filters = not args.skip_apply_release_filters
-    pops = list(set(POPS["v3"]["genomes"] + POPS["v4"]["exomes"]))
-    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
+    pops = list(set(GEN_ANC_GROUPS["v3"]["genomes"] + GEN_ANC_GROUPS["v4"]["exomes"]))
+    faf_pops = [
+        pop for pop in pops if pop not in GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"]
+    ]
     stats_chr = args.stats_chr
     stats_combine_all_chr = args.stats_combine_all_chr
     combine_faf_resources = get_combine_faf_resources(
