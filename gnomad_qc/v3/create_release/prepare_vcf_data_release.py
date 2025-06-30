@@ -188,7 +188,7 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
-    faf_label_groups = create_label_groups(pops=FAF_GEN_ANC_GROUPS, sexes=sexes)
+    faf_label_groups = create_label_groups(gen_ancs=FAF_GEN_ANC_GROUPS, sexes=sexes)
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
@@ -202,7 +202,7 @@ def populate_subset_info_dict(
             )
         )
 
-    label_groups = create_label_groups(pops=pops, sexes=sexes)
+    label_groups = create_label_groups(gen_ancs=pops, sexes=sexes)
     for label_group in label_groups:
         vcf_info_dict.update(
             make_info_dict(
