@@ -15,7 +15,10 @@ from copy import deepcopy
 from typing import Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, POPS_TO_REMOVE_FOR_POPMAX
+from gnomad.resources.grch38.gnomad import (
+    DOWNSAMPLINGS,
+    GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX,
+)
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
@@ -27,9 +30,9 @@ from gnomad.utils.annotations import (
     gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
     get_adj_expr,
+    grpmax_expr,
     merge_freq_arrays,
     merge_histograms,
-    pop_max_expr,
     qual_hist_expr,
     set_xx_y_metrics_to_na_expr,
 )
@@ -436,7 +439,7 @@ def generate_freq_ht(
     logger.info("Building frequency stratification list...")
     strata_expr = build_freq_stratification_list(
         sex_expr=meta_ht.sex_karyotype,
-        pop_expr=meta_ht.pop,
+        gen_anc_expr=meta_ht.pop,
         additional_strata_expr=additional_strata_expr,
         downsampling_expr=ds_ht[meta_ht.key].downsampling,
     )
@@ -444,14 +447,14 @@ def generate_freq_ht(
         meta_ht,
         strata_expr,
         downsamplings=hl.eval(ds_ht.downsamplings),
-        ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
+        ds_gen_anc_counts=hl.eval(ds_ht.ds_pop_counts),
     )
     group_membership = group_membership_ht[mt.col_key].group_membership
     group_membership_globals = group_membership_ht.index_globals()
     if non_ukb_ds_ht is not None:
         logger.info("Building non-ukb downsampling stratification list...")
         non_ukb_strata_expr = build_freq_stratification_list(
-            pop_expr=meta_ht.pop,
+            gen_anc_expr=meta_ht.pop,
             downsampling_expr=non_ukb_ds_ht[meta_ht.key].downsampling,
         )
         non_ukb_strata_expr = [e for e in non_ukb_strata_expr if "downsampling" in e]
@@ -461,7 +464,7 @@ def generate_freq_ht(
             meta_ht,
             non_ukb_strata_expr,
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
-            ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
+            ds_gen_anc_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
         )
         # Remove the first two because they are adj and raw for the full subset.
         group_membership = group_membership.extend(
@@ -563,7 +566,7 @@ def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
     downsamplings = DOWNSAMPLINGS["v4"]
     if non_ukb:
         downsamplings = downsamplings[:-1]
-    ds_ht = annotate_downsamplings(meta_ht, downsamplings, pop_expr=meta_ht.pop)
+    ds_ht = annotate_downsamplings(meta_ht, downsamplings, gen_anc_expr=meta_ht.pop)
 
     return ds_ht
 
@@ -847,8 +850,10 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     grpmax_exprs = {}
     gen_anc_faf_max_exprs = {}
     for dataset, (freq, meta) in freq_metas.items():
-        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX["v4"])
-        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX["v4"])
+        faf, faf_meta = faf_expr(
+            freq, meta, ht.locus, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"]
+        )
+        grpmax = grpmax_expr(freq, meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"])
         grpmax = grpmax.annotate(
             gen_anc=grpmax.pop,
             faf95=faf[
