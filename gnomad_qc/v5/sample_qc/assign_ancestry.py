@@ -294,7 +294,7 @@ def assign_gen_anc(
         missing_label=missing_label,
     )
 
-    gen_anc_ht = gen_anc_ht.repartition(100)
+    # gen_anc_ht = gen_anc_ht.repartition(100)
 
     gen_anc_ht = gen_anc_ht.annotate_globals(
         min_prob=min_prob,
