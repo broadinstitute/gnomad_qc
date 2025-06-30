@@ -346,7 +346,7 @@ def main(args):
                 "second_degree_min_kin": second_degree_min_kin,
             }
             finalize_relatedness_ht(
-                relatedness(test=test, raw=True).ht(), joint_meta, relatedness_args
+                relatedness(test=test).ht(), joint_meta, relatedness_args
             ).write(relatedness(test=test).path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
