@@ -403,8 +403,8 @@ def main(args):
                 pcs=gen_anc_pcs,
                 overwrite=overwrite,
                 include_v2_known_in_training=include_v2_known_in_training,
-                v4_gen_anc_spike=args.v4_gen_anc_spike,
-                v3_gen_anc_spike=args.v3_gen_anc_spike,
+                v4_gen_anc_spike=args.v4_spike,
+                v3_gen_anc_spike=args.v3_spike,
             )
 
             logger.info("Writing genetic ancestry group ht...")
