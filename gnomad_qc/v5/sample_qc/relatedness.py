@@ -204,8 +204,8 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     ht = ht.select(
         "mean_depth",
-        is_genome=hl.is_defined(ht.data_type) & ht.data_type == "genomes",
-        in_aou=hl.is_defined(ht.project) & ht.project == "aou",
+        is_genome=hl.is_defined(ht.data_type) & (ht.data_type == "genomes"),
+        in_aou=hl.is_defined(ht.project) & (ht.project == "aou"),
         in_v4_release=hl.is_defined(ht.release) & ht.release,
     )
     rank_order = []
