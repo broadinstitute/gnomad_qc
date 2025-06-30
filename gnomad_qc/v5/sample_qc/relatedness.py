@@ -283,7 +283,7 @@ def main(args):
     hl.default_reference("GRCh38")
 
     joint_meta = project_meta.ht()
-    joint_qc_mt = get_joint_qc(test=test).mt()
+    joint_qc_mt = get_joint_qc().mt()
 
     if test:
         logger.info("Filtering MT to the first 2 partitions for testing...")
