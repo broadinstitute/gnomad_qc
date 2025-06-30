@@ -160,12 +160,13 @@ def finalize_relatedness_ht(
     parent_child_max_ann = "parent_child_max_ibs0_over_ibs2"
 
     ht = ht.annotate(
+        ibs0_2=ht.ibs0 / ht.ibs2,
         relationship=get_slope_int_relationship_expr(
             kin_expr=ht.kin,
             y_expr=y_expr,
             **relatedness_args,
             ibd1_expr=ibd1_expr,
-        )
+        ),
     )
     relatedness_args[parent_child_max_ann] = relatedness_args.pop("parent_child_max_y")
     ht = ht.annotate_globals(
@@ -350,9 +351,9 @@ def main(args):
             ).write(relatedness(test=test).path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
-            logger.info("Computing the sample rankings andrelated samples to drop...")
+            logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
-                output_resources={
+                output_step_resources={
                     "sample_rankings_ht": sample_rankings(test=test),
                     "related_samples_to_drop_ht": related_samples_to_drop(test=test),
                 }
@@ -505,10 +506,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     drop_related_samples.add_argument(
         "--compute-related-samples-to-drop",
-        help=(
-            "Determine the minimal set of related samples to prune for ancestry PCA or "
-            "release if '--release' is used."
-        ),
+        help="Determine the minimal set of related samples to prune for ancestry PCA.",
         action="store_true",
     )
     return parser
