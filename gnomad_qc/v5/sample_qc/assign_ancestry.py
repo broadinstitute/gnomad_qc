@@ -365,9 +365,9 @@ def main(args):
             ).ht()
 
             # Rename sample collision in v4 joint qc meta.
-            v4_joint_qc_meta = v4_joint_qc_meta.ht()
-            v4_joint_qc_meta = add_project_prefix_to_sample_collisions(
-                t=v4_joint_qc_meta,
+            v4_joint_qc_meta_ht = v4_joint_qc_meta.ht()
+            v4_joint_qc_meta_ht = add_project_prefix_to_sample_collisions(
+                t=v4_joint_qc_meta_ht,
                 sample_collisions=sample_id_collisions.ht(),
                 project="gnomad",
             )
@@ -376,7 +376,7 @@ def main(args):
             meta_ht = project_meta.ht()
             meta_ht = meta_ht.select(v5_meta=hl.struct(**meta_ht.row_value))
             meta_ht = meta_ht.annotate(
-                v4_meta=v4_joint_qc_meta[meta_ht.s].select(
+                v4_meta=v4_joint_qc_meta_ht[meta_ht.s].select(
                     "chr20_mean_dp",
                     "releasable",
                     "broad_external",
@@ -385,7 +385,7 @@ def main(args):
                     "data_type",
                     "v4_race_ethnicity",
                 ),
-                **v4_joint_qc_meta[meta_ht.s].select("v2_meta", "v3_meta"),
+                **v4_joint_qc_meta_ht[meta_ht.s].select("v2_meta", "v3_meta"),
             )
 
             gen_anc_pcs = args.gen_anc_pcs
