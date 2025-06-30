@@ -4,7 +4,11 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS, SUBSETS
+from gnomad.resources.grch38.gnomad import (
+    COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP,
+    GEN_ANC_GROUPS,
+    SUBSETS,
+)
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -37,7 +41,7 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
-POPS = POPS["v3"]["genomes"]
+GEN_ANC_GROUPS = GEN_ANC_GROUPS["v3"]["genomes"]
 SUBSETS = SUBSETS["v3"]
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately
@@ -46,10 +50,10 @@ AS_FIELDS.remove("InbreedingCoeff")
 
 # Add fine-resolution populations specific to 1KG/TGP and HGDP to standard
 # gnomAD pops; used to create frequency index dictionary
-POPS.extend(POPS_STORED_AS_SUBPOPS)
+GEN_ANC_GROUPS.extend(COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP)
 # Add 'global' tag used to distinguish cohort-wide vs. subset annotations
 # in frequency index dictionary
-POPS.extend(["global"])
+GEN_ANC_GROUPS.extend(["global"])
 
 
 def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
@@ -304,7 +308,7 @@ def main(args):  # noqa: D103
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),
-            pops=POPS,
+            gen_anc_groups=GEN_ANC_GROUPS,
             downsamplings=hl.eval(global_freq_ht.downsamplings),
         )
     )

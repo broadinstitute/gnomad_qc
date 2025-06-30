@@ -7,7 +7,7 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
@@ -280,7 +280,7 @@ def assign_pops(
         pop_pca_scores_ht.aggregate(hl.agg.counter(pop_pca_scores_ht.training_pop)),
     )
     # Run the pop RF.
-    pop_ht, pops_rf_model = assign_population_pcs(
+    pop_ht, pops_rf_model = assign_genetic_ancestry_pcs(
         pop_pca_scores_ht,
         pc_cols=pcs,
         known_col="training_pop",

@@ -268,7 +268,7 @@ def validate_federated_data(
         t=ht,
         sexes={i["sex"] for i in hl.eval(freq_meta_expr) if "sex" in i},
         subsets=[""],
-        pops={
+        gen_anc_groups={
             i[gen_anc_label_name]
             for i in hl.eval(freq_meta_expr)
             if gen_anc_label_name in i

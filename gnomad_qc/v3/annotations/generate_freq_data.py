@@ -5,11 +5,10 @@ import logging
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import (
-    COHORTS_WITH_POP_STORED_AS_SUBPOP,
+    COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP,
     DOWNSAMPLINGS,
-    POPS,
-    POPS_STORED_AS_SUBPOPS,
-    POPS_TO_REMOVE_FOR_POPMAX,
+    GEN_ANC_GROUPS,
+    GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX,
     SUBSETS,
 )
 from gnomad.resources.resource_utils import DataException
@@ -20,7 +19,7 @@ from gnomad.utils.annotations import (
     bi_allelic_site_inbreeding_expr,
     faf_expr,
     get_adj_expr,
-    pop_max_expr,
+    grpmax_expr,
     qual_hist_expr,
     set_xx_y_metrics_to_na_expr,
 )
@@ -49,7 +48,7 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 DOWNSAMPLINGS = DOWNSAMPLINGS["v3"]
-POPS = POPS["v3"]["genomes"]
+GEN_ANC_GROUPS = GEN_ANC_GROUPS["v3"]["genomes"]
 SUBSETS = SUBSETS["v3"]
 
 
@@ -69,7 +68,7 @@ def main(args):  # noqa: D103
         for s in subsets:
             if s not in SUBSETS:
                 invalid_subsets.append(s)
-            if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+            if s in COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP:
                 n_subsets_use_subpops += 1
 
         if invalid_subsets:
@@ -80,9 +79,9 @@ def main(args):  # noqa: D103
         if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
             raise ValueError(
                 "Cannot combine cohorts that use subpops in frequency calculations"
-                f" {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+                f" {COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP} "
                 "with cohorts that use pops in frequency calculations"
-                f" {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+                f" {[s for s in SUBSETS if s not in COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP]}."
             )
     if args.hgdp_tgp_subset and not file_exists(hgdp_tgp_subset_annotations().path):
         raise DataException(
@@ -213,7 +212,7 @@ def main(args):  # noqa: D103
             mt = annotate_freq(
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
-                pop_expr=(
+                gen_anc_expr=(
                     mt.meta.population_inference.pop
                     if not n_subsets_use_subpops
                     else mt.meta.project_meta.project_subpop
@@ -227,14 +226,14 @@ def main(args):  # noqa: D103
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            pops = POPS
+            pops = GEN_ANC_GROUPS
             if n_subsets_use_subpops:
-                pops = POPS_STORED_AS_SUBPOPS
+                pops = COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP
 
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
                     freq_meta=freq_meta,
-                    pops=pops,
+                    gen_anc_groups=pops,
                     label_delimiter="-",
                     subsets=["|".join(subsets)],
                 )
@@ -281,7 +280,7 @@ def main(args):  # noqa: D103
             mt = annotate_freq(
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
-                pop_expr=mt.meta.population_inference.pop,
+                gen_anc_expr=mt.meta.population_inference.pop,
                 downsamplings=DOWNSAMPLINGS,
             )
             # Remove all loci with raw AC=0
@@ -304,14 +303,17 @@ def main(args):  # noqa: D103
 
             logger.info("Computing filtering allele frequencies and popmax...")
             faf, faf_meta = faf_expr(
-                mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX["v3"]
+                mt.freq,
+                mt.freq_meta,
+                mt.locus,
+                GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v3"],
             )
             mt = mt.select_rows(
                 "InbreedingCoeff",
                 "freq",
                 faf=faf,
-                popmax=pop_max_expr(
-                    mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX["v3"]
+                popmax=grpmax_expr(
+                    mt.freq, mt.freq_meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v3"]
                 ),
             )
             mt = mt.annotate_globals(

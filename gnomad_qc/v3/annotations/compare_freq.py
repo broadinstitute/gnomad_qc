@@ -20,13 +20,13 @@ import hail as hl
 from gnomad.resources.grch37.gnomad import (
     CURRENT_EXOME_RELEASE,
     CURRENT_GENOME_RELEASE,
-    EXOME_POPS,
-    GENOME_POPS,
+    EXOME_GEN_ANC_GROUPS,
+    GENOME_GEN_ANC_GROUPS,
     liftover,
     public_pca_loadings,
 )
 from gnomad.resources.grch37.gnomad import public_release as v2_public_release
-from gnomad.resources.grch38.gnomad import POPS
+from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS
 from gnomad.resources.grch38.gnomad import public_release as v3_public_release
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.liftover import default_lift_data
@@ -49,11 +49,11 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compare_freq")
 logger.setLevel(logging.INFO)
 
-POPS = POPS["v3"]["genomes"]
+GEN_ANC_GROUPS = GEN_ANC_GROUPS["v3"]["genomes"]
 POPS_MAP = {
-    "v2_exomes": {pop.lower() for pop in EXOME_POPS},
-    "v2_genomes": {pop.lower() for pop in GENOME_POPS},
-    "v3_genomes": {pop.lower() for pop in POPS},
+    "v2_exomes": {pop.lower() for pop in EXOME_GEN_ANC_GROUPS},
+    "v2_genomes": {pop.lower() for pop in GENOME_GEN_ANC_GROUPS},
+    "v3_genomes": {pop.lower() for pop in GEN_ANC_GROUPS},
 }
 POP_FORMAT = {
     "v2_exomes": "gnomad_{}",

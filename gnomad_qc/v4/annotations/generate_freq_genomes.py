@@ -16,7 +16,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
+from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX, SUBSETS
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
@@ -25,9 +25,9 @@ from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
+    grpmax_expr,
     merge_freq_arrays,
     missing_callstats_expr,
-    pop_max_expr,
     set_xx_y_metrics_to_na_expr,
     update_structured_annotations,
 )
@@ -461,7 +461,7 @@ def calculate_callstats_for_selected_samples(
     ht = annotate_freq(
         mt,
         sex_expr=mt.gnomad_sex_imputation.sex_karyotype,
-        pop_expr=(
+        gen_anc_expr=(
             mt.hgdp_tgp_meta.population.lower()
             if subsets
             else mt.gnomad_population_inference.pop
@@ -1083,9 +1083,9 @@ def finalize_v4_genomes_callstats(
 
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
     faf, faf_meta = faf_expr(
-        ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX["v3"]
+        ht.freq, freq_meta, ht.locus, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v3"]
     )
-    grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX["v3"])
+    grpmax = grpmax_expr(ht.freq, freq_meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v3"])
     grpmax = grpmax.annotate(
         gen_anc=grpmax.pop,
         faf95=faf[
