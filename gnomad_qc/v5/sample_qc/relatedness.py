@@ -354,8 +354,10 @@ def main(args):
             logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
                 output_step_resources={
-                    "sample_rankings_ht": sample_rankings(test=test),
-                    "related_samples_to_drop_ht": related_samples_to_drop(test=test),
+                    "sample_rankings_ht": sample_rankings(test=test).path,
+                    "related_samples_to_drop_ht": related_samples_to_drop(
+                        test=test
+                    ).path,
                 }
             )
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
