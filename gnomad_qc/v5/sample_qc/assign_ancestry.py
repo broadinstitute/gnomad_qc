@@ -1,4 +1,4 @@
-"""Script to assign global ancestry labels to samples using HGDP or TGP labels and spike ins from known v3 and v4 genetic ancestry labels."""
+"""Script to assign genetic ancestry group labels to samples using HGDP or TGP labels and spike ins from known v3 and v4 genetic ancestry labels."""
 
 import argparse
 import json
@@ -50,8 +50,8 @@ def run_pca(
     Run genetic ancestry PCA using `run_pca_with_relateds`.
 
     :param qc_mt: QC Matrix Table to run PCA on.
-    :param related_samples_to_drop: Table of related samples to drop from PCA run.
     :param meta_ht: Table of meta data containing 'releasable' field, used to drop samples that are not releasable unless `include_unreleasable_samples` is True.
+    :param related_samples_to_drop: Table of related samples to drop from PCA run.
     :param include_unreleasable_samples: Should unreleasable samples be included in the
         PCA.
     :param n_pcs: Number of PCs to compute.
@@ -233,7 +233,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--v4-spike",
-        help="List of v4 exomes gen anc groups to spike into the RF training gen anc groups.",
+        help="List of v4 exomes groups to spike into the RF training gen anc groups.",
         type=str,
         nargs="+",
         choices=["Arab", "Bedouin", "Persian", "Qatari"],
