@@ -31,7 +31,7 @@ from gnomad_qc.v5.resources.sample_qc import (  # related_samples_to_drop, #TODO
     get_gen_anc_ht,
     get_gen_anc_pr_ht,
     get_joint_qc,
-    per_gen_anc_min_rf_probs_json_path,
+    per_grp_min_rf_probs_json_path,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -293,6 +293,8 @@ def assign_gen_anc(
         min_prob=min_prob,
         missing_label=missing_label,
     )
+
+    gen_anc_ht = gen_anc_ht.repartition(100)
 
     gen_anc_ht = gen_anc_ht.annotate_globals(
         min_prob=min_prob,
