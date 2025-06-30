@@ -14,7 +14,7 @@ from gnomad.resources.grch38.reference_data import (
     purcell_5k_intervals,
     telomeres_and_centromeres,
 )
-from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
 from gnomad.sample_qc.filtering import (
     compute_qc_metrics_residuals,
     compute_stratified_metrics_filter,
@@ -661,7 +661,7 @@ def assign_pops(
         )
     )
 
-    pop_ht, pops_rf_model = assign_population_pcs(
+    pop_ht, pops_rf_model = assign_genetic_ancestry_pcs(
         pop_pca_scores_ht,
         pc_cols=pcs,
         known_col="training_pop",
@@ -713,7 +713,7 @@ def assign_pops(
             )
         )
 
-        pop_ht, pops_rf_model = assign_population_pcs(
+        pop_ht, pops_rf_model = assign_genetic_ancestry_pcs(
             pop_pca_scores_ht,
             pc_cols=pcs,
             known_col="training_pop",
