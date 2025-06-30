@@ -281,8 +281,13 @@ def main(args):
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
     hl.default_reference("GRCh38")
+
     joint_meta = project_meta.ht()
     joint_qc_mt = get_joint_qc(test=test).mt()
+
+    if test:
+        logger.info("Filtering MT to the first 2 partitions for testing...")
+        joint_qc_mt = joint_qc_mt._filter_partitions(range(2))
 
     try:
         if args.prepare_cuking_inputs:
@@ -302,10 +307,6 @@ def main(args):
                 "Converting joint dense QC MatrixTable to a Parquet format suitable "
                 "for cuKING..."
             )
-            if test:
-                logger.info("Filtering MT to the first 2 partitions for testing...")
-                joint_qc_mt = joint_qc_mt._filter_partitions(range(2))
-
             mt_to_cuking_inputs(
                 mt=joint_qc_mt,
                 parquet_uri=get_cuking_input_path(test=test),
