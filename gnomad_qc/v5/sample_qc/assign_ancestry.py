@@ -401,31 +401,31 @@ def compute_precision_recall(ht: hl.Table, num_pr_points: int = 100) -> hl.Table
     return ht
 
 
-def infer_per_pop_min_rf_probs(
+def infer_per_gen_anc_min_rf_probs(
     ht: hl.Table, min_recall: float = 0.99, min_precision: float = 0.99
 ) -> Dict[str, Dict[str, float]]:
     """
-    Infer per ancestry group minimum RF probabilities from precision and recall values.
+    Infer per genetic ancestry group minimum RF probabilities from precision and recall values.
 
-    Minimum recall (`min_recall`) is used to choose per ancestry group minimum RF
+    Minimum recall (`min_recall`) is used to choose per genetic ancestry group minimum RF
     probabilities. This `min_recall` cutoff is applied first, and if the chosen minimum
     RF probabilities cutoff results in a precision lower than `min_precision`, the
     minimum RF probabilities with the highest recall that meets `min_precision` is
     used.
 
     :param ht: Precision recall Table returned by `compute_precision_recall`.
-    :param min_recall: Minimum recall value to choose per ancestry group minimum RF
+    :param min_recall: Minimum recall value to choose per genetic ancestry group minimum RF
         probabilities. Default is 0.99.
-    :param min_precision: Minimum precision value to choose per ancestry group minimum
+    :param min_precision: Minimum precision value to choose per genetic ancestry group minimum
         RF probabilities. Default is 0.99.
-    :return: Dictionary of per pop min probability cutoffs `min_prob_cutoff`.
+    :return: Dictionary of per genetic ancestry group min probability cutoffs `min_prob_cutoff`.
     """
-    # Get list of all populations.
-    pops = hl.eval(ht.index_globals().pops)
-    min_prob_per_pop = {}
-    for pop in pops:
+    # Get list of all genetic ancestry groups.
+    gen_ancs = hl.eval(ht.index_globals().gen_ancs)
+    min_prob_per_gen_anc = {}
+    for gen_anc in gen_ancs:
         pr_vals = hl.tuple(
-            [ht.min_prob_cutoff, ht[pop].precision, ht[pop].recall]
+            [ht.min_prob_cutoff, ht[gen_anc].precision, ht[gen_anc].recall]
         ).collect()
         min_probs, precisions, recalls = map(list, zip(*pr_vals))
 
@@ -435,7 +435,7 @@ def infer_per_pop_min_rf_probs(
             )
         except StopIteration:
             raise ValueError(
-                f"Recall never reaches {min_recall} for {pop}. Recall values are: "
+                f"Recall never reaches {min_recall} for {gen_anc}. Recall values are: "
                 f"{recalls}"
             )
         precision_cutoff = precisions[idx]
@@ -444,42 +444,44 @@ def infer_per_pop_min_rf_probs(
                 idx = next(x for x, p in enumerate(precisions) if p >= min_precision)
             except StopIteration:
                 raise ValueError(
-                    f"Precision never reaches {min_precision} for {pop}. Precision "
+                    f"Precision never reaches {min_precision} for {gen_anc}. Precision "
                     f"values are: {precisions}"
                 )
-        min_prob_per_pop[pop] = {
+        min_prob_per_gen_anc[gen_anc] = {
             "precision_cutoff": precisions[idx],
             "recall_cutoff": recalls[idx],
             "min_prob_cutoff": min_probs[idx],
         }
 
-    return min_prob_per_pop
+    return min_prob_per_gen_anc
 
 
-def assign_pop_with_per_pop_probs(
-    pop_ht: hl.Table,
+def assign_gen_anc_with_per_gen_anc_probs(
+    gen_anc_ht: hl.Table,
     min_prob_cutoffs: Dict[str, float],
     missing_label: str = "remaining",
 ) -> hl.Table:
     """
-    Assign samples to populations based on population-specific minimum RF probabilities.
+    Assign samples to genetic ancestry groups based on genetic ancestry group-specific minimum RF probabilities.
 
-    :param pop_ht: Table containing results of population inference.
-    :param min_prob_cutoffs: Dictionary with population as key, and minimum RF
-        probability required to assign a sample to that population as value.
+    :param gen_anc_ht: Table containing results of genetic ancestry group inference.
+    :param min_prob_cutoffs: Dictionary with genetic ancestry group as key, and minimum RF
+        probability required to assign a sample to that genetic ancestry group as value.
     :param missing_label: Label for samples for which the assignment probability is
         smaller than required minimum probability.
-    :return: Table with 'pop' annotation based on supplied per pop min probabilities.
+    :return: Table with 'gen_anc' annotation based on supplied per genetic ancestry group min probabilities.
     """
     min_prob_cutoffs = hl.literal(min_prob_cutoffs)
-    pop_prob, _ = get_most_likely_pop_expr(pop_ht)
-    pop = pop_prob.pop
-    pop_ht = pop_ht.annotate(
-        pop=hl.if_else(pop_prob.prob >= min_prob_cutoffs.get(pop), pop, missing_label)
+    gen_anc_prob, _ = get_most_likely_gen_anc_expr(gen_anc_ht)
+    gen_anc = gen_anc_prob.gen_anc
+    gen_anc_ht = gen_anc_ht.annotate(
+        gen_anc=hl.if_else(
+            gen_anc_prob.prob >= min_prob_cutoffs.get(gen_anc), gen_anc, missing_label
+        )
     )
-    pop_ht = pop_ht.annotate_globals(min_prob_cutoffs=min_prob_cutoffs)
+    gen_anc_ht = gen_anc_ht.annotate_globals(min_prob_cutoffs=min_prob_cutoffs)
 
-    return pop_ht
+    return gen_anc_ht
 
 
 def main(args):
