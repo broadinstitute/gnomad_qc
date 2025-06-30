@@ -13,7 +13,7 @@ from gnomad.sample_qc.relatedness import (
 )
 from hail.utils.misc import new_temp_file
 
-# from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
@@ -265,7 +265,6 @@ def main(args):
     overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
     second_degree_min_kin = args.second_degree_min_kin
-    joint_meta = project_meta.ht()
 
     if args.print_cuking_command:
         print_cuking_command(
@@ -281,6 +280,7 @@ def main(args):
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
     hl.default_reference("GRCh38")
+    joint_meta = project_meta.ht()
 
     try:
         if args.prepare_cuking_inputs:
@@ -322,6 +322,7 @@ def main(args):
             ht.write(relatedness(test=test, raw=True).path, overwrite=overwrite)
 
         if args.finalize_relatedness_ht:
+            logger.info("Finalizing relatedness HT...")
             check_resource_existence(
                 output_step_resources={
                     "final_relatedness_ht": relatedness(test=test).path
@@ -349,6 +350,7 @@ def main(args):
             ).write(relatedness(test=test).path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
+            logger.info("Computing the sample rankings andrelated samples to drop...")
             check_resource_existence(
                 output_resources={
                     "sample_rankings_ht": sample_rankings(test=test),
