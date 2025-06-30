@@ -144,13 +144,13 @@ def prep_ht_for_rf(
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
     # found by Alicia Martin's group during pop-specific PCA analyses as well
     # as one duplicate sample)
-    hgdp_tgp_pop_outliers = hgdp_tgp_pop_outliers.ht()
-    hgdp_tgp_pop_outliers = add_project_prefix_to_sample_collisions(
-        t=hgdp_tgp_pop_outliers,
+    hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
+    hgdp_tgp_pop_outliers_ht = add_project_prefix_to_sample_collisions(
+        t=hgdp_tgp_pop_outliers_ht,
         sample_collisions=sample_id_collisions.ht(),
         project="gnomad",
     )
-    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.s.collect())
+    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers_ht.s.collect())
 
     joint_meta_ht = joint_meta_ht.annotate(
         hgdp_or_tgp=hl.or_else(
