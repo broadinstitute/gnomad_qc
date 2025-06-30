@@ -144,7 +144,13 @@ def prep_ht_for_rf(
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
     # found by Alicia Martin's group during pop-specific PCA analyses as well
     # as one duplicate sample)
-    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
+    hgdp_tgp_pop_outliers = hgdp_tgp_pop_outliers.ht()
+    hgdp_tgp_pop_outliers = add_project_prefix_to_sample_collisions(
+        t=hgdp_tgp_pop_outliers,
+        sample_collisions=sample_id_collisions.ht(),
+        project="gnomad",
+    )
+    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.s.collect())
 
     joint_meta_ht = joint_meta_ht.annotate(
         hgdp_or_tgp=hl.or_else(
@@ -171,8 +177,6 @@ def prep_ht_for_rf(
             ),
         )
 
-    # From here just use pop_ht to set training?
-
     if v4_gen_anc_spike:
         logger.info(
             "Spiking v4 genetic ancestry groups, %s, into the RF training data...",
@@ -187,7 +191,7 @@ def prep_ht_for_rf(
 
         training_gen_anc = hl.coalesce(
             training_gen_anc,
-            hl.literal(v4_gen_anc_spike).get(joint_meta_ht.v4_race_ethnicity),
+            hl.literal(v4_gen_anc_spike).get(joint_meta_ht.v4_meta.v4_race_ethnicity),
         )
 
     if v3_gen_anc_spike:
@@ -359,12 +363,29 @@ def main(args):
             gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
                 include_unreleasable_samples, use_tmp_path
             ).ht()
+
             # Rename sample collision in v4 joint qc meta.
             v4_joint_qc_meta = v4_joint_qc_meta.ht()
             v4_joint_qc_meta = add_project_prefix_to_sample_collisions(
                 t=v4_joint_qc_meta,
                 sample_collisions=sample_id_collisions.ht(),
                 project="gnomad",
+            )
+
+            # Combine v4 and v5 project meta tables.
+            meta_ht = project_meta.ht()
+            meta_ht = meta_ht.select(v5_meta=hl.struct(**meta_ht.row_value))
+            meta_ht = meta_ht.annotate(
+                v4_meta=v4_joint_qc_meta[meta_ht.s].select(
+                    "chr20_mean_dp",
+                    "releasable",
+                    "broad_external",
+                    "hard_filters",
+                    "hard_filtered",
+                    "data_type",
+                    "v4_race_ethnicity",
+                ),
+                **v4_joint_qc_meta[meta_ht.s].select("v2_meta", "v3_meta"),
             )
 
             gen_anc_pcs = args.gen_anc_pcs
@@ -375,11 +396,11 @@ def main(args):
             )
             logger.info("Using following PCs: %s", gen_anc_pcs)
             gen_anc_ht, gen_anc_rf_model = assign_gen_anc(
-                joint_meta_ht=v4_joint_qc_meta,
+                gen_anc_pca_scores_ht=gen_anc_pca_scores_ht,
+                joint_meta_ht=meta_ht,
                 min_prob=args.min_gen_anc_prob,
                 include_unreleasable_samples=include_unreleasable_samples,
                 pcs=gen_anc_pcs,
-                test=test,
                 overwrite=overwrite,
                 include_v2_known_in_training=include_v2_known_in_training,
                 v4_gen_anc_spike=args.v4_gen_anc_spike,
@@ -392,10 +413,10 @@ def main(args):
             )
 
             with hl.hadoop_open(
-                pop_rf_path(test=test),
+                gen_anc_rf_path(test=use_tmp_path),
                 "wb",
             ) as out:
-                pickle.dump(pops_rf_model, out)
+                pickle.dump(gen_anc_rf_model, out)
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
