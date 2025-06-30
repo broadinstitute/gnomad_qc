@@ -312,6 +312,61 @@ def assign_gen_anc(
 
     return gen_anc_ht, gen_anc_rf_model
 
+def compute_precision_recall(ht: hl.Table, num_pr_points: int = 100) -> hl.Table:
+    """
+    Create Table with false positives (FP), true positives (TP), false negatives (FN), precision, and recall.
+
+    Includes population specific calculations.
+
+    :param ht: Input population inference Table with random forest probabilities.
+    :param num_pr_points: Number of min prob cutoffs to compute PR metrics for.
+    :return: Table with FP, TP, FN, precision, and recall.
+    """
+    # Use only RF evaluation samples to compute metrics.
+    ht = ht.filter(ht.evaluation_sample)
+    most_likely_pop, prob_ann = get_most_likely_pop_expr(ht)
+    ht = ht.annotate(most_likely_pop=most_likely_pop)
+
+    # Add a list of min_prob_cutoffs from 0 to 1 in increments of 1/num_pr_points and
+    # explode so each sample has one row for each min_prob_cutoff.
+    ht = ht.annotate(
+        min_prob_cutoff=hl.literal(list(range(num_pr_points))) / float(num_pr_points)
+    )
+    ht = ht.explode(ht.min_prob_cutoff)
+
+    # For each 'pop', filter to any sample that has 'pop' as the known population or
+    # most likely population based on RF probabilities.
+    pops = [None] + [pop for pop, _ in prob_ann]
+
+    pr_agg = hl.struct()
+    for pop in pops:
+        # Group by min_prob_cutoffs and aggregate to get TP, FP, and FN per
+        # min_prob_cutoffs.
+        meet_cutoff = ht.most_likely_pop.prob >= ht.min_prob_cutoff
+        same_training_most_likely_pop = ht.training_pop == ht.most_likely_pop.pop
+        if pop:
+            is_most_likely_pop = ht.most_likely_pop.pop == pop
+            is_training_pop = ht.training_pop == pop
+            tp = hl.agg.count_where(meet_cutoff & is_most_likely_pop & is_training_pop)
+            fp = hl.agg.count_where(meet_cutoff & is_most_likely_pop & ~is_training_pop)
+            fn = hl.agg.count_where(is_training_pop & ~meet_cutoff)
+        else:
+            tp = hl.agg.count_where(meet_cutoff & same_training_most_likely_pop)
+            fp = hl.agg.count_where(meet_cutoff & ~same_training_most_likely_pop)
+            fn = hl.agg.count_where(~meet_cutoff)
+
+        precision = tp / (tp + fp)
+        recall = tp / (tp + fn)
+        agg = hl.struct(TP=tp, FP=fp, FN=fn, precision=precision, recall=recall)
+        if pop:
+            agg = hl.struct(**{pop: agg})
+        pr_agg = pr_agg.annotate(**agg)
+
+    ht = ht.group_by("min_prob_cutoff").aggregate(**pr_agg)
+    ht = ht.annotate_globals(pops=[pop for pop, _ in prob_ann])
+
+    return ht
+
 
 def main(args):
     """Assign genetic ancestry group labels to samples."""
