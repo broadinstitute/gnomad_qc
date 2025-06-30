@@ -401,7 +401,7 @@ def compute_precision_recall(ht: hl.Table, num_pr_points: int = 100) -> hl.Table
     return ht
 
 
-def infer_per_gen_anc_min_rf_probs(
+def infer_per_grp_min_rf_probs(
     ht: hl.Table, min_recall: float = 0.99, min_precision: float = 0.99
 ) -> Dict[str, Dict[str, float]]:
     """
@@ -597,10 +597,10 @@ def main(args):
             )
             ht.write(get_gen_anc_pr_ht(test=use_tmp_path).path, overwrite=overwrite)
 
-        if args.apply_per_gen_anc_min_rf_probs:
+        if args.apply_per_grp_min_rf_probs:
             gen_anc = get_gen_anc_ht(test=use_tmp_path)
-            if args.infer_per_gen_anc_min_rf_probs:
-                min_probs = infer_per_gen_anc_min_rf_probs(
+            if args.infer_per_grp_min_rf_probs:
+                min_probs = infer_per_grp_min_rf_probs(
                     get_gen_anc_pr_ht(test=use_tmp_path).ht(),
                     min_recall=args.min_recall,
                     min_precision=args.min_precision,
@@ -612,10 +612,10 @@ def main(args):
                     gen_anc: cutoff["min_prob_cutoff"]
                     for gen_anc, cutoff in min_probs.items()
                 }
-                with hl.hadoop_open(per_gen_anc_min_rf_probs_json_path(), "w") as d:
+                with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "w") as d:
                     d.write(json.dumps(min_probs))
 
-            with hl.hadoop_open(per_gen_anc_min_rf_probs_json_path(), "r") as d:
+            with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "r") as d:
                 min_probs = json.load(d)
             logger.info(
                 "Using the following min prob cutoff per ancestry group: %s", min_probs
