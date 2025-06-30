@@ -4,7 +4,11 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS, SUBSETS
+from gnomad.resources.grch38.gnomad import (
+    COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP,
+    GEN_ANC_GROUPS,
+    SUBSETS,
+)
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -304,7 +308,7 @@ def main(args):  # noqa: D103
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),
-            pops=POPS,
+            gen_anc_groups=GEN_ANC_GROUPS,
             downsamplings=hl.eval(global_freq_ht.downsamplings),
         )
     )
