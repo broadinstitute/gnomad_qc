@@ -226,9 +226,9 @@ def main(args):  # noqa: D103
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            pops = POPS
+            pops = GEN_ANC_GROUPS
             if n_subsets_use_subpops:
-                pops = POPS_STORED_AS_SUBPOPS
+                pops = COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP
 
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
