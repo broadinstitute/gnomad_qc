@@ -194,7 +194,7 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
 
 
 ######################################################################
-# Genetic ncestry inference resources
+# Genetic ancestry inference resources
 ######################################################################
 
 
