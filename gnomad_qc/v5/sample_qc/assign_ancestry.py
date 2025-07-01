@@ -236,6 +236,7 @@ def assign_gen_anc(
     include_v2_known_in_training: bool = False,
     v4_gen_anc_spike: Optional[List[str]] = None,
     v3_gen_anc_spike: Optional[List[str]] = None,
+    n_partitions: int = 100,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global genetic ancestry group labels based on the results from `run_pca`.
@@ -263,6 +264,7 @@ def assign_gen_anc(
         Must be in v4_gen_anc_spike dictionary. Defaults to None.
     :param v3_gen_anc_spike: Optional List of v3 genetic ancestry groups to spike into the RF.
         Must be in v3_gen_anc_spike dictionary. Defaults to None.
+    :param n_partitions: Number of partitions to repartition the genetic ancestry group inference table to. Default is 100.
     :return: Table of genetic ancestry group assignments and the RF model.
     """
     logger.info("Prepping HT for RF...")
@@ -292,6 +294,7 @@ def assign_gen_anc(
         output_col=gen_anc_field,
         min_prob=min_prob,
         missing_label=missing_label,
+        n_partitions=n_partitions,
     )
 
     # gen_anc_ht = gen_anc_ht.repartition(100)
@@ -579,6 +582,7 @@ def main(args):
                 include_v2_known_in_training=include_v2_known_in_training,
                 v4_gen_anc_spike=args.v4_spike,
                 v3_gen_anc_spike=args.v3_spike,
+                n_partitions=args.gen_anc_partitions,
             )
 
             logger.info("Writing genetic ancestry group ht...")
@@ -704,6 +708,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         nargs="+",
         choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"],
+    )
+    pparser.add_argument(
+        "--gen-anc-partitions",
+        help="Number of partitions to repartition the genetic ancestry group inference table to. Defaults to 100.",
+        default=100,
+        type=int,
     )
     parser.add_argument(
         "--compute-precision-recall",
