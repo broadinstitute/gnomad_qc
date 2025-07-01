@@ -356,7 +356,7 @@ def compute_precision_recall(ht: hl.Table, num_pr_points: int = 100) -> hl.Table
     """
     # Use only RF evaluation samples to compute metrics.
     ht = ht.filter(ht.evaluation_sample)
-    most_likely_pop, prob_ann = get_most_likely_pop_expr(ht)
+    most_likely_gen_anc, prob_ann = get_most_likely_gen_anc_expr(ht)
     ht = ht.annotate(most_likely_gen_anc=most_likely_gen_anc)
 
     # Add a list of min_prob_cutoffs from 0 to 1 in increments of 1/num_pr_points and
