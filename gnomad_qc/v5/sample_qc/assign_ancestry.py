@@ -710,7 +710,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         nargs="+",
         choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"],
     )
-    pparser.add_argument(
+    parser.add_argument(
         "--gen-anc-partitions",
         help="Number of partitions to repartition the genetic ancestry group inference table to. Defaults to 100.",
         default=100,
