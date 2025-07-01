@@ -23,7 +23,7 @@ from gnomad.utils.annotations import (
     merge_freq_arrays,
     merge_histograms,
     pop_max_expr,
-    set_female_y_metrics_to_na_expr,
+    set_xx_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
@@ -245,7 +245,7 @@ def add_all_sites_an_and_qual_hists(
             )
         )
         logger.info("Setting XX samples call stats to missing on chrY...")
-        all_sites_an_expr = set_female_y_metrics_to_na_expr(
+        all_sites_an_expr = set_xx_y_metrics_to_na_expr(
             ht,
             freq_expr=all_sites_an_expr,
             freq_meta_expr=freq_meta_expr,
@@ -361,7 +361,7 @@ def get_joint_freq_and_faf(
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     logger.info("Setting Y metrics to NA for XX groups...")
-    freq = set_female_y_metrics_to_na_expr(
+    freq = set_xx_y_metrics_to_na_expr(
         ht,
         freq_expr=ht.joint_freq,
         freq_meta_expr=ht.joint_freq_meta,

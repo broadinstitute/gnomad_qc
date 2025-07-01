@@ -31,7 +31,7 @@ from gnomad.utils.annotations import (
     merge_histograms,
     pop_max_expr,
     qual_hist_expr,
-    set_female_y_metrics_to_na_expr,
+    set_xx_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
@@ -742,7 +742,7 @@ def combine_freq_hts(
     )
     freq_ht = annotate_freq_index_dict(freq_ht)
     logger.info("Setting Y metrics to NA for XX groups...")
-    freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
+    freq_ht = freq_ht.annotate(freq=set_xx_y_metrics_to_na_expr(freq_ht))
     freq_ht = freq_ht.select(*row_annotations)
     freq_ht = freq_ht.select_globals(*global_annotations)
 

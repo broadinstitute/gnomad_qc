@@ -1,5 +1,5 @@
 # noqa: D100
-
+import logging
 from typing import Optional
 
 from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
@@ -22,6 +22,12 @@ from gnomad_qc.v3.resources.constants import (
 
 SUBSETS = SUBSETS["v3"]
 
+########################################################################################
+# Note: Some of the resources in this file have been moved to gs://gnomad-archive,
+# please check there if you are looking for a specific resource that is not found in
+# gs://gnomad-autoclass/annotations.
+########################################################################################
+
 
 def _annotations_root(version: str = CURRENT_VERSION) -> str:
     """
@@ -30,7 +36,13 @@ def _annotations_root(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: root path of the variant annotation files
     """
-    return f"gs://gnomad/annotations/hail-0.2/ht/genomes_v{version}"
+    logging.warning(
+        "Most objects in 'gs://gnomad/annotations' were moved to either "
+        "'gs://gnomad-archive' or 'gs://gnomad-autoclass'. This function now returns "
+        "'gs://gnomad-autoclass/annotations' paths, if no resource is found there, "
+        "please check 'gs://gnomad-archive/annotations'."
+    )
+    return f"gs://gnomad-autoclass/annotations/hail-0.2/ht/genomes_v{version}"
 
 
 def get_info(split: bool = True) -> VersionedTableResource:

@@ -124,7 +124,7 @@ def qual_hists_json_path(
 def release_ht_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_RELEASE,
-    public: bool = False,
+    public: bool = True,
     test: bool = False,
 ) -> str:
     """
@@ -133,8 +133,8 @@ def release_ht_path(
     :param data_type: Data type of release resource to return. Should be one of
         'exomes', 'genomes' or 'joint'. Default is 'exomes'.
     :param release_version: Release version. Default is CURRENT_RELEASE.
-    :param public: Whether release sites Table path returned is from public or private
-        bucket. Default is False.
+    :param public: Whether release sites Table path returned is from public instead of private
+        bucket. Default is True.
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for desired release Hail Table.
     """
@@ -150,7 +150,7 @@ def release_ht_path(
 
 
 def release_sites(
-    data_type: str = "exomes", public: bool = False, test: bool = False
+    data_type: str = "exomes", public: bool = True, test: bool = False
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
@@ -158,7 +158,7 @@ def release_sites(
     :param data_type: Data type of release resource to return. Should be one of
         'exomes', 'genomes', or 'joint'. Default is 'exomes'.
     :param public: Whether release sites Table path returned is from public or private
-        bucket. Default is False.
+        bucket. Default is True.
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Sites-only release Table.
     """
