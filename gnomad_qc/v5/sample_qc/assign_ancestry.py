@@ -612,7 +612,8 @@ def main(args):
                     min_precision=args.min_precision,
                 )
                 logger.info(
-                    "Per geneticancestry group min prob cutoff inference: %s", min_probs
+                    "Per genetic ancestry group min prob cutoff inference: %s",
+                    min_probs,
                 )
                 min_probs = {
                     gen_anc: cutoff["min_prob_cutoff"]
