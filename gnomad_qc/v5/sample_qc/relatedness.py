@@ -212,6 +212,8 @@ def finalize_relatedness_ht(
     )
 
     ht = ht.annotate(
+        is_aou_gnomad_duplicate=is_aou_gnomad_duplicate,
+        gnomad_data_type=gnomad_data_type,
         gnomad_exomes_aou_duplicate=is_aou_gnomad_duplicate
         & (gnomad_data_type == "exomes"),
         gnomad_genomes_aou_duplicate=is_aou_gnomad_duplicate
