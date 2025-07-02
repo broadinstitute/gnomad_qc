@@ -212,11 +212,11 @@ def finalize_relatedness_ht(
     )
 
     ht = ht.annotate(
-        gnomad_exomes_duplicate=is_aou_gnomad_duplicate
+        gnomad_exomes_aou_duplicate=is_aou_gnomad_duplicate
         & (gnomad_data_type == "exomes"),
-        gnomad_genomes_duplicate=is_aou_gnomad_duplicate
+        gnomad_genomes_aou_duplicate=is_aou_gnomad_duplicate
         & (gnomad_data_type == "genomes"),
-        released_gnomad_exomes_duplicate=is_aou_gnomad_duplicate
+        released_gnomad_exomes_aou_duplicate=is_aou_gnomad_duplicate
         & (gnomad_data_type == "exomes")
         & gnomad_release_status,
         released_gnomad_genomes_duplicate=is_aou_gnomad_duplicate
