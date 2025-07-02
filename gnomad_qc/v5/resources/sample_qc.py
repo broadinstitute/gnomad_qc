@@ -193,7 +193,6 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
     )
 
 
-
 def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
     """
     Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
@@ -229,7 +228,7 @@ def sample_rankings(test: bool = False) -> VersionedTableResource:
         },
     )
 
-  
+
 ######################################################################
 # Genetic ancestry inference resources
 ######################################################################
