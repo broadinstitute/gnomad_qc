@@ -142,7 +142,7 @@ def prep_ht_for_rf(
 
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
     # found by Alicia Martin's group during group-specific PCA analyses as well
-    # as one duplicate sample)
+    # as one duplicate sample).
     hgdp_tgp_outliers_ht = hgdp_tgp_pop_outliers.ht()
     hgdp_tgp_outliers_ht = add_project_prefix_to_sample_collisions(
         t=hgdp_tgp_outliers_ht,
@@ -203,7 +203,7 @@ def prep_ht_for_rf(
         if len(v3_spike_err) > 0:
             raise ValueError(f"Pops: {v3_spike_err}, are not in V3_SPIKE_PROJECTS")
 
-        # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins
+        # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins.
         training_gen_anc = hl.coalesce(
             training_gen_anc,
             hl.or_missing(
