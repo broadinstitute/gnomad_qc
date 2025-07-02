@@ -126,9 +126,9 @@ def prep_ht_for_rf(
     Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels.
 
     Can also specify list of genetic ancestry groups with known v3/v4 labels to include
-    (v3_gen_anc_spike/v4_gen_anc_spike) for training. Genetic ancestry groups supplied for v4 are
-    specified by race/ethnicity and converted to a genetic ancestry group using
-    V4_POP_SPIKE_DICT.
+    (v3_gen_anc_spike/v4_gen_anc_spike) for training. Known groups supplied for v3/v4 are
+    specified by project name or self-reported ancestry and mapped to a genetic ancestry group using
+    `V3_SPIKE_PROJECTS`/`V4_POP_SPIKE_DICT`.
 
     :param gen_anc_pca_scores_ht: Table of PCA scores to use for RF training.
     :param joint_meta_ht: Table of joint QC meta data.
@@ -142,7 +142,7 @@ def prep_ht_for_rf(
     """
 
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
-    # found by Alicia Martin's group during pop-specific PCA analyses as well
+    # found by Alicia Martin's group during group-specific PCA analyses as well
     # as one duplicate sample)
     hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     hgdp_tgp_pop_outliers_ht = add_project_prefix_to_sample_collisions(
@@ -232,7 +232,6 @@ def assign_gen_anc(
     include_unreleasable_samples: bool = False,
     pcs: List[int] = list(range(1, 21)),
     missing_label: str = "remaining",
-    overwrite: bool = False,
     include_v2_known_in_training: bool = False,
     v4_gen_anc_spike: Optional[List[str]] = None,
     v3_gen_anc_spike: Optional[List[str]] = None,
@@ -244,10 +243,9 @@ def assign_gen_anc(
     Training data is the known label for HGDP and 1KG samples and all v2 samples with
     known genetic ancestry unless specificied to restrict only to 1KG and HGDP samples. Can also
     specify a list of genetic ancestry groups with known v3/v4 labels to include
-    (v3_gen_anc_spike/v4_gen_anc_spike) for training. Genetic ancestry groups supplied for v4 are
-    specified by race/ethnicity and converted to a genetic ancestry group using
-    V4_POP_SPIKE_DICT. The method assigns a genetic ancestry group label to all samples in the
-    dataset.
+    (`v3_gen_anc_spike`/`v4_gen_anc_spike`) for training (see docstring of `prep_ht_for_rf`
+    for more details on these spike groups). The method assigns a genetic ancestry group
+    label to all samples in the dataset.
 
     :param gen_anc_pca_scores_ht: Table of PCA scores to use for RF training.
     :param joint_meta_ht: Table of joint QC meta data.
@@ -257,7 +255,6 @@ def assign_gen_anc(
     :param pcs: List of PCs to use in the RF.
     :param missing_label: Label for samples for which the assignment probability is
         smaller than `min_prob`.
-    :param overwrite: Whether to overwrite existing files.
     :param include_v2_known_in_training: Whether to train RF classifier using v2 known
         genetic ancestry labels. Default is False.
     :param v4_gen_anc_spike: Optional List of v4 genetic ancestry groups to spike into the RF.
@@ -286,7 +283,7 @@ def assign_gen_anc(
             hl.agg.counter(gen_anc_pca_scores_ht.training_gen_anc)
         ),
     )
-    # Run the pop RF.
+    # Run the gen anc RF.
     gen_anc_ht, gen_anc_rf_model = assign_population_pcs(
         gen_anc_pca_scores_ht,
         pc_cols=pcs,
@@ -297,7 +294,6 @@ def assign_gen_anc(
         n_partitions=n_partitions,
     )
 
-    # gen_anc_ht = gen_anc_ht.repartition(100)
 
     gen_anc_ht = gen_anc_ht.annotate_globals(
         min_prob=min_prob,
@@ -578,7 +574,6 @@ def main(args):
                 min_prob=args.min_gen_anc_prob,
                 include_unreleasable_samples=include_unreleasable_samples,
                 pcs=gen_anc_pcs,
-                overwrite=overwrite,
                 include_v2_known_in_training=include_v2_known_in_training,
                 v4_gen_anc_spike=args.v4_spike,
                 v3_gen_anc_spike=args.v3_spike,
