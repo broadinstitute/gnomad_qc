@@ -3,7 +3,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -229,7 +229,7 @@ def run_compute_related_samples_to_drop(
     meta_ht: hl.Table,
 ) -> Tuple[hl.Table, hl.Table]:
     """
-    Determine the minimal set of related samples to prune for ancestry PCA.
+    Determine the minimal set of related samples to prune for genetic ancestry PCA.
 
     Runs `compute_related_samples_to_drop` from gnomad_methods after computing the
     sample rankings using `compute_rank_ht`.

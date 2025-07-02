@@ -195,7 +195,7 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
 
 def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for samples to drop for ancestry PCA.
+    Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.
@@ -213,7 +213,7 @@ def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
 
 def sample_rankings(test: bool = False) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for sample rankings for ancestry PCA.
+    Get the VersionedTableResource for sample rankings for genetic ancestry PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.
