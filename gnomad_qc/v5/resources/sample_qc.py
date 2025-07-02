@@ -193,6 +193,42 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
     )
 
 
+def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.pca.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def sample_rankings(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for sample rankings for genetic ancestry PCA.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.pca.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Genetic ancestry inference resources
 ######################################################################
