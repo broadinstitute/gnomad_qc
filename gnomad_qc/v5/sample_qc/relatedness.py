@@ -144,10 +144,14 @@ def finalize_relatedness_ht(
     The following annotations are added to `ht`:
         - 'relationship': Relationship annotation for the pair. Returned by
           `get_slope_int_relationship_expr`.
-        - 'gnomad_v4_duplicate': Whether the sample is a duplicate of a sample found in
-          the gnomAD v4 genomes.
-        - 'gnomad_v4_release_duplicate': Whether the sample is a duplicate of a sample
-          found in the gnomAD v4 release genomes.
+        - 'gnomad_exomes_duplicate': Whether the sample pair is an AoU gnomAD exomes
+          duplicate.
+        - 'gnomad_genomes_duplicate': Whether the sample pair is an AoU gnomAD genomes
+          duplicate.
+        - 'released_gnomad_exomes_duplicate': Whether the sample pair contains a released
+          gnomAD exomes duplicate.
+        - 'released_gnomad_genomes_duplicate': Whether the sample pair contains a released
+          gnomAD genomes duplicate.
 
     :param ht: Input relatedness Table.
     :param meta_ht: Input metadata Table. Used to add v4 overlap annotations.
@@ -173,20 +177,49 @@ def finalize_relatedness_ht(
         relationship_inference_method="cuking",
         relationship_cutoffs=hl.struct(**relatedness_args),
     )
+
+    # Mark AoU samples as duplicates of gnomAD samples
     ht = ht.key_by(
-        i=ht.i.annotate(data_type=meta_ht[ht.i.s].data_type),
-        j=ht.j.annotate(data_type=meta_ht[ht.j.s].data_type),
+        i=ht.i.annotate(
+            data_type=meta_ht[ht.i.s].data_type,
+            project=meta_ht[ht.i.s].project,
+            release=meta_ht[ht.i.s].release,
+        ),
+        j=ht.j.annotate(
+            data_type=meta_ht[ht.j.s].data_type,
+            project=meta_ht[ht.j.s].project,
+            release=meta_ht[ht.j.s].release,
+        ),
     )
-    gnomad_v4_duplicate_expr = (ht.relationship == DUPLICATE_OR_TWINS) & (
-        hl.set({ht.i.data_type, ht.j.data_type}) == hl.set(["exomes", "genomes"])
+
+    is_aou_gnomad_duplicate = (ht.relationship == DUPLICATE_OR_TWINS) & (
+        hl.set({ht.i.project, ht.j.project}) == hl.set(["aou", "gnomad"])
     )
-    gnomad_v4_release_expr = hl.coalesce(
-        meta_ht[ht.i.s].release | meta_ht[ht.j.s].release,
-        False,
+
+    # Get the gnomAD sample's data type and release status (if one exists in the pair)
+    gnomad_data_type = hl.if_else(
+        ht.i.project == "gnomad",
+        ht.i.data_type,
+        hl.if_else(ht.j.project == "gnomad", ht.j.data_type, hl.missing(hl.tstr)),
     )
+
+    gnomad_release_status = hl.if_else(
+        ht.i.project == "gnomad",
+        ht.i.release,
+        hl.if_else(ht.j.project == "gnomad", ht.j.release, hl.missing(hl.tbool)),
+    )
+
     ht = ht.annotate(
-        gnomad_v4_duplicate=gnomad_v4_duplicate_expr,
-        gnomad_v4_release_duplicate=gnomad_v4_duplicate_expr & gnomad_v4_release_expr,
+        gnomad_exomes_duplicate=is_aou_gnomad_duplicate
+        & (gnomad_data_type == "exomes"),
+        gnomad_genomes_duplicate=is_aou_gnomad_duplicate
+        & (gnomad_data_type == "genomes"),
+        released_gnomad_exomes_duplicate=is_aou_gnomad_duplicate
+        & (gnomad_data_type == "exomes")
+        & gnomad_release_status,
+        released_gnomad_genomes_duplicate=is_aou_gnomad_duplicate
+        & (gnomad_data_type == "genomes")
+        & gnomad_release_status,
     )
 
     return ht
@@ -204,9 +237,9 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     ht = ht.select(
         "mean_depth",
-        is_genome=hl.is_defined(ht.data_type) & (ht.data_type == "genomes"),
-        in_aou=hl.is_defined(ht.project) & (ht.project == "aou"),
-        in_v4_release=hl.is_defined(ht.release) & ht.release,
+        is_genome=ht.data_type == "genomes",
+        in_aou=ht.project == "aou",
+        in_v4_release=ht.release,
     )
     rank_order = []
     ht_select = ["rank"]
