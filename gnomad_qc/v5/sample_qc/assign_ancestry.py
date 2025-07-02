@@ -172,7 +172,7 @@ def prep_ht_for_rf(
         training_gen_anc = hl.coalesce(
             training_gen_anc,
             hl.or_missing(
-                joint_meta_ht.v4_meta.data_type == "exomes",
+                joint_meta_ht.v5_meta.data_type == "exomes",
                 joint_meta_ht.v2_meta.v2_known_pop,
             ),
         )
