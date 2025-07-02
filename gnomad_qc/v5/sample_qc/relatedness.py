@@ -125,9 +125,8 @@ def finalize_relatedness_ht(
           Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship
           of 0.08838835 for a second degree relationship cutoff. This cutoff should be
           determined by evaluation of the kinship distribution.
-        - 'parent_child_max_ibd0_or_ibs0_over_ibs2': Maximum value of IBD0 (if
-          `relatedness_method` is 'pc_relate') or IBS0/IBS2 (if `relatedness_method` is
-          'cuking') for a parent-child pair.
+        - 'parent_child_max_ibd0_or_ibs0_over_ibs2': Maximum IBS0/IBS2 for a
+          parent-child pair.
         - 'second_degree_sibling_lower_cutoff_slope': Slope of the line to use as a
           lower cutoff for second degree relatives and siblings from parent-child pairs.
         - 'second_degree_sibling_lower_cutoff_intercept': Intercept of the line to use
@@ -161,7 +160,6 @@ def finalize_relatedness_ht(
     """
     y_expr = ht.ibs0 / ht.ibs2
     ibd1_expr = None
-    parent_child_max_ann = "parent_child_max_ibs0_over_ibs2"
 
     ht = ht.annotate(
         ibs0_2=ht.ibs0 / ht.ibs2,
@@ -172,7 +170,11 @@ def finalize_relatedness_ht(
             ibd1_expr=ibd1_expr,
         ),
     )
-    relatedness_args[parent_child_max_ann] = relatedness_args.pop("parent_child_max_y")
+    # The function get_slope_int_relationship_expr expects parent_child_max_y for
+    # flexibility but revert back to parent_child_max_ibs0_over_ibs2 for global clarity
+    relatedness_args["parent_child_max_ibs0_over_ibs2"] = relatedness_args.pop(
+        "parent_child_max_y"
+    )
     ht = ht.annotate_globals(
         relationship_inference_method="cuking",
         relationship_cutoffs=hl.struct(**relatedness_args),
