@@ -18,7 +18,6 @@ from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
-    get_checkpoint_path,
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
@@ -144,13 +143,13 @@ def prep_ht_for_rf(
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
     # found by Alicia Martin's group during group-specific PCA analyses as well
     # as one duplicate sample)
-    hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
-    hgdp_tgp_pop_outliers_ht = add_project_prefix_to_sample_collisions(
-        t=hgdp_tgp_pop_outliers_ht,
+    hgdp_tgp_outliers_ht = hgdp_tgp_pop_outliers.ht()
+    hgdp_tgp_outliers_ht = add_project_prefix_to_sample_collisions(
+        t=hgdp_tgp_outliers_ht,
         sample_collisions=sample_id_collisions.ht(),
         project="gnomad",
     )
-    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers_ht.s.collect())
+    hgdp_tgp_outliers = hl.literal(hgdp_tgp_outliers_ht.s.collect())
 
     joint_meta_ht = joint_meta_ht.annotate(
         hgdp_or_tgp=hl.or_else(
@@ -240,8 +239,8 @@ def assign_gen_anc(
     """
     Use a random forest model to assign global genetic ancestry group labels based on the results from `run_pca`.
 
-    Training data is the known label for HGDP and 1KG samples and all v2 samples with
-    known genetic ancestry unless specificied to restrict only to 1KG and HGDP samples. Can also
+    Training data is the known label for HGDP and 1KG samples. All v2 samples with
+    known genetic ancestry can be included if specificied. Can also
     specify a list of genetic ancestry groups with known v3/v4 labels to include
     (`v3_gen_anc_spike`/`v4_gen_anc_spike`) for training (see docstring of `prep_ht_for_rf`
     for more details on these spike groups). The method assigns a genetic ancestry group
@@ -293,7 +292,6 @@ def assign_gen_anc(
         missing_label=missing_label,
         n_partitions=n_partitions,
     )
-
 
     gen_anc_ht = gen_anc_ht.annotate_globals(
         min_prob=min_prob,
@@ -534,7 +532,8 @@ def main(args):
         if args.assign_gen_anc:
 
             gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
-                include_unreleasable_samples, use_tmp_path
+                include_unreleasable_samples=include_unreleasable_samples,
+                test=use_tmp_path,
             ).ht()
 
             # Rename sample collision in v4 joint qc meta.
@@ -550,12 +549,6 @@ def main(args):
             meta_ht = meta_ht.select(v5_meta=hl.struct(**meta_ht.row_value))
             meta_ht = meta_ht.annotate(
                 v4_meta=v4_joint_qc_meta_ht[meta_ht.s].select(
-                    "chr20_mean_dp",
-                    "releasable",
-                    "broad_external",
-                    "hard_filters",
-                    "hard_filtered",
-                    "data_type",
                     "v4_race_ethnicity",
                 ),
                 **v4_joint_qc_meta_ht[meta_ht.s].select("v2_meta", "v3_meta"),
