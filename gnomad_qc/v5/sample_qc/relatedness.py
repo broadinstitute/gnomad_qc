@@ -170,8 +170,8 @@ def finalize_relatedness_ht(
             ibd1_expr=ibd1_expr,
         ),
     )
-    # The function get_slope_int_relationship_expr expects parent_child_max_y for
-    # flexibility but revert back to parent_child_max_ibs0_over_ibs2 for global clarity
+    # The function `get_slope_int_relationship_expr` expects parent_child_max_y for
+    # flexibility but revert back to parent_child_max_ibs0_over_ibs2 for global clarity.
     relatedness_args["parent_child_max_ibs0_over_ibs2"] = relatedness_args.pop(
         "parent_child_max_y"
     )
