@@ -532,7 +532,8 @@ def main(args):
             gen_anc_eigenvalues, gen_anc_scores_ht, gen_anc_loadings_ht = run_pca(
                 qc_mt=qc_mt,
                 meta_ht=project_meta.ht(),
-                related_samples_to_drop=related_samples_to_drop().ht(),  # TODO: add in 'release' arg if it gets added to resource.
+                related_samples_to_drop=related_samples_to_drop().ht(),
+                # TODO: add in 'release' arg if it gets added to resource.
                 include_unreleasable_samples=include_unreleasable_samples,
                 n_pcs=args.n_pcs,
             )
