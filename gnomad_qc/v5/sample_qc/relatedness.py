@@ -180,7 +180,7 @@ def finalize_relatedness_ht(
         relationship_cutoffs=hl.struct(**relatedness_args),
     )
 
-    # Mark AoU samples as duplicates of gnomAD samples
+    # Mark AoU samples as duplicates of gnomAD samples.
     ht = ht.key_by(
         i=ht.i.annotate(
             data_type=meta_ht[ht.i.s].data_type,
@@ -198,7 +198,7 @@ def finalize_relatedness_ht(
         hl.set({ht.i.project, ht.j.project}) == hl.set(["aou", "gnomad"])
     )
 
-    # Get the gnomAD sample's data type and release status (if one exists in the pair)
+    # Get the gnomAD sample's data type and release status (if one exists in the pair).
     gnomad_data_type = hl.if_else(
         ht.i.project == "gnomad",
         ht.i.data_type,
@@ -404,7 +404,7 @@ def main(args):
             )
             rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
             drop_ht.write(related_samples_to_drop(test=test).path, overwrite=overwrite)
-            # Export the related samples to drop Table to a TSV file for SV team
+            # Export the related samples to drop Table to a TSV file for SV team.
             drop_ht.export(related_samples_to_drop(test=test).path[:-3] + ".tsv")
 
     finally:
