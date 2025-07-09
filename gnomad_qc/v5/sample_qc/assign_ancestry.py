@@ -10,9 +10,7 @@ import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.v4.resources.sample_qc import (
-    related_samples_to_drop,  # TODO: remove when switch to v5.
-)
+
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
@@ -22,7 +20,8 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
-from gnomad_qc.v5.resources.sample_qc import (  # related_samples_to_drop, #TODO: switch from v4 related_samples_to_drop to v5 related_samples_to_drop once ready.
+from gnomad_qc.v5.resources.sample_qc import (
+    related_samples_to_drop,
     gen_anc_rf_path,
     genetic_ancestry_pca_eigenvalues,
     genetic_ancestry_pca_loadings,
