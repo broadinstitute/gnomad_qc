@@ -117,6 +117,7 @@ def prep_ht_for_rf(
     include_v2_known_in_training: bool = False,
     v4_gen_anc_spike: Optional[List[str]] = None,
     v3_gen_anc_spike: Optional[List[str]] = None,
+    include_v3_oceania: bool = False,
 ) -> hl.Table:
     """
     Prepare the PCA scores hail Table for the random forest genetic ancestry group assignment runs.
@@ -136,6 +137,7 @@ def prep_ht_for_rf(
         Must be in V4_POP_SPIKE_DICT dictionary. Default is None.
     :param v3_gen_anc_spike: Optional List of genetic ancestry groups to spike into training.
         Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
+    :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
     :return: Table with input for the random forest.
     """
 
@@ -157,15 +159,28 @@ def prep_ht_for_rf(
             False,
         )
     )
-    # Note: Excluding v3_project_pop="oth" samples from training. These are samples from
-    #  Oceania and there are only a few known Oceania samples, and in past inference
-    #  analyses no new samples are inferred as belonging to this group.
-    training_gen_anc = hl.or_missing(
-        joint_meta_ht.hgdp_or_tgp
-        & (joint_meta_ht.v3_meta.v3_project_pop != "oth")
-        & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
-        joint_meta_ht.v3_meta.v3_project_pop,
-    )
+
+    if not include_v3_oceania:
+        logger.info("Excluding v3 Oceania samples from training...")
+        # Note: Excluding v3_project_pop="oth" samples from training. These are samples from
+        #  Oceania and there are only a few known Oceania samples, and in past inference
+        #  analyses no new samples are inferred as belonging to this group.
+        training_gen_anc = hl.or_missing(
+            joint_meta_ht.hgdp_or_tgp
+            & (joint_meta_ht.v3_meta.v3_project_pop != "oth")
+            & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
+            joint_meta_ht.v3_meta.v3_project_pop,
+        )
+    else:
+        logger.info("Including v3 Oceania samples in training...")
+        training_gen_anc = hl.or_missing(
+            joint_meta_ht.hgdp_or_tgp & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
+            hl.if_else(
+                joint_meta_ht.v3_meta.v3_project_pop != "oth",
+                joint_meta_ht.v3_meta.v3_project_pop,
+                "oce",
+            ),
+        )
 
     if include_v2_known_in_training:
         training_gen_anc = hl.coalesce(
@@ -234,6 +249,7 @@ def assign_gen_anc(
     v4_gen_anc_spike: Optional[List[str]] = None,
     v3_gen_anc_spike: Optional[List[str]] = None,
     n_partitions: int = 100,
+    include_v3_oceania: bool = False,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global genetic ancestry group labels based on the results from `run_pca`.
@@ -260,6 +276,7 @@ def assign_gen_anc(
     :param v3_gen_anc_spike: Optional List of v3 genetic ancestry groups to spike into the RF.
         Must be in v3_gen_anc_spike dictionary. Defaults to None.
     :param n_partitions: Number of partitions to repartition the genetic ancestry group inference table to. Default is 100.
+    :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
     :return: Table of genetic ancestry group assignments and the RF model.
     """
     logger.info("Prepping HT for RF...")
@@ -269,6 +286,7 @@ def assign_gen_anc(
         include_v2_known_in_training,
         v4_gen_anc_spike,
         v3_gen_anc_spike,
+        include_v3_oceania,
     )
     gen_anc_field = "gen_anc"
     logger.info(
@@ -570,6 +588,7 @@ def main(args):
                 v4_gen_anc_spike=args.v4_spike,
                 v3_gen_anc_spike=args.v3_spike,
                 n_partitions=args.gen_anc_partitions,
+                include_v3_oceania=args.include_v3_oceania,
             )
 
             logger.info("Writing genetic ancestry group ht...")
@@ -681,6 +700,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Whether to train RF classifier using v2 known genetic ancestry labels. Default is"
             " False."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--include-v3-oceania",
+        help="Whether to include v3 Oceania samples in training. Default is False.",
         action="store_true",
     )
     parser.add_argument(
