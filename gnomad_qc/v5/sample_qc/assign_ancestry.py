@@ -139,7 +139,6 @@ def prep_ht_for_rf(
     :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
     :return: Table with input for the random forest.
     """
-
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
     # found by Alicia Martin's group during group-specific PCA analyses as well
     # as one duplicate sample).
