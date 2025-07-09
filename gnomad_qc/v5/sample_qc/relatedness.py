@@ -404,6 +404,8 @@ def main(args):
             )
             rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
             drop_ht.write(related_samples_to_drop(test=test).path, overwrite=overwrite)
+            # Export the related samples to drop Table to a TSV file for SV team
+            drop_ht.export(related_samples_to_drop(test=test).path[:-3] + ".tsv")
 
     finally:
         logger.info("Copying hail log to logging bucket...")
