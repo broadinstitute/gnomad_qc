@@ -158,7 +158,17 @@ def prep_ht_for_rf(
         )
     )
 
-    if not include_v3_oceania:
+    if include_v3_oceania:
+        logger.info("Including v3 Oceania samples in training...")
+        training_gen_anc = hl.or_missing(
+            joint_meta_ht.hgdp_or_tgp & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
+            hl.if_else(
+                joint_meta_ht.v3_meta.v3_project_pop != "oth",
+                joint_meta_ht.v3_meta.v3_project_pop,
+                "oce",
+            ),
+        )
+    else:
         logger.info("Excluding v3 Oceania samples from training...")
         # Note: Excluding v3_project_pop="oth" samples from training. These are samples from
         #  Oceania and there are only a few known Oceania samples, and in past inference
@@ -168,16 +178,6 @@ def prep_ht_for_rf(
             & (joint_meta_ht.v3_meta.v3_project_pop != "oth")
             & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
             joint_meta_ht.v3_meta.v3_project_pop,
-        )
-    else:
-        logger.info("Including v3 Oceania samples in training...")
-        training_gen_anc = hl.or_missing(
-            joint_meta_ht.hgdp_or_tgp & ~hgdp_tgp_outliers.contains(joint_meta_ht.s),
-            hl.if_else(
-                joint_meta_ht.v3_meta.v3_project_pop != "oth",
-                joint_meta_ht.v3_meta.v3_project_pop,
-                "oce",
-            ),
         )
 
     if include_v2_known_in_training:
