@@ -161,7 +161,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "file_format": "tsv",
                     "field_mappings": {
                         "s": "research_id",
-                        "gen_anc": "ancestry_pred",
+                        "gen_anc": "ancestry_pred_other",
                     },
                 },
                 {
