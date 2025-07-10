@@ -391,7 +391,7 @@ def get_gen_anc_pr_ht(
     )
 
 
-def per_gen_anc_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
+def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     """
     Get path to JSON file containing per genetic ancestry group minimum RF probabilities.
 
