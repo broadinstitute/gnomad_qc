@@ -162,7 +162,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     "field_mappings": {
                         "s": "research_id",
                         # AoU table has two columns with genetic ancestry group assignments,
-                        # and this column includes the "remaining" label in the assignments.
+                        # and this column includes the "oth" (remaining) label in the assignments.
                         # https://support.researchallofus.org/hc/en-us/articles/29475228181908-How-the-All-of-Us-Genomic-data-are-organized#h_01GY7QYC017WWMXFB0YTT233G1
                         "gen_anc": "ancestry_pred_other",
                     },
