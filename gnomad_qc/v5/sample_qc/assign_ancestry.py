@@ -562,7 +562,7 @@ def main(args):
         if args.assign_gen_anc:
             check_resource_existence(
                 output_step_resources={
-                    "get_gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
+                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
                 }
             )
 
@@ -621,6 +621,12 @@ def main(args):
                 pickle.dump(gen_anc_rf_model, out)
 
         if args.compute_precision_recall:
+            check_resource_existence(
+                output_step_resources={
+                    "gen_anc_pr_ht": get_gen_anc_pr_ht(test=use_tmp_path).path
+                }
+            )
+
             ht = compute_precision_recall(
                 get_gen_anc_ht(test=use_tmp_path).ht(),
                 num_pr_points=args.number_pr_points,
