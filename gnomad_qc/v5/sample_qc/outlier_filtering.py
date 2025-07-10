@@ -756,9 +756,7 @@ def main(args):
                 raise ValueError(err_msg)
 
         sample_qc_ht = get_sample_qc_ht(
-            # TODO: Revert this to use commented line after testing is complete
-            # sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
-            sample_qc_ht=get_sample_qc("under_three_alt_alleles").ht(),
+            sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
             test=test,
             seed=args.seed,
         )
@@ -778,8 +776,6 @@ def main(args):
 
         gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
         gen_anc_ht = get_gen_anc_ht().ht()
-        # TODO: Remove the next line (added for testing)
-        gen_anc_ht = gen_anc_ht.transmute(gen_anc=gen_anc_ht.pop)
 
         if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
             rerun_filtering = False
