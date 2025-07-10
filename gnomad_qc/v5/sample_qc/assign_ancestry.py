@@ -10,6 +10,7 @@ import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from hail.utils.misc import new_temp_file
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
@@ -520,6 +521,19 @@ def main(args):
         include_v2_known_in_training = args.include_v2_known_in_training
 
         if args.run_pca:
+            check_resource_existence(
+                output_step_resources={
+                    "genetic_ancestry_pca_eigenvalues": genetic_ancestry_pca_eigenvalues(
+                        include_unreleasable_samples, use_tmp_path
+                    ).path,
+                    "genetic_ancestry_pca_scores": genetic_ancestry_pca_scores(
+                        include_unreleasable_samples, use_tmp_path
+                    ).path,
+                    "genetic_ancestry_pca_loadings": genetic_ancestry_pca_loadings(
+                        include_unreleasable_samples, use_tmp_path
+                    ).path,
+                }
+            )
             qc_mt = get_joint_qc(test=test).mt()
 
             if test_on_chr20:
@@ -546,6 +560,11 @@ def main(args):
                 use_tmp_path,
             )
         if args.assign_gen_anc:
+            check_resource_existence(
+                output_step_resources={
+                    "get_gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
+                }
+            )
 
             gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
                 include_unreleasable_samples=include_unreleasable_samples,
@@ -609,6 +628,12 @@ def main(args):
             ht.write(get_gen_anc_pr_ht(test=use_tmp_path).path, overwrite=overwrite)
 
         if args.apply_per_grp_min_rf_probs:
+            check_resource_existence(
+                output_step_resources={
+                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
+                }
+            )
+
             gen_anc = get_gen_anc_ht(test=use_tmp_path)
             if args.infer_per_grp_min_rf_probs:
                 min_probs = infer_per_grp_min_rf_probs(
