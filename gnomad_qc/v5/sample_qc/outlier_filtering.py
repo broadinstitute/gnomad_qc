@@ -939,7 +939,7 @@ def main(args):
             ht.write(final_ht_path, overwrite=overwrite)
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("generate_qc_mt", environment="rwb"))
+        hl.copy_log(get_logging_path("outlier_detection", environment="rwb"))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
