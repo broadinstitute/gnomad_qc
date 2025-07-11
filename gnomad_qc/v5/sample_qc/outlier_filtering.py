@@ -765,14 +765,14 @@ def main(args):
 
             # Rename global fields to avoid collisions and drop fields unique to v4.
             v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
-            v5_sample_qc_ht = v5_sample_qc_ht.transmute(
+            v5_sample_qc_ht = v5_sample_qc_ht.transmute_globals(
                 v5_gq_bins=v5_sample_qc_ht.gq_bins,
             )
             # v4 sample QC HT test version no longer exists.
             v4_sample_qc_ht = v4_get_sample_qc(
                 "under_three_alt_alleles", test=False
             ).ht()
-            v4_sample_qc_ht = v4_sample_qc_ht.transmute(
+            v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
                 v4_gq_bins=v4_sample_qc_ht.gq_bins,
             )
             v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
