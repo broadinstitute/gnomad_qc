@@ -765,6 +765,7 @@ def main(args):
         # included, otherwise filter to only releasable samples.
         meta_ht = project_meta.ht()
         if exclude_releasable_samples_all_steps:
+            # The releasable field for AoU samples is missing.
             sample_qc_ht = sample_qc_ht.filter(
                 (meta_ht[sample_qc_ht.key].releasable)
                 | (hl.is_missing(meta_ht[sample_qc_ht.key].releasable))
@@ -772,6 +773,13 @@ def main(args):
         elif not unreleasable_in_cutoffs or not unreleasable_in_regression:
             sample_qc_ht = sample_qc_ht.annotate(
                 releasable=meta_ht[sample_qc_ht.key].releasable
+            )
+            sample_qc_ht = sample_qc_ht.transmute(
+                releasable=hl.if_else(
+                    hl.is_missing(sample_qc_ht.releasable),
+                    True,
+                    sample_qc_ht.releasable,
+                )
             )
 
         gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
