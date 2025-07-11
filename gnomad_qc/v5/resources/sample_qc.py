@@ -383,7 +383,7 @@ def get_joint_sample_qc(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set='joint')}/outlier_detection/gnomad.v{version}.joint.sample_qc.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint', data_set='aou')}/outlier_detection/gnomad.v{version}.joint.sample_qc.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
