@@ -15,6 +15,7 @@ from gnomad.sample_qc.filtering import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.sample_qc import get_sample_qc as v4_get_sample_qc
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
@@ -22,6 +23,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     genetic_ancestry_pca_scores,
     get_gen_anc_ht,
+    get_joint_sample_qc,
     get_sample_qc,
     hard_filtered_samples,
     nearest_neighbors,
@@ -755,8 +757,29 @@ def main(args):
             if err_msg:
                 raise ValueError(err_msg)
 
+        if args.join_sample_qc_hts:
+            joint_sample_qc_ht_path = get_joint_sample_qc(test=test).path
+            check_resource_existence(
+                output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path}
+            )
+
+            # Rename global fields to avoid collisions and drop fields unique to v4.
+            v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+            v5_sample_qc_ht = v5_sample_qc_ht.transmute(
+                v5_gq_bins=v5_sample_qc_ht.gq_bins,
+            )
+            v4_sample_qc_ht = v4_get_sample_qc(
+                "under_three_alt_alleles", test=test
+            ).ht()
+            v4_sample_qc_ht = v4_sample_qc_ht.transmute(
+                v4_gq_bins=v4_sample_qc_ht.gq_bins,
+            )
+            v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
+            joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht)
+            joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
+
         sample_qc_ht = get_sample_qc_ht(
-            sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+            sample_qc_ht=get_joint_sample_qc(test=test).ht(),
             test=test,
             seed=args.seed,
         )
@@ -975,6 +998,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "singletons/n_singleton residuals) where the median is computed on only "
             "samples within the same strata or on only the 50 nearest neighbors."
         ),
+        action="store_true",
+    )
+
+    joint_qc_args = parser.add_argument_group(
+        "Join gnomAD and AoU sample QC Tables.",
+    )
+    joint_qc_args.add_argument(
+        "--join-sample-qc-hts",
+        help="Join gnomAD and AoU sample QC Tables.",
         action="store_true",
     )
 
