@@ -16,9 +16,12 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import get_sample_qc as v4_get_sample_qc
-from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta
+from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     genetic_ancestry_pca_scores,
@@ -763,12 +766,20 @@ def main(args):
                 output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path}
             )
 
-            # Rename global fields to avoid collisions and drop fields unique to v4.
+            # Rename sample and global fields to avoid collisions and drop fields
+            # unique to v4.
+            sample_collisions = sample_id_collisions.ht()
             v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
             v5_sample_qc_ht = v5_sample_qc_ht.transmute_globals(
                 v5_gq_bins=v5_sample_qc_ht.gq_bins,
             ).select_globals("v5_gq_bins")
-            # v4 sample QC HT test version no longer exists.
+            v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
+                t=v5_sample_qc_ht,
+                sample_collisions=sample_collisions,
+                project="aou",
+            )
+
+            # NOTE: v4 sample QC HT test version no longer exists.
             v4_sample_qc_ht = v4_get_sample_qc(
                 "under_three_alt_alleles", test=False
             ).ht()
@@ -776,6 +787,12 @@ def main(args):
                 v4_gq_bins=v4_sample_qc_ht.gq_bins,
             )
             v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
+            v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
+                t=v4_sample_qc_ht,
+                sample_collisions=sample_collisions,
+                project="gnomad",
+            )
+
             joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
             joint_sample_qc_ht = joint_sample_qc_ht.annotate_globals(
                 v4_gq_bins=v4_sample_qc_ht.index_globals().v4_gq_bins
