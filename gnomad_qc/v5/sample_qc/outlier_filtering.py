@@ -776,7 +776,7 @@ def main(args):
                 v4_gq_bins=v4_sample_qc_ht.gq_bins,
             )
             v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
-            joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht)
+            joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
             joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
 
         sample_qc_ht = get_sample_qc_ht(
