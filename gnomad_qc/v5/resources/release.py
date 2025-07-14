@@ -214,7 +214,7 @@ def release_coverage_path(
     release_version: str = CURRENT_RELEASE,
     public: bool = False,
     test: bool = False,
-    stratify: bool = True,
+    include_meta: bool = True,
     coverage_type: str = "coverage",
 ) -> str:
     """
@@ -225,13 +225,15 @@ def release_coverage_path(
     :param public: Determines whether release coverage Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param stratify: Whether to stratify results by platform and subset. Default is True.
+    :param meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
     :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: File path for desired coverage Hail Table.
     """
     if public:
         if test:
             raise ValueError("Cannot use test=True with public=True!")
+        if include_meta:
+            raise ValueError("Cannot use include_meta=True with public=True!")
         try:
             if coverage_type == "coverage":
                 cov = coverage(data_type)
@@ -250,11 +252,11 @@ def release_coverage_path(
                 data_type,
                 release_version,
             )
-            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}.ht"
         else:
             return path
     else:
-        return f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
+        return f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.meta' if include_meta else ''}.ht"
 
 
 def release_coverage_tsv_path(
