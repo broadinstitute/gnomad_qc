@@ -13,7 +13,9 @@ from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.release import FREQUENCY_README
 from gnomad_qc.v5.resources.constants import (
+    ALL_SITES_AN_RELEASES,
     COVERAGE_RELEASES,
+    CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     RELEASES,
@@ -216,7 +218,7 @@ def release_coverage_path(
     coverage_type: str = "coverage",
 ) -> str:
     """
-    Fetch filepath for all sites coverage release Table.
+    Fetch filepath for all sites coverage or allele number release Table.
 
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
     :param release_version: Release version.
@@ -271,6 +273,28 @@ def release_coverage_tsv_path(
     return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
 
 
+def release_all_sites_an_tsv_path(
+    data_type: str = "genomes",
+    release_version: str = None,
+    test: bool = False,
+) -> str:
+    """
+    Fetch path to all sites AN TSV file.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
+    :param release_version: Release version. Default is
+        CURRENT_ALL_SITES_AN_RELEASE[data_type].
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites AN TSV path.
+    """
+    release_version = (
+        release_version
+        if release_version is not None
+        else CURRENT_ALL_SITES_AN_RELEASE[data_type]
+    )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
+
+
 def release_coverage(
     data_type: str = "genomes",
     public: bool = False,
@@ -300,6 +324,38 @@ def release_coverage(
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
+        },
+    )
+
+
+def release_all_sites_an(
+    data_type: str = "genomes",
+    public: bool = False,
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for all sites allele number release Table.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
+    :param public: Determines whether release allele number Table is read from public (True) or
+        private (False) bucket. Default is False.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites allele number release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_ALL_SITES_AN_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=release_coverage_path(
+                    data_type=data_type,
+                    release_version=release,
+                    public=public,
+                    test=test,
+                    stratify=True,
+                    coverage_type="allele_number",
+                )
+            )
+            for release in ALL_SITES_AN_RELEASES[data_type]
         },
     )
 
