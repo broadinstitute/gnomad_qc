@@ -22,3 +22,6 @@ AOU_GENOMIC_METRICS_PATH = f"gs://{AOU_WGS_AUX_BUCKET}/qc/genomic_metrics.tsv"
 # Release constants.
 RELEASES = ["5.0"]
 CURRENT_RELEASE = RELEASES[-1]
+
+COVERAGE_RELEASES = {"exomes": ["4.0"], "genomes": ["5.0"]}
+CURRENT_COVERAGE_RELEASE = {"exomes": "4.0", "genomes": "5.0"}
