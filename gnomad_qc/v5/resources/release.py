@@ -225,7 +225,7 @@ def release_coverage_path(
     :param public: Determines whether release coverage Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
+    :param include_meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
     :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: File path for desired coverage Hail Table.
     """
@@ -301,7 +301,7 @@ def release_coverage(
     data_type: str = "genomes",
     public: bool = False,
     test: bool = False,
-    stratify: bool = True,
+    include_meta: bool = True,
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -310,6 +310,7 @@ def release_coverage(
     :param public: Determines whether release coverage Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param include_meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
     :param stratify: Whether to stratify results by platform and subset. Default is True.
     :return: Coverage release Table.
     """
@@ -322,7 +323,7 @@ def release_coverage(
                     release_version=release,
                     public=public,
                     test=test,
-                    stratify=stratify,
+                    include_meta=include_meta,
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
