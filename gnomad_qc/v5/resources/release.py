@@ -343,6 +343,7 @@ def release_all_sites_an(
     :param public: Determines whether release allele number Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param include_meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
     :return: All sites allele number release Table.
     """
     return VersionedTableResource(
@@ -354,7 +355,7 @@ def release_all_sites_an(
                     release_version=release,
                     public=public,
                     test=test,
-                    stratify=True,
+                    include_meta=include_meta,
                     coverage_type="allele_number",
                 )
             )
@@ -367,6 +368,7 @@ def included_datasets_json_path(
     data_type: str = "genomes",
     test: bool = False,
     release_version: str = CURRENT_RELEASE,
+    include_meta: bool = True,
 ) -> str:
     """
     Fetch filepath for the JSON containing all datasets used in the release.
