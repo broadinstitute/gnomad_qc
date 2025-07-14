@@ -25,3 +25,6 @@ CURRENT_RELEASE = RELEASES[-1]
 
 COVERAGE_RELEASES = {"exomes": ["4.0"], "genomes": ["5.0"]}
 CURRENT_COVERAGE_RELEASE = {"exomes": "4.0", "genomes": "5.0"}
+
+ALL_SITES_AN_RELEASES = {"exomes": ["4.1"], "genomes": ["5.0"]}
+CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1", "genomes": "5.0"}
