@@ -335,6 +335,7 @@ def release_all_sites_an(
     data_type: str = "genomes",
     public: bool = False,
     test: bool = False,
+    include_meta: bool = True,
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for all sites allele number release Table.
