@@ -867,12 +867,16 @@ def main(args):
         true_positive_type=true_positive_type,
         releasable_trios_only=releasable_trios_only,
     )
+
+    interval_5mb = hl.parse_locus_interval("chr1:155000000-160000000")
+
     vds = get_gnomad_v4_vds(
         test=test_dataset,
         high_quality_only=True,
         # Keep control/truth samples because they are used in variant QC.
         keep_controls=True,
         annotate_meta=True,
+        filter_intervals=[interval_5mb],
     )
     mt = vds.variant_data
 
@@ -883,7 +887,7 @@ def main(args):
         if args.compute_info:
             # TODO: is there any reason to also compute info per platform?
             res = vqc_resources.compute_info
-            res.check_resource_existence()
+            #res.check_resource_existence()
             if combine_compute_info:
                 ht = mt.select_rows().rows()
                 lt_ht = res.under_info_ht.ht()
@@ -905,7 +909,9 @@ def main(args):
             if split_n_alleles is None or combine_compute_info:
                 ht = ht.naive_coalesce(args.compute_info_n_partitions)
 
-            ht.write(res.info_ht.path, overwrite=overwrite)
+            
+            tmp_path = "gs://gnomad-tmp-30day/kristen/cdf_interval.ht"
+            ht.write(tmp_path, overwrite=overwrite)
 
         if args.split_info:
             res = vqc_resources.split_info
