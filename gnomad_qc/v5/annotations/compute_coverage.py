@@ -10,12 +10,14 @@ from gnomad.utils.annotations import (
     build_freq_stratification_list,
     generate_freq_group_membership_array,
 )
-from gnomad.utils.sparse_mt import compute_coverage_stats, compute_stats_per_ref_site
+from gnomad.utils.sparse_mt import (
+    compute_coverage_stats,
+    compute_stats_per_ref_site,
+    get_allele_number_agg_func,
+    get_coverage_agg_func,
+)
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.annotations.compute_coverage import (
-    compute_an_and_qual_hists_per_ref_site,
-)
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
 from gnomad_qc.v4.resources.meta import meta
 
@@ -67,6 +69,104 @@ def get_genomes_group_membership_ht(
     return ht
 
 
+def compute_all_release_stats_per_ref_site(
+    vds: hl.vds.VariantDataset,
+    ref_ht: hl.Table,
+    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    interval_ht: Optional[hl.Table] = None,
+    group_membership_ht: Optional[hl.Table] = None,
+) -> hl.Table:
+    """
+    Compute coverage, allele number, and quality histograms per reference site.
+
+    .. note::
+        Running this function prior to calculating frequencies removes the need for an additional
+        densify for frequency calculations.
+
+    :param vds: Input VDS.
+    :param ref_ht: Reference HT.
+    :param coverage_over_x_bins: List of boundaries for computing samples over X.
+    :param interval_ht: Interval HT.
+    :param group_membership_ht: Group membership HT.
+    :return: HT with allele number and quality histograms per reference site.
+    """
+
+    def _get_hists(qual_expr) -> hl.expr.Expression:
+        return qual_hist_expr(
+            gq_expr=qual_expr[0],
+            dp_expr=qual_expr[1],
+            adj_expr=qual_expr[2] == 1,
+            split_adj_and_raw=True,
+        )
+
+    # Set up coverage bins.
+    cov_bins = sorted(coverage_over_x_bins)
+    rev_cov_bins = list(reversed(cov_bins))
+    max_cov_bin = cov_bins[-1]
+    cov_bins = hl.array(cov_bins)
+
+    entry_agg_funcs = {
+        "AN": get_allele_number_agg_func("LGT"),
+        "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
+        "coverage_stats": get_coverage_agg_func(dp_field="DP", max_cov_bin=max_cov_bin),
+    }
+
+    logger.info(
+        "Computing coverage, allele number, and qual hists per reference site..."
+    )
+    # Below we use just the raw group for qual hist computations because qual hists
+    # has its own built-in adj filtering when adj is passed as an argument and will
+    # produce both adj and raw histograms.
+
+    vmt = vds.variant_data
+    vmt = vmt.annotate_cols(sex_karyotype=vmt.meta.sex_imputation.sex_karyotype)
+    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+    ht = compute_stats_per_ref_site(
+        vds,
+        ref_ht,
+        entry_agg_funcs,
+        interval_ht=interval_ht,
+        group_membership_ht=group_membership_ht,
+        entry_keep_fields=["GQ", "DP"],
+        entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
+        sex_karyotype_field="sex_karyotype",
+    )
+
+    # This expression aggregates the DP counter in reverse order of the cov_bins and
+    # computes the cumulative sum over them. It needs to be in reverse order because we
+    # want the sum over samples covered by > X.
+    def _cov_stats(
+        cov_stat: hl.expr.StructExpression, n: hl.expr.Int32Expression
+    ) -> hl.expr.StructExpression:
+        # The coverage was already floored to the max_coverage_bin, so no more
+        # aggregation is needed for the max bin.
+        count_expr = cov_stat.coverage_counter
+        max_bin_expr = hl.int32(count_expr.get(max_cov_bin, 0))
+
+        # For each of the other bins, coverage is summed between the boundaries.
+        bin_expr = hl.range(hl.len(cov_bins) - 1, 0, step=-1)
+        bin_expr = bin_expr.map(
+            lambda i: hl.sum(
+                hl.range(cov_bins[i - 1], cov_bins[i]).map(
+                    lambda j: hl.int32(count_expr.get(j, 0))
+                )
+            )
+        )
+        bin_expr = hl.cumulative_sum(hl.array([max_bin_expr]).extend(bin_expr))
+        bin_expr = {f"over_{x}": bin_expr[i] / n for i, x in enumerate(rev_cov_bins)}
+        return cov_stat.annotate(**bin_expr).drop("coverage_counter")
+
+    # Keep coverage stats from global adj grouping (index 0) only.
+    ht = ht.annotate_globals(
+        coverage_stats_meta_sample_count=ht_globals.strata_sample_count[0],
+    )
+    cov_stats_expr = _cov_stats(ht.coverage_stats[0], ht_globals.sample_count)
+
+    ht = ht.transmute(**cov_stats_expr)
+    return ht.annotate(qual_hists=ht.qual_hists[0])
+
+
 def main(args):
     """Compute coverage statistics, including mean, median_approx, and coverage over certain DPs."""
     hl.init(
@@ -83,7 +183,6 @@ def main(args):
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
     test = test_2_partitions or test_chr22_chrx_chry
     overwrite = args.overwrite
-    data_type = args.data_type
     n_partitions = args.n_partitions
 
     try:
@@ -208,7 +307,7 @@ def main(args):
                 include_meta=False,
                 coverage_type="allele_number",
             )
-            an_tsv_path = release_coverage_tsv_path(test=test)
+            an_tsv_path = release_all_sites_an_tsv_path(test=test)
             check_resource_existence(
                 input_step_resources={"an_ht": an_ht_path},
                 output_step_resources={
