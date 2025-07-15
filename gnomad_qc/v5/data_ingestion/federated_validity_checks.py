@@ -268,12 +268,12 @@ def validate_required_fields(
     Validate that the table contains the required global and row fields and that their values are of the expected types.
 
     .. note::
+    
         Required fields can be nested (e.g., 'info.QD' indicates that the 'QD' field is nested within the 'info' struct).
 
     :param ht: Table to validate.
     :param field_requirements: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_requirements" and "row_field_requirements", respectively containing the global and row fields as keys and their expected types as values.
     :return: List of validation issues.
-
     """
     issues = []
     validated = []
@@ -300,28 +300,26 @@ def validate_required_fields(
 
             # Check for presence of required struct fields.
             if isinstance(dtype, hl.tstruct):
-                if part in dtype.fields:
-                    current_field = current_field[part]
-                    validated.append(
-                        f"FOUND {annotation_kind} field: {'.'.join(parts[:i+1])} "
-                    )
-                else:
+                if part not in dtype.fields:
                     issues.append(
                         f"Missing {annotation_kind} field: {'.'.join(parts[:i+1])} "
                     )
                     return
+                current_field = current_field[part]
+                validated.append(
+                    f"FOUND {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                )
 
             # Check for presence of required array fields.
             elif isinstance(dtype, hl.tarray) and isinstance(
                 dtype.element_type, hl.tstruct
             ):
-                if part in dtype.element_type.fields:
-                    current_field = current_field.map(lambda x: x[part])
-                else:
+                if not part in dtype.element_type.fields:
                     issues.append(
                         f"Missing {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
                     )
                     return
+                current_field = current_field.map(lambda x: x[part])
 
             else:
                 print(
@@ -803,7 +801,6 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
 
 def main(args):
     """Perform validity checks for federated data."""
-    # hl.stop()
     hl.init(
         log="/federated_validity_checks.log",
         tmp_dir="gs://gnomad-tmp-4day",
