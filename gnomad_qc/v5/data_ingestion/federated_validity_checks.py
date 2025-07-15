@@ -268,7 +268,7 @@ def validate_required_fields(
     Validate that the table contains the required global and row fields and that their values are of the expected types.
 
     .. note::
-    
+
         Required fields can be nested (e.g., 'info.QD' indicates that the 'QD' field is nested within the 'info' struct).
 
     :param ht: Table to validate.
@@ -302,12 +302,12 @@ def validate_required_fields(
             if isinstance(dtype, hl.tstruct):
                 if part not in dtype.fields:
                     issues.append(
-                        f"Missing {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                        f"MISSING {annotation_kind} field: {'.'.join(parts[:i+1])} "
                     )
                     return
                 current_field = current_field[part]
                 validated.append(
-                    f"FOUND {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                    f"Found {annotation_kind} field: {'.'.join(parts[:i+1])} "
                 )
 
             # Check for presence of required array fields.
@@ -316,13 +316,13 @@ def validate_required_fields(
             ):
                 if not part in dtype.element_type.fields:
                     issues.append(
-                        f"Missing {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
+                        f"MISSING {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
                     )
                     return
                 current_field = current_field.map(lambda x: x[part])
 
             else:
-                print(
+                logger.info(
                     f"Unsupported type while traversing {'.'.join(parts[:i])}: {dtype}"
                 )
                 return
