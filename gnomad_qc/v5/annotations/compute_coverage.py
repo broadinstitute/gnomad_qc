@@ -27,6 +27,7 @@ from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
 # from gnomad_qc.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
+    release_all_sites_an_tsv_path,
     release_coverage_path,
     release_coverage_tsv_path,
 )
@@ -167,6 +168,17 @@ def compute_all_release_stats_per_ref_site(
     return ht.annotate(qual_hists=ht.qual_hists[0])
 
 
+def join_aou_and_gnomad_release_ht(aou_ht: hl.Table, gnomad_ht: hl.Table) -> hl.Table:
+    """
+    Join AoU and gnomAD release HTs.
+
+    :param aou_ht: AoU release HT.
+    :param gnomad_ht: gnomAD release HT.
+    :return: Joined HT.
+    """
+    pass
+
+
 def main(args):
     """Compute coverage statistics, including mean, median_approx, and coverage over certain DPs."""
     hl.init(
@@ -186,13 +198,21 @@ def main(args):
     n_partitions = args.n_partitions
 
     try:
-        # NOTE: v5 genomes coverage returns Table with coverage, all sites AN, and
-        # qual hists.
+        # NOTE: Raw AoU genomes coverage Table returns Table with coverage, all
+        # sites AN, and qual hists.
         cov_and_an_ht_path = release_coverage_path(
             public=False,
             test=test,
-            include_meta=True,
+            raw=True,
             coverage_type="coverage",
+            data_set="aou",
+        )
+        reformat_cov_and_an_ht_path = release_coverage_path(
+            public=False,
+            test=test,
+            raw=False,
+            coverage_type="coverage",
+            data_set="aou",
         )
 
         if args.compute_all_cov_release_stats_ht:
@@ -244,26 +264,25 @@ def main(args):
                 group_membership_ht=group_membership_ht,
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
-                hl.utils.new_temp_file("cov_and_an", "ht")
+                hl.utils.new_temp_file("aou_cov_and_an", "ht")
             )
             # Naive coalesce and write out the intermediate HT.
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
-        if args.export_coverage_release_files:
-            release_ht_path = release_coverage_path(
-                public=False, test=test, include_meta=False, coverage_type="coverage"
+        if args.reformat_aou_coverage_ht:
+            logger.info("Reformatting AoU release coverage HT...")
+            aou_reformat_ht_path = release_coverage_path(
+                public=False,
+                test=test,
+                raw=False,
+                coverage_type="coverage",
+                data_set="aou",
             )
-            release_tsv_path = release_coverage_tsv_path(test=test)
             check_resource_existence(
-                input_step_resources={"cov_and_an_ht": cov_and_an_ht_path},
-                output_step_resources={
-                    "cov_release_ht": release_ht_path,
-                    "cov_tsv": release_tsv_path,
-                },
+                output_step_resources={"aou_reformat_ht": aou_reformat_ht_path},
             )
 
-            logger.info("Exporting coverage and AN HT...")
             # Select coverage and AN fields for release.
             ht = hl.read_table(cov_and_an_ht_path)
             ht = ht.select_globals(
@@ -274,12 +293,54 @@ def main(args):
                 "AN",
                 **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]},
             )
-            ht = ht.checkpoint(release_ht_path, overwrite=overwrite)
+            ht.write(aou_reformat_ht_path, overwrite=overwrite)
 
-            logger.info("Exporting coverage and AN tsv...")
+        if args.export_coverage_release_files:
+            cov_ht_path = release_coverage_path(
+                public=False,
+                test=test,
+                raw=False,
+                coverage_type="coverage",
+                data_set="joint",
+            )
+            cov_tsv_path = release_coverage_tsv_path(test=test)
+            check_resource_existence(
+                output_step_resources={
+                    "cov_release_ht": cov_ht_path,
+                    "cov_tsv": cov_tsv_path,
+                },
+            )
+
+            ht = hl.read_table(reformat_cov_and_an_ht_path)
+
+            logger.info("Exporting coverage and AN HT and TSV...")
+            ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
+            ht.export(cov_tsv_path)
+
+        if args.export_an_release_files:
+            an_ht_path = release_coverage_path(
+                public=False,
+                test=test,
+                raw=False,
+                coverage_type="allele_number",
+                data_set="joint",
+            )
+            an_tsv_path = release_all_sites_an_tsv_path(test=test)
+            check_resource_existence(
+                output_step_resources={
+                    "an_release_ht": an_ht_path,
+                    "an_release_tsv": an_tsv_path,
+                },
+            )
+
+            ht = hl.read_table(reformat_cov_and_an_ht_path)
+
+            logger.info("Exporting AN HT and TSV...")
+            ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
+
             # Only export the adj AN for all release samples.
             ht = ht.transmute(AN=ht.AN[0])
-            ht.export(release_tsv_path)
+            ht.export(an_tsv_path)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -320,8 +381,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
+        "--reformat-aou-coverage-ht",
+        help="Reformats AoU genomes coverage HT to match gnomAD v4 release HT schema.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--export-coverage-release-files",
-        help="Exports coverage release HT and TSV file.",
+        help="Exports joint AoU + gnomAD v4 coverage release HT and TSV file.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-an-release-files",
+        help="Exports joint AoU + gnomAD v4 AN release HT and TSV file.",
         action="store_true",
     )
 
