@@ -315,9 +315,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=5000,
     )
     parser.add_argument(
-        "--compute-coverage-ht", help="Compute the coverage HT.", action="store_true"
-    )
-    parser.add_argument(
         "--compute-all-cov-release-stats-ht",
         help="Compute the all sites coverage, allele number, and quality histogram HT.",
         action="store_true",
