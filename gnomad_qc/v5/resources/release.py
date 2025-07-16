@@ -13,9 +13,7 @@ from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.release import FREQUENCY_README
 from gnomad_qc.v5.resources.constants import (
-    ALL_SITES_AN_RELEASES,
     COVERAGE_RELEASES,
-    CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     RELEASES,
