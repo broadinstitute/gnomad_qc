@@ -23,8 +23,7 @@ AOU_GENOMIC_METRICS_PATH = f"gs://{AOU_WGS_AUX_BUCKET}/qc/genomic_metrics.tsv"
 RELEASES = ["5.0"]
 CURRENT_RELEASE = RELEASES[-1]
 
+# NOTE: gnomAD v4 split coverage and AN releases into separate files, but
+# v5 combines them into the same file.
 COVERAGE_RELEASES = {"exomes": ["4.0"], "genomes": ["5.0"]}
 CURRENT_COVERAGE_RELEASE = {"exomes": "4.0", "genomes": "5.0"}
-
-ALL_SITES_AN_RELEASES = {"exomes": ["4.1"], "genomes": ["5.0"]}
-CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1", "genomes": "5.0"}

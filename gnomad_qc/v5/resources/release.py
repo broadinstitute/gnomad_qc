@@ -220,6 +220,10 @@ def release_coverage_path(
     """
     Fetch filepath for all sites coverage or allele number release Table.
 
+    .. note ::
+
+        Coverage and all sites AN are merged into a single file in v5 but were separated in v4.
+
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
     :param release_version: Release version.
     :param public: Determines whether release coverage Table is read from public (True) or
@@ -229,6 +233,20 @@ def release_coverage_path(
     :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: File path for desired coverage Hail Table.
     """
+    assert coverage_type in [
+        "coverage",
+        "allele_number",
+    ], "coverage_type must be either 'coverage' or 'allele_number'"
+
+    if (
+        release_version == "5.0"
+        and data_type == "genomes"
+        and coverage_type == "allele_number"
+    ):
+        raise ValueError(
+            "allele_number is not supported for v5 genomes; this information is merged into the coverage file."
+        )
+
     if public:
         if test:
             raise ValueError("Cannot use test=True with public=True!")
@@ -246,15 +264,9 @@ def release_coverage_path(
         except DataException:
             path = None
         if path is None:
-            logger.warning(
-                "No public coverage Table found for data_type %s and release %s. "
-                "Using 'gs://gnomad-public-requester-pays' path.",
-                data_type,
-                release_version,
+            raise ValueError(
+                f"No public {coverage_type} Table found for data_type {data_type} and release {release_version}."
             )
-            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}.ht"
-        else:
-            return path
     else:
         return f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.meta' if include_meta else ''}.ht"
 
@@ -275,28 +287,6 @@ def release_coverage_tsv_path(
     return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
 
 
-def release_all_sites_an_tsv_path(
-    data_type: str = "genomes",
-    release_version: str = None,
-    test: bool = False,
-) -> str:
-    """
-    Fetch path to all sites AN TSV file.
-
-    :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
-    :param release_version: Release version. Default is
-        CURRENT_ALL_SITES_AN_RELEASE[data_type].
-    :param test: Whether to use a tmp path for testing. Default is False.
-    :return: All sites AN TSV path.
-    """
-    release_version = (
-        release_version
-        if release_version is not None
-        else CURRENT_ALL_SITES_AN_RELEASE[data_type]
-    )
-    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
-
-
 def release_coverage(
     data_type: str = "genomes",
     public: bool = False,
@@ -305,6 +295,10 @@ def release_coverage(
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
+
+    .. note ::
+
+        v5 genomes coverage returns Table with coverage, all sites AN, and qual hists.
 
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
     :param public: Determines whether release coverage Table is read from public (True) or
@@ -327,40 +321,6 @@ def release_coverage(
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
-        },
-    )
-
-
-def release_all_sites_an(
-    data_type: str = "genomes",
-    public: bool = False,
-    test: bool = False,
-    include_meta: bool = True,
-) -> VersionedTableResource:
-    """
-    Retrieve versioned resource for all sites allele number release Table.
-
-    :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
-    :param public: Determines whether release allele number Table is read from public (True) or
-        private (False) bucket. Default is False.
-    :param test: Whether to use a tmp path for testing. Default is False.
-    :param include_meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
-    :return: All sites allele number release Table.
-    """
-    return VersionedTableResource(
-        default_version=CURRENT_ALL_SITES_AN_RELEASE[data_type],
-        versions={
-            release: TableResource(
-                path=release_coverage_path(
-                    data_type=data_type,
-                    release_version=release,
-                    public=public,
-                    test=test,
-                    include_meta=include_meta,
-                    coverage_type="allele_number",
-                )
-            )
-            for release in ALL_SITES_AN_RELEASES[data_type]
         },
     )
 
