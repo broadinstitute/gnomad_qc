@@ -13,7 +13,9 @@ from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.release import FREQUENCY_README
 from gnomad_qc.v5.resources.constants import (
+    ALL_SITES_AN_RELEASES,
     COVERAGE_RELEASES,
+    CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     RELEASES,
@@ -219,10 +221,6 @@ def release_coverage_path(
     """
     Fetch filepath for all sites coverage or allele number release Table.
 
-    .. note ::
-
-        Coverage and all sites AN are merged into a single file in v5 but were separated in v4.
-
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
     :param release_version: Release version.
     :param public: Determines whether release coverage Table is read from public (True) or
@@ -237,17 +235,7 @@ def release_coverage_path(
         "coverage",
         "allele_number",
     ], "coverage_type must be either 'coverage' or 'allele_number'"
-
     assert data_set in ["aou", "joint"], "data_set must be either 'aou' or 'joint'"
-
-    if (
-        release_version == "5.0"
-        and data_type == "genomes"
-        and coverage_type == "allele_number"
-    ):
-        raise ValueError(
-            "allele_number is not supported for v5 genomes; this information is merged into the coverage file."
-        )
 
     if public:
         if test:
@@ -289,6 +277,28 @@ def release_coverage_tsv_path(
     return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
 
 
+def release_all_sites_an_tsv_path(
+    data_type: str = "genomes",
+    release_version: str = None,
+    test: bool = False,
+) -> str:
+    """
+    Fetch path to all sites AN TSV file.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param release_version: Release version. Default is
+        CURRENT_ALL_SITES_AN_RELEASE[data_type].
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites AN TSV path.
+    """
+    release_version = (
+        release_version
+        if release_version is not None
+        else CURRENT_ALL_SITES_AN_RELEASE[data_type]
+    )
+    return f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
+
+
 def release_coverage(
     data_type: str = "genomes",
     public: bool = False,
@@ -325,6 +335,41 @@ def release_coverage(
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
+        },
+    )
+
+
+def release_all_sites_an(
+    data_type: str = "genomes",
+    public: bool = False,
+    test: bool = False,
+    include_meta: bool = True,
+    data_set: str = "joint",
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for all sites allele number release Table.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
+    :param public: Determines whether release allele number Table is read from public or
+        private bucket. Default is private.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites allele number release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_ALL_SITES_AN_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=release_coverage_path(
+                    data_type=data_type,
+                    release_version=release,
+                    public=public,
+                    test=test,
+                    include_meta=include_meta,
+                    coverage_type="allele_number",
+                    data_set=data_set,
+                )
+            )
+            for release in ALL_SITES_AN_RELEASES[data_type]
         },
     )
 
