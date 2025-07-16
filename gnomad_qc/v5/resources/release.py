@@ -266,6 +266,7 @@ def release_coverage_path(
             raise ValueError(
                 f"No public {coverage_type} Table found for data_type {data_type} and release {release_version}."
             )
+        return path
     else:
         return f"{_release_root(release_version, test=test, data_type=data_type)}/{'aou' if data_set == 'aou' else 'gnomad'}.{data_type}.v{release_version}.{coverage_type}{'.raw' if raw else ''}.ht"
 
