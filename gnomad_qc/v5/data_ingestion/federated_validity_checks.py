@@ -3,6 +3,9 @@
 import argparse
 import json
 import logging
+import os
+import re
+from bs4 import BeautifulSoup
 from io import StringIO
 from typing import Any, Dict, List
 
@@ -170,6 +173,51 @@ def return_field_requirements() -> Dict[str, Dict[str, Any]]:
     }
 
 
+def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
+    """Create dictionary of field necessity from parsing markdown text.
+
+    :param md_text: Markdown text to parse.
+    :return: Dictionary of field names and their necessity.
+    """
+    field_dict = {}
+    lines = md_text.splitlines()
+    in_table = False
+
+    for line in lines:
+        # Detect table header
+        if line.strip().startswith("| Field") and "Field Necessity" in line:
+            in_table = True
+            continue
+        # Skip alignment row.
+        if in_table and re.match(r"^\|[-| ]+\|$", line):
+            continue
+        # Process table rows.
+        elif in_table and line.strip().startswith("|"):
+            parts = [c.strip() for c in line.strip().split("|") if c.strip()]
+            if len(parts) < 2:
+                continue
+            field_raw = parts[0]
+            necessity = parts[-1]
+
+            # Strip HTML tags and extra formatting.
+            field = BeautifulSoup(field_raw, "html.parser").get_text()
+            field = re.sub(r"[*`]", "", field).strip()
+
+            # Normalize necessity label.
+            necessity_clean = necessity.strip().lower()
+            if "required" in necessity_clean:
+                field_dict[field] = "required"
+            elif "optional" in necessity_clean:
+                field_dict[field] = "optional"
+        # End of table
+        elif in_table and not line.strip():
+            in_table = False
+        elif in_table and not line.strip().startswith("|"):
+            in_table = False
+
+    return field_dict
+
+
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
     """Validate JSON config inputs.
 
@@ -262,7 +310,9 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
 
 
 def validate_required_fields(
-    ht: hl.Table, field_requirements: Dict[str, Dict[str, Any]]
+    ht: hl.Table,
+    field_requirements: Dict[str, Dict[str, Any]],
+    field_necessities: Dict[str, str],
 ) -> List[str]:
     """
     Validate that the table contains the required global and row fields and that their values are of the expected types.
@@ -273,6 +323,7 @@ def validate_required_fields(
 
     :param ht: Table to validate.
     :param field_requirements: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_requirements" and "row_field_requirements", respectively containing the global and row fields as keys and their expected types as values.
+    :param field_necessities: Flat dictionary with annotation fields as keys and values field necessity("required" or "optional") as values.
     :return: List of validation issues.
     """
     issues = []
@@ -295,6 +346,9 @@ def validate_required_fields(
         """
         parts = field_path.split(".")
         current_field = root_expr
+
+        field_necessity = field_necessities.get(field_path, "required")
+
         for i, part in enumerate(parts):
             dtype = current_field.dtype
 
@@ -302,12 +356,12 @@ def validate_required_fields(
             if isinstance(dtype, hl.tstruct):
                 if part not in dtype.fields:
                     issues.append(
-                        f"MISSING {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                        f"MISSING {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} "
                     )
                     return
                 current_field = current_field[part]
                 validated.append(
-                    f"Found {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                    f"Found {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} "
                 )
 
             # Check for presence of required array fields.
@@ -316,7 +370,7 @@ def validate_required_fields(
             ):
                 if not part in dtype.element_type.fields:
                     issues.append(
-                        f"MISSING {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
+                        f"MISSING {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
                     )
                     return
                 current_field = current_field.map(lambda x: x[part])
@@ -337,20 +391,20 @@ def validate_required_fields(
                     f"expected {expected_type.element_type}, found {current_field.dtype.element_type}"
                 )
                 return
-            else:
-                validated.append(
-                    f"{annotation_kind.capitalize()} field '{field_path}' IS an array with correct element type {expected_type.element_type}"
-                )
+
+            validated.append(
+                f"{annotation_kind.capitalize()} field '{field_path}' IS an array with correct element type {expected_type.element_type}"
+            )
         else:
             if current_field.dtype != expected_type:
                 issues.append(
                     f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
                 )
                 return
-            else:
-                validated.append(
-                    f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
-                )
+
+            validated.append(
+                f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
+            )
 
     # Validate global fields.
     for field, expected_type in field_requirements["global_field_requirements"].items():
@@ -822,6 +876,13 @@ def main(args):
 
         validate_config(config, schema)
 
+        # Read in field necessity markdown file.
+        # When submitting hail dataproc job, include "--files field_requirements.md".
+        with open("field_requirements.md", "r") as f:
+            md_text = f.read()
+
+        field_necessities = parse_field_necessity_from_md(md_text)
+
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
@@ -898,10 +959,26 @@ def main(args):
         logger.info("Validate required fields...")
         field_requirements = return_field_requirements()
         validation_errors, validated_fields = validate_required_fields(
-            ht=ht, field_requirements=field_requirements
+            ht=ht,
+            field_requirements=field_requirements,
+            field_necessities=field_necessities,
         )
+        print(validation_errors)
+
         if len(validation_errors) > 0:
-            logger.info(f"Failed validation of required fields: {validation_errors}")
+            # Separate validation issues by necessity.
+            required_errors = {
+                e
+                for e in validation_errors
+                if "MISSING required" in e
+                or "is not of type" in e
+                or "incorrect element type" in e
+            }
+            optional_errors = validation_errors - required_errors
+            if required_errors:
+                logger.info(f"Failed validation of required fields: {required_errors}")
+            if optional_errors:
+                logger.warning(f"Issues with optional fields: {optional_errors}")
         if len(validated_fields) > 0:
             logger.info(f"Validated fields: {validated_fields}")
 
