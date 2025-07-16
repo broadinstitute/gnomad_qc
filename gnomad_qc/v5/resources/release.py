@@ -214,6 +214,7 @@ def release_coverage_path(
     test: bool = False,
     include_meta: bool = True,
     coverage_type: str = "coverage",
+    data_set: str = "joint",
 ) -> str:
     """
     Fetch filepath for all sites coverage or allele number release Table.
@@ -229,12 +230,15 @@ def release_coverage_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :param include_meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
     :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
+    :param data_set: Dataset identifier. Must be one of "aou" or "joint". Default is "joint".
     :return: File path for desired coverage Hail Table.
     """
     assert coverage_type in [
         "coverage",
         "allele_number",
     ], "coverage_type must be either 'coverage' or 'allele_number'"
+
+    assert data_set in ["aou", "joint"], "data_set must be either 'aou' or 'joint'"
 
     if (
         release_version == "5.0"
@@ -266,7 +270,7 @@ def release_coverage_path(
                 f"No public {coverage_type} Table found for data_type {data_type} and release {release_version}."
             )
     else:
-        return f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.meta' if include_meta else ''}.ht"
+        return f"{_release_root(release_version, test=test, data_type=data_type)}/{'aou' if data_set == 'aou' else 'gnomad'}.{data_type}.v{release_version}.{coverage_type}{'.meta' if include_meta else ''}.ht"
 
 
 def release_coverage_tsv_path(
@@ -290,6 +294,7 @@ def release_coverage(
     public: bool = False,
     test: bool = False,
     include_meta: bool = True,
+    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -303,7 +308,7 @@ def release_coverage(
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param include_meta: Whether to include meta annotations. Default is True. Only applies to Table in private bucket.
-    :param stratify: Whether to stratify results by platform and subset. Default is True.
+    :param data_set: Dataset identifier. Must be one of "aou" or "joint". Default is "joint".
     :return: Coverage release Table.
     """
     return VersionedTableResource(
@@ -316,6 +321,7 @@ def release_coverage(
                     public=public,
                     test=test,
                     include_meta=include_meta,
+                    data_set=data_set,
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
@@ -327,7 +333,6 @@ def included_datasets_json_path(
     data_type: str = "genomes",
     test: bool = False,
     release_version: str = CURRENT_RELEASE,
-    include_meta: bool = True,
 ) -> str:
     """
     Fetch filepath for the JSON containing all datasets used in the release.
