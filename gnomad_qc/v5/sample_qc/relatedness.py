@@ -423,7 +423,10 @@ def main(args):
             ).write(relatedness(test=test).path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
-            logger.info("Computing the sample rankings and related samples to drop...")
+            logger.info(
+                "Computing the sample rankings and related samples to drop for %s..."
+                % ("release" if release else "PCA")
+            )
             check_resource_existence(
                 output_step_resources={
                     "sample_rankings_ht": sample_rankings(
