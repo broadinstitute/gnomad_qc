@@ -238,6 +238,20 @@ def join_aou_and_gnomad_coverage_ht(
     return ht.select_globals()
 
 
+def join_aou_and_gnomad_an_ht(
+    aou_ht: hl.Table,
+    gnomad_ht: hl.Table,
+) -> hl.Table:
+    """
+    Join AoU and gnomAD AN HTs for release.
+
+    :param aou_ht: AoU AN HT.
+    :param gnomad_ht: gnomAD AN HT.
+    :return: Joined HT.
+    """
+    pass
+
+
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     hl.init(
@@ -366,6 +380,7 @@ def main(args):
                 },
             )
 
+            logger.info("Exporting coverage and AN HT and TSV...")
             aou_ht = hl.read_table(reformat_cov_and_an_ht_path)
             gnomad_ht = hl.read_table(
                 release_coverage_path(
@@ -376,8 +391,6 @@ def main(args):
                 )
             )
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
-
-            logger.info("Exporting coverage and AN HT and TSV...")
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
             ht.export(cov_tsv_path)
 
@@ -397,9 +410,18 @@ def main(args):
                 },
             )
 
-            ht = hl.read_table(reformat_cov_and_an_ht_path)
-
             logger.info("Exporting AN HT and TSV...")
+            aou_ht = hl.read_table(reformat_cov_and_an_ht_path)
+            gnomad_ht = hl.read_table(
+                release_coverage_path(
+                    data_type="genomes",
+                    release_version=v4_COVERAGE_RELEASE,
+                    public=True,
+                    raw=False,
+                    coverage_type="allele_number",
+                )
+            )
+            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
 
             # Only export the adj AN for all release samples.
