@@ -3,7 +3,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -229,14 +229,19 @@ def finalize_relatedness_ht(
     return ht
 
 
-def compute_rank_ht(ht: hl.Table) -> hl.Table:
+def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
 
     Favor AoU samples, then v4 release samples, then genomes, then higher mean depth
     ('chr20_mean_dp' from gnomad and 'mean_coverage' from AoU).
 
+    If `filter_ht` is provided, rank based on filtering 'outlier_filtered' annotation
+    first.
+
     :param ht: Table to add rank to.
+    :param filter_ht: Optional Table with 'outlier_filtered' annotation to be used in
+        ranking.
     :return: Table containing sample ID and rank.
     """
     ht = ht.select(
@@ -247,6 +252,13 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     )
     rank_order = []
     ht_select = ["rank"]
+    if filter_ht is not None:
+        ht = ht.annotate(
+            filtered=hl.coalesce(filter_ht[ht.key].outlier_filtered, False)
+        )
+        rank_order = [ht.filtered]
+        ht_select.append("filtered")
+
     rank_order.extend(
         [
             hl.desc(ht.in_aou),
@@ -264,24 +276,44 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
 def run_compute_related_samples_to_drop(
     ht: hl.Table,
     meta_ht: hl.Table,
+    release: bool = False,
+    filter_ht: Optional[hl.Table] = None,
 ) -> Tuple[hl.Table, hl.Table]:
     """
-    Determine the minimal set of related samples to prune for genetic ancestry PCA.
+    Determine the minimal set of related samples to prune for genetic ancestry PCA or release.
 
     Runs `compute_related_samples_to_drop` from gnomad_methods after computing the
     sample rankings using `compute_rank_ht`.
+
+    When `release` is True, `filter_ht` is used to rank samples based on filtering
+    'outlier_filtered' annotation, favoring those that are not filtered. The 'filter_ht'
+    'outlier_filtered' samples will also be included in the returned
+    `samples_to_drop_ht` Table.
 
     :param ht: Input relatedness Table.
     :param meta_ht: Metadata Table with 'project', 'data_type', 'release', and
         'mean_depth' annotations to be used in ranking and filtering of related
         individuals.
+    :param release: Whether to determine related samples to drop for the release based
+        on outlier filtering of sample QC metrics. `filter_ht` must be supplied.
+    :param filter_ht: Optional Table with outlier filtering of sample QC metrics to
+        use if `release` is True.
     :return: Table with sample rank and a Table with related samples to drop for PCA.
     """
+    if release and filter_ht is None:
+        raise ValueError("'filter_ht' must be supplied when 'release' is True!")
+
     # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
     # pruning samples.
-    rank_ht = compute_rank_ht(meta_ht)
+    rank_ht = compute_rank_ht(meta_ht, filter_ht=filter_ht if release else None)
     rank_ht = rank_ht.checkpoint(new_temp_file("rank", extension="ht"))
 
+    filtered_samples = None
+    if release:
+        filtered_samples = rank_ht.aggregate(
+            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
+            _localize=False,
+        )
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
@@ -289,6 +321,7 @@ def run_compute_related_samples_to_drop(
         ht,
         rank_ht,
         second_degree_min_kin,
+        filtered_samples=filtered_samples,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
         second_degree_min_kin=second_degree_min_kin,
@@ -303,6 +336,7 @@ def main(args):
     overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
     second_degree_min_kin = args.second_degree_min_kin
+    release = args.release
 
     if args.print_cuking_command:
         print_cuking_command(
@@ -392,20 +426,54 @@ def main(args):
             logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
                 output_step_resources={
-                    "sample_rankings_ht": sample_rankings(test=test).path,
+                    "sample_rankings_ht": sample_rankings(
+                        test=test, release=release
+                    ).path,
                     "related_samples_to_drop_ht": related_samples_to_drop(
-                        test=test
+                        test=test, release=release
                     ).path,
                 }
             )
+
+            filter_ht = None
+            if release:
+                # Import the outlier filtering resource for release mode (using v4 for
+                # testing)
+                from gnomad_qc.v4.resources.sample_qc import finalized_outlier_filtering
+
+                filter_ht = finalized_outlier_filtering().ht()
+                # Setting samples in the ELGH2 project to 'outlier_filtered' True, so they
+                # are treated like outlier filtered samples when creating the release
+                # ranking. We identified that they do not have the full set of 'AS'
+                # annotations in 'gvcf_info' so we need to exclude them from variant QC and
+                # release.
+                project_meta_ht = project_meta.ht()
+                filter_ht = filter_ht.annotate(
+                    outlier_filtered=hl.if_else(
+                        project_meta_ht[filter_ht.key].project == "elgh2",
+                        True,
+                        filter_ht.outlier_filtered,
+                        missing_false=True,
+                    )
+                )
+
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 relatedness(test=test).ht(),
                 joint_meta.select_globals().semi_join(joint_qc_mt.cols()),
+                release,
+                filter_ht,
             )
-            rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
-            drop_ht.write(related_samples_to_drop(test=test).path, overwrite=overwrite)
+            rank_ht.write(
+                sample_rankings(test=test, release=release).path, overwrite=overwrite
+            )
+            drop_ht.write(
+                related_samples_to_drop(test=test, release=release).path,
+                overwrite=overwrite,
+            )
             # Export the related samples to drop Table to a TSV file for SV team.
-            drop_ht.export(related_samples_to_drop(test=test).path[:-3] + ".tsv")
+            drop_ht.export(
+                related_samples_to_drop(test=test, release=release).path[:-3] + ".tsv"
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -549,6 +617,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     drop_related_samples.add_argument(
         "--compute-related-samples-to-drop",
         help="Determine the minimal set of related samples to prune for ancestry PCA.",
+        action="store_true",
+    )
+    drop_related_samples.add_argument(
+        "--release",
+        help=(
+            "Whether to determine related samples to drop for the release based on "
+            "outlier filtering of sample QC metrics."
+        ),
         action="store_true",
     )
     return parser
