@@ -1,4 +1,4 @@
-"""Script to compute coverage, allele number, and quality histogram on gnomAD v5 genomes."""
+"""Script to compute coverage, allele number, and quality histogram on gnomAD v5 genomes (AoU v8 + gnomAD v4)."""
 
 import argparse
 import logging
@@ -168,19 +168,19 @@ def compute_all_release_stats_per_ref_site(
     return ht.annotate(qual_hists=ht.qual_hists[0])
 
 
-def join_aou_and_gnomad_release_ht(aou_ht: hl.Table, gnomad_ht: hl.Table) -> hl.Table:
+def join_aou_and_gnomad_coverage_ht(aou_ht: hl.Table, gnomad_ht: hl.Table) -> hl.Table:
     """
-    Join AoU and gnomAD release HTs.
+    Join AoU and gnomAD coverage HTs for release.
 
-    :param aou_ht: AoU release HT.
-    :param gnomad_ht: gnomAD release HT.
+    :param aou_ht: AoU coverage HT.
+    :param gnomad_ht: gnomAD coverage HT.
     :return: Joined HT.
     """
     pass
 
 
 def main(args):
-    """Compute coverage statistics, including mean, median_approx, and coverage over certain DPs."""
+    """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     hl.init(
         log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
