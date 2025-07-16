@@ -5,6 +5,9 @@ import logging
 from typing import List, Optional
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import (
+    CURRENT_GENOME_COVERAGE_RELEASE as v4_COVERAGE_RELEASE,
+)
 from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.annotations import (
     build_freq_stratification_list,
@@ -138,7 +141,7 @@ def compute_all_release_stats_per_ref_site(
     # computes the cumulative sum over them. It needs to be in reverse order because we
     # want the sum over samples covered by > X.
     def _cov_stats(
-        cov_stat: hl.expr.StructExpression, n: hl.expr.Int32Expression
+        cov_stat: hl.expr.StructExpression,
     ) -> hl.expr.StructExpression:
         # The coverage was already floored to the max_coverage_bin, so no more
         # aggregation is needed for the max bin.
@@ -155,28 +158,84 @@ def compute_all_release_stats_per_ref_site(
             )
         )
         bin_expr = hl.cumulative_sum(hl.array([max_bin_expr]).extend(bin_expr))
-        bin_expr = {f"over_{x}": bin_expr[i] / n for i, x in enumerate(rev_cov_bins)}
+        # NOTE: Keeping these as sample counts rather than fractions to join with
+        # gnomAD v4 genomes.
+        bin_expr = {f"over_{x}": bin_expr[i] for i, x in enumerate(rev_cov_bins)}
         return cov_stat.annotate(**bin_expr).drop("coverage_counter")
 
     # Keep coverage stats from global adj grouping (index 0) only.
     ht = ht.annotate_globals(
         coverage_stats_meta_sample_count=ht.strata_sample_count[0],
     )
-    cov_stats_expr = _cov_stats(ht.coverage_stats[0], ht.sample_count)
+    cov_stats_expr = _cov_stats(ht.coverage_stats[0])
 
     ht = ht.transmute(**cov_stats_expr)
     return ht.annotate(qual_hists=ht.qual_hists[0])
 
 
-def join_aou_and_gnomad_coverage_ht(aou_ht: hl.Table, gnomad_ht: hl.Table) -> hl.Table:
+def join_aou_and_gnomad_coverage_ht(
+    aou_ht: hl.Table,
+    gnomad_ht: hl.Table,
+    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    v4_count: int = 76215,
+) -> hl.Table:
     """
     Join AoU and gnomAD coverage HTs for release.
 
     :param aou_ht: AoU coverage HT.
     :param gnomad_ht: gnomAD coverage HT.
+    :param coverage_over_x_bins: List of boundaries for computing samples over X.
+        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
+    :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
     :return: Joined HT.
     """
-    pass
+    # Get total number of AoU v8 release samples.
+    aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count[0])
+
+    def _rename_cov_annotations(ht: hl.Table, project: str) -> hl.Table:
+        """
+        Rename coverage annotations prior to merging Tables.
+
+        :param ht: Input HT.
+        :param project: Project name.
+        :return: Renamed HT.
+        """
+        row_fields = list(ht.row_value)
+        # Transform mean back into sum.
+        sample_count = v4_count if project == "gnomad" else aou_count
+        ht = ht.transmute(sum=ht.mean * sample_count)
+
+        # Rename annotations to include project.
+        rename_dict = {f: f"{f}_{project}" for f in row_fields}
+        ht = ht.rename(rename_dict)
+        if project == "gnomad":
+            # Revert v4 genomes fraction over X bins to sample count over X bins.
+            ht = ht.transmute(
+                **{
+                    f"over_{x}_{project}": ht[f"over_{x}_{project}"] * v4_count
+                    for x in coverage_over_x_bins
+                }
+            )
+        return ht
+
+    # Rename AoU and gnomAD coverage annotations.
+    aou_ht = _rename_cov_annotations(aou_ht, "aou")
+    gnomad_ht = _rename_cov_annotations(gnomad_ht, "gnomad")
+
+    # Merge annotations and return.
+    total_count = aou_count + v4_count
+    ht = aou_ht.join(gnomad_ht, "left")
+    merged_fields = {
+        "mean": (ht.sum_aou + ht.sum_gnomad) / total_count,
+    }
+    merged_fields.update(
+        {
+            f"over_{x}": (ht[f"over_{x}_aou"] + ht[f"over_{x}_gnomad"]) / total_count
+            for x in coverage_over_x_bins
+        }
+    )
+    ht = ht.transmute(**merged_fields)
+    return ht.select_globals()
 
 
 def main(args):
@@ -285,10 +344,6 @@ def main(args):
 
             # Select coverage and AN fields for release.
             ht = hl.read_table(cov_and_an_ht_path)
-            ht = ht.select_globals(
-                an_strata_meta=ht.strata_meta,
-                an_strata_sample_count=ht.strata_sample_count,
-            )
             ht = ht.select(
                 "AN",
                 **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]},
@@ -311,7 +366,16 @@ def main(args):
                 },
             )
 
-            ht = hl.read_table(reformat_cov_and_an_ht_path)
+            aou_ht = hl.read_table(reformat_cov_and_an_ht_path)
+            gnomad_ht = hl.read_table(
+                release_coverage_path(
+                    data_type="genomes",
+                    release_version=v4_COVERAGE_RELEASE,
+                    public=True,
+                    raw=False,
+                )
+            )
+            ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
 
             logger.info("Exporting coverage and AN HT and TSV...")
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
