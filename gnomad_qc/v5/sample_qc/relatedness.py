@@ -18,6 +18,7 @@ from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
 from gnomad_qc.v5.resources.sample_qc import (
+    finalized_outlier_filtering,
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
@@ -440,8 +441,6 @@ def main(args):
 
             filter_ht = None
             if release:
-                # Import the outlier filtering resource for release mode (using v4 for
-                # testing)
                 # Use v4 project meta to get the "elgh2" project info to include in
                 # the outlier filtering as we set samples in the ELGH2 project to
                 # 'outlier_filtered' True, so theyare treated like outlier filtered
@@ -456,7 +455,8 @@ def main(args):
                 v4_project_meta_ht = v4_project_meta.ht()
                 filter_ht = filter_ht.annotate(
                     outlier_filtered=hl.if_else(
-                        v4_project_meta_ht[filter_ht.key].project == "elgh2",
+                        v4_project_meta_ht[filter_ht.key].project_meta.project
+                        == "elgh2",
                         True,
                         filter_ht.outlier_filtered,
                         missing_false=True,
