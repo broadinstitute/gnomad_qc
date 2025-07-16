@@ -17,8 +17,8 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
-from gnomad_qc.v5.resources.sample_qc import (
-    finalized_outlier_filtering,
+
+from gnomad_qc.v5.resources.sample_qc import (  # finalized_outlier_filtering,
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
