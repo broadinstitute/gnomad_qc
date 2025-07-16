@@ -3,10 +3,13 @@
 import argparse
 import json
 import logging
+import os
+import re
 from io import StringIO
 from typing import Any, Dict, List
 
 import hail as hl
+from bs4 import BeautifulSoup
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
     check_global_and_row_annot_lengths,
@@ -62,6 +65,159 @@ ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
 REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
+# Define function that returns the field requirements for the Hail Table. Preferable to have function rather than defining a dictionary
+# here to avoid initializing hail before main.
+def return_field_requirements() -> Dict[str, Dict[str, Any]]:
+    """Return the field requirements for the Hail Table."""
+    return {
+        "global_field_requirements": {
+            "freq_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
+            "freq_index_dict": hl.tdict(hl.tstr, hl.tint32),
+            "freq_meta_sample_count": hl.tarray(hl.tint32),
+            "age_distribution.bin_edges": hl.tarray(hl.tfloat64),
+            "age_distribution.bin_freq": hl.tarray(hl.tint32),
+            "age_distribution.n_smaller": hl.tint32,
+            "age_distribution.n_larger": hl.tint32,
+            "vrs_versions.vrs_schema_version": hl.tstr,
+            "vrs_versions.vrs_python_version": hl.tstr,
+            "vrs_versions.seqrepo_version": hl.tstr,
+            "date": hl.tstr,
+        },
+        "row_field_requirements": {
+            "locus": hl.tlocus("GRCh38"),
+            "alleles": hl.tarray(hl.tstr),
+            "freq.AC": hl.tarray(hl.tint32),  # Use arrays to check freq annotations.
+            "freq.AF": hl.tarray(hl.tfloat64),
+            "freq.AN": hl.tarray(hl.tint32),
+            "freq.homozygote_count": hl.tarray(hl.tint32),
+            "was_split": hl.tbool,
+            "filters": hl.tset(hl.tstr),
+            "info.FS": hl.tfloat64,
+            "info.MQ": hl.tfloat64,
+            "info.MQRankSum": hl.tfloat64,
+            "info.MQRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.QUALapprox": hl.tint64,
+            "info.QD": hl.tfloat32,
+            "info.ReadPosRankSum": hl.tfloat64,
+            "info.ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.SB": hl.tarray(hl.tint32),
+            "info.SOR": hl.tfloat64,
+            "info.VarDP": hl.tint32,
+            "info.AS_FS": hl.tfloat64,
+            "info.AS_MQ": hl.tfloat64,
+            "info.AS_MQRankSum": hl.tfloat64,
+            "info.AS_MQRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.AS_MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.AS_MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.AS_pab_max": hl.tfloat64,
+            "info.AS_QUALapprox": hl.tint64,
+            "info.AS_QD": hl.tfloat32,
+            "info.AS_ReadPosRankSum": hl.tfloat64,
+            "info.AS_ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
+            "info.AS_ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
+            "info.AS_ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
+            "info.AS_SB_TABLE": hl.tarray(hl.tint32),
+            "info.AS_SOR": hl.tfloat64,
+            "info.AS_VarDP": hl.tint32,
+            "info.singleton": hl.tbool,
+            "info.transmitted_singleton": hl.tbool,
+            "info.vrs.VRS_Allele_IDs": hl.tarray(hl.tstr),
+            "info.vrs.VRS_Starts": hl.tarray(hl.tint32),
+            "info.vrs.VRS_Ends": hl.tarray(hl.tint32),
+            "info.vrs.VRS_States": hl.tarray(hl.tstr),
+            "histograms.qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.gq_hist_all.n_smaller": hl.tint64,
+            "histograms.qual_hists.gq_hist_all.n_larger": hl.tint64,
+            "histograms.qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.dp_hist_all.n_smaller": hl.tint64,
+            "histograms.qual_hists.dp_hist_all.n_larger": hl.tint64,
+            "histograms.qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.gq_hist_alt.n_smaller": hl.tint64,
+            "histograms.qual_hists.gq_hist_alt.n_larger": hl.tint64,
+            "histograms.qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.dp_hist_alt.n_smaller": hl.tint64,
+            "histograms.qual_hists.dp_hist_alt.n_larger": hl.tint64,
+            "histograms.qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.qual_hists.ab_hist_alt.n_smaller": hl.tint64,
+            "histograms.qual_hists.ab_hist_alt.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.gq_hist_all.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_all.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.dp_hist_all.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_all.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.gq_hist_alt.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.gq_hist_alt.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.dp_hist_alt.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.dp_hist_alt.n_larger": hl.tint64,
+            "histograms.raw_qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
+            "histograms.raw_qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
+            "histograms.raw_qual_hists.ab_hist_alt.n_smaller": hl.tint64,
+            "histograms.raw_qual_hists.ab_hist_alt.n_larger": hl.tint64,
+        },
+    }
+
+
+def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
+    """Create dictionary of field necessity from parsing markdown text.
+
+    :param md_text: Markdown text to parse.
+    :return: Dictionary of field names and their necessity.
+    """
+    field_dict = {}
+    lines = md_text.splitlines()
+    in_table = False
+
+    for line in lines:
+        # Detect table header
+        if line.strip().startswith("| Field") and "Field Necessity" in line:
+            in_table = True
+            continue
+        # Skip alignment row.
+        if in_table and re.match(r"^\|[-| ]+\|$", line):
+            continue
+        # Process table rows.
+        elif in_table and line.strip().startswith("|"):
+            parts = [c.strip() for c in line.strip().split("|") if c.strip()]
+            if len(parts) < 2:
+                continue
+            field_raw = parts[0]
+            necessity = parts[-1]
+
+            # Strip HTML tags and extra formatting.
+            field = BeautifulSoup(field_raw, "html.parser").get_text()
+            field = re.sub(r"[*`]", "", field).strip()
+
+            # Normalize necessity label.
+            necessity_clean = necessity.strip().lower()
+            if "required" in necessity_clean:
+                field_dict[field] = "required"
+            elif "optional" in necessity_clean:
+                field_dict[field] = "optional"
+        # End of table
+        elif in_table and not line.strip():
+            in_table = False
+        elif in_table and not line.strip().startswith("|"):
+            in_table = False
+
+    return field_dict
+
+
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
     """Validate JSON config inputs.
 
@@ -77,7 +233,7 @@ def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
         raise ValueError(f"JSON validation error: %s, {e.message}")
 
 
-def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
+def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     """Check that necessary fields defined in the JSON config are present in the Hail Table.
 
     :param ht: Hail Table.
@@ -109,8 +265,18 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
 
     # Check that specified row annotations are present.
     row_fields = array_struct_annotations + config["struct_annotations_for_missingness"]
+
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
+
+    # Check that specified info annotations are present.
+    if config.get("check_mono_and_only_het"):
+        info_annotations = ["monoallelic", "only_het"]
+        info_fields = list(ht.info.dtype)
+        missing_info_fields = [f for f in info_annotations if f not in info_fields]
+        missing_fields["missing_info_fields"] = missing_info_fields
+    else:
+        missing_fields["missing_info_fields"] = []
 
     # Check that freq_annotations_to_sum values are present in the 'freq' struct.
     freq_fields = list(ht.freq.dtype.element_type)
@@ -130,7 +296,8 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     # Check that specified subsets are present as values within the
     # freq_meta_expr subset key.
     subset_values = {i["subset"] for i in freq_meta_list if "subset" in i}
-    missing_subsets = set(config["subsets"]) - subset_values
+    subsets = [subset for subset in config.get("subsets", []) if subset]
+    missing_subsets = set(subsets) - subset_values
     missing_fields["missing_subsets"] = missing_subsets
 
     if any(missing_fields.values()):
@@ -140,6 +307,114 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
         raise ValueError(error_message)
     else:
         logger.info("Validated presence of config fields in the Table.")
+
+
+def validate_required_fields(
+    ht: hl.Table,
+    field_requirements: Dict[str, Dict[str, Any]],
+    field_necessities: Dict[str, str],
+) -> List[str]:
+    """
+    Validate that the table contains the required global and row fields and that their values are of the expected types.
+
+    .. note::
+
+        Required fields can be nested (e.g., 'info.QD' indicates that the 'QD' field is nested within the 'info' struct).
+
+    :param ht: Table to validate.
+    :param field_requirements: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_requirements" and "row_field_requirements", respectively containing the global and row fields as keys and their expected types as values.
+    :param field_necessities: Flat dictionary with annotation fields as keys and values field necessity("required" or "optional") as values.
+    :return: List of validation issues.
+    """
+    issues = []
+    validated = []
+
+    def _check_field_exists_and_type(
+        root_expr: hl.expr.Expression,
+        field_path: str,
+        expected_type: Any,
+        annotation_kind: str = "row",
+    ) -> None:
+        """
+        Check that the field exists and is of the expected type.
+
+        :param root_expr: Root expression to check.
+        :param field_path: Path to the field to check, where a period indicates a nested field.
+        :param expected_type: Expected type of the field.
+        :param annotation_kind: Kind of annotation to check ("row" or "global").
+        :return: None.
+        """
+        parts = field_path.split(".")
+        current_field = root_expr
+
+        field_necessity = field_necessities.get(field_path, "required")
+
+        for i, part in enumerate(parts):
+            dtype = current_field.dtype
+
+            # Check for presence of required struct fields.
+            if isinstance(dtype, hl.tstruct):
+                if part not in dtype.fields:
+                    issues.append(
+                        f"MISSING {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                    )
+                    return
+                current_field = current_field[part]
+                validated.append(
+                    f"Found {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} "
+                )
+
+            # Check for presence of required array fields.
+            elif isinstance(dtype, hl.tarray) and isinstance(
+                dtype.element_type, hl.tstruct
+            ):
+                if not part in dtype.element_type.fields:
+                    issues.append(
+                        f"MISSING {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
+                    )
+                    return
+                current_field = current_field.map(lambda x: x[part])
+
+            else:
+                logger.info(
+                    f"Unsupported type while traversing {'.'.join(parts[:i])}: {dtype}"
+                )
+                return
+
+        # Check that the field type matches expectation.
+        if isinstance(expected_type, hl.tarray) and isinstance(
+            current_field.dtype, hl.tarray
+        ):
+            if expected_type.element_type != current_field.dtype.element_type:
+                issues.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' is an array with incorrect element type: "
+                    f"expected {expected_type.element_type}, found {current_field.dtype.element_type}"
+                )
+                return
+
+            validated.append(
+                f"{annotation_kind.capitalize()} field '{field_path}' IS an array with correct element type {expected_type.element_type}"
+            )
+        else:
+            if current_field.dtype != expected_type:
+                issues.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
+                )
+                return
+
+            validated.append(
+                f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
+            )
+
+    # Validate global fields.
+    for field, expected_type in field_requirements["global_field_requirements"].items():
+        _check_field_exists_and_type(ht.globals, field, expected_type, "global")
+
+    # Validate row fields.
+    for field, expected_type in field_requirements["row_field_requirements"].items():
+        _check_field_exists_and_type(ht.row, field, expected_type, "row")
+
+    return (set(issues), set(validated))
 
 
 def check_missingness(
@@ -208,6 +483,7 @@ def validate_federated_data(
     subsets: List[str] = None,
     variant_filter_field: str = "AS_VQSR",
     problematic_regions: List[str] = ["lcr", "non_par", "segdup"],
+    site_gt_check_expr: Dict[str, hl.expr.BooleanExpression] = None,
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -223,6 +499,7 @@ def validate_federated_data(
     :param subsets: List of sample subsets.
     :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "AS_VQSR".
     :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
+    :param site_gt_check_expr: Optional dictionary of strings and boolean expressions typically used to log how many monoallelic or 100% heterozygous sites are in the Table.
     :return: None
     """
     # Summarize variants and check that all contigs exist.
@@ -236,6 +513,7 @@ def validate_federated_data(
         variant_filter_field=variant_filter_field,
         problematic_regions=problematic_regions,
         single_filter_count=True,
+        site_gt_check_expr=site_gt_check_expr,
     )
 
     # Check for missingness.
@@ -267,7 +545,7 @@ def validate_federated_data(
     sum_group_callstats(
         t=ht,
         sexes={i["sex"] for i in hl.eval(freq_meta_expr) if "sex" in i},
-        subsets=[""],
+        subsets=subsets,
         pops={
             i[gen_anc_label_name]
             for i in hl.eval(freq_meta_expr)
@@ -295,7 +573,7 @@ def validate_federated_data(
     logger.info("Checking raw and adj callstats...")
     check_raw_and_adj_callstats(
         t=ht,
-        subsets=[""],
+        subsets=subsets,
         verbose=verbose,
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
@@ -474,7 +752,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     AC=hl.tint32,
                     AF=hl.tfloat64,
                     AN=hl.tint32,
-                    homozygote_count=hl.tint32,
+                    homozygote_count=hl.tint64,
                 )
             ),
             faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
@@ -514,7 +792,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         freq_meta_sample_count=freq_meta_sample_count,
-        faf_meta_sample_count=freq_meta_sample_count,
+        faf_meta_sample_count=faf_meta_sample_count,
     )
 
     # Add in retired terms to globals.
@@ -568,6 +846,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     )
 
     ht = ht.annotate(grpmax=grpmax, fafmax=fafmax)
+    # Add monoallelic and only_het annotations.
+    ht = ht.annotate(monoallelic=hl.rand_bool(0.50), only_het=hl.rand_bool(0.10))
     ht = ht.key_by("locus", "alleles")
 
     return ht
@@ -596,6 +876,13 @@ def main(args):
 
         validate_config(config, schema)
 
+        # Read in field necessity markdown file.
+        # When submitting hail dataproc job, include "--files field_requirements.md".
+        with open("field_requirements.md", "r") as f:
+            md_text = f.read()
+
+        field_necessities = parse_field_necessity_from_md(md_text)
+
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
@@ -605,7 +892,7 @@ def main(args):
             ht = public_release(data_type="exomes").ht()
 
             # Check that fields specified in the config are present in the Table.
-            validate_ht_fields(ht=ht, config=config)
+            validate_config_fields_in_ht(ht=ht, config=config)
 
             # Confirm Table is using build GRCh38.
             build = get_reference_genome(ht.locus).name
@@ -669,6 +956,32 @@ def main(args):
                 "faf_fields"
             ]["faf_meta"]
 
+        logger.info("Validate required fields...")
+        field_requirements = return_field_requirements()
+        validation_errors, validated_fields = validate_required_fields(
+            ht=ht,
+            field_requirements=field_requirements,
+            field_necessities=field_necessities,
+        )
+        print(validation_errors)
+
+        if len(validation_errors) > 0:
+            # Separate validation issues by necessity.
+            required_errors = {
+                e
+                for e in validation_errors
+                if "MISSING required" in e
+                or "is not of type" in e
+                or "incorrect element type" in e
+            }
+            optional_errors = validation_errors - required_errors
+            if required_errors:
+                logger.info(f"Failed validation of required fields: {required_errors}")
+            if optional_errors:
+                logger.warning(f"Issues with optional fields: {optional_errors}")
+        if len(validated_fields) > 0:
+            logger.info(f"Validated fields: {validated_fields}")
+
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(
@@ -688,7 +1001,23 @@ def main(args):
             for field in ALLELE_TYPE_FIELDS:
                 info_dict[field] = ht["allele_info"][f"{field}"]
 
+        # Add monoallelic and only_het fields to info dict.
+        if "monoallelic" in ht.row:
+            info_dict["monoallelic"] = ht["monoallelic"]
+        if "only_het" in ht.row:
+            info_dict["only_het"] = ht["only_het"]
+
         ht = ht.annotate(info=ht.info.annotate(**info_dict))
+
+        # If config specifies to check for monoallelic and only heterozygous sites,
+        # create the site_gt_check_expr to pass to validate_federated_data.
+        if config.get("check_mono_and_only_het"):
+            site_gt_check_expr = {
+                "monoallelic": ht.info.monoallelic,
+                "only_het": ht.info.only_het,
+            }
+        else:
+            site_gt_check_expr = None
 
         validate_federated_data(
             ht=ht,
@@ -704,6 +1033,7 @@ def main(args):
             subsets=config["subsets"],
             variant_filter_field=config["variant_filter_field"],
             problematic_regions=REGION_FLAG_FIELDS,
+            site_gt_check_expr=site_gt_check_expr,
         )
 
         handler.flush()
@@ -773,8 +1103,8 @@ if __name__ == "__main__":
             "nhomalt_metric: Name of metric denoting homozygous alternate count."
             "subsets: List of sample subsets to include for the subset validity check."
             "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
+            "check_mono_and_only_het: Boolean indicating whether to check for monoallelic and 100 percent heterozygous sites in the Table ('monoallelic' and 'only_het' annotations must be present)."
         ),
-        required=True,
         type=str,
     )
     parser.add_argument(
