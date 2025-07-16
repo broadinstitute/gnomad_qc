@@ -442,18 +442,21 @@ def main(args):
             if release:
                 # Import the outlier filtering resource for release mode (using v4 for
                 # testing)
+                # Use v4 project meta to get the "elgh2" project info to include in
+                # the outlier filtering as we set samples in the ELGH2 project to
+                # 'outlier_filtered' True, so theyare treated like outlier filtered
+                # samples when creating the release ranking. We identified that they do
+                # not have the full set of 'AS' annotations in 'gvcf_info' so we need to
+                # exclude them from variant QC and release.
+                from gnomad_qc.v4.resources.meta import project_meta as v4_project_meta
                 from gnomad_qc.v4.resources.sample_qc import finalized_outlier_filtering
 
                 filter_ht = finalized_outlier_filtering().ht()
-                # Setting samples in the ELGH2 project to 'outlier_filtered' True, so they
-                # are treated like outlier filtered samples when creating the release
-                # ranking. We identified that they do not have the full set of 'AS'
-                # annotations in 'gvcf_info' so we need to exclude them from variant QC and
-                # release.
-                project_meta_ht = project_meta.ht()
+
+                v4_project_meta_ht = v4_project_meta.ht()
                 filter_ht = filter_ht.annotate(
                     outlier_filtered=hl.if_else(
-                        project_meta_ht[filter_ht.key].project == "elgh2",
+                        v4_project_meta_ht[filter_ht.key].project == "elgh2",
                         True,
                         filter_ht.outlier_filtered,
                         missing_false=True,
