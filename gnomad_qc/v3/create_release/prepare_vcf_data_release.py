@@ -306,7 +306,7 @@ def populate_info_dict(
             prefix="",
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
-            popmax=True,
+            grpmax=True,
             age_hist_distribution=age_hist_distribution,
         )
     )
