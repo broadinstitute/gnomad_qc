@@ -147,7 +147,7 @@ def main(args):
         v2_joint=ht.v2_joint.annotate(
             joint_faf=faf,
             joint_fafmax=gen_anc_faf_max_expr(
-                faf, hl.literal(faf_meta), pop_label="pop"
+                faf, hl.literal(faf_meta), gen_anc_label="pop"
             ),
             joint_grpmax=grpmax,
         )
