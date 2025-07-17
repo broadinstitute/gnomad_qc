@@ -7,7 +7,7 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -299,7 +299,7 @@ def assign_gen_anc(
         ),
     )
     # Run the gen anc RF.
-    gen_anc_ht, gen_anc_rf_model = assign_population_pcs(
+    gen_anc_ht, gen_anc_rf_model = assign_genetic_ancestry_pcs(
         gen_anc_pca_scores_ht,
         pc_cols=pcs,
         known_col="training_gen_anc",
