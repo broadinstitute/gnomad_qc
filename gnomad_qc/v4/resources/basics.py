@@ -12,7 +12,6 @@ from gnomad.resources.resource_utils import (
 )
 from hail.utils import new_temp_file
 
-import gnomad_qc.v3.resources.basics as v3_basics
 from gnomad_qc.v4.resources.constants import (
     CURRENT_RAW_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
@@ -445,6 +444,8 @@ def get_gnomad_v4_genomes_vds(
     :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
+    import gnomad_qc.v3.resources.basics as v3_basics
+
     vds = v3_basics.get_gnomad_v3_vds(
         split=split,
         remove_hard_filtered_samples=remove_hard_filtered_samples,
