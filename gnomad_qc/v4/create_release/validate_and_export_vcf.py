@@ -760,7 +760,7 @@ def populate_subset_info_dict(
             )
         )
     # Add AC, AN, AF, nhomalt fields to dict.
-    label_groups = create_label_groups(pops=pops, sexes=sexes)
+    label_groups = create_label_groups(gen_ancs=pops, sexes=sexes)
     for label_group in label_groups:
         vcf_info_dict.update(
             make_info_dict(
