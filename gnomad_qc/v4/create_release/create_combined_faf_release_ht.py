@@ -393,7 +393,7 @@ def get_joint_freq_and_faf(
     ht = ht.annotate(
         joint_faf=faf,
         joint_fafmax=gen_anc_faf_max_expr(
-            faf, hl.literal(faf_meta), pop_label="gen_anc"
+            faf, hl.literal(faf_meta), gen_anc_label="gen_anc"
         ),
         joint_grpmax=grpmax,
     )
