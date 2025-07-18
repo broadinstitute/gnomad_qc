@@ -55,16 +55,16 @@ def run_pca(
     :param n_pcs: Number of PCs to compute.
     :return: Eigenvalues, scores and loadings from PCA.
     """
-    logger.info("Running population PCA")
+    logger.info("Running genetic ancestry PCA...")
     samples_to_drop = related_samples_to_drop.select()
 
     if not include_unreleasable_samples:
-        logger.info("Excluding unreleasable samples for PCA.")
+        logger.info("Excluding unreleasable samples for PCA...")
         samples_to_drop = samples_to_drop.union(
             qc_mt.filter_cols(~meta_ht[qc_mt.col_key].releasable).cols().select()
         )
     else:
-        logger.info("Including unreleasable samples for PCA.")
+        logger.info("Including unreleasable samples for PCA...")
 
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
@@ -198,7 +198,9 @@ def prep_ht_for_rf(
 
         v4_spike_err = set(v4_gen_anc_spike) - set(V4_POP_SPIKE_DICT.keys())
         if len(v4_spike_err) > 0:
-            raise ValueError(f"Pops: {v4_spike_err}, are not in V4_POP_SPIKE_DICT")
+            raise ValueError(
+                f"Genetic ancestry groups: {v4_spike_err}, are not in V4_POP_SPIKE_DICT"
+            )
 
         v4_gen_anc_spike = {r: V4_POP_SPIKE_DICT[r] for r in v4_gen_anc_spike}
 
@@ -214,7 +216,9 @@ def prep_ht_for_rf(
         )
         v3_spike_err = set(v3_gen_anc_spike) - set(V3_SPIKE_PROJECTS.keys())
         if len(v3_spike_err) > 0:
-            raise ValueError(f"Pops: {v3_spike_err}, are not in V3_SPIKE_PROJECTS")
+            raise ValueError(
+                f"Genetic ancestry groups: {v3_spike_err}, are not in V3_SPIKE_PROJECTS"
+            )
 
         # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins.
         training_gen_anc = hl.coalesce(
