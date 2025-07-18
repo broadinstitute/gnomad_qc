@@ -5,7 +5,7 @@ import logging
 from typing import Dict
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS_STORED_AS_SUBPOPS
+from gnomad.resources.grch38.gnomad import COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -435,7 +435,7 @@ def prepare_variant_annotations(
         hgdp_tgp_freq_meta=hgdp_tgp_freq_meta,
         hgdp_tgp_freq_index_dict=make_freq_index_dict(
             hgdp_tgp_freq_meta,
-            pops=POPS_STORED_AS_SUBPOPS,
+            gen_anc_groups=COHORTS_WITH_GEN_ANC_STORED_AS_SUBGRP,
             label_delimiter="-",
         ),
         gnomad_freq_meta=freq_meta,

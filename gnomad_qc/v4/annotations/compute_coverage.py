@@ -70,11 +70,11 @@ def get_exomes_group_membership_ht(
         meta_ht,
         build_freq_stratification_list(
             sex_expr=meta_ht.sex_imputation.sex_karyotype,
-            pop_expr=meta_ht.population_inference.pop,
+            gen_anc_expr=meta_ht.population_inference.pop,
             downsampling_expr=ds_ht[meta_ht.key].downsampling,
         ),
         downsamplings=hl.eval(ds_ht.downsamplings),
-        ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
+        ds_gen_anc_counts=hl.eval(ds_ht.ds_pop_counts),
     )
 
     # Add non-UKB group membership to HT.
@@ -82,11 +82,11 @@ def get_exomes_group_membership_ht(
         non_ukb_meta_ht,
         build_freq_stratification_list(
             sex_expr=non_ukb_meta_ht.sex_imputation.sex_karyotype,
-            pop_expr=non_ukb_meta_ht.population_inference.pop,
+            gen_anc_expr=non_ukb_meta_ht.population_inference.pop,
             downsampling_expr=non_ukb_ds_ht[non_ukb_meta_ht.key].downsampling,
         ),
         downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
-        ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
+        ds_gen_anc_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
     )
     n_non_ukb = hl.eval(hl.len(non_ukb_ht.freq_meta))
     ht = ht.annotate(
@@ -135,7 +135,7 @@ def get_genomes_group_membership_ht(
         meta_ht,
         build_freq_stratification_list(
             sex_expr=meta_ht.sex_imputation.sex_karyotype,
-            pop_expr=meta_ht.population_inference.pop,
+            gen_anc_expr=meta_ht.population_inference.pop,
         ),
     )
 
