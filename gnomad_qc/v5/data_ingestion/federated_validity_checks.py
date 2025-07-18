@@ -209,7 +209,7 @@ def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
                 field_dict[field] = "required"
             elif "optional" in necessity_clean:
                 field_dict[field] = "optional"
-        # End of table
+        # End of table.
         elif in_table and not line.strip():
             in_table = False
         elif in_table and not line.strip().startswith("|"):
