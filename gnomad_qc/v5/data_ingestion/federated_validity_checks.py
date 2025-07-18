@@ -877,8 +877,16 @@ def main(args):
 
         # Read in field necessity markdown file.
         # When submitting hail dataproc job, include "--files field_requirements.md".
-        with open("field_requirements.md", "r") as f:
-            md_text = f.read()
+
+        try:
+            with open("field_requirements.md", "r") as f:
+                md_text = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                "Missing required file 'field_requirements.md'.\n"
+                "If running a Hail Dataproc job, be sure to include it with the --files argument:\n"
+                "  hailctl dataproc submit <cluster-name> --files field_requirements.md  federated_validity_checks.py..."
+            )
 
         field_necessities = parse_field_necessity_from_md(md_text)
 
