@@ -3,7 +3,6 @@
 import argparse
 import json
 import logging
-import os
 import re
 from io import StringIO
 from typing import Any, Dict, List
@@ -963,7 +962,6 @@ def main(args):
             field_requirements=field_requirements,
             field_necessities=field_necessities,
         )
-        print(validation_errors)
 
         if len(validation_errors) > 0:
             # Separate validation issues by necessity.
