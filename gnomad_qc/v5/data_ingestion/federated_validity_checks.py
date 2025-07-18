@@ -1,4 +1,4 @@
-"""Script to generate annotations for variant QC on gnomAD v4."""
+"""Script to perform validity checks on input federated data or final release files."""
 
 import argparse
 import json
