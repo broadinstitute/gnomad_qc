@@ -184,7 +184,7 @@ def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
     in_table = False
 
     for line in lines:
-        # Detect table header
+        # Detect table header.
         if line.strip().startswith("| Field") and "Field Necessity" in line:
             in_table = True
             continue
