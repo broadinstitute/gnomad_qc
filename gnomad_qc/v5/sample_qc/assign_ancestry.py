@@ -66,6 +66,13 @@ def run_pca(
     else:
         logger.info("Including unreleasable samples for PCA...")
 
+    qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
+
+    # Filter out AoU samples.
+    qc_mt = qc_mt.filter_cols(qc_mt.meta.project != "aou")
+
+    qc_mt = qc_mt.checkpoint(new_temp_file("qc_mt", extension="mt"))
+
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
 
