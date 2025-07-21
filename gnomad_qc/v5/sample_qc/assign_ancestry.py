@@ -69,6 +69,7 @@ def run_pca(
     qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
 
     # Filter out AoU samples.
+    logger.info("Filtering AoU samples...")
     qc_mt = qc_mt.filter_cols(qc_mt.meta.project != "aou")
 
     qc_mt = qc_mt.checkpoint(new_temp_file("qc_mt", extension="mt"))
