@@ -620,6 +620,7 @@ def main(args):
             v4_loadings = v4_pca_loadings().ht()
             v4_scores = v4_pca_scores().ht()
 
+            logger.info("Projecting onto PCs...")
             combined_scores = project_aou_samples(
                 qc_mt=qc_mt,
                 meta_ht=project_meta.ht(),
@@ -627,6 +628,7 @@ def main(args):
                 pca_scores=v4_scores,
             )
 
+            logger.info("Writing combined scores...")
             combined_scores.write(
                 genetic_ancestry_pca_scores(include_unreleasable_samples, test).path,
                 overwrite=overwrite,
