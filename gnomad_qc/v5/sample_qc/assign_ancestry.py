@@ -533,8 +533,6 @@ def project_aou_samples(
     )
 
     projected_scores = pc_project(project_pca_mt, pca_loadings)
-
-    logger.info("Write projected scores...")
     pca_scores = pca_scores.union(projected_scores)
 
     return pca_scores
