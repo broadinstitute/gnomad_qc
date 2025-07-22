@@ -620,20 +620,16 @@ def main(args):
             v4_loadings = v4_pca_loadings().ht()
             v4_scores = v4_pca_scores().ht()
 
-            project_aou_samples(
+            combined_scores = project_aou_samples(
                 qc_mt=qc_mt,
                 meta_ht=project_meta.ht(),
                 pca_loadings=v4_loadings,
                 pca_scores=v4_scores,
             )
 
-            write_pca_results(
-                gen_anc_eigenvalues,
-                gen_anc_scores_ht,
-                gen_anc_loadings_ht,
-                overwrite,
-                include_unreleasable_samples,
-                use_tmp_path,
+            combined_scores.write(
+                genetic_ancestry_pca_scores(included_unreleasables, test).path,
+                overwrite=overwrite,
             )
 
         if args.assign_gen_anc:
