@@ -532,18 +532,14 @@ def project_aou_samples(
         new_temp_file("project_pca_mt", extension="mt")
     )
     
-    logger.info("Count and partitions...")
-    project_pca_mt.count()
-    project_pca_mt.n_partitions()
+
 
     projected_scores = pc_project(project_pca_mt, pca_loadings)
-    projected_scores = projected_scores.checkpoint(new_temp_file("projected_scores_ckpt", extension="ht"))
+    #projected_scores = projected_scores.checkpoint(new_temp_file("projected_scores_ckpt", extension="ht"))
 
-    logger.info(f"n_rows = {projected_scores.count()}")
-    logger.info(f"n_partitions = {projected_scores.n_partitions()}")
-    logger.info(f"schema = {projected_scores.row.dtype}")
     logger.info("Write projected scores...")
 
+    projected_scores = projected_scores.naive_coalesce(1000)
 
     projected_scores.write(new_temp_file("projected_ht", extension="ht"))
     logger.info("Union scores...")
