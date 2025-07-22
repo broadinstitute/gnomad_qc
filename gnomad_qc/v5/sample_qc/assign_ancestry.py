@@ -531,8 +531,8 @@ def project_aou_samples(
     project_pca_mt = project_pca_mt.checkpoint(
         new_temp_file("project_pca_mt", extension="mt")
     )
-
-   logger.info("Count and partitions...")
+    
+    logger.info("Count and partitions...")
     project_pca_mt.count()
     project_pca_mt.n_partitions()
 
