@@ -525,6 +525,9 @@ def main(args):
         use_tmp_path = test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
 
+        if args.run_pca and args.project_aou_onto_pcs:
+            raise ValueError("Only one of 'run_pca' or 'project_aou_onto_pcs' can be specified.")
+
         if args.run_pca:
             check_resource_existence(
                 output_step_resources={
@@ -564,6 +567,34 @@ def main(args):
                 include_unreleasable_samples,
                 use_tmp_path,
             )
+
+        if args.project_aou_onto_pcs:
+
+            qc_mt = get_joint_qc(test=test).mt()
+
+            if test_on_chr20:
+                logger.info("Filtering QC MT to chromosome 20...")
+                qc_mt = hl.filter_intervals(
+                    qc_mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
+                )
+
+            qc_mt = filter_to_autosomes(qc_mt)
+
+        def project_aou_samples:
+        
+
+            # Filter to AoU samples.
+            logger.info("Filtering to AoU samples...")
+            qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
+            project_pca_mt=qc_mt.filter_cols(qc_mt.meta.project == "aou")
+
+            project_pca_mt = project_pca_mt.checkpoint(new_temp_file("project_pca_mt", extension="mt"))
+
+            
+            projected_scores = pc_project(project_pca_mt, pca_loadings)
+
+
+
         if args.assign_gen_anc:
             check_resource_existence(
                 output_step_resources={
@@ -704,6 +735,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-on-chr20",
         help="Filter the QC Matrix Table to chromosome 20 before running PCA.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--project-aou-onto-pcs",
+        help="Project the AoU samples onto the gnomAD PC loadings."
         action="store_true",
     )
     parser.add_argument(
