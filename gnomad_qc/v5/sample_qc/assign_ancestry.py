@@ -628,7 +628,7 @@ def main(args):
             )
 
             combined_scores.write(
-                genetic_ancestry_pca_scores(included_unreleasables, test).path,
+                genetic_ancestry_pca_scores(include_unreleasable_samples, test).path,
                 overwrite=overwrite,
             )
 
