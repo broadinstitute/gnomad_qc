@@ -12,6 +12,7 @@ from gnomad.sample_qc.ancestry import (
     pc_project,
     run_pca_with_relateds,
 )
+from gnomad.utils.filtering import filter_to_autosomes
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
