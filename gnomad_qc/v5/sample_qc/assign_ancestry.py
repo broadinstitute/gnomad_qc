@@ -7,10 +7,16 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import (
+    assign_genetic_ancestry_pcs,
+    pc_project,
+    run_pca_with_relateds,
+)
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.sample_qc import ancestry_pca_loadings as v4_pca_loadings
+from gnomad_qc.v4.resources.sample_qc import ancestry_pca_scores as v4_pca_scores
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
@@ -503,6 +509,34 @@ def assign_gen_anc_with_per_gen_anc_probs(
     return gen_anc_ht
 
 
+def project_aou_samples(
+    qc_mt: hl.MatrixTable,
+    meta_ht: hl.Table,
+    pca_loadings: hl.Table,
+    pca_scores: hl.Table,
+) -> hl.Table:
+    """Project AoU samples onto the gnomAD PCA loadings.
+    :param qc_mt: QC Matrix Table.
+    :param meta_ht: Table of meta data containing 'project' field, used to filter to AoU samples.
+    :param pca_loadings: Table of PCA loadings to project AoU samples onto.
+    :param pca_scores: Table of PCA scores from gnomAD data.
+    :return: Table of PCA scores for AoU samples projected onto the gnomAD PCA loadings.
+    """
+
+    # Filter to AoU samples.
+    logger.info("Filtering to AoU samples...")
+    qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
+    project_pca_mt = qc_mt.filter_cols(qc_mt.meta.project == "aou")
+    project_pca_mt = project_pca_mt.checkpoint(
+        new_temp_file("project_pca_mt", extension="mt")
+    )
+
+    projected_scores = pc_project(project_pca_mt, pca_loadings)
+    pca_scores = pca_scores.union(projected_scores)
+
+    return pca_scores
+
+
 def main(args):
     """Assign genetic ancestry group labels to samples."""
     hl.init(
@@ -526,7 +560,9 @@ def main(args):
         include_v2_known_in_training = args.include_v2_known_in_training
 
         if args.run_pca and args.project_aou_onto_pcs:
-            raise ValueError("Only one of 'run_pca' or 'project_aou_onto_pcs' can be specified.")
+            raise ValueError(
+                "Only one of 'run_pca' or 'project_aou_onto_pcs' can be specified."
+            )
 
         if args.run_pca:
             check_resource_existence(
@@ -580,20 +616,24 @@ def main(args):
 
             qc_mt = filter_to_autosomes(qc_mt)
 
-        def project_aou_samples:
-        
+            v4_loadings = v4_pca_loadings().ht()
+            v4_scores = v4_pca_scores().ht()
 
-            # Filter to AoU samples.
-            logger.info("Filtering to AoU samples...")
-            qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
-            project_pca_mt=qc_mt.filter_cols(qc_mt.meta.project == "aou")
+            project_aou_samples(
+                qc_mt=qc_mt,
+                meta_ht=project_meta.ht(),
+                pca_loadings=v4_loadings,
+                pca_scores=v4_scores,
+            )
 
-            project_pca_mt = project_pca_mt.checkpoint(new_temp_file("project_pca_mt", extension="mt"))
-
-            
-            projected_scores = pc_project(project_pca_mt, pca_loadings)
-
-
+            write_pca_results(
+                gen_anc_eigenvalues,
+                gen_anc_scores_ht,
+                gen_anc_loadings_ht,
+                overwrite,
+                include_unreleasable_samples,
+                use_tmp_path,
+            )
 
         if args.assign_gen_anc:
             check_resource_existence(
@@ -739,7 +779,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--project-aou-onto-pcs",
-        help="Project the AoU samples onto the gnomAD PC loadings."
+        help="Project the AoU samples onto the gnomAD PC loadings.",
         action="store_true",
     )
     parser.add_argument(
