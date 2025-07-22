@@ -541,7 +541,7 @@ def project_aou_samples(
 
     projected_scores = projected_scores.naive_coalesce(1000)
 
-    projected_scores.write(new_temp_file("projected_ht", extension="ht"))
+    projected_scores.write("gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/projected_scores.ht")
     logger.info("Union scores...")
     pca_scores = pca_scores.union(projected_scores)
 
