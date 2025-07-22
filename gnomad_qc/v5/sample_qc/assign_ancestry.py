@@ -629,6 +629,7 @@ def main(args):
             )
 
             logger.info("Writing combined scores...")
+            combined_scores = combined_scores.repartition(1000)
             combined_scores.write(
                 genetic_ancestry_pca_scores(include_unreleasable_samples, test).path,
                 overwrite=overwrite,
