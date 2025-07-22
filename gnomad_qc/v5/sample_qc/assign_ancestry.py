@@ -531,18 +531,10 @@ def project_aou_samples(
     project_pca_mt = project_pca_mt.checkpoint(
         new_temp_file("project_pca_mt", extension="mt")
     )
-    
-
 
     projected_scores = pc_project(project_pca_mt, pca_loadings)
-    #projected_scores = projected_scores.checkpoint(new_temp_file("projected_scores_ckpt", extension="ht"))
 
     logger.info("Write projected scores...")
-
-    projected_scores = projected_scores.naive_coalesce(1000)
-
-    projected_scores.write("gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/projected_scores.ht")
-    logger.info("Union scores...")
     pca_scores = pca_scores.union(projected_scores)
 
     return pca_scores
@@ -639,7 +631,6 @@ def main(args):
             )
 
             logger.info("Writing combined scores...")
-            combined_scores = combined_scores.repartition(1000)
             combined_scores.write(
                 genetic_ancestry_pca_scores(include_unreleasable_samples, test).path,
                 overwrite=overwrite,
