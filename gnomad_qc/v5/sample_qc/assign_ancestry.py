@@ -535,7 +535,7 @@ def project_aou_samples(
     projected_scores = pc_project(project_pca_mt, pca_loadings)
     logger.info(f"n_rows = {projected_scores.count()}")
     logger.info(f"n_partitions = {projected_scores.n_partitions()}")
-l   logger.info(f"schema = {projected_scores.row.dtype}")
+    logger.info(f"schema = {projected_scores.row.dtype}")
     logger.info("Write projected scores...")
     projected_scores.write(new_temp_file("projected_ht", extension="ht"))
     logger.info("Union scores...")
