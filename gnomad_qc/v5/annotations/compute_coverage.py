@@ -271,7 +271,7 @@ def join_aou_and_gnomad_an_ht(
     aou_ht = _rename_fields(aou_ht, "aou")
     gnomad_ht = _rename_fields(gnomad_ht, "gnomad")
     ht = aou_ht.join(gnomad_ht, "outer")
-    ht = ht.checkpoint(hl.utils.new_temp_file("aou_and_gnomad_join", "ht"))
+    ht = ht.checkpoint(new_temp_file("aou_and_gnomad_join", "ht"))
 
     joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
         arrays=[ht.AN_aou, ht.AN_gnomad],
@@ -370,7 +370,7 @@ def main(args):
                 meta().ht(),
             )
             group_membership_ht = group_membership_ht.checkpoint(
-                hl.utils.new_temp_file("group_membership", "ht")
+                new_temp_file("group_membership", "ht")
             )
 
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
@@ -379,7 +379,7 @@ def main(args):
                 group_membership_ht=group_membership_ht,
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
-                hl.utils.new_temp_file("aou_cov_and_an", "ht")
+                new_temp_file("aou_cov_and_an", "ht")
             )
             # Naive coalesce and write out the intermediate HT.
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
