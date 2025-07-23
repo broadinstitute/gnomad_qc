@@ -59,7 +59,9 @@ def get_genomes_group_membership_ht(
         meta_ht,
         build_freq_stratification_list(
             sex_expr=meta_ht.sex_imputation.sex_karyotype,
-            gen_anc_expr=meta_ht.gen_anc_inference.gen_anc,
+            # TODO: Revert this when moving to v5.
+            # gen_anc_expr=meta_ht.gen_anc_inference.gen_anc,
+            gen_anc_expr=meta_ht.population_inference.pop,
         ),
     )
 
