@@ -12,6 +12,7 @@ from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.annotations import (
     build_freq_stratification_list,
     generate_freq_group_membership_array,
+    merge_array_expressions,
     qual_hist_expr,
 )
 from gnomad.utils.sparse_mt import (
@@ -19,6 +20,7 @@ from gnomad.utils.sparse_mt import (
     get_allele_number_agg_func,
     get_coverage_agg_func,
 )
+from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
@@ -249,7 +251,47 @@ def join_aou_and_gnomad_an_ht(
     :param gnomad_ht: gnomAD AN HT.
     :return: Joined HT.
     """
-    pass
+
+    def _rename_fields(ht: hl.Table, project: str) -> hl.Table:
+        """
+        Rename fields by adding project name prior to merging Tables.
+
+        :param ht: Input HT.
+        :param project: Project name.
+        :return: Renamed HT.
+        """
+        rename_globals = {
+            f"strata_meta_{project}": ht.strata_meta,
+            f"strata_sample_count_{project}": ht.strata_sample_count,
+        }
+        ht = ht.select_globals(**rename_globals)
+        rename_dict = {"AN": f"AN_{project}"}
+        return ht.rename(rename_dict)
+
+    aou_ht = _rename_fields(aou_ht, "aou")
+    gnomad_ht = _rename_fields(gnomad_ht, "gnomad")
+    ht = aou_ht.join(gnomad_ht, "outer")
+    ht = ht.checkpoint(hl.utils.new_temp_file("aou_and_gnomad_join", "ht"))
+
+    joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
+        arrays=[ht.AN_aou, ht.AN_gnomad],
+        meta=[
+            ht.index_globals().strata_meta_aou,
+            ht.index_globals().strata_meta_gnomad,
+        ],
+        count_arrays={
+            "counts": [
+                ht.index_globals().strata_sample_count_aou,
+                ht.index_globals().strata_sample_count_gnomad,
+            ],
+        },
+    )
+    ht = ht.annotate(AN=joint_an)
+    ht = ht.annotate_globals(
+        strata_meta=joint_strata_meta,
+        strata_sample_count=count_arrays_dict["counts"],
+    )
+    return ht
 
 
 def main(args):
@@ -395,6 +437,13 @@ def main(args):
             ht.export(cov_tsv_path)
 
         if args.export_an_release_files:
+            an_raw_ht_path = release_coverage_path(
+                public=False,
+                test=test,
+                raw=True,
+                coverage_type="allele_number",
+                data_set="joint",
+            )
             an_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -405,6 +454,7 @@ def main(args):
             an_tsv_path = release_all_sites_an_tsv_path(test=test)
             check_resource_existence(
                 output_step_resources={
+                    "an_raw_ht": an_raw_ht_path,
                     "an_release_ht": an_ht_path,
                     "an_release_tsv": an_tsv_path,
                 },
@@ -422,6 +472,12 @@ def main(args):
                 )
             )
             ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
+            ht = ht.checkpoint(an_raw_ht_path, overwrite=overwrite)
+            ht = ht.select("AN")
+            ht = ht.select_globals(
+                strata_meta=ht.strata_meta,
+                strata_sample_count=ht.strata_sample_count,
+            )
             ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
 
             # Only export the adj AN for all release samples.
