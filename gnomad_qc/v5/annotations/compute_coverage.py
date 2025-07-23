@@ -484,6 +484,10 @@ def main(args):
             ht = ht.transmute(AN=ht.AN[0])
             ht.export(an_tsv_path)
 
+        if args.merge_qual_hists:
+            # TODO: Implement this.
+            pass
+
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("compute_coverage", environment="rwb"))
@@ -535,6 +539,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--export-an-release-files",
         help="Exports joint AoU + gnomAD v4 AN release HT and TSV file.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--merge-qual-hists",
+        help="Merge variant quality histograms from AoU v8 and gnomAD v4 genomes.",
         action="store_true",
     )
 
