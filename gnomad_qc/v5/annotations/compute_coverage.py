@@ -347,6 +347,7 @@ def main(args):
             # Read in VDS.
             vds = get_gnomad_v4_genomes_vds(
                 release_only=True,
+                remove_hard_filtered_samples=False,
                 test=test,
                 filter_partitions=range(2) if test_2_partitions else None,
                 annotate_meta=True,
