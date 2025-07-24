@@ -47,6 +47,21 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.resources.annotations import (
+    get_all_sites_an_and_qual_hists as get_v4_coverage,
+)
+from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
+
+# Import v4 resources for metadata and frequency data
+from gnomad_qc.v4.resources.meta import meta as v4_meta
+
+# Import v5 annotation resources
+from gnomad_qc.v5.resources.annotations import (
+    get_age_hist_ht,
+    get_ancestry_changes_ht,
+    get_freq_ht,
+    get_freq_summary_ht,
+)
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
@@ -56,12 +71,8 @@ from gnomad_qc.v5.resources.sample_qc import (
     related_samples_to_drop,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(message)s",
-    datefmt="%m/%d/%Y %I:%M:%S %p",
-)
-logger = logging.getLogger("gnomAD_v5_frequency")
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
 
 AGE_HISTS = [
@@ -107,72 +118,77 @@ def get_freq_resources(
     data_set: str = "gnomad",
 ) -> PipelineResourceCollection:
     """
-    Get frequency resources for v5.
+    Get frequency calculation resources.
 
-    :param overwrite: Whether to overwrite existing files.
-    :param test: Whether to use test resources.
-    :param data_set: Dataset identifier ("gnomad" or "aou").
-    :return: Frequency resources.
+    :param overwrite: Whether to overwrite existing results.
+    :param test: Whether to run in test mode.
+    :param data_set: Dataset identifier ("gnomad", "aou", "joint").
+    :return: PipelineResourceCollection for frequency calculations.
     """
     freq_pipeline = PipelineResourceCollection(
-        pipeline_name="v5_frequency",
+        "v5_frequency",
         overwrite=overwrite,
+        test=test,
     )
 
-    # Define output resources for frequency calculations
-    freq_output_resources = {
-        "freq_ht": get_freq_ht(test=test, data_set=data_set),
-        "age_hist_ht": get_age_hist_ht(test=test, data_set=data_set),
-    }
-
-    run_freq_calculations = PipelineStepResourceCollection(
+    # Add frequency calculation step
+    freq_step = PipelineStepResourceCollection(
         "--run-frequency-calculations",
-        output_resources=freq_output_resources,
+        input_resources={
+            "v4_freq_ht": get_v4_freq(data_type="exomes"),
+            "v4_meta_ht": v4_meta(data_type="exomes"),
+            "v4_coverage_ht": get_v4_coverage(data_type="exomes", test=test),
+            "project_meta": project_meta,
+            "related_samples_to_drop": related_samples_to_drop(test=test),
+        },
+        output_resources={
+            "freq_ht": get_freq_ht(test=test, data_set=data_set),
+            "age_hist_ht": get_age_hist_ht(test=test, data_set=data_set),
+            "freq_summary_ht": get_freq_summary_ht(test=test, data_set=data_set),
+            "ancestry_changes_ht": get_ancestry_changes_ht(
+                test=test, data_set=data_set
+            ),
+        },
     )
 
-    freq_pipeline.add_steps(
-        {
-            "run_freq_calculations": run_freq_calculations,
-        }
-    )
+    freq_pipeline.add_steps({"freq_calculation": freq_step})
 
     return freq_pipeline
 
 
-def get_freq_ht(test: bool = False, data_set: str = "gnomad") -> TableResource:
+def get_aou_resources(
+    overwrite: bool = False,
+    test: Optional[bool] = False,
+) -> PipelineResourceCollection:
     """
-    Get the frequency Table resource for v5.
+    Get All of Us dataset processing resources.
 
-    :param test: Whether to use test resources.
-    :param data_set: Dataset identifier ("gnomad" or "aou").
-    :return: Frequency Table resource.
+    :param overwrite: Whether to overwrite existing results.
+    :param test: Whether to run in test mode.
+    :return: PipelineResourceCollection for AoU processing.
     """
-    if test:
-        return TableResource(
-            f"gs://{WORKSPACE_BUCKET}/v5.0/testing/frequency/{data_set}_freq_test.ht"
-        )
-    else:
-        return TableResource(
-            f"gs://{WORKSPACE_BUCKET}/v5.0/frequency/{data_set}_freq.ht"
-        )
+    aou_pipeline = PipelineResourceCollection(
+        "v5_aou_frequency",
+        overwrite=overwrite,
+        test=test,
+    )
 
+    # Add AoU processing step
+    aou_step = PipelineStepResourceCollection(
+        "--process-aou-dataset",
+        input_resources={
+            "project_meta": project_meta,
+            "related_samples_to_drop": related_samples_to_drop(test=test),
+        },
+        output_resources={
+            "aou_freq_ht": get_freq_ht(test=test, data_set="aou"),
+            "aou_age_hist_ht": get_age_hist_ht(test=test, data_set="aou"),
+        },
+    )
 
-def get_age_hist_ht(test: bool = False, data_set: str = "gnomad") -> TableResource:
-    """
-    Get the age histogram Table resource for v5.
+    aou_pipeline.add_steps({"aou_processing": aou_step})
 
-    :param test: Whether to use test resources.
-    :param data_set: Dataset identifier ("gnomad" or "aou").
-    :return: Age histogram Table resource.
-    """
-    if test:
-        return TableResource(
-            f"gs://{WORKSPACE_BUCKET}/v5.0/testing/frequency/{data_set}_age_hist_test.ht"
-        )
-    else:
-        return TableResource(
-            f"gs://{WORKSPACE_BUCKET}/v5.0/frequency/{data_set}_age_hist.ht"
-        )
+    return aou_pipeline
 
 
 def identify_samples_to_remove(
@@ -201,29 +217,21 @@ def identify_samples_to_remove(
     # For gnomAD, we need to compare v4 vs v5 ancestry assignments
     if data_set == "gnomad":
         # Load v4 metadata to compare ancestry assignments
-        # TODO: Add v4 metadata loading once available
-        # v4_meta_ht = get_v4_metadata().ht()
-        # meta_with_drops = meta_with_drops.annotate(
-        #     ancestry_changed=hl.if_else(
-        #         v4_meta_ht[meta_with_drops.key].pop != meta_with_drops.pop,
-        #         True,
-        #         False
-        #     )
-        # )
-        pass
+        v4_meta_ht = v4_meta(data_type="exomes").ht()
+        meta_with_drops = meta_with_drops.annotate(
+            ancestry_changed=hl.if_else(
+                v4_meta_ht[meta_with_drops.key].pop != meta_with_drops.pop, True, False
+            )
+        )
 
     # For All of Us, we need to identify samples that will be filtered out
     elif data_set == "aou":
         # Identify AoU samples that will be filtered based on QC criteria
-        # TODO: Add specific AoU filtering criteria
-        # meta_with_drops = meta_with_drops.annotate(
-        #     will_be_filtered=hl.if_else(
-        #         meta_with_drops.qc_metrics.fail_any,
-        #         True,
-        #         False
-        #     )
-        # )
-        pass
+        meta_with_drops = meta_with_drops.annotate(
+            will_be_filtered=hl.if_else(
+                meta_with_drops.qc_metrics.fail_any, True, False
+            )
+        )
 
     return meta_with_drops
 
@@ -233,6 +241,7 @@ def modify_v4_frequency_for_removed_samples(
     samples_to_remove: hl.Table,
     coverage_ht: Optional[hl.Table] = None,
     data_set: str = "gnomad",
+    test: bool = False,
 ) -> hl.Table:
     """
     Modify v4 frequency HT call statistics for samples that will be removed.
@@ -251,7 +260,7 @@ def modify_v4_frequency_for_removed_samples(
     # Calculate frequency statistics for removed samples only
     # This will be used to subtract from the v4 frequency HT
     removed_freq_stats = calculate_removed_samples_frequency_stats(
-        removed_samples, coverage_ht, data_set
+        removed_samples, coverage_ht, data_set, test
     )
 
     # Subtract the removed samples' call statistics from v4 frequency HT
@@ -264,6 +273,7 @@ def calculate_removed_samples_frequency_stats(
     removed_samples: hl.Table,
     coverage_ht: Optional[hl.Table] = None,
     data_set: str = "gnomad",
+    test: bool = False,
 ) -> hl.Table:
     """
     Calculate frequency statistics for samples that will be removed.
@@ -280,16 +290,14 @@ def calculate_removed_samples_frequency_stats(
     # Load the VDS for the dataset
     if data_set == "gnomad":
         # Load gnomAD v4 VDS
-        # TODO: Replace with appropriate resource once available
-        # vds = get_gnomad_v4_vds().vds()
-        logger.warning("gnomAD v4 VDS not available yet, using placeholder")
-        return hl.Table.parallelize([])
+        from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+
+        vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True, test=test)
     else:
         # Load All of Us VDS
-        # TODO: Replace with appropriate resource once available
-        # vds = get_aou_vds().vds()
-        logger.warning("All of Us VDS not available yet, using placeholder")
-        return hl.Table.parallelize([])
+        from gnomad_qc.v5.resources.basics import get_aou_vds
+
+        vds = get_aou_vds(remove_hard_filtered_samples=True, test=test)
 
     # Filter VDS to only removed samples
     # This follows the v4 genome approach of filtering samples from VDS
@@ -305,29 +313,30 @@ def calculate_removed_samples_frequency_stats(
 
     # Build frequency stratification
     strata_expr = build_freq_stratification_list(
-        sex_expr=mt_removed.meta.sex_karyotype,
-        gen_anc_expr=mt_removed.meta.pop,
+        sex_expr=mt.meta.sex_karyotype,
+        gen_anc_expr=mt.meta.pop,
         additional_strata_expr=[
             {"data_set": data_set},
-            {"data_set": data_set, "pop": mt_removed.meta.pop},
+            {"data_set": data_set, "pop": mt.meta.pop},
         ],
     )
 
     # Generate frequency group membership
     group_membership_ht = generate_freq_group_membership_array(
-        mt_removed.cols(),
+        mt.cols(),
         strata_expr,
         downsamplings=hl.literal(DOWNSAMPLINGS),
     )
 
-    # Compute frequency statistics for removed samples
-    freq_stats = compute_freq_by_strata(
-        mt_removed,
-        group_membership_ht[mt_removed.col_key].group_membership,
-        strata_expr,
+    # Compute frequency statistics
+    freq_ht = compute_freq_by_strata(
+        mt,
+        group_membership_ht,
+        coverage_ht=coverage_ht,
+        test=test,
     )
 
-    return freq_stats
+    return freq_ht
 
 
 def subtract_frequency_stats(
@@ -385,6 +394,7 @@ def calculate_age_histograms_for_removed_samples(
     v4_freq_ht: hl.Table,
     samples_to_remove: hl.Table,
     data_set: str = "gnomad",
+    test: bool = False,
 ) -> hl.Table:
     """
     Calculate age histograms for samples that will be removed.
@@ -404,16 +414,14 @@ def calculate_age_histograms_for_removed_samples(
     # Load the VDS for the dataset
     if data_set == "gnomad":
         # Load gnomAD v4 VDS
-        # TODO: Replace with appropriate resource once available
-        # vds = get_gnomad_v4_vds().vds()
-        logger.warning("gnomAD v4 VDS not available yet, using placeholder")
-        return hl.Table.parallelize([])
+        from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+
+        vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True, test=test)
     else:
         # Load All of Us VDS
-        # TODO: Replace with appropriate resource once available
-        # vds = get_aou_vds().vds()
-        logger.warning("All of Us VDS not available yet, using placeholder")
-        return hl.Table.parallelize([])
+        from gnomad_qc.v5.resources.basics import get_aou_vds
+
+        vds = get_aou_vds(remove_hard_filtered_samples=True, test=test)
 
     # Filter VDS to only removed samples
     # This follows the v4 genome approach of filtering samples from VDS
@@ -507,18 +515,20 @@ def create_differential_frequency_summary(
 
 
 def handle_ancestry_changes(
-    mt: hl.MatrixTable,
+    v4_freq_ht: hl.Table,
     samples_to_remove: hl.Table,
     v4_meta_ht: Optional[hl.Table] = None,
     data_set: str = "gnomad",
+    test: bool = False,
 ) -> hl.Table:
     """
     Handle samples that have changed ancestry between v4 and v5.
 
-    :param mt: Input MatrixTable.
+    :param v4_freq_ht: v4 frequency HT as base.
     :param samples_to_remove: Table with samples to remove.
-    :param v4_meta_ht: Optional v4 metadata Table for ancestry comparison.
+    :param v4_meta_ht: v4 metadata Table for ancestry comparison.
     :param data_set: Dataset identifier ("gnomad" or "aou").
+    :param test: Whether to run in test mode.
     :return: Frequency Table for samples with ancestry changes.
     """
     logger.info(f"Handling ancestry changes for {data_set} dataset...")
@@ -527,29 +537,49 @@ def handle_ancestry_changes(
         logger.warning("No v4 metadata provided, skipping ancestry change detection")
         return hl.Table.parallelize([])
 
+    # Load v5 metadata for comparison
+    v5_meta_ht = project_meta.ht()
+
     # Identify samples with ancestry changes
     samples_with_changes = samples_to_remove.annotate(
+        v4_pop=v4_meta_ht[samples_to_remove.key].pop,
+        v5_pop=v5_meta_ht[samples_to_remove.key].pop,
         ancestry_changed=hl.if_else(
-            v4_meta_ht[samples_to_remove.key].pop != samples_to_remove.pop, True, False
-        )
+            v4_meta_ht[samples_to_remove.key].pop
+            != v5_meta_ht[samples_to_remove.key].pop,
+            True,
+            False,
+        ),
     ).filter(samples_with_changes.ancestry_changed)
 
     if samples_with_changes.count() == 0:
         logger.info("No samples with ancestry changes found")
         return hl.Table.parallelize([])
 
-    # Calculate frequency for samples with ancestry changes
-    mt_changed = mt.filter_cols(samples_with_changes[mt.col_key].s.is_defined())
+    # Load the VDS for the dataset
+    if data_set == "gnomad":
+        from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+
+        vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True, test=test)
+    else:
+        from gnomad_qc.v5.resources.basics import get_aou_vds
+
+        vds = get_aou_vds(remove_hard_filtered_samples=True, test=test)
+
+    # Filter VDS to only samples with ancestry changes
+    changed_sample_ids = samples_with_changes.s.collect()
+    vds_filtered = hl.vds.filter_samples(vds, changed_sample_ids, keep=True)
+    mt = hl.vds.to_dense_mt(vds_filtered)
 
     # Build frequency stratification for ancestry-changed samples
     strata_expr = build_freq_stratification_list(
-        sex_expr=mt_changed.meta.sex_karyotype,
-        gen_anc_expr=mt_changed.meta.pop,
+        sex_expr=mt.meta.sex_karyotype,
+        gen_anc_expr=mt.meta.pop,
         additional_strata_expr=[
             {"data_set": data_set, "ancestry_changed": True},
             {
                 "data_set": data_set,
-                "pop": mt_changed.meta.pop,
+                "pop": mt.meta.pop,
                 "ancestry_changed": True,
             },
         ],
@@ -557,19 +587,108 @@ def handle_ancestry_changes(
 
     # Generate frequency group membership
     group_membership_ht = generate_freq_group_membership_array(
-        mt_changed.cols(),
+        mt.cols(),
         strata_expr,
         downsamplings=hl.literal(DOWNSAMPLINGS),
     )
 
-    # Compute frequency by strata
+    # Compute frequency statistics for ancestry-changed samples
     freq_ht = compute_freq_by_strata(
-        mt_changed,
-        group_membership_ht[mt_changed.col_key].group_membership,
-        strata_expr,
+        mt,
+        group_membership_ht,
+        test=test,
     )
 
     return freq_ht
+
+
+def process_aou_dataset(
+    test: bool = False,
+    overwrite: bool = False,
+) -> hl.Table:
+    """
+    Process All of Us dataset for frequency calculations.
+
+    This function handles the AoU dataset specifically, using the sparse MT from the VDS
+    to get samples we are removing, and processes AN for all sites and all samples.
+
+    :param test: Whether to run in test mode.
+    :param overwrite: Whether to overwrite existing results.
+    :return: Frequency Table for AoU dataset.
+    """
+    logger.info("Processing All of Us dataset...")
+
+    # Load AoU VDS
+    from gnomad_qc.v5.resources.basics import get_aou_vds
+
+    aou_vds = get_aou_vds(remove_hard_filtered_samples=True, test=test)
+
+    # Load AoU metadata and relatedness data
+    aou_meta_ht = project_meta.ht()
+    aou_relatedness_ht = related_samples_to_drop(test=test).ht()
+
+    # Identify AoU samples to remove
+    aou_samples_to_remove = identify_samples_to_remove(
+        aou_meta_ht, aou_relatedness_ht, "aou"
+    )
+
+    # Get samples that will be dropped from AoU
+    aou_removed_sample_ids = aou_samples_to_remove.filter(
+        aou_samples_to_remove.will_be_dropped
+    ).s.collect()
+
+    # Filter AoU VDS to only removed samples using sparse MT approach
+    aou_vds_filtered = hl.vds.filter_samples(aou_vds, aou_removed_sample_ids, keep=True)
+
+    # Densify the filtered AoU VDS for frequency calculation
+    aou_mt = hl.vds.to_dense_mt(aou_vds_filtered)
+
+    # Build frequency stratification for AoU
+    aou_strata_expr = build_freq_stratification_list(
+        sex_expr=aou_mt.meta.sex_karyotype,
+        gen_anc_expr=aou_mt.meta.pop,
+        additional_strata_expr=[
+            {"data_set": "aou"},
+            {"data_set": "aou", "pop": aou_mt.meta.pop},
+        ],
+    )
+
+    # Generate frequency group membership for AoU
+    aou_group_membership_ht = generate_freq_group_membership_array(
+        aou_mt.cols(),
+        aou_strata_expr,
+        downsamplings=hl.literal(DOWNSAMPLINGS),
+    )
+
+    # Compute frequency statistics for AoU removed samples
+    aou_freq_ht = compute_freq_by_strata(
+        aou_mt,
+        aou_group_membership_ht,
+        test=test,
+    )
+
+    # Calculate age histograms for AoU removed samples
+    aou_age_hist_expr = age_hists_expr(
+        aou_mt.meta.age,
+        aou_mt.meta.sex_karyotype,
+        aou_mt.GT,
+        aou_mt.adj,
+    )
+
+    aou_age_hist_ht = aou_mt.aggregate_rows(
+        hl.struct(
+            age_hist=hl.agg.group_by(
+                hl.struct(
+                    pop=aou_mt.meta.pop,
+                    sex=aou_mt.meta.sex_karyotype,
+                    data_set="aou",
+                ),
+                aou_age_hist_expr,
+            )
+        )
+    )
+
+    return aou_freq_ht, aou_age_hist_ht
 
 
 def merge_frequency_data(
@@ -658,9 +777,7 @@ def main(args):
             )
 
             # Load v4 frequency HT as the base
-            from gnomad_qc.v4.resources.annotations import get_freq
-
-            v4_freq_ht = get_freq(data_type="exomes").ht()
+            v4_freq_ht = get_v4_freq(data_type="exomes").ht()
 
             if test:
                 logger.info(
@@ -671,37 +788,35 @@ def main(args):
             # Load coverage data if available
             coverage_ht = None
             try:
-                # TODO: Add coverage resource loading once available
-                # coverage_ht = get_coverage_ht(test=test).ht()
-                pass
+                # Load coverage HT from v4 coverage computation
+                coverage_ht = get_v4_coverage(data_type="exomes", test=test).ht()
+                if test:
+                    coverage_ht = coverage_ht._filter_partitions(range(2))
             except Exception as e:
                 logger.warning(f"Could not load coverage data: {e}")
 
             # Modify v4 frequency HT for removed samples
             freq_ht = modify_v4_frequency_for_removed_samples(
-                v4_freq_ht, samples_to_remove, coverage_ht, data_set
+                v4_freq_ht, samples_to_remove, coverage_ht, data_set, test
             )
 
             # Integrate coverage AN data if available
             if coverage_ht is not None:
                 freq_ht = integrate_coverage_an_data(freq_ht, coverage_ht, data_set)
 
-            # Handle ancestry changes if v4 metadata is available
-            v4_meta_ht = None
-            try:
-                # TODO: Add v4 metadata loading once available
-                # v4_meta_ht = get_v4_metadata().ht()
-                pass
-            except Exception as e:
-                logger.warning(f"Could not load v4 metadata: {e}")
+            # Load v4 metadata for ancestry comparison
+            v4_meta_ht = v4_meta(data_type="exomes").ht()
+            if test:
+                v4_meta_ht = v4_meta_ht._filter_partitions(range(2))
 
+            # Handle ancestry changes
             ancestry_changes_ht = handle_ancestry_changes(
-                joint_qc_mt, samples_to_remove, v4_meta_ht, data_set
+                v4_freq_ht, samples_to_remove, v4_meta_ht, data_set, test
             )
 
             # Calculate age histograms for removed samples
             age_hist_ht = calculate_age_histograms_for_removed_samples(
-                v4_freq_ht, samples_to_remove, data_set
+                v4_freq_ht, samples_to_remove, data_set, test
             )
 
             # Create differential frequency summary if requested
@@ -710,7 +825,7 @@ def main(args):
                     freq_ht, age_hist_ht, data_set
                 )
                 summary_ht.write(
-                    get_freq_ht(test=test, data_set=f"{data_set}_summary").path,
+                    get_freq_summary_ht(test=test, data_set=data_set).path,
                     overwrite=overwrite,
                 )
 
@@ -725,11 +840,25 @@ def main(args):
             # Write ancestry changes results if any
             if ancestry_changes_ht.count() > 0:
                 ancestry_changes_ht.write(
-                    get_freq_ht(
-                        test=test, data_set=f"{data_set}_ancestry_changes"
-                    ).path,
+                    get_ancestry_changes_ht(test=test, data_set=data_set).path,
                     overwrite=overwrite,
                 )
+
+        if args.process_aou_dataset:
+            logger.info("Processing All of Us dataset...")
+
+            # Process AoU dataset
+            aou_freq_ht, aou_age_hist_ht = process_aou_dataset(
+                test=test, overwrite=overwrite
+            )
+
+            # Write AoU results
+            aou_freq_ht.write(
+                get_freq_ht(test=test, data_set="aou").path, overwrite=overwrite
+            )
+            aou_age_hist_ht.write(
+                get_age_hist_ht(test=test, data_set="aou").path, overwrite=overwrite
+            )
 
         if args.merge_datasets:
             logger.info("Merging frequency data from both datasets...")
@@ -776,13 +905,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
+        "--process-aou-dataset",
+        help="Process All of Us dataset specifically.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--merge-datasets",
-        help="Merge frequency data from gnomAD and All of Us datasets.",
+        help="Merge frequency data from both gnomAD and AoU datasets.",
         action="store_true",
     )
     parser.add_argument(
         "--generate-summary",
-        help="Generate differential frequency summary statistics.",
+        help="Generate differential frequency summary.",
         action="store_true",
     )
 
