@@ -4,22 +4,29 @@ This directory contains scripts for calculating variant frequencies and generati
 
 ## Overview
 
-The v5 frequency calculation uses a differential analysis approach to avoid densifying the full dataset. Instead of processing all samples, the script focuses on:
+The v5 frequency calculation uses a differential analysis approach to avoid densifying the full dataset. The script:
 
-1. **Samples that will be removed from v5** due to relatedness filtering
-2. **Samples that change ancestry** between v4 and v5
-3. **All of Us samples that will be filtered out** based on QC criteria
+1. **Loads the gnomAD v4 frequency HT** as the base dataset
+2. **Identifies samples that will be removed from v5** due to relatedness filtering
+3. **Calculates frequency statistics for removed samples only** using the full dataset
+4. **Subtracts the removed samples' call statistics** from the v4 frequency HT using `merge_freq_arrays` with `operation="diff"`
+5. **Handles samples that change ancestry** between v4 and v5
+6. **Processes All of Us samples that will be filtered out** based on QC criteria
+
+This approach ensures we work with **all variants** from the v4 frequency HT, not just those in the joint QC MatrixTable.
 
 ## Key Features
 
 ### Differential Analysis Approach
 
-The script identifies samples that will be removed or have changed characteristics and calculates frequency data only for these subsets. This approach:
+The script uses the v4 frequency HT as the base and modifies call statistics for samples that will be removed or have changed characteristics. This approach:
 
-- Reduces computational requirements
-- Avoids densifying the full dataset
-- Focuses on the differences between v4 and v5
-- Enables efficient frequency updates
+- **Loads v4 frequency HT** as the base dataset containing all variants
+- **Calculates frequency statistics for removed samples only** using the full dataset
+- **Subtracts removed samples' call statistics** from v4 frequency HT using gnomAD's `merge_freq_arrays` with `operation="diff"`
+- Reduces computational requirements by avoiding full dataset densification
+- Focuses on the differential changes between v4 and v5
+- Ensures all variants from v4 are processed, not just joint QC variants
 
 ### Coverage Integration
 
@@ -102,7 +109,10 @@ The script generates several output files:
 
 ### Frequency Calculation
 
-1. **Stratification**: Builds frequency stratification based on:
+1. **Base Dataset**: Loads gnomAD v4 frequency HT as the base dataset containing all variants
+2. **Removed Samples**: Calculates frequency statistics for samples that will be removed using the full dataset
+3. **Differential Subtraction**: Subtracts removed samples' call statistics from v4 frequency HT using `merge_freq_arrays` with `operation="diff"`
+4. **Stratification**: Builds frequency stratification based on:
    - Sex karyotype (XX/XY)
    - Genetic ancestry (pop)
    - Dataset identifier (gnomad/aou)
