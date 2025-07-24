@@ -19,6 +19,7 @@ from gnomad.resources.grch38.gnomad import (
     DOWNSAMPLINGS,
     GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX,
 )
+from gnomad.resources.resource_utils import TableResource
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
@@ -199,14 +200,29 @@ def identify_samples_to_remove(
 
     # For gnomAD, we need to compare v4 vs v5 ancestry assignments
     if data_set == "gnomad":
-        # TODO: Add logic to compare v4 vs v5 ancestry assignments
-        # This would require loading v4 metadata and comparing ancestry assignments
+        # Load v4 metadata to compare ancestry assignments
+        # TODO: Add v4 metadata loading once available
+        # v4_meta_ht = get_v4_metadata().ht()
+        # meta_with_drops = meta_with_drops.annotate(
+        #     ancestry_changed=hl.if_else(
+        #         v4_meta_ht[meta_with_drops.key].pop != meta_with_drops.pop,
+        #         True,
+        #         False
+        #     )
+        # )
         pass
 
     # For All of Us, we need to identify samples that will be filtered out
     elif data_set == "aou":
-        # TODO: Add logic to identify AoU samples that will be filtered
-        # This would depend on the specific filtering criteria for AoU
+        # Identify AoU samples that will be filtered based on QC criteria
+        # TODO: Add specific AoU filtering criteria
+        # meta_with_drops = meta_with_drops.annotate(
+        #     will_be_filtered=hl.if_else(
+        #         meta_with_drops.qc_metrics.fail_any,
+        #         True,
+        #         False
+        #     )
+        # )
         pass
 
     return meta_with_drops
@@ -215,6 +231,7 @@ def identify_samples_to_remove(
 def calculate_frequency_for_removed_samples(
     mt: hl.MatrixTable,
     samples_to_remove: hl.Table,
+    coverage_ht: Optional[hl.Table] = None,
     data_set: str = "gnomad",
 ) -> hl.Table:
     """
@@ -222,6 +239,7 @@ def calculate_frequency_for_removed_samples(
 
     :param mt: Input MatrixTable.
     :param samples_to_remove: Table with samples to remove.
+    :param coverage_ht: Optional coverage Table with AN data.
     :param data_set: Dataset identifier ("gnomad" or "aou").
     :return: Frequency Table for removed samples.
     """
@@ -254,6 +272,11 @@ def calculate_frequency_for_removed_samples(
         group_membership_ht[mt_removed.col_key].group_membership,
         strata_expr,
     )
+
+    # If coverage data is available, integrate AN information
+    if coverage_ht is not None:
+        logger.info("Integrating coverage AN data...")
+        freq_ht = freq_ht.annotate(coverage_an=coverage_ht[freq_ht.key].AN)
 
     return freq_ht
 
@@ -292,6 +315,72 @@ def calculate_age_histograms(
     )
 
     return ht
+
+
+def handle_ancestry_changes(
+    mt: hl.MatrixTable,
+    samples_to_remove: hl.Table,
+    v4_meta_ht: Optional[hl.Table] = None,
+    data_set: str = "gnomad",
+) -> hl.Table:
+    """
+    Handle samples that have changed ancestry between v4 and v5.
+
+    :param mt: Input MatrixTable.
+    :param samples_to_remove: Table with samples to remove.
+    :param v4_meta_ht: Optional v4 metadata Table for ancestry comparison.
+    :param data_set: Dataset identifier ("gnomad" or "aou").
+    :return: Frequency Table for samples with ancestry changes.
+    """
+    logger.info(f"Handling ancestry changes for {data_set} dataset...")
+
+    if v4_meta_ht is None:
+        logger.warning("No v4 metadata provided, skipping ancestry change detection")
+        return hl.Table.parallelize([])
+
+    # Identify samples with ancestry changes
+    samples_with_changes = samples_to_remove.annotate(
+        ancestry_changed=hl.if_else(
+            v4_meta_ht[samples_to_remove.key].pop != samples_to_remove.pop, True, False
+        )
+    ).filter(samples_with_changes.ancestry_changed)
+
+    if samples_with_changes.count() == 0:
+        logger.info("No samples with ancestry changes found")
+        return hl.Table.parallelize([])
+
+    # Calculate frequency for samples with ancestry changes
+    mt_changed = mt.filter_cols(samples_with_changes[mt.col_key].s.is_defined())
+
+    # Build frequency stratification for ancestry-changed samples
+    strata_expr = build_freq_stratification_list(
+        sex_expr=mt_changed.meta.sex_karyotype,
+        gen_anc_expr=mt_changed.meta.pop,
+        additional_strata_expr=[
+            {"data_set": data_set, "ancestry_changed": True},
+            {
+                "data_set": data_set,
+                "pop": mt_changed.meta.pop,
+                "ancestry_changed": True,
+            },
+        ],
+    )
+
+    # Generate frequency group membership
+    group_membership_ht = generate_freq_group_membership_array(
+        mt_changed.cols(),
+        strata_expr,
+        downsamplings=hl.literal(DOWNSAMPLINGS),
+    )
+
+    # Compute frequency by strata
+    freq_ht = compute_freq_by_strata(
+        mt_changed,
+        group_membership_ht[mt_changed.col_key].group_membership,
+        strata_expr,
+    )
+
+    return freq_ht
 
 
 def merge_frequency_data(
@@ -386,9 +475,31 @@ def main(args):
                 logger.info("Filtering MT to the first 2 partitions for testing...")
                 joint_qc_mt = joint_qc_mt._filter_partitions(range(2))
 
+            # Load coverage data if available
+            coverage_ht = None
+            try:
+                # TODO: Add coverage resource loading once available
+                # coverage_ht = get_coverage_ht(test=test).ht()
+                pass
+            except Exception as e:
+                logger.warning(f"Could not load coverage data: {e}")
+
             # Calculate frequency for removed samples
             freq_ht = calculate_frequency_for_removed_samples(
-                joint_qc_mt, samples_to_remove, data_set
+                joint_qc_mt, samples_to_remove, coverage_ht, data_set
+            )
+
+            # Handle ancestry changes if v4 metadata is available
+            v4_meta_ht = None
+            try:
+                # TODO: Add v4 metadata loading once available
+                # v4_meta_ht = get_v4_metadata().ht()
+                pass
+            except Exception as e:
+                logger.warning(f"Could not load v4 metadata: {e}")
+
+            ancestry_changes_ht = handle_ancestry_changes(
+                joint_qc_mt, samples_to_remove, v4_meta_ht, data_set
             )
 
             # Calculate age histograms
@@ -403,6 +514,15 @@ def main(args):
             age_hist_ht.write(
                 get_age_hist_ht(test=test, data_set=data_set).path, overwrite=overwrite
             )
+
+            # Write ancestry changes results if any
+            if ancestry_changes_ht.count() > 0:
+                ancestry_changes_ht.write(
+                    get_freq_ht(
+                        test=test, data_set=f"{data_set}_ancestry_changes"
+                    ).path,
+                    overwrite=overwrite,
+                )
 
         if args.merge_datasets:
             logger.info("Merging frequency data from both datasets...")
