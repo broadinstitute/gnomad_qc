@@ -317,6 +317,70 @@ def calculate_age_histograms(
     return ht
 
 
+def integrate_coverage_an_data(
+    freq_ht: hl.Table,
+    coverage_ht: hl.Table,
+    data_set: str = "gnomad",
+) -> hl.Table:
+    """
+    Integrate AN (allele number) data from coverage computation.
+
+    :param freq_ht: Frequency Table.
+    :param coverage_ht: Coverage Table with AN data.
+    :param data_set: Dataset identifier ("gnomad" or "aou").
+    :return: Frequency Table with integrated AN data.
+    """
+    logger.info(f"Integrating coverage AN data for {data_set} dataset...")
+
+    # Join coverage AN data with frequency data
+    freq_with_an = freq_ht.annotate(coverage_an=coverage_ht[freq_ht.key].AN)
+
+    # Recalculate AF based on coverage AN if available
+    freq_with_an = freq_with_an.annotate(
+        freq=freq_with_an.freq.map(
+            lambda x: x.annotate(
+                AF=hl.if_else(
+                    freq_with_an.coverage_an > 0,
+                    x.AC / freq_with_an.coverage_an,
+                    hl.missing(hl.tfloat64),
+                )
+            )
+        )
+    )
+
+    return freq_with_an
+
+
+def create_differential_frequency_summary(
+    freq_ht: hl.Table,
+    age_hist_ht: hl.Table,
+    data_set: str = "gnomad",
+) -> hl.Table:
+    """
+    Create a summary of differential frequency changes.
+
+    :param freq_ht: Frequency Table.
+    :param age_hist_ht: Age histogram Table.
+    :param data_set: Dataset identifier ("gnomad" or "aou").
+    :return: Summary Table with differential frequency information.
+    """
+    logger.info(f"Creating differential frequency summary for {data_set} dataset...")
+
+    # Calculate summary statistics
+    summary_ht = freq_ht.annotate(
+        total_ac=hl.sum(freq_ht.freq.map(lambda x: x.AC)),
+        total_an=hl.sum(freq_ht.freq.map(lambda x: x.AN)),
+        avg_af=hl.sum(freq_ht.freq.map(lambda x: x.AF)) / hl.len(freq_ht.freq),
+        total_hom=hl.sum(freq_ht.freq.map(lambda x: x.homozygote_count)),
+    )
+
+    # Add age histogram summary
+    if age_hist_ht.count() > 0:
+        summary_ht = summary_ht.annotate(age_distribution=age_hist_ht[summary_ht.key])
+
+    return summary_ht
+
+
 def handle_ancestry_changes(
     mt: hl.MatrixTable,
     samples_to_remove: hl.Table,
@@ -489,6 +553,10 @@ def main(args):
                 joint_qc_mt, samples_to_remove, coverage_ht, data_set
             )
 
+            # Integrate coverage AN data if available
+            if coverage_ht is not None:
+                freq_ht = integrate_coverage_an_data(freq_ht, coverage_ht, data_set)
+
             # Handle ancestry changes if v4 metadata is available
             v4_meta_ht = None
             try:
@@ -506,6 +574,16 @@ def main(args):
             age_hist_ht = calculate_age_histograms(
                 joint_qc_mt, samples_to_remove, data_set
             )
+
+            # Create differential frequency summary if requested
+            if args.generate_summary:
+                summary_ht = create_differential_frequency_summary(
+                    freq_ht, age_hist_ht, data_set
+                )
+                summary_ht.write(
+                    get_freq_ht(test=test, data_set=f"{data_set}_summary").path,
+                    overwrite=overwrite,
+                )
 
             # Write results
             freq_ht.write(
@@ -571,6 +649,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--merge-datasets",
         help="Merge frequency data from gnomAD and All of Us datasets.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate-summary",
+        help="Generate differential frequency summary statistics.",
         action="store_true",
     )
 
