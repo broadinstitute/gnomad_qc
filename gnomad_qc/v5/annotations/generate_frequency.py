@@ -277,29 +277,31 @@ def calculate_removed_samples_frequency_stats(
         f"Calculating frequency stats for removed samples in {data_set} dataset..."
     )
 
-    # Load the full dataset MT to get all variants
-    # TODO: Replace with appropriate resource once available
-    # full_mt = get_full_dataset_mt(data_set).mt()
-
-    # For now, we'll need to load the appropriate MatrixTable
-    # This should be the full dataset, not just joint_qc_mt
+    # Load the VDS for the dataset
     if data_set == "gnomad":
-        # Load gnomAD v4 full dataset
-        # TODO: Replace with appropriate resource
-        full_mt = None  # get_gnomad_v4_full_mt().mt()
+        # Load gnomAD v4 VDS
+        # TODO: Replace with appropriate resource once available
+        # vds = get_gnomad_v4_vds().vds()
+        logger.warning("gnomAD v4 VDS not available yet, using placeholder")
+        return hl.Table.parallelize([])
     else:
-        # Load All of Us full dataset
-        # TODO: Replace with appropriate resource
-        full_mt = None  # get_aou_full_mt().mt()
-
-    if full_mt is None:
-        logger.warning(
-            f"Full dataset MT not available for {data_set}, skipping frequency calculation"
-        )
+        # Load All of Us VDS
+        # TODO: Replace with appropriate resource once available
+        # vds = get_aou_vds().vds()
+        logger.warning("All of Us VDS not available yet, using placeholder")
         return hl.Table.parallelize([])
 
-    # Filter to only removed samples
-    mt_removed = full_mt.filter_cols(removed_samples[full_mt.col_key].s.is_defined())
+    # Filter VDS to only removed samples
+    # This follows the v4 genome approach of filtering samples from VDS
+    removed_sample_ids = removed_samples.filter(
+        removed_samples.will_be_dropped
+    ).s.collect()
+
+    # Filter VDS to only include removed samples
+    vds_filtered = hl.vds.filter_samples(vds, removed_sample_ids, keep=True)
+
+    # Densify the filtered VDS for frequency calculation
+    mt = hl.vds.to_dense_mt(vds_filtered)
 
     # Build frequency stratification
     strata_expr = build_freq_stratification_list(
@@ -399,25 +401,31 @@ def calculate_age_histograms_for_removed_samples(
     # Get samples that will be removed
     removed_samples = samples_to_remove.filter(samples_to_remove.will_be_dropped)
 
-    # Load the full dataset MT to calculate age histograms for removed samples
-    # TODO: Replace with appropriate resource once available
+    # Load the VDS for the dataset
     if data_set == "gnomad":
-        # Load gnomAD v4 full dataset
-        # TODO: Replace with appropriate resource
-        full_mt = None  # get_gnomad_v4_full_mt().mt()
+        # Load gnomAD v4 VDS
+        # TODO: Replace with appropriate resource once available
+        # vds = get_gnomad_v4_vds().vds()
+        logger.warning("gnomAD v4 VDS not available yet, using placeholder")
+        return hl.Table.parallelize([])
     else:
-        # Load All of Us full dataset
-        # TODO: Replace with appropriate resource
-        full_mt = None  # get_aou_full_mt().mt()
-
-    if full_mt is None:
-        logger.warning(
-            f"Full dataset MT not available for {data_set}, skipping age histogram calculation"
-        )
+        # Load All of Us VDS
+        # TODO: Replace with appropriate resource once available
+        # vds = get_aou_vds().vds()
+        logger.warning("All of Us VDS not available yet, using placeholder")
         return hl.Table.parallelize([])
 
-    # Filter to only removed samples
-    mt_removed = full_mt.filter_cols(removed_samples[full_mt.col_key].s.is_defined())
+    # Filter VDS to only removed samples
+    # This follows the v4 genome approach of filtering samples from VDS
+    removed_sample_ids = removed_samples.filter(
+        removed_samples.will_be_dropped
+    ).s.collect()
+
+    # Filter VDS to only include removed samples
+    vds_filtered = hl.vds.filter_samples(vds, removed_sample_ids, keep=True)
+
+    # Densify the filtered VDS for age histogram calculation
+    mt_removed = hl.vds.to_dense_mt(vds_filtered)
 
     # Calculate age histograms
     age_hist_expr = age_hists_expr(
