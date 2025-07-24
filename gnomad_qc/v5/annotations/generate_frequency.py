@@ -228,26 +228,78 @@ def identify_samples_to_remove(
     return meta_with_drops
 
 
-def calculate_frequency_for_removed_samples(
-    mt: hl.MatrixTable,
+def modify_v4_frequency_for_removed_samples(
+    v4_freq_ht: hl.Table,
     samples_to_remove: hl.Table,
     coverage_ht: Optional[hl.Table] = None,
     data_set: str = "gnomad",
 ) -> hl.Table:
     """
-    Calculate frequency data for samples that will be removed.
+    Modify v4 frequency HT call statistics for samples that will be removed.
 
-    :param mt: Input MatrixTable.
+    :param v4_freq_ht: v4 frequency HT as base.
     :param samples_to_remove: Table with samples to remove.
     :param coverage_ht: Optional coverage Table with AN data.
     :param data_set: Dataset identifier ("gnomad" or "aou").
-    :return: Frequency Table for removed samples.
+    :return: Modified frequency Table with updated call statistics.
     """
-    logger.info(f"Calculating frequency for removed samples in {data_set} dataset...")
+    logger.info(f"Modifying v4 frequency for removed samples in {data_set} dataset...")
 
-    # Filter to only samples that will be removed
+    # Get samples that will be removed
     removed_samples = samples_to_remove.filter(samples_to_remove.will_be_dropped)
-    mt_removed = mt.filter_cols(removed_samples[mt.col_key].s.is_defined())
+
+    # Calculate frequency statistics for removed samples only
+    # This will be used to subtract from the v4 frequency HT
+    removed_freq_stats = calculate_removed_samples_frequency_stats(
+        removed_samples, coverage_ht, data_set
+    )
+
+    # Subtract the removed samples' call statistics from v4 frequency HT
+    modified_freq_ht = subtract_frequency_stats(v4_freq_ht, removed_freq_stats)
+
+    return modified_freq_ht
+
+
+def calculate_removed_samples_frequency_stats(
+    removed_samples: hl.Table,
+    coverage_ht: Optional[hl.Table] = None,
+    data_set: str = "gnomad",
+) -> hl.Table:
+    """
+    Calculate frequency statistics for samples that will be removed.
+
+    :param removed_samples: Table with samples to remove.
+    :param data_set: Dataset identifier ("gnomad" or "aou").
+    :param coverage_ht: Optional coverage Table with AN data.
+    :return: Frequency statistics for removed samples.
+    """
+    logger.info(
+        f"Calculating frequency stats for removed samples in {data_set} dataset..."
+    )
+
+    # Load the full dataset MT to get all variants
+    # TODO: Replace with appropriate resource once available
+    # full_mt = get_full_dataset_mt(data_set).mt()
+
+    # For now, we'll need to load the appropriate MatrixTable
+    # This should be the full dataset, not just joint_qc_mt
+    if data_set == "gnomad":
+        # Load gnomAD v4 full dataset
+        # TODO: Replace with appropriate resource
+        full_mt = None  # get_gnomad_v4_full_mt().mt()
+    else:
+        # Load All of Us full dataset
+        # TODO: Replace with appropriate resource
+        full_mt = None  # get_aou_full_mt().mt()
+
+    if full_mt is None:
+        logger.warning(
+            f"Full dataset MT not available for {data_set}, skipping frequency calculation"
+        )
+        return hl.Table.parallelize([])
+
+    # Filter to only removed samples
+    mt_removed = full_mt.filter_cols(removed_samples[full_mt.col_key].s.is_defined())
 
     # Build frequency stratification
     strata_expr = build_freq_stratification_list(
@@ -266,30 +318,76 @@ def calculate_frequency_for_removed_samples(
         downsamplings=hl.literal(DOWNSAMPLINGS),
     )
 
-    # Compute frequency by strata
-    freq_ht = compute_freq_by_strata(
+    # Compute frequency statistics for removed samples
+    freq_stats = compute_freq_by_strata(
         mt_removed,
         group_membership_ht[mt_removed.col_key].group_membership,
         strata_expr,
     )
 
-    # If coverage data is available, integrate AN information
-    if coverage_ht is not None:
-        logger.info("Integrating coverage AN data...")
-        freq_ht = freq_ht.annotate(coverage_an=coverage_ht[freq_ht.key].AN)
-
-    return freq_ht
+    return freq_stats
 
 
-def calculate_age_histograms(
-    mt: hl.MatrixTable,
+def subtract_frequency_stats(
+    base_freq_ht: hl.Table,
+    removed_freq_stats: hl.Table,
+) -> hl.Table:
+    """
+    Subtract frequency statistics of removed samples from base frequency HT.
+
+    :param base_freq_ht: Base frequency HT (v4).
+    :param removed_freq_stats: Frequency statistics for removed samples.
+    :return: Modified frequency HT with removed samples' stats subtracted.
+    """
+    logger.info(
+        "Subtracting removed samples' frequency statistics from base frequency HT..."
+    )
+
+    # Join the removed frequency stats with the base frequency HT
+    joined_ht = base_freq_ht.annotate(
+        removed_freq=removed_freq_stats[base_freq_ht.key].freq
+    )
+
+    # Subtract the removed samples' call statistics
+    # This uses gnomAD's merge_freq_arrays with operation="diff"
+    from gnomad.utils.annotations import merge_freq_arrays
+
+    # Get the frequency arrays and metadata
+    base_freq = joined_ht.freq
+    removed_freq = joined_ht.removed_freq
+
+    # Merge with diff operation to subtract removed samples' stats
+    merged_freq, merged_meta, sample_counts = merge_freq_arrays(
+        [base_freq, removed_freq],
+        [base_freq_ht.freq_meta, removed_freq_stats.freq_meta],
+        operation="diff",
+        count_arrays={
+            "counts": [
+                base_freq_ht.freq_meta_sample_count,
+                removed_freq_stats.freq_meta_sample_count,
+            ]
+        },
+    )
+
+    # Update the frequency HT with the merged results
+    modified_ht = joined_ht.select(freq=merged_freq).select_globals(
+        freq_meta=merged_meta,
+        freq_meta_sample_count=sample_counts["counts"],
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
+    )
+
+    return modified_ht
+
+
+def calculate_age_histograms_for_removed_samples(
+    v4_freq_ht: hl.Table,
     samples_to_remove: hl.Table,
     data_set: str = "gnomad",
 ) -> hl.Table:
     """
     Calculate age histograms for samples that will be removed.
 
-    :param mt: Input MatrixTable.
+    :param v4_freq_ht: v4 frequency HT as base.
     :param samples_to_remove: Table with samples to remove.
     :param data_set: Dataset identifier ("gnomad" or "aou").
     :return: Age histogram Table for removed samples.
@@ -298,9 +396,28 @@ def calculate_age_histograms(
         f"Calculating age histograms for removed samples in {data_set} dataset..."
     )
 
-    # Filter to only samples that will be removed
+    # Get samples that will be removed
     removed_samples = samples_to_remove.filter(samples_to_remove.will_be_dropped)
-    mt_removed = mt.filter_cols(removed_samples[mt.col_key].s.is_defined())
+
+    # Load the full dataset MT to calculate age histograms for removed samples
+    # TODO: Replace with appropriate resource once available
+    if data_set == "gnomad":
+        # Load gnomAD v4 full dataset
+        # TODO: Replace with appropriate resource
+        full_mt = None  # get_gnomad_v4_full_mt().mt()
+    else:
+        # Load All of Us full dataset
+        # TODO: Replace with appropriate resource
+        full_mt = None  # get_aou_full_mt().mt()
+
+    if full_mt is None:
+        logger.warning(
+            f"Full dataset MT not available for {data_set}, skipping age histogram calculation"
+        )
+        return hl.Table.parallelize([])
+
+    # Filter to only removed samples
+    mt_removed = full_mt.filter_cols(removed_samples[full_mt.col_key].s.is_defined())
 
     # Calculate age histograms
     age_hist_expr = age_hists_expr(
@@ -532,12 +649,16 @@ def main(args):
                 meta_ht, relatedness_ht, data_set
             )
 
-            # Load joint QC MatrixTable
-            joint_qc_mt = get_joint_qc().mt()
+            # Load v4 frequency HT as the base
+            from gnomad_qc.v4.resources.annotations import get_freq
+
+            v4_freq_ht = get_freq(data_type="exomes").ht()
 
             if test:
-                logger.info("Filtering MT to the first 2 partitions for testing...")
-                joint_qc_mt = joint_qc_mt._filter_partitions(range(2))
+                logger.info(
+                    "Filtering v4 freq HT to the first 2 partitions for testing..."
+                )
+                v4_freq_ht = v4_freq_ht._filter_partitions(range(2))
 
             # Load coverage data if available
             coverage_ht = None
@@ -548,9 +669,9 @@ def main(args):
             except Exception as e:
                 logger.warning(f"Could not load coverage data: {e}")
 
-            # Calculate frequency for removed samples
-            freq_ht = calculate_frequency_for_removed_samples(
-                joint_qc_mt, samples_to_remove, coverage_ht, data_set
+            # Modify v4 frequency HT for removed samples
+            freq_ht = modify_v4_frequency_for_removed_samples(
+                v4_freq_ht, samples_to_remove, coverage_ht, data_set
             )
 
             # Integrate coverage AN data if available
@@ -570,9 +691,9 @@ def main(args):
                 joint_qc_mt, samples_to_remove, v4_meta_ht, data_set
             )
 
-            # Calculate age histograms
-            age_hist_ht = calculate_age_histograms(
-                joint_qc_mt, samples_to_remove, data_set
+            # Calculate age histograms for removed samples
+            age_hist_ht = calculate_age_histograms_for_removed_samples(
+                v4_freq_ht, samples_to_remove, data_set
             )
 
             # Create differential frequency summary if requested
