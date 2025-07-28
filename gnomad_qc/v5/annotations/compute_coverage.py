@@ -5,6 +5,7 @@ import logging
 from typing import List, Optional
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import CURRENT_GENOME_AN_RELEASE as v4_AN_RELEASE
 from gnomad.resources.grch38.gnomad import (
     CURRENT_GENOME_COVERAGE_RELEASE as v4_COVERAGE_RELEASE,
 )
@@ -430,7 +431,7 @@ def main(args):
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
-                    release_version=v4_COVERAGE_RELEASE,
+                    release_version=v4_AN_RELEASE,
                     public=True,
                     raw=False,
                 )
