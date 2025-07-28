@@ -370,7 +370,7 @@ def main(args):
                 output_step_resources={"coverage_and_an_ht": cov_and_an_ht_path}
             )
             group_membership_ht = get_genomes_group_membership_ht(
-                meta().ht(),
+                meta(data_type="genomes").ht(),
             )
             group_membership_ht = group_membership_ht.checkpoint(
                 new_temp_file("group_membership", "ht")
