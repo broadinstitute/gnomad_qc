@@ -194,7 +194,7 @@ def join_aou_and_gnomad_coverage_ht(
     :return: Joined HT.
     """
     # Get total number of AoU v8 release samples.
-    aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count[0])
+    aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
 
     def _rename_cov_annotations(ht: hl.Table, project: str) -> hl.Table:
         """
