@@ -539,7 +539,8 @@ def main(args):
                     ).path,
                 }
             )
-            qc_mt = get_joint_qc(test=test).mt()
+            joint_qc_path = get_joint_qc(test=test).path
+            qc_mt = hl.read_matrix_table(joint_qc_path, _n_partitions=200)
 
             if test_on_chr20:
                 logger.info("Filtering QC MT to chromosome 20...")
