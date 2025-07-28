@@ -406,10 +406,7 @@ def main(args):
 
             # Select coverage and AN fields for release.
             ht = hl.read_table(cov_and_an_ht_path)
-            ht = ht.select(
-                "AN",
-                **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]},
-            )
+            ht = ht.drop("qual_hists")
             ht.write(aou_reformat_ht_path, overwrite=overwrite)
 
         if args.export_coverage_release_files:
