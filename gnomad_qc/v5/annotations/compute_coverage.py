@@ -323,6 +323,7 @@ def main(args):
             raw=True,
             coverage_type="coverage",
             data_set="aou",
+            environment="rwb",
         )
         reformat_cov_and_an_ht_path = release_coverage_path(
             public=False,
@@ -330,6 +331,7 @@ def main(args):
             raw=False,
             coverage_type="coverage",
             data_set="aou",
+            environment="rwb",
         )
 
         if args.compute_all_cov_release_stats_ht:
@@ -396,6 +398,7 @@ def main(args):
                 raw=False,
                 coverage_type="coverage",
                 data_set="aou",
+                environment="rwb",
             )
             check_resource_existence(
                 output_step_resources={"aou_reformat_ht": aou_reformat_ht_path},
