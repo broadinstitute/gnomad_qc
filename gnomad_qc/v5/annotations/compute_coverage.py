@@ -431,7 +431,7 @@ def main(args):
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
-                    release_version=v4_AN_RELEASE,
+                    release_version=v4_COVERAGE_RELEASE,
                     public=True,
                     raw=False,
                 )
@@ -469,7 +469,7 @@ def main(args):
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
-                    release_version=v4_COVERAGE_RELEASE,
+                    release_version=v4_AN_RELEASE,
                     public=True,
                     raw=False,
                     coverage_type="allele_number",
