@@ -207,7 +207,7 @@ def join_aou_and_gnomad_coverage_ht(
         row_fields = list(ht.row_value)
         # Transform mean back into sum.
         sample_count = v4_count if project == "gnomad" else aou_count
-        ht = ht.transmute(sum=ht.mean * sample_count)
+        ht = ht.annotate(sum=ht.mean * sample_count)
 
         # Rename annotations to include project.
         rename_dict = {f: f"{f}_{project}" for f in row_fields}
@@ -220,7 +220,7 @@ def join_aou_and_gnomad_coverage_ht(
                     for x in coverage_over_x_bins
                 }
             )
-        return ht
+        return ht.drop("mean")
 
     # Rename AoU and gnomAD coverage annotations.
     aou_ht = _rename_cov_annotations(aou_ht, "aou")
