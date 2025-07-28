@@ -326,14 +326,6 @@ def main(args):
             data_set="aou",
             environment="rwb",
         )
-        aou_cov_and_an_ht_path = release_coverage_path(
-            public=False,
-            test=test,
-            raw=False,
-            coverage_type="coverage",
-            data_set="aou",
-            environment="rwb",
-        )
 
         if args.compute_all_cov_release_stats_ht:
             # Read in context Table.
@@ -408,8 +400,8 @@ def main(args):
             )
 
             logger.info("Exporting coverage and AN HT and TSV...")
-            aou_ht = hl.read_table(aou_cov_and_an_ht_path)
-            aou_ht = aou_ht.drop("qual_hists")
+            aou_ht = hl.read_table(cov_and_an_ht_path)
+            aou_ht = aou_ht.drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
@@ -449,8 +441,8 @@ def main(args):
             )
 
             logger.info("Exporting AN HT and TSV...")
-            aou_ht = hl.read_table(aou_cov_and_an_ht_path)
-            aou_ht = aou_ht.drop("qual_hists")
+            aou_ht = hl.read_table(cov_and_an_ht_path)
+            aou_ht = aou_ht.select("AN")
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
