@@ -326,7 +326,7 @@ def main(args):
             data_set="aou",
             environment="rwb",
         )
-        reformat_cov_and_an_ht_path = release_coverage_path(
+        aou_cov_and_an_ht_path = release_coverage_path(
             public=False,
             test=test,
             raw=False,
@@ -391,25 +391,6 @@ def main(args):
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
-        if args.reformat_aou_coverage_ht:
-            logger.info("Reformatting AoU release coverage HT...")
-            aou_reformat_ht_path = release_coverage_path(
-                public=False,
-                test=test,
-                raw=False,
-                coverage_type="coverage",
-                data_set="aou",
-                environment="rwb",
-            )
-            check_resource_existence(
-                output_step_resources={"aou_reformat_ht": aou_reformat_ht_path},
-            )
-
-            # Select coverage and AN fields for release.
-            ht = hl.read_table(cov_and_an_ht_path)
-            ht = ht.drop("qual_hists")
-            ht.write(aou_reformat_ht_path, overwrite=overwrite)
-
         if args.export_coverage_release_files:
             cov_ht_path = release_coverage_path(
                 public=False,
@@ -427,7 +408,8 @@ def main(args):
             )
 
             logger.info("Exporting coverage and AN HT and TSV...")
-            aou_ht = hl.read_table(reformat_cov_and_an_ht_path)
+            aou_ht = hl.read_table(aou_cov_and_an_ht_path)
+            aou_ht = aou_ht.drop("qual_hists")
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
@@ -465,7 +447,8 @@ def main(args):
             )
 
             logger.info("Exporting AN HT and TSV...")
-            aou_ht = hl.read_table(reformat_cov_and_an_ht_path)
+            aou_ht = hl.read_table(aou_cov_and_an_ht_path)
+            aou_ht = aou_ht.drop("qual_hists")
             gnomad_ht = hl.read_table(
                 release_coverage_path(
                     data_type="genomes",
@@ -528,11 +511,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--compute-all-cov-release-stats-ht",
         help="Compute the all sites coverage, allele number, and quality histogram HT.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--reformat-aou-coverage-ht",
-        help="Reformats AoU genomes coverage HT to match gnomAD v4 release HT schema.",
         action="store_true",
     )
     parser.add_argument(
