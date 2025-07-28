@@ -58,7 +58,7 @@ def _release_root(
 def annotation_hists_params_path(
     release_version: str = CURRENT_RELEASE,
     data_type: str = "genomes",
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Return path to file containing dictionary of parameters for site metric histograms.
@@ -70,7 +70,7 @@ def annotation_hists_params_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "genomes".
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: Path to file with annotation histograms
     """
     return f"{_release_root(version=release_version, data_type=data_type, extension='json', environment=environment)}/gnomad.{data_type}.v{release_version}_annotation_hist_params.json"
@@ -80,7 +80,7 @@ def qual_hists_json_path(
     release_version: str = CURRENT_RELEASE,
     data_type: str = "genomes",
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Fetch filepath for qual histograms JSON.
@@ -88,7 +88,7 @@ def qual_hists_json_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :param data_type: Data type 'exomes' or 'genomes'. Default is 'genomes'.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: File path for histogram JSON
     """
     return f"{_release_root(release_version, test, data_type, extension='json', environment=environment)}/gnomad.{data_type}.v{release_version}_qual_hists.json"
@@ -161,7 +161,7 @@ def release_vcf_path(
     test: bool = False,
     data_type: str = "genomes",
     contig: Optional[str] = None,
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
@@ -173,7 +173,7 @@ def release_vcf_path(
         'exomes' or 'genomes'. Default is 'genomes'.
     :param contig: String containing the name of the desired reference contig. Default
         is the full (all contigs) sites VCF path.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: Filepath for the desired VCF.
     """
     if release_version is None:
@@ -191,7 +191,7 @@ def release_header_path(
     release_version: Optional[str] = None,
     data_type: str = "genomes",
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
@@ -201,7 +201,7 @@ def release_header_path(
     :param data_type: Data type of release resource to return. Should be one of
         'exomes' or 'genomes'. Default is 'genomes'.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: Filepath for header dictionary pickle.
     """
     if release_version is None:
@@ -214,7 +214,7 @@ def append_to_vcf_header_path(
     subset: str = None,
     release_version: str = CURRENT_RELEASE,
     data_type: str = "genomes",
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Fetch path to TSV file containing extra fields to append to VCF header.
@@ -225,7 +225,7 @@ def append_to_vcf_header_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE.
     :param data_type: Data type of release resource to return. Should be one of
         'exomes' or 'genomes'. Default is 'genomes'.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: Filepath for extra fields TSV file.
     """
     return f"{_release_root(version=release_version, data_type=data_type, extension='tsv', environment=environment)}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
@@ -424,7 +424,7 @@ def included_datasets_json_path(
     data_type: str = "genomes",
     test: bool = False,
     release_version: str = CURRENT_RELEASE,
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> str:
     """
     Fetch filepath for the JSON containing all datasets used in the release.
@@ -432,7 +432,7 @@ def included_datasets_json_path(
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param release_version: Release version. Defaults to CURRENT RELEASE.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: File path for release versions included datasets JSON.
     """
     return f"{_release_root(release_version, test=test, data_type=data_type, extension='json', environment=environment)}/gnomad.{data_type}.v{release_version}.included_datasets.json"
@@ -441,14 +441,14 @@ def included_datasets_json_path(
 def validated_release_ht(
     test: bool = False,
     data_type: str = "genomes",
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for validated sites-only release Table.
 
     :param test: Whether to use a tmp path for testing. Default is False.
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: Validated release Table
     """
     return VersionedTableResource(
