@@ -13,6 +13,9 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
+from gnomad_qc.v4.resources.sample_qc import (
+    related_samples_to_drop as v4_related_samples_to_drop,
+)
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
@@ -539,7 +542,7 @@ def main(args):
                     ).path,
                 }
             )
-            qc_mt = get_joint_qc(test=test).mt()
+            qc_mt = v4_joint_qc_meta(test=test).mt()
 
             if test_on_chr20:
                 logger.info("Filtering QC MT to chromosome 20...")
@@ -550,7 +553,7 @@ def main(args):
             gen_anc_eigenvalues, gen_anc_scores_ht, gen_anc_loadings_ht = run_pca(
                 qc_mt=qc_mt,
                 meta_ht=project_meta.ht(),
-                related_samples_to_drop=related_samples_to_drop().ht(),
+                related_samples_to_drop=v4_related_samples_to_drop().ht(),
                 # TODO: add in 'release' arg if it gets added to resource.
                 include_unreleasable_samples=include_unreleasable_samples,
                 n_pcs=args.n_pcs,
