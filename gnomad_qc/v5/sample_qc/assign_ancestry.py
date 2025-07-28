@@ -16,6 +16,7 @@ from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.resources.sample_qc import (
     related_samples_to_drop as v4_related_samples_to_drop,
 )
+from gnomad_qc.v4.resources.sample_qc import get_joint_qc as v4_get_joint_qc
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
@@ -542,7 +543,7 @@ def main(args):
                     ).path,
                 }
             )
-            qc_mt = v4_joint_qc_meta(test=test).mt()
+            qc_mt = v4_get_joint_qc(test=test).mt()
 
             if test_on_chr20:
                 logger.info("Filtering QC MT to chromosome 20...")
