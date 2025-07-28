@@ -251,7 +251,7 @@ def _get_genetic_ancestry_pca_ht_path(
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: Path to requested genetic ancestry PCA file.
     """
-    return f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+    return f"gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/genetic_ancestry_inference/v4_qc_mt/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
 
 
 def genetic_ancestry_pca_loadings(
