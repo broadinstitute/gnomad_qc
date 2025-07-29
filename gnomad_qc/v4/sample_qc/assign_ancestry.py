@@ -623,7 +623,7 @@ def main(args):
 
     finally:
         hl.copy_log(
-            f"gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf.log"
+            f"gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/4_day/ancestry_assignment/ancestry_assignment.rf.log"
         )
 
 
