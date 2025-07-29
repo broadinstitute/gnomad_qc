@@ -513,10 +513,13 @@ def assign_pop_with_per_pop_probs(
 def main(args):
     """Assign global ancestry labels to samples."""
     hl.init(
-        log="/assign_ancestry.log",
-        default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+        spark_conf={"spark.memory.offHeap.enabled": "false"},
+        log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
+        tmp_dir=f"gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/4_day",
     )
+
+    hl.default_reference("GRCh38")
+
     try:
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
