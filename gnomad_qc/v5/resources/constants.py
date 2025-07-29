@@ -18,3 +18,25 @@ AOU_WGS_BUCKET = f"{AOU_BUCKET}/wgs/short_read/snpindel"
 AOU_WGS_AUX_BUCKET = f"{AOU_WGS_BUCKET}/aux"
 AOU_LOW_QUALITY_PATH = f"gs://{AOU_BUCKET}/known_issues/wgs_v8_known_issue_1.txt"
 AOU_GENOMIC_METRICS_PATH = f"gs://{AOU_WGS_AUX_BUCKET}/qc/genomic_metrics.tsv"
+
+# v5 downsamplings for frequency calculations
+# Based on expected ~1.2M total samples (gnomAD v4 + All of Us)
+V5_DOWNSAMPLINGS = [
+    10,
+    20,
+    50,
+    100,
+    200,
+    500,
+    1000,
+    2000,
+    5000,
+    10000,
+    20000,
+    50000,
+    100000,
+    200000,
+    500000,
+    1000000,
+    1200000,  # Total expected v5 sample count
+]
