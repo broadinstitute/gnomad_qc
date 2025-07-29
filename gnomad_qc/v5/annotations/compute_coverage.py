@@ -452,6 +452,14 @@ def main(args):
                     coverage_type="allele_number",
                 )
             )
+            if test_chr22_chrx_chry:
+                chrom = ["chr22", "chrX", "chrY"]
+                gnomad_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                gnomad_ht = gnomad_ht._filter_partitions(range(2))
+
             ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(an_raw_ht_path, overwrite=overwrite)
             ht = ht.select("AN")
