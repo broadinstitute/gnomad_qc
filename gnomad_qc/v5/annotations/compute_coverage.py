@@ -336,7 +336,7 @@ def main(args):
                     ref_ht, [hl.parse_locus_interval(c) for c in chrom]
                 )
             elif test_2_partitions:
-                ref_ht = ref_ht._filter_partitions(range(5))
+                ref_ht = ref_ht._filter_partitions(range(2))
 
             # Retain only 'locus' annotation from context Table.
             ref_ht = ref_ht.key_by("locus").select().distinct()
