@@ -537,7 +537,8 @@ def main(args):
                     "genetic_ancestry_pca_loadings": genetic_ancestry_pca_loadings(
                         include_unreleasable_samples, use_tmp_path
                     ).path,
-                }
+                },
+                overwrite=overwrite,
             )
             joint_qc_path = get_joint_qc(test=test).path
             qc_mt = hl.read_matrix_table(joint_qc_path, _n_partitions=200)
@@ -569,7 +570,8 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                }
+                },
+                overwrite=overwrite,
             )
 
             gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
@@ -630,7 +632,8 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "gen_anc_pr_ht": get_gen_anc_pr_ht(test=use_tmp_path).path
-                }
+                },
+                overwrite=overwrite,
             )
 
             ht = compute_precision_recall(
@@ -643,7 +646,8 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                }
+                },
+                overwrite=overwrite,
             )
 
             gen_anc = get_gen_anc_ht(test=use_tmp_path)
