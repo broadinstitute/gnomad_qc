@@ -8,7 +8,7 @@ import hail as hl
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_sites
 
@@ -188,12 +188,14 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     test = args.test
+    data_type = args.data_type
     output_path = args.output_path
     header_dict = HEADER_DICT
     add_variant_qc = args.add_variant_qc
     variant_qc_annotations = args.variant_qc_annotations
     pass_only = args.pass_only
     split_multi = args.split_multi
+    include_ukb_200k = args.include_ukb_200k
 
     if args.vcf and not split_multi:
         raise ValueError(
@@ -204,10 +206,17 @@ def main(args):
             "Cannot annotate variant QC annotations or filter to PASS variants on an"
             " unsplit dataset."
         )
+    if include_ukb_200k and data_type == "genomes":
+        raise ValueError("UKB 200K subset is not available for genomes.")
 
-    vds = get_gnomad_v4_vds(
-        n_partitions=args.n_partitions, remove_hard_filtered_samples=False
-    )
+    if data_type == "exomes":
+        vds = get_gnomad_v4_vds(
+            n_partitions=args.n_partitions, remove_hard_filtered_samples=False
+        )
+    else:
+        vds = get_gnomad_v4_genomes_vds(
+            n_partitions=args.n_partitions, remove_hard_filtered_samples=False
+        )
 
     if test:
         vds = hl.vds.VariantDataset(
@@ -215,7 +224,7 @@ def main(args):
             vds.variant_data._filter_partitions(range(2)),
         )
 
-    meta_ht = meta().ht()
+    meta_ht = meta(data_type=data_type).ht()
     subset_ht = hl.import_table(args.subset_samples or args.subset_workspaces)
 
     if args.subset_workspaces:
@@ -230,7 +239,7 @@ def main(args):
     if args.subset_samples:
         subset_ht = subset_ht.key_by("s")
 
-    if args.include_ukb_200k:
+    if include_ukb_200k:
         ukb_subset_ht = meta_ht.filter(
             (meta_ht.project_meta.terra_workspace == "ukbb_wholeexomedataset")
             & hl.literal(UKB_BATCHES_FOR_INCLUSION).contains(
@@ -252,7 +261,7 @@ def main(args):
         vds.variant_data.count_cols(),
     )
 
-    if args.include_ukb_200k:
+    if include_ukb_200k:
         # TODO: add option to provide an application linking file as an argument. Default is ATGU ID. # noqa
         vds = hl.vds.VariantDataset(
             vds.reference_data.key_cols_by(
@@ -297,7 +306,7 @@ def main(args):
 
     if add_variant_qc or pass_only:
         vd = vds.variant_data
-        ht = release_sites().ht()
+        ht = release_sites(data_type=data_type).ht()
         if pass_only:
             logger.info("Filtering to variants that passed variant QC.")
             vd = vd.filter_rows(ht[vd.row_key].filters.length() == 0)
@@ -421,6 +430,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Path to a text file with Terra workspaces that should be included in the"
             " subset, must use a header of 'terra_workspace'."
         ),
+    )
+    parser.add_argument(
+        "--data-type",
+        help="Type of data to subset.",
+        default="exomes",
+        choices=["exomes", "genomes"],
     )
     parser.add_argument(
         "--include-ukb-200k",
