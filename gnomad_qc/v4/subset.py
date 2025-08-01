@@ -227,6 +227,7 @@ def main(args):
         )
 
     meta_ht = meta(data_type=data_type).ht()
+
     if args.subset_samples:
         subset_ht = hl.import_table(args.subset_samples)
         logger.info(
