@@ -94,78 +94,21 @@ HEADER_DICT = {
     },
 }
 
-SUBSET_CALLSTATS_INFO_DICT = {
-    "AC_raw": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele count in subset before filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AN_raw": {
-        "Number": "1",
-        "Description": (
-            "Total number of alleles in subset before filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AF_raw": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele frequency in subset before filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "nhomalt_raw": {
-        "Number": "A",
-        "Description": (
-            "Count of homozygous individuals in subset before filtering of"
-            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AC": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele count in subset after filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AN": {
-        "Number": "1",
-        "Description": (
-            "Total number of alleles in subset after filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AF": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele frequency in subset after filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "nhomalt": {
-        "Number": "A",
-        "Description": (
-            "Count of homozygous individuals in subset after filtering of"
-            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-}
-
 
 def make_variant_qc_annotations_dict(
     key_expr: hl.expr.StructExpression,
     vqc_annotations: Optional[List[str]] = None,
+    data_type: str = "exomes",
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
 
     :param key_expr: Key to join annotations on.
     :param vqc_annotations: Optional list of desired annotations from the release HT.
+    :param data_type: Type of data to subset. Defaults to exomes.
     :return: Dictionary containing Hail expressions to annotate onto subset.
     """
-    ht = release_sites().ht()
+    ht = release_sites(data_type=data_type).ht()
     selected_variant_qc_annotations = {}
     if vqc_annotations is None:
         vqc_annotations = list(ht.row_value.keys())
@@ -185,7 +128,7 @@ def main(args):
     hl.init(
         log="/v4_subset.log",
         default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+        tmp_dir=args.tmp_dir,
     )
     test = args.test
     data_type = args.data_type
@@ -313,7 +256,9 @@ def main(args):
         if add_variant_qc:
             logger.info("Adding variant QC annotations.")
             vd = vd.annotate_rows(
-                **make_variant_qc_annotations_dict(vd.row_key, variant_qc_annotations)
+                **make_variant_qc_annotations_dict(
+                    vd.row_key, variant_qc_annotations, data_type
+                )
             )
         vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
@@ -518,6 +463,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overwrite",
         help="Overwrite all data from this subset (default: False).",
         action="store_true",
+    )
+    parser.add_argument(
+        "--tmp-dir",
+        help="Temporary directory for Hail to write files to.",
+        default="gs://gnomad-tmp-4day",
     )
 
     return parser
