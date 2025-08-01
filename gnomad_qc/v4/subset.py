@@ -403,7 +403,7 @@ def main(args):
         logger.info("Exporting metadata")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
         # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed? # noqa
-        if args.keep_data_paths:
+        if args.keep_data_paths and data_type == "exomes":
             data_to_drop = {"ukb_meta"}
         else:
             data_to_drop = {"ukb_meta", "cram", "gvcf"}
