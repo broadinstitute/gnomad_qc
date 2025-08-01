@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 import hail as hl
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
+from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta
@@ -202,6 +203,7 @@ def main(args):
     vcf = args.vcf
     dense_mt = args.dense_mt
     vds = args.vds
+    subset_call_stats = args.subset_call_stats
 
     if vcf and not split_multi:
         raise ValueError(
@@ -213,7 +215,7 @@ def main(args):
             " unsplit dataset."
         )
     if include_ukb_200k and data_type == "genomes":
-        raise ValueError("UKB 200K subset is not available for genomes.")
+        raise ValueError("UKB subset is not available for genomes.")
 
     if not vcf and not dense_mt and not vds:
         raise ValueError(
@@ -239,6 +241,7 @@ def main(args):
 
     if args.subset_samples:
         subset_ht = hl.import_table(args.subset_samples)
+        subset_ht = subset_ht.key_by("s")
         logger.info(
             "Imported %d samples from the subset file.",
             subset_ht.count(),
@@ -252,9 +255,6 @@ def main(args):
         logger.info(
             "Keeping %d samples using the list of terra workspaces.", subset_ht.count()
         )
-
-    if args.subset_samples:
-        subset_ht = subset_ht.key_by("s")
 
     if include_ukb_200k:
         ukb_subset_ht = meta_ht.filter(
@@ -339,10 +339,16 @@ def main(args):
     if vcf or dense_mt or subset_call_stats:
         logger.info("Densifying VDS")
         mt = hl.vds.to_dense_mt(vds)
+        output_partitions = (
+            args.output_partitions if args.output_partitions else mt.n_partitions()
+        )
+        mt = mt.naive_coalesce(output_partitions).checkpoint(
+            new_temp_file("subset", "mt")
+        )
 
-        if args.subset_call_stats:
+        if subset_call_stats:
             logger.info("Adding subset callstats")
-            if not args.split_multi:
+            if not split_multi:
                 mt = mt.annotate_entries(
                     GT=hl.vds.lgt_to_gt(mt.LGT, mt.LA),
                     adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
@@ -368,7 +374,7 @@ def main(args):
                 )
             )
             ht = ht.checkpoint(
-                f"{output_path}/subset_callstats{'.split' if args.split_multi else ''}.ht",
+                f"{output_path}/subset_callstats{'.split' if split_multi else ''}.ht",
                 overwrite=args.overwrite,
             )
             ht = adjust_vcf_incompatible_types(ht)
@@ -394,7 +400,7 @@ def main(args):
             mt = mt.drop("gvcf_info")
             mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
             mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
-            if args.subset_call_stats:
+            if subset_call_stats:
                 mt = mt.drop("adj")
                 header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
             hl.export_vcf(
@@ -532,6 +538,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Output file path for subsetted VDS/VCF/MT, do not include file extension."
         ),
         required=True,
+    )
+    parser.add_argument(
+        "--output-partitions",
+        help="Number of desired partitions for the output file.",
+        type=int,
     )
     parser.add_argument(
         "-o",
