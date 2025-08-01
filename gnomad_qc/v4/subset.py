@@ -198,8 +198,12 @@ def main(args):
     pass_only = args.pass_only
     split_multi = args.split_multi
     include_ukb_200k = args.include_ukb_200k
+    n_partitions = args.n_partitions
+    vcf = args.vcf
+    dense_mt = args.dense_mt
+    vds = args.vds
 
-    if args.vcf and not split_multi:
+    if vcf and not split_multi:
         raise ValueError(
             "VCF export without split multi is not supported at this time."
         )
@@ -211,13 +215,18 @@ def main(args):
     if include_ukb_200k and data_type == "genomes":
         raise ValueError("UKB 200K subset is not available for genomes.")
 
+    if not vcf and not dense_mt and not vds:
+        raise ValueError(
+            "At least one of --vcf, --dense-mt, or --vds must be specified."
+        )
+
     if data_type == "exomes":
         vds = get_gnomad_v4_vds(
-            n_partitions=args.n_partitions, remove_hard_filtered_samples=False
+            n_partitions=n_partitions, remove_hard_filtered_samples=False
         )
     else:
         vds = get_gnomad_v4_genomes_vds(
-            n_partitions=args.n_partitions, remove_hard_filtered_samples=False
+            n_partitions=n_partitions, remove_hard_filtered_samples=False
         )
 
     if test:
@@ -327,7 +336,7 @@ def main(args):
             )
         vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
-    if args.vcf or args.dense_mt or args.subset_call_stats:
+    if vcf or dense_mt or subset_call_stats:
         logger.info("Densifying VDS")
         mt = hl.vds.to_dense_mt(vds)
 
@@ -369,7 +378,7 @@ def main(args):
                 info_expr = mt.info.annotate(**info_expr)
             mt = mt.annotate_rows(info=info_expr)
 
-            if args.vds:
+            if vds:
                 vd = vds.variant_data
                 info_expr = ht[vd.row_key].info
                 if add_variant_qc:
@@ -377,11 +386,11 @@ def main(args):
                 vd = vd.annotate_rows(info=info_expr)
                 vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
-        if args.dense_mt:
+        if dense_mt:
             mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
 
         # TODO: add num-vcf-shards where no sharding happens if this is not set.
-        if args.vcf:
+        if vcf:
             mt = mt.drop("gvcf_info")
             mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
             mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
@@ -396,7 +405,7 @@ def main(args):
                 tabix=True,
             )
 
-    if args.vds:
+    if vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
     if args.export_meta:
