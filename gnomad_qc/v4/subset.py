@@ -94,6 +94,65 @@ HEADER_DICT = {
     },
 }
 
+SUBSET_CALLSTATS_INFO_DICT = {
+    "AC_raw": {
+        "Number": "A",
+        "Description": (
+            "Alternate allele count in subset before filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "AN_raw": {
+        "Number": "1",
+        "Description": (
+            "Total number of alleles in subset before filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "AF_raw": {
+        "Number": "A",
+        "Description": (
+            "Alternate allele frequency in subset before filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "nhomalt_raw": {
+        "Number": "A",
+        "Description": (
+            "Count of homozygous individuals in subset before filtering of"
+            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "AC": {
+        "Number": "A",
+        "Description": (
+            "Alternate allele count in subset after filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "AN": {
+        "Number": "1",
+        "Description": (
+            "Total number of alleles in subset after filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "AF": {
+        "Number": "A",
+        "Description": (
+            "Alternate allele frequency in subset after filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+    "nhomalt": {
+        "Number": "A",
+        "Description": (
+            "Count of homozygous individuals in subset after filtering of"
+            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
+    },
+}
+
 
 def make_variant_qc_annotations_dict(
     key_expr: hl.expr.StructExpression,
@@ -168,7 +227,12 @@ def main(args):
         )
 
     meta_ht = meta(data_type=data_type).ht()
-    subset_ht = hl.import_table(args.subset_samples or args.subset_workspaces)
+    if args.subset_samples:
+        subset_ht = hl.import_table(args.subset_samples)
+        logger.info(
+            "Imported %d samples from the subset file.",
+            subset_ht.count(),
+        )
 
     if args.subset_workspaces:
         terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
