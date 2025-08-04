@@ -5,6 +5,7 @@ import logging
 from typing import Dict, List, Optional
 
 import hail as hl
+from gnomad.utils.vcf import FORMAT_DICT
 from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
@@ -14,82 +15,6 @@ from gnomad_qc.v4.resources.release import release_sites
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
-
-HEADER_DICT = {
-    "format": {
-        "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
-        "AD": {
-            "Description": (
-                "Allelic depths for the ref and alt alleles in the order listed"
-            ),
-            "Number": "R",
-            "Type": "Integer",
-        },
-        "DP": {
-            "Description": "Approximate read depth",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "GQ": {
-            "Description": (
-                "Phred-scaled confidence that the genotype assignment is correct. Value"
-                " is the difference between the second lowest PL and the lowest PL"
-                " (always normalized to 0)."
-            ),
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "MIN_DP": {
-            "Description": "Minimum DP observed within the GVCF block",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "PGT": {
-            "Description": (
-                "Physical phasing haplotype information, describing how the alternate"
-                " alleles are phased in relation to one another"
-            ),
-            "Number": "1",
-            "Type": "String",
-        },
-        "PID": {
-            "Description": (
-                "Physical phasing ID information, where each unique ID within a given"
-                " sample (but not across samples) connects records within a phasing"
-                " group"
-            ),
-            "Number": "1",
-            "Type": "String",
-        },
-        "PL": {
-            "Description": (
-                "Normalized, phred-scaled likelihoods for genotypes as defined in the"
-                " VCF specification"
-            ),
-            "Number": "G",
-            "Type": "Integer",
-        },
-        "SB": {
-            "Description": (
-                "Per-sample component statistics which comprise the Fisher's exact test"
-                " to detect strand bias. Values are: depth of reference allele on"
-                " forward strand, depth of reference allele on reverse strand, depth of"
-                " alternate allele on forward strand, depth of alternate allele on"
-                " reverse strand."
-            ),
-            "Number": "4",
-            "Type": "Integer",
-        },
-        "RGQ": {
-            "Description": (
-                "Unconditional reference genotype confidence, encoded as a phred"
-                " quality -10*log10 p(genotype call is wrong)"
-            ),
-            "Number": "1",
-            "Type": "Integer",
-        },
-    },
-}
 
 
 def make_variant_qc_annotations_dict(
@@ -213,7 +138,6 @@ def main(args):
     rep_on_read_partitions = args.rep_on_read_partitions
     output_partitions = args.output_partitions
     vcf = args.vcf
-    dense_mt = args.dense_mt
     vds = args.vds
 
     if vcf and not split_multi:
@@ -226,8 +150,8 @@ def main(args):
             " unsplit dataset."
         )
 
-    if not vcf and not dense_mt and not vds:
-        raise ValueError("One of --vcf, --dense-mt, or --vds must be specified.")
+    if not vcf and not vds:
+        raise ValueError("One of --vcf or --vds must be specified.")
 
     logger.info("Getting gnomAD %s dataset...", data_type)
     vds, meta_ht = get_gnomad_dataset(
@@ -247,7 +171,7 @@ def main(args):
         vds, subset_ht, remove_dead_alleles=False if split_multi else True
     )
 
-    if vcf or dense_mt:
+    if vcf:
         logger.info("Densifying VDS...")
         mt = hl.vds.to_dense_mt(vds)
         mt = mt.checkpoint(new_temp_file("subset", "mt"))
@@ -282,7 +206,7 @@ def main(args):
             )
 
     if add_variant_qc or pass_only:
-        ds = vds.variant_data if not vcf or dense_mt else mt
+        ds = vds.variant_data if not vcf else mt
         ht = release_sites(data_type=data_type).ht()
         if pass_only:
             logger.info("Filtering to variants that passed variant QC...")
@@ -299,23 +223,18 @@ def main(args):
         vds = hl.vds.VariantDataset(vds.reference_data, ds)
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
-    if dense_mt or vcf:
-        mt = ds
-        mt = mt.naive_coalesce(
-            output_partitions if output_partitions else mt.n_partitions()
-        )
-
-    if dense_mt:
-        mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
-
     if vcf:
+        mt = ds
         mt = mt.drop("gvcf_info")
         mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
         mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
+        mt = mt.naive_coalesce(
+            output_partitions if output_partitions else mt.n_partitions()
+        )
         hl.export_vcf(
             mt,
             f"{output_path}/subset.vcf.bgz",
-            metadata=HEADER_DICT,
+            metadata=FORMAT_DICT,
             parallel="header_per_shard",
             tabix=True,
         )
@@ -373,9 +292,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--vcf", help="Whether to make a subset VCF.", action="store_true"
-    )
-    parser.add_argument(
-        "--dense-mt", help="Whether to make a dense MT", action="store_true"
     )
     parser.add_argument(
         "--split-multi",
