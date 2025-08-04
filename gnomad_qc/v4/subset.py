@@ -121,22 +121,98 @@ def make_variant_qc_annotations_dict(
     return selected_variant_qc_annotations
 
 
+def get_gnomad_dataset(data_type: str, n_partitions: Optional[int], test: bool):
+    """
+    Get requested data type's v4 VariantDataset.
+
+    :param data_type: Type of data to subset.
+    :param n_partitions: Number of desired partitions for the VDS, repartioned on read.
+    :param test: Whether to filter to the first 2 partitions for testing.
+    :return: The gnomAD v4 VariantDataset.
+    """
+    if data_type == "exomes":
+        vds = get_gnomad_v4_vds(
+            n_partitions=n_partitions, remove_hard_filtered_samples=False
+        )
+    else:
+        vds = get_gnomad_v4_genomes_vds(
+            n_partitions=n_partitions, remove_hard_filtered_samples=False
+        )
+
+    if test:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(range(2)),
+            vds.variant_data._filter_partitions(range(2)),
+        )
+    meta_ht = meta(data_type=data_type).ht()
+    return vds, meta_ht
+
+
+def get_subset_ht(
+    subset_samples: Optional[str],
+    subset_workspaces: Optional[str],
+    meta_ht: Optional[hl.Table],
+) -> hl.Table:
+    """
+    Get the subset HT.
+
+    :param subset_samples: Path to a text file with sample IDs for subsetting and a header: s.
+    :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset, must use a header of 'terra_workspace'.
+    :param meta_ht: The meta HT.
+    :return: The subset HT.
+    """
+    if subset_workspaces and not meta_ht:
+        raise ValueError("A meta HT must be provided if subsetting by workspaces.")
+
+    if subset_workspaces:
+        terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
+        subset_ht = meta_ht.filter(
+            terra_workspaces.contains(meta_ht.project_meta.terra_workspace)
+        ).select()
+
+    if subset_samples:
+        subset_ht = hl.import_table(subset_samples)
+        subset_ht = subset_ht.key_by("s")
+
+    return subset_ht
+
+
+def check_subset_ht(subset_ht: hl.Table, vds_cols: hl.Table):
+    """
+    Check that the subset HT is valid.
+
+    :param subset_ht: The subset HT.
+    :param vds_cols: The VDS columns.
+    """
+    requested_sample_count = subset_ht.count()
+    logger.info("Subset request has %d samples...", requested_sample_count)
+
+    anti_join_ht = subset_ht.anti_join(vds_cols)
+    anti_join_ht_count = anti_join_ht.count()
+    if anti_join_ht_count != 0:
+        missing_samples = anti_join_ht.s.collect()
+        message = (
+            f"Only {requested_sample_count - anti_join_ht_count} out of {requested_sample_count} "
+            f"subsetting-table IDs matched IDs in the variant callset.\n"
+            f"IDs that aren't in the callset: {missing_samples}\n"
+        )
+        raise ValueError(message)
+    else:
+        logger.info("All subsetting-table IDs are in the callset.")
+
+
 def main(args):
     """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
-    hl.init(
-        log="/v4_subset.log",
-        default_reference="GRCh38",
-        tmp_dir=args.tmp_dir,
-    )
+    hl.init(log="/v4_subset.log", default_reference="GRCh38", tmp_dir=args.tmp_dir)
     test = args.test
     data_type = args.data_type
     output_path = args.output_path
-    header_dict = HEADER_DICT
     add_variant_qc = args.add_variant_qc
     variant_qc_annotations = args.variant_qc_annotations
     pass_only = args.pass_only
     split_multi = args.split_multi
-    n_partitions = args.n_partitions
+    rep_on_read_partitions = args.rep_on_read_partitions
+    output_partitions = args.output_partitions
     vcf = args.vcf
     dense_mt = args.dense_mt
     vds = args.vds
@@ -152,62 +228,37 @@ def main(args):
         )
 
     if not vcf and not dense_mt and not vds:
-        raise ValueError(
-            "At least one of --vcf, --dense-mt, or --vds must be specified."
-        )
+        raise ValueError("One of --vcf, --dense-mt, or --vds must be specified.")
 
-    if data_type == "exomes":
-        vds = get_gnomad_v4_vds(
-            n_partitions=n_partitions, remove_hard_filtered_samples=False
-        )
-    else:
-        vds = get_gnomad_v4_genomes_vds(
-            n_partitions=n_partitions, remove_hard_filtered_samples=False
-        )
+    logger.info("Getting gnomAD %s dataset...", data_type)
+    vds, meta_ht = get_gnomad_dataset(
+        data_type=data_type, n_partitions=rep_on_read_partitions, test=test
+    )
 
-    if test:
-        vds = hl.vds.VariantDataset(
-            vds.reference_data._filter_partitions(range(2)),
-            vds.variant_data._filter_partitions(range(2)),
-        )
+    logger.info("Getting subset HT...")
+    subset_ht = get_subset_ht(
+        vds.variant_data.cols(), args.subset_samples, args.subset_workspaces, meta_ht
+    )
 
-    meta_ht = meta(data_type=data_type).ht()
+    logger.info("Checking that all subsetting-table IDs are in the callset...")
+    check_subset_ht(subset_ht, vds.variant_data.cols())
 
-    if args.subset_samples:
-        subset_ht = hl.import_table(args.subset_samples)
-        subset_ht = subset_ht.key_by("s")
-        logger.info(
-            "Imported %d samples from the subset file.",
-            subset_ht.count(),
-        )
-
-    if args.subset_workspaces:
-        terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
-        subset_ht = meta_ht.filter(
-            terra_workspaces.contains(meta_ht.project_meta.terra_workspace)
-        ).select()
-        logger.info(
-            "Keeping %d samples using the list of terra workspaces.", subset_ht.count()
-        )
-
+    logger.info("Filtering VDS to subset samples...")
     vds = hl.vds.filter_samples(
         vds, subset_ht, remove_dead_alleles=False if split_multi else True
-    )
-    logger.info(
-        "Final number of samples being kept in the VDS: %d.",
-        vds.variant_data.count_cols(),
     )
 
     if vcf or dense_mt:
         logger.info("Densifying VDS...")
         mt = hl.vds.to_dense_mt(vds)
         mt = mt.checkpoint(new_temp_file("subset", "mt"))
+
         if split_multi:
             logger.info("Splitting multi-allelics...")
             mt = hl.experimental.sparse_split_multi(mt)
-            mt = mt.filter_rows(mt.n_alt_alleles == 1)
+            mt = mt.filter_rows(hl.agg.any(hl.is_defined(mt.GT)))
 
-    else:
+    if vds:
         vd = vds.variant_data
         if split_multi:
             logger.info("Splitting multi-allelics...")
@@ -235,47 +286,43 @@ def main(args):
         ds = vds.variant_data if not vcf or dense_mt else mt
         ht = release_sites(data_type=data_type).ht()
         if pass_only:
-            logger.info("Filtering to variants that passed variant QC.")
-            ds = ds.filter_rows(ht[vd.row_key].filters.length() == 0)
+            logger.info("Filtering to variants that passed variant QC...")
+            ds = ds.filter_rows(ht[ds.row_key].filters.length() == 0)
         if add_variant_qc:
-            logger.info("Adding variant QC annotations.")
+            logger.info("Adding variant QC annotations...")
             ds = ds.annotate_rows(
                 **make_variant_qc_annotations_dict(
                     ds.row_key, variant_qc_annotations, data_type
                 )
             )
-        if not (vcf or dense_mt):
-            vds = hl.vds.VariantDataset(vds.reference_data, vd)
-
-    if vcf or dense_mt:
-        output_partitions = (
-            args.output_partitions if args.output_partitions else mt.n_partitions()
-        )
-        mt = mt.naive_coalesce(output_partitions)
-
-        if dense_mt:
-            mt.naive_coalesce(output_partitions).write(
-                f"{output_path}/subset.mt", overwrite=args.overwrite
-            )
-
-        # TODO: add num-vcf-shards where no sharding happens if this is not set.
-        if vcf:
-            mt = mt.drop("gvcf_info")
-            mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
-            mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
-            hl.export_vcf(
-                mt,
-                f"{output_path}/subset.vcf.bgz",
-                metadata=header_dict,
-                parallel="header_per_shard",
-                tabix=True,
-            )
 
     if vds:
+        vds = hl.vds.VariantDataset(vds.reference_data, ds)
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
+    if dense_mt or vcf:
+        mt = ds
+        mt = mt.naive_coalesce(
+            output_partitions if output_partitions else mt.n_partitions()
+        )
+
+    if dense_mt:
+        mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
+
+    if vcf:
+        mt = mt.drop("gvcf_info")
+        mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
+        mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
+        hl.export_vcf(
+            mt,
+            f"{output_path}/subset.vcf.bgz",
+            metadata=HEADER_DICT,
+            parallel="header_per_shard",
+            tabix=True,
+        )
+
     if args.export_meta:
-        logger.info("Exporting metadata")
+        logger.info("Exporting metadata...")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
         # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed? # noqa
         if data_type == "exomes":
@@ -338,11 +385,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--n-partitions",
+        "--rep-on-read-partitions",
         help=(
-            "Number of desired partitions for the subset VDS if --vds and/or MT if"
-            " --dense-mt is set and/or the number of shards in the output VCF if --vcf"
-            " is set. By default, there will be no change in partitioning."
+            "Number of partitions to pass when reading in the VDS. If passed, and the "
+            "--output-partitions is not, this will be the number of output "
+            "partitions. By default, there will be no change in partitioning."
         ),
         type=int,
     )
