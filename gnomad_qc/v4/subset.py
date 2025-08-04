@@ -5,8 +5,6 @@ import logging
 from typing import Dict, List, Optional
 
 import hail as hl
-from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
@@ -17,7 +15,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
 
-UKB_BATCHES_FOR_INCLUSION = {"100K", "150K", "200K"}
 
 HEADER_DICT = {
     "format": {
@@ -95,65 +92,6 @@ HEADER_DICT = {
     },
 }
 
-SUBSET_CALLSTATS_INFO_DICT = {
-    "AC_raw": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele count in subset before filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AN_raw": {
-        "Number": "1",
-        "Description": (
-            "Total number of alleles in subset before filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AF_raw": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele frequency in subset before filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "nhomalt_raw": {
-        "Number": "A",
-        "Description": (
-            "Count of homozygous individuals in subset before filtering of"
-            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AC": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele count in subset after filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AN": {
-        "Number": "1",
-        "Description": (
-            "Total number of alleles in subset after filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "AF": {
-        "Number": "A",
-        "Description": (
-            "Alternate allele frequency in subset after filtering of low-confidence"
-            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-    "nhomalt": {
-        "Number": "A",
-        "Description": (
-            "Count of homozygous individuals in subset after filtering of"
-            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-        ),
-    },
-}
-
 
 def make_variant_qc_annotations_dict(
     key_expr: hl.expr.StructExpression,
@@ -198,12 +136,10 @@ def main(args):
     variant_qc_annotations = args.variant_qc_annotations
     pass_only = args.pass_only
     split_multi = args.split_multi
-    include_ukb_200k = args.include_ukb_200k
     n_partitions = args.n_partitions
     vcf = args.vcf
     dense_mt = args.dense_mt
     vds = args.vds
-    subset_call_stats = args.subset_call_stats
 
     if vcf and not split_multi:
         raise ValueError(
@@ -214,8 +150,6 @@ def main(args):
             "Cannot annotate variant QC annotations or filter to PASS variants on an"
             " unsplit dataset."
         )
-    if include_ukb_200k and data_type == "genomes":
-        raise ValueError("UKB subset is not available for genomes.")
 
     if not vcf and not dense_mt and not vds:
         raise ValueError(
@@ -256,20 +190,6 @@ def main(args):
             "Keeping %d samples using the list of terra workspaces.", subset_ht.count()
         )
 
-    if include_ukb_200k:
-        ukb_subset_ht = meta_ht.filter(
-            (meta_ht.project_meta.terra_workspace == "ukbb_wholeexomedataset")
-            & hl.literal(UKB_BATCHES_FOR_INCLUSION).contains(
-                meta_ht.project_meta.ukb_meta.ukb_batch
-            )
-            & ~meta_ht.project_meta.ukb_meta.ukb_withdraw
-        ).select()
-        subset_ht = subset_ht.union(ukb_subset_ht)
-        logger.info(
-            "Keeping %d samples after inclusion of the UKB 200K subset.",
-            subset_ht.count(),
-        )
-
     vds = hl.vds.filter_samples(
         vds, subset_ht, remove_dead_alleles=False if split_multi else True
     )
@@ -278,131 +198,71 @@ def main(args):
         vds.variant_data.count_cols(),
     )
 
-    if include_ukb_200k:
-        # TODO: add option to provide an application linking file as an argument. Default is ATGU ID. # noqa
-        vds = hl.vds.VariantDataset(
-            vds.reference_data.key_cols_by(
-                s=hl.coalesce(
-                    meta_ht[vds.reference_data.col_key].project_meta.ukb_meta.eid_31063,
-                    vds.reference_data.col_key.s,
-                )
-            ),
-            vds.variant_data.key_cols_by(
-                s=hl.coalesce(
-                    meta_ht[vds.variant_data.col_key].project_meta.ukb_meta.eid_31063,
-                    vds.variant_data.col_key.s,
-                )
-            ),
-        )
-        meta_ht = meta_ht.key_by(
-            s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
-        )
+    if vcf or dense_mt:
+        logger.info("Densifying VDS...")
+        mt = hl.vds.to_dense_mt(vds)
+        mt = mt.checkpoint(new_temp_file("subset", "mt"))
+        if split_multi:
+            logger.info("Splitting multi-allelics...")
+            mt = hl.experimental.sparse_split_multi(mt)
+            mt = mt.filter_rows(mt.n_alt_alleles == 1)
 
-    vd = vds.variant_data
-    if split_multi:
-        logger.info("Splitting multi-allelics")
-        vd = vd.annotate_rows(
-            n_unsplit_alleles=hl.len(vd.alleles),
-            mixed_site=(hl.len(vd.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
-        )
-        vds = hl.vds.split_multi(
-            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
-        )
     else:
-        logger.info(
-            "Applying min_rep to the variant data MT because remove_dead_alleles in"
-            " hl.vds.filter_samples may result in variants that do not have the minimum"
-            " representation."
-        )
-        vds = hl.vds.VariantDataset(
-            vds.reference_data,
-            vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
-        )
+        vd = vds.variant_data
+        if split_multi:
+            logger.info("Splitting multi-allelics...")
+            vd = vd.annotate_rows(
+                n_unsplit_alleles=hl.len(vd.alleles),
+                mixed_site=(hl.len(vd.alleles) > 2)
+                & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+                & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+            )
+            vds = hl.vds.split_multi(
+                hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+            )
+        else:
+            logger.info(
+                "Applying min_rep to the variant data MT because remove_dead_alleles in"
+                " hl.vds.filter_samples may result in variants that do not have the minimum"
+                " representation."
+            )
+            vds = hl.vds.VariantDataset(
+                vds.reference_data,
+                vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
+            )
 
     if add_variant_qc or pass_only:
-        vd = vds.variant_data
+        ds = vds.variant_data if not vcf or dense_mt else mt
         ht = release_sites(data_type=data_type).ht()
         if pass_only:
             logger.info("Filtering to variants that passed variant QC.")
-            vd = vd.filter_rows(ht[vd.row_key].filters.length() == 0)
+            ds = ds.filter_rows(ht[vd.row_key].filters.length() == 0)
         if add_variant_qc:
             logger.info("Adding variant QC annotations.")
-            vd = vd.annotate_rows(
+            ds = ds.annotate_rows(
                 **make_variant_qc_annotations_dict(
-                    vd.row_key, variant_qc_annotations, data_type
+                    ds.row_key, variant_qc_annotations, data_type
                 )
             )
-        vds = hl.vds.VariantDataset(vds.reference_data, vd)
+        if not (vcf or dense_mt):
+            vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
-    if vcf or dense_mt or subset_call_stats:
-        logger.info("Densifying VDS")
-        mt = hl.vds.to_dense_mt(vds)
+    if vcf or dense_mt:
         output_partitions = (
             args.output_partitions if args.output_partitions else mt.n_partitions()
         )
-        mt = mt.naive_coalesce(output_partitions).checkpoint(
-            new_temp_file("subset", "mt")
-        )
-
-        if subset_call_stats:
-            logger.info("Adding subset callstats")
-            if not split_multi:
-                mt = mt.annotate_entries(
-                    GT=hl.vds.lgt_to_gt(mt.LGT, mt.LA),
-                    adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
-                )
-            else:
-                mt = mt.annotate_entries(adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD))
-            ht = mt.annotate_rows(
-                subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles),
-                subset_callstats_adj=hl.agg.filter(
-                    mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)
-                ),
-            ).rows()
-            ht = ht.select(
-                info=hl.struct(
-                    AC_raw=ht.subset_callstats_raw.AC[1:],
-                    AN_raw=ht.subset_callstats_raw.AN,
-                    AF_raw=ht.subset_callstats_raw.AF[1:],
-                    nhomalt_raw=ht.subset_callstats_raw.homozygote_count[1:],
-                    AC=ht.subset_callstats_adj.AC[1:],
-                    AN=ht.subset_callstats_adj.AN,
-                    AF=ht.subset_callstats_adj.AF[1:],
-                    nhomalt=ht.subset_callstats_adj.homozygote_count[1:],
-                )
-            )
-            ht = ht.checkpoint(
-                f"{output_path}/subset_callstats{'.split' if split_multi else ''}.ht",
-                overwrite=args.overwrite,
-            )
-            ht = adjust_vcf_incompatible_types(ht)
-
-            info_expr = ht[mt.row_key].info
-            if add_variant_qc:
-                info_expr = mt.info.annotate(**info_expr)
-            mt = mt.annotate_rows(info=info_expr)
-
-            if vds:
-                vd = vds.variant_data
-                info_expr = ht[vd.row_key].info
-                if add_variant_qc:
-                    info_expr = vd.info.annotate(**info_expr)
-                vd = vd.annotate_rows(info=info_expr)
-                vds = hl.vds.VariantDataset(vds.reference_data, vd)
+        mt = mt.naive_coalesce(output_partitions)
 
         if dense_mt:
-            mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
+            mt.naive_coalesce(output_partitions).write(
+                f"{output_path}/subset.mt", overwrite=args.overwrite
+            )
 
         # TODO: add num-vcf-shards where no sharding happens if this is not set.
         if vcf:
             mt = mt.drop("gvcf_info")
             mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
             mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
-            if subset_call_stats:
-                mt = mt.drop("adj")
-                header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
             hl.export_vcf(
                 mt,
                 f"{output_path}/subset.vcf.bgz",
@@ -464,11 +324,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         choices=["exomes", "genomes"],
     )
     parser.add_argument(
-        "--include-ukb-200k",
-        help="Whether to include the 200K UK Biobank samples.",
-        action="store_true",
-    )
-    parser.add_argument(
         "--vds", help="Whether to make a subset VDS.", action="store_true"
     )
     parser.add_argument(
@@ -490,11 +345,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " is set. By default, there will be no change in partitioning."
         ),
         type=int,
-    )
-    parser.add_argument(
-        "--subset-call-stats",
-        help="Adds subset callstats, AC, AN, AF, nhomalt.",
-        action="store_true",
     )
     parser.add_argument(
         "--add-variant-qc",
