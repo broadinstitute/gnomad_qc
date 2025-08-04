@@ -15,7 +15,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
 
-
 HEADER_DICT = {
     "format": {
         "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
