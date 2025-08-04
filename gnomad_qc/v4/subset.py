@@ -14,8 +14,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
 
-UKB_BATCHES_FOR_INCLUSION = {"100K", "150K", "200K"}
-
 HEADER_DICT = {
     "format": {
         "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
@@ -169,20 +167,6 @@ def main(args):
     if args.subset_samples:
         subset_ht = subset_ht.key_by("s")
 
-    if args.include_ukb_200k:
-        ukb_subset_ht = meta_ht.filter(
-            (meta_ht.project_meta.terra_workspace == "ukbb_wholeexomedataset")
-            & hl.literal(UKB_BATCHES_FOR_INCLUSION).contains(
-                meta_ht.project_meta.ukb_meta.ukb_batch
-            )
-            & ~meta_ht.project_meta.ukb_meta.ukb_withdraw
-        ).select()
-        subset_ht = subset_ht.union(ukb_subset_ht)
-        logger.info(
-            "Keeping %d samples after inclusion of the UKB 200K subset.",
-            subset_ht.count(),
-        )
-
     vds = hl.vds.filter_samples(
         vds, subset_ht, remove_dead_alleles=False if split_multi else True
     )
@@ -190,26 +174,6 @@ def main(args):
         "Final number of samples being kept in the VDS: %d.",
         vds.variant_data.count_cols(),
     )
-
-    if args.include_ukb_200k:
-        # TODO: add option to provide an application linking file as an argument. Default is ATGU ID. # noqa
-        vds = hl.vds.VariantDataset(
-            vds.reference_data.key_cols_by(
-                s=hl.coalesce(
-                    meta_ht[vds.reference_data.col_key].project_meta.ukb_meta.eid_31063,
-                    vds.reference_data.col_key.s,
-                )
-            ),
-            vds.variant_data.key_cols_by(
-                s=hl.coalesce(
-                    meta_ht[vds.variant_data.col_key].project_meta.ukb_meta.eid_31063,
-                    vds.variant_data.col_key.s,
-                )
-            ),
-        )
-        meta_ht = meta_ht.key_by(
-            s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
-        )
 
     vd = vds.variant_data
     if split_multi:
@@ -311,11 +275,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Path to a text file with Terra workspaces that should be included in the"
             " subset, must use a header of 'terra_workspace'."
         ),
-    )
-    parser.add_argument(
-        "--include-ukb-200k",
-        help="Whether to include the 200K UK Biobank samples.",
-        action="store_true",
     )
     parser.add_argument(
         "--vds", help="Whether to make a subset VDS.", action="store_true"
