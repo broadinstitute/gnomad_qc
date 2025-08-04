@@ -826,8 +826,8 @@ def main(args):
                 )
             )
 
-        gen_anc_scores_ht = genetic_ancestry_pca_scores().ht()
-        gen_anc_ht = get_gen_anc_ht().ht()
+        gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test).ht()
+        gen_anc_ht = get_gen_anc_ht(test=test).ht()
 
         if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
             rerun_filtering = False
