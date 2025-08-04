@@ -779,10 +779,13 @@ def main(args):
                 project="aou",
             )
 
-            # NOTE: v4 sample QC HT test version no longer exists.
             v4_sample_qc_ht = v4_get_sample_qc(
                 "under_three_alt_alleles", test=False
             ).ht()
+            # NOTE: v4 sample QC HT test version no longer exists.
+            # Read in two partitions instead if test flag is set.
+            if test:
+                v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
             v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
                 v4_gq_bins=v4_sample_qc_ht.gq_bins,
             )
