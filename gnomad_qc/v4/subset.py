@@ -423,6 +423,9 @@ def main(args):
             data_type,
             output_partitions,
         )
+        if split_multi:
+            FORMAT_DICT.pop("RGQ")
+
         hl.export_vcf(
             mt,
             f"{output_path}/subset.vcf.bgz",
