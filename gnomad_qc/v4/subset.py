@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.utils.vcf import FORMAT_DICT
@@ -45,7 +45,7 @@ def make_variant_qc_annotations_dict(
     return selected_variant_qc_annotations
 
 
-def get_gnomad_dataset(data_type: str, n_partitions: Optional[int], test: bool):
+def get_gnomad_datasets(data_type: str, n_partitions: Optional[int], test: bool):
     """
     Get requested data type's v4 VariantDataset.
 
@@ -83,6 +83,7 @@ def get_subset_ht(
     :param subset_samples: Path to a text file with sample IDs for subsetting and a header: s.
     :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset, must use a header of 'terra_workspace'.
     :param meta_ht: The meta HT.
+    :param vds_cols: The VDS columns.
     :return: The subset HT.
     """
     if subset_workspaces and not meta_ht:
@@ -122,7 +123,226 @@ def check_subset_ht(subset_ht: hl.Table, vds_cols: hl.Table):
         )
         raise ValueError(message)
     else:
-        logger.info("All subsetting-table IDs are in the callset.")
+        logger.info("All subsetting-table IDs are in the callset...")
+
+
+def apply_split_multi_logic(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    vcf_export: bool = False,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Apply split multi logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).
+
+    :param mtds: MatrixTable or VariantDataset to process.
+    :param is_vcf: Whether this is the VCF path (MatrixTable) or VDS path (VariantDataset).
+    :return: Processed MatrixTable or VariantDataset.
+    """
+    logger.info("Splitting multi-allelics...")
+    if vcf_export:
+        mtds = mtds.annotate_rows(
+            n_unsplit_alleles=hl.len(mtds.alleles),
+            mixed_site=(hl.len(mtds.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(mtds.alleles[0], a), mtds.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(mtds.alleles[0], a), mtds.alleles[1:]),
+        )
+        # Need to use sparse split multi because it is local-aware.
+        mtds = hl.experimental.sparse_split_multi(mtds)
+        mtds = mtds.filter_rows(hl.agg.any(hl.is_defined(mtds.GT)))
+    else:
+        # VDS path
+        vd = mtds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        mtds = hl.vds.split_multi(
+            hl.vds.VariantDataset(mtds.reference_data, vd), filter_changed_loci=True
+        )
+
+    return mtds
+
+
+def apply_min_rep_logic(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    vcf_export: bool = False,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Apply min_rep logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).
+
+    :param mtds: MatrixTable or VariantDataset to process.
+    :param vcf_export: Whether this is the VCF path (MatrixTable) or VDS path (VariantDataset).
+    :return: Processed MatrixTable or VariantDataset.
+    """
+    logger.info(
+        "Applying min_rep to the variant data MT because remove_dead_alleles in"
+        " hl.vds.filter_samples may result in variants that do not have the minimum"
+        " representation..."
+    )
+
+    if vcf_export:
+        mtds = mtds.key_rows_by(**hl.min_rep(mtds.locus, mtds.alleles))
+    else:
+        # VDS path
+        vd = mtds.variant_data
+        mtds = hl.vds.VariantDataset(
+            mtds.reference_data,
+            vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
+        )
+
+    return mtds
+
+
+def apply_variant_qc_annotations(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    add_variant_qc: bool,
+    pass_only: bool,
+    variant_qc_annotations: Optional[List[str]],
+    data_type: str,
+    vcf_export: bool = False,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Apply variant QC annotations and filtering to either a MatrixTable or VariantDataset.
+
+    :param mtds: MatrixTable or VariantDataset to process.
+    :param add_variant_qc: Whether to add variant QC annotations.
+    :param pass_only: Whether to filter to PASS variants only.
+    :param variant_qc_annotations: List of variant QC annotations to add.
+    :param data_type: Type of data (exomes or genomes).
+    :param vcf_export: Whether this is the VCF path (MatrixTable) or VDS path (VariantDataset).
+    :return: Processed MatrixTable or VariantDataset.
+    """
+    if not (add_variant_qc or pass_only):
+        return mtds
+
+    # Get the appropriate data structure for processing
+    if vcf_export:
+        ds = mtds  # MatrixTable
+    else:
+        ds = mtds.variant_data  # VariantData from VDS
+
+    ht = release_sites(data_type=data_type).ht()
+
+    if pass_only:
+        logger.info("Filtering to variants that passed variant QC...")
+        ds = ds.filter_rows(ht[ds.row_key].filters.length() == 0)
+
+    if add_variant_qc:
+        logger.info("Adding variant QC annotations...")
+        ds = ds.annotate_rows(
+            **make_variant_qc_annotations_dict(
+                ds.row_key, variant_qc_annotations, data_type
+            )
+        )
+    # Return the appropriate structure
+    if vcf_export:
+        return ds  # MatrixTable
+    else:
+        return hl.vds.VariantDataset(mtds.reference_data, ds)  # VDS
+
+
+def process_vds_output(
+    vds: hl.vds.VariantDataset,
+    split_multi: bool,
+    add_variant_qc: bool,
+    pass_only: bool,
+    variant_qc_annotations: Optional[List[str]],
+    data_type: str,
+) -> hl.vds.VariantDataset:
+    """
+    Process VDS output and return the processed VDS.
+
+    :param vds: The VDS to process.
+    :param split_multi: Whether to split multi-allelic variants.
+    :param add_variant_qc: Whether to add variant QC annotations.
+    :param pass_only: Whether to filter to PASS variants only.
+    :param variant_qc_annotations: List of variant QC annotations to add.
+    :param data_type: Type of data (exomes or genomes).
+    :return: The processed VDS.
+    """
+    vds = apply_split_multi_logic(vds, vcf_export=False)
+    vds = apply_min_rep_logic(vds, vcf_export=False)
+    vds = apply_variant_qc_annotations(
+        vds,
+        add_variant_qc,
+        pass_only,
+        variant_qc_annotations,
+        data_type,
+        vcf_export=False,
+    )
+    return vds
+
+
+def process_vcf_output(
+    vds: hl.vds.VariantDataset,
+    split_multi: bool,
+    add_variant_qc: bool,
+    pass_only: bool,
+    variant_qc_annotations: Optional[List[str]],
+    data_type: str,
+    output_partitions: Optional[int],
+) -> hl.MatrixTable:
+    """
+    Process VCF output and return the processed MatrixTable.
+
+    :param vds: The VDS to process.
+    :param split_multi: Whether to split multi-allelic variants.
+    :param add_variant_qc: Whether to add variant QC annotations.
+    :param pass_only: Whether to filter to PASS variants only.
+    :param variant_qc_annotations: List of variant QC annotations to add.
+    :param data_type: Type of data (exomes or genomes).
+    :param output_partitions: Number of desired partitions for the output file.
+    :return: The processed MatrixTable.
+    """
+    logger.info("Densifying VDS...")
+    mt = hl.vds.to_dense_mt(vds)
+    mt = mt.checkpoint(new_temp_file("subset", "mt"))
+
+    if split_multi:
+        mt = apply_split_multi_logic(mt, vcf_export=True)
+
+    mt = apply_min_rep_logic(mt, vcf_export=True)
+    mt = apply_variant_qc_annotations(
+        mt,
+        add_variant_qc,
+        pass_only,
+        variant_qc_annotations,
+        data_type,
+        vcf_export=True,
+    )
+    mt = mt.drop("gvcf_info")
+    mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
+    mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
+    mt = mt.naive_coalesce(
+        output_partitions if output_partitions else mt.n_partitions()
+    )
+    return mt
+
+
+def process_metadata_export(
+    meta_ht: hl.Table,
+    vds: hl.vds.VariantDataset,
+    keep_data_paths: bool,
+) -> hl.Table:
+    """
+    Process metadata and return the processed metadata Table.
+
+    :param meta_ht: The metadata Table to process.
+    :param vds: The VDS to process.
+    :param keep_data_paths: Whether to keep data paths in the metadata.
+    :return: The processed metadata Table.
+    """
+    logger.info("Exporting metadata...")
+    meta_ht = meta_ht.semi_join(vds.variant_data.cols())
+
+    if keep_data_paths:
+        data_to_drop = {"ukb_meta"}
+    else:
+        data_to_drop = {"ukb_meta", "cram", "gvcf"}
+
+    meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
+    return meta_ht
 
 
 def main(args):
@@ -139,6 +359,7 @@ def main(args):
     output_partitions = args.output_partitions
     vcf = args.vcf
     vds = args.vds
+    overwrite = args.overwrite
 
     if vcf and not split_multi:
         raise ValueError(
@@ -154,14 +375,12 @@ def main(args):
         raise ValueError("One of --vcf or --vds must be specified.")
 
     logger.info("Getting gnomAD %s dataset...", data_type)
-    vds, meta_ht = get_gnomad_dataset(
+    vds, meta_ht = get_gnomad_datasets(
         data_type=data_type, n_partitions=rep_on_read_partitions, test=test
     )
 
     logger.info("Getting subset HT...")
-    subset_ht = get_subset_ht(
-        vds.variant_data.cols(), args.subset_samples, args.subset_workspaces, meta_ht
-    )
+    subset_ht = get_subset_ht(args.subset_samples, args.subset_workspaces, meta_ht)
 
     logger.info("Checking that all subsetting-table IDs are in the callset...")
     check_subset_ht(subset_ht, vds.variant_data.cols())
@@ -171,65 +390,33 @@ def main(args):
         vds, subset_ht, remove_dead_alleles=False if split_multi else True
     )
 
-    if vcf:
-        logger.info("Densifying VDS...")
-        mt = hl.vds.to_dense_mt(vds)
-        mt = mt.checkpoint(new_temp_file("subset", "mt"))
-
-        if split_multi:
-            logger.info("Splitting multi-allelics...")
-            mt = hl.experimental.sparse_split_multi(mt)
-            mt = mt.filter_rows(hl.agg.any(hl.is_defined(mt.GT)))
-
+    # After discussions with the hail team, a VCF export should densify the VDS and
+    # checkpoint it before splitting multiallelics for efficiency. This means few
+    # functions can be reused downstream as dense MTs and VDSs need to be processed
+    # differently. Because of this, we have separate mini-pipelines for VDS and VCF
+    # exports.
+    #  # TODO: Do we want to allow only VDS or VCF? Not many steps are shared at the moment so there is not much to gain from a single pipeline for both.
+    # TODO Should we drop that horrific multi-allelic site?
     if vds:
-        vd = vds.variant_data
-        if split_multi:
-            logger.info("Splitting multi-allelics...")
-            vd = vd.annotate_rows(
-                n_unsplit_alleles=hl.len(vd.alleles),
-                mixed_site=(hl.len(vd.alleles) > 2)
-                & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
-                & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
-            )
-            vds = hl.vds.split_multi(
-                hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
-            )
-        else:
-            logger.info(
-                "Applying min_rep to the variant data MT because remove_dead_alleles in"
-                " hl.vds.filter_samples may result in variants that do not have the minimum"
-                " representation."
-            )
-            vds = hl.vds.VariantDataset(
-                vds.reference_data,
-                vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
-            )
-
-    if add_variant_qc or pass_only:
-        ds = vds.variant_data if not vcf else mt
-        ht = release_sites(data_type=data_type).ht()
-        if pass_only:
-            logger.info("Filtering to variants that passed variant QC...")
-            ds = ds.filter_rows(ht[ds.row_key].filters.length() == 0)
-        if add_variant_qc:
-            logger.info("Adding variant QC annotations...")
-            ds = ds.annotate_rows(
-                **make_variant_qc_annotations_dict(
-                    ds.row_key, variant_qc_annotations, data_type
-                )
-            )
-
-    if vds:
-        vds = hl.vds.VariantDataset(vds.reference_data, ds)
-        vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
+        vds = process_vds_output(
+            vds,
+            split_multi,
+            add_variant_qc,
+            pass_only,
+            variant_qc_annotations,
+            data_type,
+        )
+        vds.write(f"{output_path}/subset.vds", overwrite=overwrite)
 
     if vcf:
-        mt = ds
-        mt = mt.drop("gvcf_info")
-        mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
-        mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
-        mt = mt.naive_coalesce(
-            output_partitions if output_partitions else mt.n_partitions()
+        mt = process_vcf_output(
+            vds,
+            split_multi,
+            add_variant_qc,
+            pass_only,
+            variant_qc_annotations,
+            data_type,
+            output_partitions,
         )
         hl.export_vcf(
             mt,
@@ -240,20 +427,12 @@ def main(args):
         )
 
     if args.export_meta:
-        logger.info("Exporting metadata...")
-        meta_ht = meta_ht.semi_join(vds.variant_data.cols())
-        if data_type == "exomes":
-            if args.keep_data_paths:
-                data_to_drop = {"ukb_meta"}
-            else:
-                data_to_drop = {"ukb_meta", "cram", "gvcf"}
-
-            meta_ht = meta_ht.annotate(
-                project_meta=meta_ht.project_meta.drop(*data_to_drop)
-            )
-        meta_ht = meta_ht.checkpoint(
-            f"{output_path}/metadata.ht", overwrite=args.overwrite
+        meta_ht = process_metadata_export(
+            meta_ht,
+            vds,
+            args.keep_data_paths,
         )
+        meta_ht = meta_ht.checkpoint(f"{output_path}/metadata.ht", overwrite=overwrite)
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 
