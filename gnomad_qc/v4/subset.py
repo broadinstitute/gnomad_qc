@@ -357,11 +357,11 @@ def main(args):
     split_multi = args.split_multi
     rep_on_read_partitions = args.rep_on_read_partitions
     output_partitions = args.output_partitions
-    vcf = args.vcf
-    vds = args.vds
+    output_vcf = args.output_vcf
+    output_vds = args.output_vds
     overwrite = args.overwrite
 
-    if vcf and not split_multi:
+    if output_vcf and not split_multi:
         raise ValueError(
             "VCF export without split multi is not supported at this time."
         )
@@ -371,7 +371,7 @@ def main(args):
             " unsplit dataset."
         )
 
-    if not vcf and not vds:
+    if not output_vcf and not output_vds:
         raise ValueError("One of --vcf or --vds must be specified.")
 
     logger.info("Getting gnomAD %s dataset...", data_type)
@@ -397,7 +397,8 @@ def main(args):
     # exports.
     #  # TODO: Do we want to allow only VDS or VCF? Not many steps are shared at the moment so there is not much to gain from a single pipeline for both.
     # TODO Should we drop that horrific multi-allelic site?
-    if vds:
+    if output_vds:
+        logger.info("Producing VDS subset...")
         vds = process_vds_output(
             vds,
             split_multi,
@@ -408,7 +409,8 @@ def main(args):
         )
         vds.write(f"{output_path}/subset.vds", overwrite=overwrite)
 
-    if vcf:
+    if output_vcf:
+        logger.info("Producing VCF subset...")
         mt = process_vcf_output(
             vds,
             split_multi,
@@ -467,10 +469,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         choices=["exomes", "genomes"],
     )
     parser.add_argument(
-        "--vds", help="Whether to make a subset VDS.", action="store_true"
+        "--output-vds", help="Whether to output a subset VDS.", action="store_true"
     )
     parser.add_argument(
-        "--vcf", help="Whether to make a subset VCF.", action="store_true"
+        "--output-vcf", help="Whether to output a subset VCF.", action="store_true"
     )
     parser.add_argument(
         "--split-multi",
