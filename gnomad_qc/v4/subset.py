@@ -148,6 +148,8 @@ def apply_split_multi_logic(
         # Need to use sparse split multi because it is local-aware.
         mtds = hl.experimental.sparse_split_multi(mtds)
         mtds = mtds.filter_rows(hl.agg.any(hl.is_defined(mtds.GT)))
+        # Used during splitting multiallelics but not longer needed after.
+        mtds = mtds.drop("RGQ")
     else:
         # VDS path
         vd = mtds.variant_data
@@ -158,7 +160,8 @@ def apply_split_multi_logic(
             & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
         )
         mtds = hl.vds.split_multi(
-            hl.vds.VariantDataset(mtds.reference_data, vd), filter_changed_loci=True
+            hl.vds.VariantDataset(mtds.reference_data, vd.drop("RGQ")),
+            filter_changed_loci=True,
         )
 
     return mtds
