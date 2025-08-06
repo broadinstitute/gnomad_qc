@@ -16,6 +16,9 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import get_sample_qc as v4_get_sample_qc
+from gnomad_qc.v4.resources.sample_qc import (
+    hard_filtered_samples as v4_hard_filtered_samples,
+)
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
@@ -786,6 +789,12 @@ def main(args):
             # Read in two partitions instead if test flag is set.
             if test:
                 v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
+
+            # Remove hard filtered samples from v4 sample QC HT.
+            v4_hard_filtered_samples = v4_hard_filtered_samples.ht()
+            v4_sample_qc_ht = v4_sample_qc_ht.filter(
+                hl.is_missing(v4_hard_filtered_samples[v4_sample_qc_ht.key])
+            )
             v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
                 v4_gq_bins=v4_sample_qc_ht.gq_bins,
             )
