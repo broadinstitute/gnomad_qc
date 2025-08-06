@@ -5,7 +5,7 @@ import logging
 from typing import Dict, List, Optional, Union
 
 import hail as hl
-from gnomad.utils.vcf import FORMAT_DICT
+from gnomad.utils.vcf import FORMAT_DICT, adjust_vcf_incompatible_types
 from hail.utils import new_temp_file
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
@@ -299,9 +299,10 @@ def process_vcf_output(
     :return: The processed MatrixTable.
     """
     logger.info("Densifying VDS...")
-    mt = hl.vds.to_dense_mt(vds)
-    mt = mt.checkpoint(new_temp_file("subset", "mt"))
-
+    # mt = hl.vds.to_dense_mt(vds)
+    # mt = mt.checkpoint(new_temp_file("subset", "mt"))
+    mt = hl.read_matrix_table("gs://gnomad-tmp-4day/subset-2j5jnBbOKUoH3EwQSsjuid.mt")
+    mt.describe()
     if split_multi:
         mt = apply_split_multi_logic(mt, vcf_export=True)
 
@@ -314,9 +315,25 @@ def process_vcf_output(
         data_type,
         vcf_export=True,
     )
+
+    # Note: AS_SB_TABLE should be an array of arrays of int32s. However, when we split
+    # the info fields for v3 and v4, we use the extend method which adds the second
+    # array to the first https://github.com/broadinstitute/gnomad_methods/blob/95b42cb013da1e63311245426ab1574208405f56/gnomad/utils/sparse_mt.py#L775C5-L778C10
+    # This means that the AS_SB_TABLE will be an array of four int32s, not an array of
+    # two arrays of two int32s.
+    mt = mt.annotate_rows(
+        info=mt.info.annotate(
+            AS_SB_TABLE=hl.array([mt.info.AS_SB_TABLE[:2], mt.info.AS_SB_TABLE[2:]]),
+        )
+    )
+    mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
+    ht = adjust_vcf_incompatible_types(
+        mt.select_rows("info").rows(), pipe_delimited_annotations=[]
+    )
+    ht.describe()
+    mt = mt.annotate_rows(info=ht[mt.row_key].info)
     mt = mt.drop("gvcf_info")
     mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
-    mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
     mt = mt.naive_coalesce(
         output_partitions if output_partitions else mt.n_partitions()
     )
@@ -377,21 +394,21 @@ def main(args):
     if not output_vcf and not output_vds:
         raise ValueError("One of --vcf or --vds must be specified.")
 
-    logger.info("Getting gnomAD %s dataset...", data_type)
-    vds, meta_ht = get_gnomad_datasets(
-        data_type=data_type, n_partitions=rep_on_read_partitions, test=test
-    )
+    #   logger.info("Getting gnomAD %s dataset...", data_type)
+    #   vds, meta_ht = get_gnomad_datasets(
+    #       data_type=data_type, n_partitions=rep_on_read_partitions, test=test
+    #   )
 
-    logger.info("Getting subset HT...")
-    subset_ht = get_subset_ht(args.subset_samples, args.subset_workspaces, meta_ht)
+    #   logger.info("Getting subset HT...")
+    #   subset_ht = get_subset_ht(args.subset_samples, args.subset_workspaces, meta_ht)
 
-    logger.info("Checking that all subsetting-table IDs are in the callset...")
-    check_subset_ht(subset_ht, vds.variant_data.cols())
+    #   logger.info("Checking that all subsetting-table IDs are in the callset...")
+    #   check_subset_ht(subset_ht, vds.variant_data.cols())
 
-    logger.info("Filtering VDS to subset samples...")
-    vds = hl.vds.filter_samples(
-        vds, subset_ht, remove_dead_alleles=False if split_multi else True
-    )
+    #   logger.info("Filtering VDS to subset samples...")
+    #   vds = hl.vds.filter_samples(
+    #       vds, subset_ht, remove_dead_alleles=False if split_multi else True
+    #   )
 
     # After discussions with the hail team, a VCF export should densify the VDS and
     # checkpoint it before splitting multiallelics for efficiency. This means few
@@ -415,21 +432,21 @@ def main(args):
     if output_vcf:
         logger.info("Producing VCF subset...")
         mt = process_vcf_output(
-            vds,
-            split_multi,
-            add_variant_qc,
-            pass_only,
-            variant_qc_annotations,
-            data_type,
-            output_partitions,
+            # vds,
+            split_multi=split_multi,
+            add_variant_qc=add_variant_qc,
+            pass_only=pass_only,
+            variant_qc_annotations=variant_qc_annotations,
+            data_type=data_type,
+            output_partitions=output_partitions,
+            vds=None,
         )
         if split_multi:
             FORMAT_DICT.pop("RGQ")
-
         hl.export_vcf(
             mt,
             f"{output_path}/subset.vcf.bgz",
-            metadata=FORMAT_DICT,
+            metadata={"format": FORMAT_DICT},
             parallel="header_per_shard",
             tabix=True,
         )
