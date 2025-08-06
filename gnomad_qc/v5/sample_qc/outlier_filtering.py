@@ -791,9 +791,9 @@ def main(args):
                 v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
 
             # Remove hard filtered samples from v4 sample QC HT.
-            v4_hard_filtered_samples = v4_hard_filtered_samples.ht()
+            v4_hard_filtered_s = v4_hard_filtered_samples.ht()
             v4_sample_qc_ht = v4_sample_qc_ht.filter(
-                hl.is_missing(v4_hard_filtered_samples[v4_sample_qc_ht.key])
+                hl.is_missing(v4_hard_filtered_s[v4_sample_qc_ht.key])
             )
             v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
                 v4_gq_bins=v4_sample_qc_ht.gq_bins,
