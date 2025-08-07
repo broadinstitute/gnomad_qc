@@ -81,6 +81,20 @@ class ProcessingConfig:
         )
 
 
+# Spark configuration for large datasets as suggested by Cursor.
+SPARK_CONF = {
+    # Adaptive Query Execution - widely recommended for large datasets
+    "spark.sql.adaptive.enabled": "true",
+    "spark.sql.adaptive.coalescePartitions.enabled": "true",
+    "spark.sql.adaptive.skewJoin.enabled": "true",
+    # Kryo serialization - faster for large genomic objects
+    "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+    "spark.kryo.registrationRequired": "false",
+    # Conservative partition management
+    "spark.sql.shuffle.partitions": "2000",
+}
+
+
 def get_gnomad_datasets(data_type: str, n_partitions: Optional[int], test: bool):
     """
     Get requested data type's v4 VariantDataset.
@@ -118,7 +132,7 @@ def get_subset_ht(
     Get the subset HT.
 
     :param subset_samples: Path to a text file with sample IDs for subsetting and a header: s.
-    :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset, must use a header of 'terra_workspace'.
+    :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset and a header: 'terra_workspace'.
     :param meta_ht: The meta HT.
     :param vds_cols: The VDS columns.
     :return: The subset HT.
@@ -154,7 +168,7 @@ def check_subset_ht(subset_ht: hl.Table, vmt_cols: hl.Table):
         missing_samples = anti_join_ht.s.collect()
         message = (
             f"Only {requested_sample_count - anti_join_ht_count} out of {requested_sample_count} "
-            f"subsetting-table IDs matched IDs in the variant callset.\n"
+            f"subsetting-table IDs matched IDs in the dataset.\n"
             f"IDs that aren't in the callset: {missing_samples}\n"
         )
         raise ValueError(message)
@@ -171,7 +185,7 @@ def apply_split_multi_logic(
 
     :param mtds: MatrixTable or VariantDataset to process.
     :param config: Processing configuration.
-    :return: Processed MatrixTable or VariantDataset.
+    :return: MatrixTable or VariantDataset with multi-allelic sites split.
     """
 
     def _add_split_annotations(mtds):
@@ -214,7 +228,7 @@ def apply_min_rep_logic(
 
     :param mtds: MatrixTable or VariantDataset to process.
     :param config: Processing configuration.
-    :return: Processed MatrixTable or VariantDataset.
+    :return: MatrixTable or VariantDataset with rows keyed by minimum representation.
     """
     ds = mtds if config.output_vcf else mtds.variant_data
     ds = ds.key_rows_by(**hl.min_rep(ds.locus, ds.alleles))
@@ -231,7 +245,7 @@ def apply_variant_qc_annotations(
 
     :param mtds: MatrixTable or VariantDataset to process.
     :param config: Processing configuration.
-    :return: Processed MatrixTable or VariantDataset.
+    :return: MatrixTable or VariantDataset with variant QC annotations.
     """
     ds = mtds if config.output_vcf else mtds.variant_data
     ht = release_sites(data_type=config.data_type).ht()
@@ -263,7 +277,7 @@ def filter_to_pass_only(
 
     :param mtds: MatrixTable or VariantDataset to filter.
     :param config: Processing configuration.
-    :return: Filtered MatrixTable or VariantDataset.
+    :return: MatrixTable or VariantDataset containing only variants that passed variant QC.
     """
     release_ht = release_sites(data_type=config.data_type).ht()
     ds = mtds if config.output_vcf else mtds.variant_data
@@ -277,7 +291,7 @@ def format_vcf_info_fields(mt: hl.MatrixTable) -> hl.MatrixTable:
     Apply VCF-specific formatting to info fields for export.
 
     :param mt: MatrixTable to format.
-    :return: Formatted MatrixTable.
+    :return: MatrixTable with fields formatted for VCF export.
     """
     # Note: AS_SB_TABLE should be an array of arrays of int32s.
     mt = mt.annotate_rows(
@@ -323,44 +337,33 @@ def process_metadata_export(
 
 def main(args):
     """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
-    # NOTE: genomes VDS needs a n1-highmem-32 driver to run. A 16 will hit a
-    # out of heap memory error.
-
-    # Create processing configuration from arguments
+    logger.info(
+        "Running gnomAD v4 subset script. Make sure you are using a n1-highmem-32 "
+        "driver, anything less than that will hit an OOM error..."
+    )
     config = ProcessingConfig.from_args(args)
 
     hl.init(
         log="/v4_subset.log",
         default_reference="GRCh38",
         tmp_dir=config.tmp_dir,
-        # Proven Spark optimizations for large genomic datasets
-        spark_conf={
-            # Adaptive Query Execution - widely recommended for large datasets
-            "spark.sql.adaptive.enabled": "true",
-            "spark.sql.adaptive.coalescePartitions.enabled": "true",
-            "spark.sql.adaptive.skewJoin.enabled": "true",
-            # Kryo serialization - faster for large genomic objects
-            "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
-            "spark.kryo.registrationRequired": "false",
-            # Conservative partition management
-            "spark.sql.shuffle.partitions": "2000",
-        },
+        spark_conf=SPARK_CONF,
     )
 
-    logger.info("Getting gnomAD %s dataset...", config.data_type)
+    logger.info("Getting the v4 %s dataset...", config.data_type)
     vds, meta_ht = get_gnomad_datasets(
         data_type=config.data_type,
         n_partitions=config.rep_on_read_partitions,
         test=config.test,
     )
 
-    logger.info("Getting subset HT...")
+    logger.info("Loading the HT with sample IDs to subset...")
     subset_ht = get_subset_ht(config.subset_samples, config.subset_workspaces, meta_ht)
 
-    logger.info("Checking that all subsetting-table IDs are in the callset...")
+    logger.info("Checking that all requested sample IDs are in the dataset...")
     check_subset_ht(subset_ht, vds.variant_data.cols())
 
-    logger.info("Filtering VDS to %d subset samples...", subset_ht.count())
+    logger.info("Filtering the VDS to requested samples...")
     vds = hl.vds.filter_samples(
         vds, subset_ht, remove_dead_alleles=False if config.split_multi else True
     )
