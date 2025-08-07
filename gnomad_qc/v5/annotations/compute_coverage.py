@@ -194,6 +194,7 @@ def join_aou_and_gnomad_coverage_ht(
     :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
     :return: Joined HT.
     """
+    # TODO: Add support for subtracting gnomAD v4 samples.
     # Get total number of AoU v8 release samples.
     aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
 
@@ -271,6 +272,7 @@ def join_aou_and_gnomad_an_ht(
         rename_dict = {"AN": f"AN_{project}"}
         return ht.rename(rename_dict)
 
+    # TODO: Add support for subtracting gnomAD v4 samples.
     aou_ht = _rename_fields(aou_ht, "aou")
     gnomad_ht = _rename_fields(gnomad_ht, "gnomad")
     ht = aou_ht.join(gnomad_ht, "outer")
