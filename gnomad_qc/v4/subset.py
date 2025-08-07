@@ -49,15 +49,19 @@ class ProcessingConfig:
 
     def __post_init__(self):
         if self.add_variant_qc and not self.split_multi:
-            raise ValueError("Variant QC annotations require split_multi=True")
+            raise ValueError("Variant QC annotations require split_multi=True.")
         if self.pass_only and not self.split_multi:
-            raise ValueError("PASS-only filtering requires split_multi=True")
+            raise ValueError("PASS-only filtering requires split_multi=True.")
         if self.output_vcf and not self.split_multi:
             raise ValueError(
                 "VCF export without split multi is not supported at this time."
             )
         if not self.output_vcf and not self.output_vds:
-            raise ValueError("One of --vcf or --vds must be specified.")
+            raise ValueError("One of --output-vcf or --output-vds must be specified.")
+        if self.output_vcf and self.output_vds:
+            raise ValueError(
+                "Only one of --output-vcf or --output-vds can be specified."
+            )
 
     @classmethod
     def from_args(cls, args) -> "ProcessingConfig":
@@ -245,21 +249,40 @@ def apply_variant_qc_annotations(
     :param config: Processing configuration.
     :return: Processed MatrixTable or VariantDataset.
     """
-    if not (config.add_variant_qc or config.pass_only):
-        return mtds
 
-    # Get the appropriate data structure for processing
+    def _make_variant_qc_annotations_dict(
+        key_expr: hl.expr.StructExpression,
+        vqc_annotations: Optional[List[str]] = None,
+        data_type: str = "exomes",
+    ) -> Dict[str, hl.expr.Expression]:
+        """
+        Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
+
+        :param key_expr: Key to join annotations on.
+        :param vqc_annotations: Optional list of desired annotations from the release HT.
+        :param data_type: Type of data to subset. Defaults to exomes.
+        :return: Dictionary containing Hail expressions to annotate onto subset.
+        """
+        ht = release_sites(data_type=data_type).ht()
+        selected_variant_qc_annotations = {}
+        if vqc_annotations is None:
+            vqc_annotations = list(ht.row_value.keys())
+            vqc_annotations.remove("a_index")
+            vqc_annotations.remove("was_split")
+
+        for ann in vqc_annotations:
+            if ann not in ht.row:
+                raise ValueError(f"{ann} is not a valid variant QC annotation.")
+            selected_variant_qc_annotations.update([(ann, ht[key_expr][ann])])
+
+        return selected_variant_qc_annotations
+
     ds = mtds if config.output_vcf else mtds.variant_data
-    ht = release_sites(data_type=config.data_type).ht()
-
-    if config.pass_only:
-        logger.info("Filtering to variants that passed variant QC...")
-        ds = ds.filter_rows(ht[ds.row_key].filters.length() == 0)
 
     if config.add_variant_qc:
         logger.info("Adding variant QC annotations...")
         ds = ds.annotate_rows(
-            **make_variant_qc_annotations_dict(
+            **_make_variant_qc_annotations_dict(
                 ds.row_key, config.variant_qc_annotations, config.data_type
             )
         )
@@ -267,63 +290,52 @@ def apply_variant_qc_annotations(
     return ds if config.output_vcf else hl.vds.VariantDataset(mtds.reference_data, ds)
 
 
-def make_variant_qc_annotations_dict(
-    key_expr: hl.expr.StructExpression,
-    vqc_annotations: Optional[List[str]] = None,
-    data_type: str = "exomes",
-) -> Dict[str, hl.expr.Expression]:
+def filter_to_pass_only(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    data_type: str,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
     """
-    Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
+    Filter to variants that passed variant QC.
 
-    :param key_expr: Key to join annotations on.
-    :param vqc_annotations: Optional list of desired annotations from the release HT.
-    :param data_type: Type of data to subset. Defaults to exomes.
-    :return: Dictionary containing Hail expressions to annotate onto subset.
+    :param mtds: MatrixTable or VariantDataset to filter.
+    :return: Filtered MatrixTable or VariantDataset.
     """
-    ht = release_sites(data_type=data_type).ht()
-    selected_variant_qc_annotations = {}
-    if vqc_annotations is None:
-        vqc_annotations = list(ht.row_value.keys())
-        vqc_annotations.remove("a_index")
-        vqc_annotations.remove("was_split")
+    logger.info("Filtering to variants that passed variant QC...")
+    release_ht = release_sites(data_type=data_type).ht()
+    if isinstance(mtds, hl.MatrixTable):
+        mtds = mtds.filter_rows(release_ht[mtds.row_key].filters.length() == 0)
+    else:
+        mtds.variant_data = mtds.variant_data.filter_rows(
+            release_ht[mtds.variant_data.row_key].filters.length() == 0
+        )
+        mtds = hl.vds.VariantDataset(mtds.reference_data, mtds.variant_data)
 
-    for ann in vqc_annotations:
-        if ann not in ht.row:
-            raise ValueError(f"{ann} is not a valid variant QC annotation.")
-        selected_variant_qc_annotations.update([(ann, ht[key_expr][ann])])
-
-    return selected_variant_qc_annotations
+    return mtds
 
 
-def _format_vcf_info_fields(mt: hl.MatrixTable) -> hl.MatrixTable:
+def format_vcf_info_fields(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
-    Apply VCF-specific formatting to info fields.
+    Apply VCF-specific formatting to info fields for export.
 
     :param mt: MatrixTable to format.
     :return: Formatted MatrixTable.
     """
+    logger.info("Formatting VCF info fields...")
     # Note: AS_SB_TABLE should be an array of arrays of int32s. However, when we split
     # the info fields for v3 and v4, we use the extend method which adds the second
     # array to the first https://github.com/broadinstitute/gnomad_methods/blob/95b42cb013da1e63311245426ab1574208405f56/gnomad/utils/sparse_mt.py#L775C5-L778C10
     # This means that the AS_SB_TABLE will be an array of four int32s, not an array of
     # two arrays of two int32s.
-    # Fix AS_SB_TABLE format (should be array of arrays, not flat array)
     mt = mt.annotate_rows(
         info=mt.info.annotate(
             AS_SB_TABLE=hl.array([mt.info.AS_SB_TABLE[:2], mt.info.AS_SB_TABLE[2:]]),
         )
     )
-
-    # Move VRS annotations to top level
     mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
-
-    # Adjust VCF-incompatible types
     ht = adjust_vcf_incompatible_types(
         mt.select_rows("info").rows(), pipe_delimited_annotations=[]
     )
     mt = mt.annotate_rows(info=ht[mt.row_key].info)
-
-    # Clean up and format
     mt = mt.drop("gvcf_info")
     mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
 
@@ -343,15 +355,14 @@ def process_vds_output(
     """
     if config.split_multi:
         vds = apply_split_multi_logic(vds, vcf_export=False)
+
     vds = apply_min_rep_logic(vds, vcf_export=False)
-    if config.add_variant_qc or config.pass_only:
+
+    if config.add_variant_qc:
         vds = apply_variant_qc_annotations(vds, config)
 
-        if config.pass_only:
-            vds.variant_data = vds.variant_data.filter_rows(
-                vds.variant_data.filters.length() == 0
-            )
-            vds = hl.vds.VariantDataset(vds.reference_data, vds.variant_data)
+    if config.pass_only:
+        vds = filter_to_pass_only(vds)
 
     return vds
 
@@ -380,15 +391,12 @@ def process_vcf_output(
 
     mt = apply_min_rep_logic(mt, is_vcf=True)
 
-    if config.add_variant_qc or config.pass_only:
-        logger.info("Applying variant QC annotations...")
+    if config.add_variant_qc:
         mt = apply_variant_qc_annotations(mt, config)
+    if config.pass_only:
+        mt = filter_to_pass_only(mt)
 
-        if config.pass_only:
-            mt = mt.filter_rows(mt.filters.length() == 0)
-
-    logger.info("Formatting VCF info fields...")
-    mt = _format_vcf_info_fields(mt)
+    mt = format_vcf_info_fields(mt)
 
     # Set final partitioning
     mt = mt.naive_coalesce(
@@ -449,7 +457,6 @@ def main(args):
         },
     )
 
-    # Load and subset data
     logger.info("Getting gnomAD %s dataset...", config.data_type)
     vds, meta_ht = get_gnomad_datasets(
         data_type=config.data_type,
@@ -473,7 +480,6 @@ def main(args):
     # functions can be reused downstream as dense MTs and VDSs need to be processed
     # differently. Because of this, we have separate mini-pipelines for VDS and VCF
     # exports.
-    #  # TODO: Do we want to allow only VDS or VCF? Not many steps are shared at the moment so there is not much to gain from a single pipeline for both.
     # TODO Should we drop that horrific multi-allelic site?
     if config.output_vds:
         logger.info("Producing VDS subset...")
