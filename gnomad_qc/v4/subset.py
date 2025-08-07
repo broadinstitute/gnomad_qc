@@ -56,12 +56,6 @@ class ProcessingConfig:
             raise ValueError(
                 "VCF export without split multi is not supported at this time."
             )
-        if not self.output_vcf and not self.output_vds:
-            raise ValueError("One of --output-vcf or --output-vds must be specified.")
-        if self.output_vcf and self.output_vds:
-            raise ValueError(
-                "Only one of --output-vcf or --output-vds can be specified."
-            )
 
     @classmethod
     def from_args(cls, args) -> "ProcessingConfig":
@@ -354,15 +348,15 @@ def process_vds_output(
     :return: The processed VDS.
     """
     if config.split_multi:
-        vds = apply_split_multi_logic(vds, vcf_export=False)
+        vds = apply_split_multi_logic(vds)
 
-    vds = apply_min_rep_logic(vds, vcf_export=False)
+    vds = apply_min_rep_logic(vds)
 
     if config.add_variant_qc:
         vds = apply_variant_qc_annotations(vds, config)
 
     if config.pass_only:
-        vds = filter_to_pass_only(vds)
+        vds = filter_to_pass_only(vds, config.data_type)
 
     return vds
 
@@ -394,7 +388,7 @@ def process_vcf_output(
     if config.add_variant_qc:
         mt = apply_variant_qc_annotations(mt, config)
     if config.pass_only:
-        mt = filter_to_pass_only(mt)
+        mt = filter_to_pass_only(mt, config.data_type)
 
     mt = format_vcf_info_fields(mt)
 
@@ -470,7 +464,7 @@ def main(args):
     logger.info("Checking that all subsetting-table IDs are in the callset...")
     check_subset_ht(subset_ht, vds.variant_data.cols())
 
-    logger.info("Filtering VDS to subset samples...")
+    logger.info("Filtering VDS to %d subset samples...", subset_ht.count())
     vds = hl.vds.filter_samples(
         vds, subset_ht, remove_dead_alleles=False if config.split_multi else True
     )
@@ -510,17 +504,17 @@ def main(args):
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
-    parser = argparse.ArgumentParser(
+    arg_parser = argparse.ArgumentParser(
         description=(
             "This script subsets gnomAD using a list of samples or terra workspaces."
         )
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--test",
         help="Filter to the first 2 partitions for testing.",
         action="store_true",
     )
-    subset_id_parser = parser.add_mutually_exclusive_group(required=True)
+    subset_id_parser = arg_parser.add_mutually_exclusive_group(required=True)
     subset_id_parser.add_argument(
         "--subset-samples",
         help="Path to a text file with sample IDs for subsetting and a header: s.",
@@ -532,24 +526,27 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " subset, must use a header of 'terra_workspace'."
         ),
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--data-type",
         help="Type of data to subset.",
         default="exomes",
         choices=["exomes", "genomes"],
     )
-    parser.add_argument(
+
+    # Make output options mutually exclusive
+    output_group = arg_parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument(
         "--output-vds", help="Whether to output a subset VDS.", action="store_true"
     )
-    parser.add_argument(
+    output_group.add_argument(
         "--output-vcf", help="Whether to output a subset VCF.", action="store_true"
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--split-multi",
         help="Whether to split multi-allelic variants.",
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--rep-on-read-partitions",
         help=(
             "Number of partitions to pass when reading in the VDS. If passed, and the "
@@ -558,7 +555,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         type=int,
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--add-variant-qc",
         help=(
             "Annotate exported file with gnomAD's variant QC annotations. Defaults to"
@@ -567,7 +564,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--pass-only",
         help=(
             "Keep only the variants that passed variant QC, i.e. the filter field is"
@@ -575,7 +572,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--variant-qc-annotations",
         nargs="+",
         type=str,
@@ -584,41 +581,41 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " annotations."
         ),
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--export-meta",
         help="Pull sample subset metadata and export to a HT and .tsv.",
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--keep-data-paths",
         help="Keep CRAM and gVCF paths in the project metadata export.",
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--output-path",
         help=(
             "Output file path for subsetted VDS/VCF/MT, do not include file extension."
         ),
         required=True,
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--output-partitions",
         help="Number of desired partitions for the output file.",
         type=int,
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "-o",
         "--overwrite",
         help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--tmp-dir",
         help="Temporary directory for Hail to write files to.",
         default="gs://gnomad-tmp-4day",
     )
 
-    return parser
+    return arg_parser
 
 
 if __name__ == "__main__":
