@@ -81,20 +81,6 @@ class ProcessingConfig:
         )
 
 
-# Spark configuration for large datasets as suggested by Cursor.
-SPARK_CONF = {
-    # Adaptive Query Execution - widely recommended for large datasets
-    "spark.sql.adaptive.enabled": "true",
-    "spark.sql.adaptive.coalescePartitions.enabled": "true",
-    "spark.sql.adaptive.skewJoin.enabled": "true",
-    # Kryo serialization - faster for large genomic objects
-    "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
-    "spark.kryo.registrationRequired": "false",
-    # Conservative partition management
-    "spark.sql.shuffle.partitions": "2000",
-}
-
-
 def get_gnomad_datasets(data_type: str, n_partitions: Optional[int], test: bool):
     """
     Get requested data type's v4 VariantDataset.
@@ -347,7 +333,6 @@ def main(args):
         log="/v4_subset.log",
         default_reference="GRCh38",
         tmp_dir=config.tmp_dir,
-        spark_conf=SPARK_CONF,
     )
 
     logger.info("Getting the v4 %s dataset...", config.data_type)
