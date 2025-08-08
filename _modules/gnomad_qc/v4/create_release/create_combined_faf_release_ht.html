@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_combined_faf_release_ht &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_combined_faf_release_ht</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.create_combined_faf_release_ht</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Create a joint gnomAD v4 exome and genome frequency and FAF.</span>
+
+<span class="sd">Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a</span>
+<span class="sd">joint frequency, a joint FAF, and the following tests comparing the two frequencies:</span>
+
+<span class="sd">    - Hail&#39;s contingency table test -- chi-squared or Fisher’s exact test of</span>
+<span class="sd">      independence depending on min cell count.</span>
+<span class="sd">    - Cochran–Mantel–Haenszel test -- stratified test of independence for 2x2xK</span>
+<span class="sd">      contingency tables.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Set</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">GEN_ANC_GROUPS</span><span class="p">,</span>
+    <span class="n">GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">TableResource</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">faf_expr</span><span class="p">,</span>
+    <span class="n">gen_anc_faf_max_expr</span><span class="p">,</span>
+    <span class="n">grpmax_expr</span><span class="p">,</span>
+    <span class="n">merge_freq_arrays</span><span class="p">,</span>
+    <span class="n">merge_histograms</span><span class="p">,</span>
+    <span class="n">set_xx_y_metrics_to_na_expr</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">filter_arrays_by_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.release</span> <span class="kn">import</span> <span class="n">make_freq_index_dict_from_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.annotations.compute_coverage</span> <span class="kn">import</span> <span class="n">adjust_interval_padding</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_all_sites_an_and_qual_hists</span><span class="p">,</span>
+    <span class="n">get_combined_frequency</span><span class="p">,</span>
+    <span class="n">get_freq</span><span class="p">,</span>
+    <span class="n">get_freq_comparison</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">calling_intervals</span><span class="p">,</span>
+    <span class="n">get_checkpoint_path</span><span class="p">,</span>
+    <span class="n">get_logging_path</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CURRENT_FREQ_VERSION</span><span class="p">,</span>
+    <span class="n">DATA_TYPES</span><span class="p">,</span>
+    <span class="n">RELEASE_DATA_TYPES</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="n">release_sites</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">interval_qc_pass</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">final_filter</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;compute_combined_faf&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="n">CHR_LIST</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;chr</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">23</span><span class="p">)]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;chrX&quot;</span><span class="p">,</span> <span class="s2">&quot;chrY&quot;</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;List of chromosomes in the combined FAF release.&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="filter_gene_to_test"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.filter_gene_to_test">[docs]</a><span class="k">def</span> <span class="nf">filter_gene_to_test</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">pcsk9</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">zfy</span><span class="p">:</span> <span class="nb">bool</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter to PCSK9 1:55039447-55064852 and/or ZFY Y:2935281-2982506 for testing.</span>
+
+<span class="sd">    :param ht: Table with frequency and FAF information.</span>
+<span class="sd">    :param pcsk9: Whether to filter to PCSK9 1:55039447-55064852.</span>
+<span class="sd">    :param zfy: Whether to filter to ZFY Y:2935281-2982506.</span>
+<span class="sd">    :return: Table with frequency and FAF information of the filtered interval of a gene</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filter_loci</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">pcsk9</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to a subset of variants on PCSK9 on chr1...&quot;</span><span class="p">)</span>
+        <span class="n">filter_loci</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;chr1:55039447-55064852&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">zfy</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to a subset of variants on ZFY on chrY...&quot;</span><span class="p">)</span>
+        <span class="n">filter_loci</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;chrY:2935281-2982506&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">filter_loci</span><span class="p">],</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="extract_freq_info"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.extract_freq_info">[docs]</a><span class="k">def</span> <span class="nf">extract_freq_info</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">apply_release_filters</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract frequencies and FAF for adj, raw (only for frequencies), adj by pop, adj by sex, and adj by pop/sex.</span>
+
+<span class="sd">    The following annotations are renamed and where applicable, filtered:</span>
+<span class="sd">        - freq: {prefix}_freq</span>
+<span class="sd">        - faf: {prefix}_faf</span>
+<span class="sd">        - grpmax: {prefix}_grpmax</span>
+<span class="sd">        - fafmax: {prefix}_fafmax</span>
+<span class="sd">        - qual_hists: {prefix}_qual_hists</span>
+<span class="sd">        - raw_qual_hists: {prefix}_raw_qual_hists</span>
+<span class="sd">        - age_hists: {prefix}_age_hists</span>
+
+<span class="sd">    The following global annotations are filtered and renamed:</span>
+<span class="sd">        - freq_meta: {prefix}_freq_meta</span>
+<span class="sd">        - freq_index_dict: {prefix}_freq_index_dict</span>
+<span class="sd">        - faf_meta: {prefix}_faf_meta</span>
+<span class="sd">        - faf_index_dict: {prefix}_faf_index_dict</span>
+<span class="sd">        - age_distribution: {prefix}_age_distribution</span>
+
+<span class="sd">    If `apply_release_filters` is True, a {prefix}_filters annotation is added to the Table and the following variants are filtered:</span>
+<span class="sd">        - chrM</span>
+<span class="sd">        - AS_lowqual sites (these sites are dropped in the</span>
+<span class="sd">          final_filters HT so will not have information in `filters`,</span>
+<span class="sd">          hl.is_defined(ht.filters) is used)</span>
+<span class="sd">        - AC_raw == 0</span>
+
+<span class="sd">    :param ht: Table with frequency and FAF information.</span>
+<span class="sd">    :param prefix: Prefix to add to each of the filtered annotations.</span>
+<span class="sd">    :param apply_release_filters: Whether to apply the final release filters to the</span>
+<span class="sd">        Table. Default is True.</span>
+<span class="sd">    :return: Table with filtered frequency and FAF information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">apply_release_filters</span><span class="p">:</span>
+        <span class="c1"># Filter out chrM, AS_lowqual sites (these sites are dropped in the</span>
+        <span class="c1"># final_filters HT so will not have information in `filters`) and AC_raw == 0.</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chrM&quot;</span><span class="p">)],</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">filters</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Keeping only frequencies for adj, raw, adj by pop, adj by sex, and adj by &quot;</span>
+        <span class="s2">&quot;pop/sex...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">freq_meta</span><span class="p">,</span> <span class="n">array_exprs</span> <span class="o">=</span> <span class="n">filter_arrays_by_meta</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;freq&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">,</span>
+            <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta_sample_count</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">[</span><span class="s2">&quot;group&quot;</span><span class="p">,</span> <span class="s2">&quot;gen_anc&quot;</span><span class="p">,</span> <span class="s2">&quot;sex&quot;</span><span class="p">],</span>
+        <span class="n">combine_operator</span><span class="o">=</span><span class="s2">&quot;or&quot;</span><span class="p">,</span>
+        <span class="n">exact_match</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">freq_index_dict</span> <span class="o">=</span> <span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">freq_meta</span><span class="p">))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Keeping only FAF for adj, adj by pop, adj by sex, and adj by pop/sex...&quot;</span>
+    <span class="p">)</span>
+    <span class="c1"># Exomes FAF was calculated for the whole gnomad and the ukb subset, we only</span>
+    <span class="c1"># want to include the whole dataset in the joint release.</span>
+    <span class="n">faf_meta</span><span class="p">,</span> <span class="n">faf</span> <span class="o">=</span> <span class="n">filter_arrays_by_meta</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">faf_meta</span><span class="p">,</span>
+        <span class="p">{</span><span class="s2">&quot;faf&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">faf</span><span class="p">},</span>
+        <span class="p">[</span><span class="s2">&quot;group&quot;</span><span class="p">,</span> <span class="s2">&quot;gen_anc&quot;</span><span class="p">,</span> <span class="s2">&quot;sex&quot;</span><span class="p">],</span>
+        <span class="n">combine_operator</span><span class="o">=</span><span class="s2">&quot;or&quot;</span><span class="p">,</span>
+        <span class="n">exact_match</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">faf_index_dict</span> <span class="o">=</span> <span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">))</span>
+
+    <span class="c1"># Select grpmax and fafmax</span>
+    <span class="n">grpmax_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">grpmax</span>
+    <span class="n">fafmax_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">gen_anc_faf_max</span>
+    <span class="k">if</span> <span class="n">prefix</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="c1"># Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested</span>
+        <span class="c1"># structs: `gnomad` and `non_ukb`. This section selects only the `gnomad`</span>
+        <span class="c1"># values (values across full v4 exomes release).</span>
+        <span class="n">grpmax_expr</span> <span class="o">=</span> <span class="n">grpmax_expr</span><span class="o">.</span><span class="n">gnomad</span>
+        <span class="n">fafmax_expr</span> <span class="o">=</span> <span class="n">fafmax_expr</span><span class="o">.</span><span class="n">gnomad</span>
+
+    <span class="c1"># Drop &#39;faf95&#39; annotation in the grpmax_expr if it exists. We no longer add this to</span>
+    <span class="c1"># releases.</span>
+    <span class="k">if</span> <span class="s2">&quot;faf95&quot;</span> <span class="ow">in</span> <span class="n">grpmax_expr</span><span class="p">:</span>
+        <span class="n">grpmax_expr</span> <span class="o">=</span> <span class="n">grpmax_expr</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;faf95&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Rename filtered annotations with supplied prefix.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_filters&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">filters</span><span class="p">}</span> <span class="k">if</span> <span class="n">apply_release_filters</span> <span class="k">else</span> <span class="p">{},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_freq&quot;</span><span class="p">:</span> <span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq&quot;</span><span class="p">],</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_faf&quot;</span><span class="p">:</span> <span class="n">faf</span><span class="p">[</span><span class="s2">&quot;faf&quot;</span><span class="p">],</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_grpmax&quot;</span><span class="p">:</span> <span class="n">grpmax_expr</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_fafmax&quot;</span><span class="p">:</span> <span class="n">fafmax_expr</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_qual_hists&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">histograms</span><span class="o">.</span><span class="n">qual_hists</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_raw_qual_hists&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">histograms</span><span class="o">.</span><span class="n">raw_qual_hists</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_age_hists&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">histograms</span><span class="o">.</span><span class="n">age_hists</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_freq_meta&quot;</span><span class="p">:</span> <span class="n">freq_meta</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_freq_index_dict&quot;</span><span class="p">:</span> <span class="n">freq_index_dict</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_freq_meta_sample_count&quot;</span><span class="p">:</span> <span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">],</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_faf_meta&quot;</span><span class="p">:</span> <span class="n">faf_meta</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_faf_index_dict&quot;</span><span class="p">:</span> <span class="n">faf_index_dict</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">_age_distribution&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">age_distribution</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;extract_freq_info&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="add_all_sites_an_and_qual_hists"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.add_all_sites_an_and_qual_hists">[docs]</a><span class="k">def</span> <span class="nf">add_all_sites_an_and_qual_hists</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">exomes_all_sites_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">genomes_all_sites_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add all sites AN and qual hists to the Table.</span>
+
+<span class="sd">    :param ht: Table with frequency and FAF information.</span>
+<span class="sd">    :param exomes_all_sites_ht: Table with all sites AN and qual hists for exomes.</span>
+<span class="sd">    :param genomes_all_sites_ht: Table with all sites AN and qual hists for genomes.</span>
+<span class="sd">    :return: Table with all sites AN and qual hists added.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_get_freq_from_an_expr</span><span class="p">(</span>
+        <span class="n">freq_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+        <span class="n">all_sites_an_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+        <span class="n">freq_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+        <span class="n">freq_index_dict_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">DictExpression</span><span class="p">,</span>
+        <span class="n">an_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get freq expression with all sites AN added if `freq_expr` is missing.</span>
+
+<span class="sd">        :param freq_expr: ArrayExpression of frequencies.</span>
+<span class="sd">        :param all_sites_an_expr: ArrayExpression of all sites AN.</span>
+<span class="sd">        :param freq_meta_expr: Frequency metadata.</span>
+<span class="sd">        :param freq_index_dict_expr: Frequency index dictionary.</span>
+<span class="sd">        :param an_meta_expr: AN metadata.</span>
+<span class="sd">        :return: ArrayExpression of frequencies with all sites AN added if `freq_expr`</span>
+<span class="sd">            is missing.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">meta_map</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">enumerate</span><span class="p">(</span><span class="n">an_meta_expr</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">])))</span>
+        <span class="n">all_sites_an_expr</span> <span class="o">=</span> <span class="n">freq_meta_expr</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">an</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                    <span class="n">AC</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">an</span><span class="p">),</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="n">AF</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">an</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)),</span>
+                    <span class="n">AN</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">an</span><span class="p">),</span>
+                    <span class="n">homozygote_count</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">an</span><span class="p">),</span> <span class="mi">0</span><span class="p">),</span>
+                <span class="p">),</span>
+                <span class="n">all_sites_an_expr</span><span class="p">[</span><span class="n">meta_map</span><span class="p">[</span><span class="n">x</span><span class="p">]],</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Setting XX samples call stats to missing on chrY...&quot;</span><span class="p">)</span>
+        <span class="n">all_sites_an_expr</span> <span class="o">=</span> <span class="n">set_xx_y_metrics_to_na_expr</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">freq_expr</span><span class="o">=</span><span class="n">all_sites_an_expr</span><span class="p">,</span>
+            <span class="n">freq_meta_expr</span><span class="o">=</span><span class="n">freq_meta_expr</span><span class="p">,</span>
+            <span class="n">freq_index_dict_expr</span><span class="o">=</span><span class="n">freq_index_dict_expr</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span><span class="n">freq_expr</span><span class="p">,</span> <span class="n">all_sites_an_expr</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding all sites AN and qual hists information where missing...&quot;</span><span class="p">)</span>
+    <span class="n">all_sites_by_data_type</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;exomes&quot;</span><span class="p">:</span> <span class="n">exomes_all_sites_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">],</span>
+        <span class="s2">&quot;genomes&quot;</span><span class="p">:</span> <span class="n">genomes_all_sites_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">],</span>
+    <span class="p">}</span>
+    <span class="n">all_sites_meta_by_data_type</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;exomes&quot;</span><span class="p">:</span> <span class="n">exomes_all_sites_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">strata_meta</span><span class="p">,</span>
+        <span class="s2">&quot;genomes&quot;</span><span class="p">:</span> <span class="n">genomes_all_sites_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">strata_meta</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_freq&quot;</span><span class="p">:</span> <span class="n">_get_freq_from_an_expr</span><span class="p">(</span>
+                <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_freq&quot;</span><span class="p">],</span>
+                <span class="n">all_sites</span><span class="o">.</span><span class="n">AN</span><span class="p">,</span>
+                <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_freq_meta&quot;</span><span class="p">],</span>
+                <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_freq_index_dict&quot;</span><span class="p">],</span>
+                <span class="n">all_sites_meta_by_data_type</span><span class="p">[</span><span class="n">data_type</span><span class="p">],</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">all_sites</span> <span class="ow">in</span> <span class="n">all_sites_by_data_type</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">adj</span><span class="si">}</span><span class="s2">qual_hists&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="n">k</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span>
+                        <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">adj</span><span class="si">}</span><span class="s2">qual_hists&quot;</span><span class="p">][</span><span class="n">k</span><span class="p">],</span>
+                        <span class="n">all_sites</span><span class="o">.</span><span class="n">qual_hists</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">adj</span><span class="si">}</span><span class="s2">qual_hists&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                            <span class="n">k</span><span class="p">,</span>
+                            <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span>
+                                <span class="n">hl</span><span class="o">.</span><span class="n">tstruct</span><span class="p">(</span>
+                                    <span class="n">bin_edges</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">tarray</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">),</span>
+                                    <span class="n">bin_freq</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">tarray</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tint64</span><span class="p">),</span>
+                                    <span class="n">n_smaller</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">tint64</span><span class="p">,</span>
+                                    <span class="n">n_larger</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">tint64</span><span class="p">,</span>
+                                <span class="p">)</span>
+                            <span class="p">),</span>
+                        <span class="p">),</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">adj</span><span class="si">}</span><span class="s2">qual_hists&quot;</span><span class="p">]</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">all_sites</span> <span class="ow">in</span> <span class="n">all_sites_by_data_type</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">adj</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;raw_&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_joint_freq_and_faf"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_joint_freq_and_faf">[docs]</a><span class="k">def</span> <span class="nf">get_joint_freq_and_faf</span><span class="p">(</span>
+    <span class="n">genomes_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">exomes_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">genomes_all_sites_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">exomes_all_sites_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">faf_pops_to_exclude</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get joint genomes and exomes frequency and FAF information.</span>
+
+<span class="sd">    :param genomes_ht: Table with genomes frequency and FAF information.</span>
+<span class="sd">    :param exomes_ht: Table with exomes frequency and FAF information.</span>
+<span class="sd">    :param genomes_all_sites_ht: Table with all sites AN and qual hists for genomes.</span>
+<span class="sd">    :param exomes_all_sites_ht: Table with all sites AN and qual hists for exomes.</span>
+<span class="sd">    :param faf_pops_to_exclude: Set of genetic ancestry groups to exclude from the FAF</span>
+<span class="sd">        calculation.</span>
+<span class="sd">    :return: Table with joint genomes and exomes frequency and FAF information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Performing an outer join on frequency HTs...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">genomes_ht</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">exomes_ht</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;outer&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">add_all_sites_an_and_qual_hists</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">exomes_all_sites_ht</span><span class="p">,</span> <span class="n">genomes_all_sites_ht</span><span class="p">)</span>
+
+    <span class="c1"># Merge exomes and genomes frequencies.</span>
+    <span class="n">freq</span><span class="p">,</span> <span class="n">freq_meta</span><span class="p">,</span> <span class="n">count_arrays_dict</span> <span class="o">=</span> <span class="n">merge_freq_arrays</span><span class="p">(</span>
+        <span class="n">farrays</span><span class="o">=</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq</span><span class="p">],</span>
+        <span class="n">fmeta</span><span class="o">=</span><span class="p">[</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">genomes_freq_meta</span><span class="p">,</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">exomes_freq_meta</span><span class="p">,</span>
+        <span class="p">],</span>
+        <span class="n">count_arrays</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;counts&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">genomes_freq_meta_sample_count</span><span class="p">,</span>
+                <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">exomes_freq_meta_sample_count</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">joint_freq</span><span class="o">=</span><span class="n">freq</span><span class="p">,</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;joint_</span><span class="si">{</span><span class="n">hist_struct</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="n">h</span><span class="p">:</span> <span class="n">merge_histograms</span><span class="p">(</span>
+                        <span class="p">[</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">hist_struct</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">][</span><span class="n">h</span><span class="p">]</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">DATA_TYPES</span><span class="p">]</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">h</span> <span class="ow">in</span> <span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;genomes_</span><span class="si">{</span><span class="n">hist_struct</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">hist_struct</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;qual_hists&quot;</span><span class="p">,</span> <span class="s2">&quot;raw_qual_hists&quot;</span><span class="p">,</span> <span class="s2">&quot;age_hists&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">joint_freq_meta</span><span class="o">=</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="n">joint_freq_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">freq_meta</span><span class="p">)),</span>
+    <span class="p">)</span>
+    <span class="c1"># NOTE: This checkpoint prevents a Class Too Large error in hail 0.2.122.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;combine_faf&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Setting Y metrics to NA for XX groups...&quot;</span><span class="p">)</span>
+    <span class="n">freq</span> <span class="o">=</span> <span class="n">set_xx_y_metrics_to_na_expr</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span>
+        <span class="n">freq_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">joint_freq</span><span class="p">,</span>
+        <span class="n">freq_meta_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_meta</span><span class="p">,</span>
+        <span class="n">freq_index_dict_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_index_dict</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">joint_freq</span><span class="o">=</span><span class="n">freq</span><span class="p">)</span>
+
+    <span class="c1"># Compute FAF on the merged exomes + genomes frequencies.</span>
+    <span class="n">faf</span><span class="p">,</span> <span class="n">faf_meta</span> <span class="o">=</span> <span class="n">faf_expr</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_meta</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span>
+        <span class="n">gen_anc_groups_to_exclude</span><span class="o">=</span><span class="n">faf_pops_to_exclude</span><span class="p">,</span>
+        <span class="n">gen_anc_label</span><span class="o">=</span><span class="s2">&quot;gen_anc&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Compute group max (popmax) on the merged exomes + genomes frequencies.</span>
+    <span class="n">grpmax</span> <span class="o">=</span> <span class="n">grpmax_expr</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_meta</span><span class="p">,</span>
+        <span class="n">gen_anc_groups_to_exclude</span><span class="o">=</span><span class="n">faf_pops_to_exclude</span><span class="p">,</span>
+        <span class="n">gen_anc_label</span><span class="o">=</span><span class="s2">&quot;gen_anc&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Annotate Table with all joint exomes + genomes computations.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">joint_faf</span><span class="o">=</span><span class="n">faf</span><span class="p">,</span>
+        <span class="n">joint_fafmax</span><span class="o">=</span><span class="n">gen_anc_faf_max_expr</span><span class="p">(</span>
+            <span class="n">faf</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">),</span> <span class="n">gen_anc_label</span><span class="o">=</span><span class="s2">&quot;gen_anc&quot;</span>
+        <span class="p">),</span>
+        <span class="n">joint_grpmax</span><span class="o">=</span><span class="n">grpmax</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">joint_faf_meta</span><span class="o">=</span><span class="n">faf_meta</span><span class="p">,</span>
+        <span class="n">joint_faf_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">faf_meta</span><span class="p">)),</span>
+        <span class="n">joint_freq_meta_sample_count</span><span class="o">=</span><span class="n">count_arrays_dict</span><span class="p">[</span><span class="s2">&quot;counts&quot;</span><span class="p">],</span>
+        <span class="n">joint_age_distribution</span><span class="o">=</span><span class="n">merge_histograms</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">genomes_age_distribution</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">exomes_age_distribution</span><span class="p">]</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="perform_contingency_table_test"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_contingency_table_test">[docs]</a><span class="k">def</span> <span class="nf">perform_contingency_table_test</span><span class="p">(</span>
+    <span class="n">freq1_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">freq2_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">freq1_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">freq2_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">joint_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">min_cell_count</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform Hail&#39;s `contingency_table_test` on the alleles counts between two frequency expressions.</span>
+
+<span class="sd">    This is done on the 2x2 matrix of reference and alternate allele counts. The</span>
+<span class="sd">    chi-squared test is used for any case where all cells of the 2x2 matrix are greater</span>
+<span class="sd">    than `min_cell_count`. Otherwise, Fisher’s exact test is used.</span>
+
+<span class="sd">    `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with &#39;AN&#39; and</span>
+<span class="sd">    &#39;AC&#39; annotations.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        The order of the output array expression will be the same as `joint_meta_expr`</span>
+<span class="sd">        and any frequency group with missing or zero AC in both `freq1_expr` and</span>
+<span class="sd">        `freq2_expr` (based on `freq1_meta_expr` and `freq2_meta_expr`) will be set to</span>
+<span class="sd">        missing. Any frequency group in `freq1_meta_expr` or `freq2_meta_expr` that is</span>
+<span class="sd">        not in `joint_meta_expr` will be excluded from tests.</span>
+
+<span class="sd">    :param freq1_expr: First ArrayExpression of frequencies to combine.</span>
+<span class="sd">    :param freq2_expr: Second ArrayExpression of frequencies to combine.</span>
+<span class="sd">    :param freq1_meta_expr: Frequency metadata for `freq1_expr`.</span>
+<span class="sd">    :param freq2_meta_expr: Frequency metadata for `freq2_expr`.</span>
+<span class="sd">    :param joint_meta_expr: Joint frequency metadata, only used for ordering the output</span>
+<span class="sd">        array expression.</span>
+<span class="sd">    :param min_cell_count: Minimum count in every cell to use the chi-squared test.</span>
+<span class="sd">        Default is 5.</span>
+<span class="sd">    :return: ArrayExpression for contingency table test results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Using the joint_meta_expr to get the indexes of the two frequency expressions.</span>
+    <span class="n">freq_meta_idx</span> <span class="o">=</span> <span class="n">joint_meta_expr</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="p">(</span><span class="n">freq1_meta_expr</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">freq2_meta_expr</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Computing chi squared and fisher exact tests on frequencies...&quot;</span><span class="p">)</span>
+    <span class="c1"># If both frequency structs are defined and at least one AC is greater than 0,</span>
+    <span class="c1"># compute the chi-squared test otherwise return missing.</span>
+    <span class="k">return</span> <span class="n">freq_meta_idx</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">f1</span><span class="p">,</span> <span class="n">f2</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">f1</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">f2</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">f1</span><span class="o">.</span><span class="n">AN</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">f2</span><span class="o">.</span><span class="n">AN</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">contingency_table_test</span><span class="p">(</span>
+                        <span class="n">f1</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">f1</span><span class="o">.</span><span class="n">AN</span> <span class="o">-</span> <span class="n">f1</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">f2</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">f2</span><span class="o">.</span><span class="n">AN</span> <span class="o">-</span> <span class="n">f2</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">min_cell_count</span>
+                    <span class="p">),</span>
+                <span class="p">),</span>
+                <span class="n">freq1_expr</span><span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span>
+                <span class="n">freq2_expr</span><span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="perform_cmh_test"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_cmh_test">[docs]</a><span class="k">def</span> <span class="nf">perform_cmh_test</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">freq1_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">freq2_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">freq1_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">freq2_meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span>
+    <span class="n">pops</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using genetic ancestry group as the stratification.</span>
+
+<span class="sd">    This is done by creating a list of 2x2 matrices of freq1/freq2 reference and</span>
+<span class="sd">    alternate allele counts for each genetic ancestry group in pops. The stats used in</span>
+<span class="sd">    `perform_contingency_table_test` can only be used on 2x2 matrices, so we perform</span>
+<span class="sd">    that per genetic ancestry group to get one statistic per genetic ancestry group.</span>
+<span class="sd">    The CMH test allows for multiple 2x2 matrices for a specific stratification, giving</span>
+<span class="sd">    a single statistic across all genetic ancestry groups.</span>
+
+<span class="sd">    `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with &#39;AN&#39; and</span>
+<span class="sd">    &#39;AC&#39; annotations.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Any genetic ancestry group with zero AC in both `freq1_expr` and `freq2_expr`</span>
+<span class="sd">        will be excluded from the test.</span>
+
+<span class="sd">    :param ht: Table with joint exomes and genomes frequency and FAF information.</span>
+<span class="sd">    :param freq1_expr: First ArrayExpression of frequencies to combine.</span>
+<span class="sd">    :param freq2_expr: Second ArrayExpression of frequencies to combine.</span>
+<span class="sd">    :param freq1_meta_expr: Frequency metadata for `freq1_expr`.</span>
+<span class="sd">    :param freq2_meta_expr: Frequency metadata for `freq2_expr`.</span>
+<span class="sd">    :param pops: List of genetic ancestry groups to include in the CMH test.</span>
+<span class="sd">    :return: ArrayExpression for Cochran–Mantel–Haenszel test results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_get_freq_by_pop</span><span class="p">(</span>
+        <span class="n">freq_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">,</span> <span class="n">meta_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get a dictionary of frequency StructExpressions by genetic ancestries.</span>
+
+<span class="sd">        :param freq_expr: ArrayExpression of frequencies to combine.</span>
+<span class="sd">        :param meta_expr: Frequency metadata for `freq_expr`.</span>
+<span class="sd">        :return: Dictionary of frequency StructExpressions by genetic ancestry group.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="n">m</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;gen_anc&quot;</span><span class="p">):</span> <span class="n">freq_expr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">meta_expr</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;gen_anc&quot;</span><span class="p">)</span> <span class="ow">in</span> <span class="n">pops</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+        <span class="p">}</span>
+
+    <span class="n">freq1_by_pop</span> <span class="o">=</span> <span class="n">_get_freq_by_pop</span><span class="p">(</span><span class="n">freq1_expr</span><span class="p">,</span> <span class="n">freq1_meta_expr</span><span class="p">)</span>
+    <span class="n">freq2_by_pop</span> <span class="o">=</span> <span class="n">_get_freq_by_pop</span><span class="p">(</span><span class="n">freq2_expr</span><span class="p">,</span> <span class="n">freq2_meta_expr</span><span class="p">)</span>
+
+    <span class="c1"># Create list of the info for the 2x2 matrices of reference and alternate allele</span>
+    <span class="c1"># counts for each genetic ancestry group in pops and remove any missing pops</span>
+    <span class="c1"># from the list.</span>
+    <span class="n">cmh_input_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span>
+                    <span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">))</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">AN</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">AN</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">),</span>
+                    <span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">AN</span> <span class="o">-</span> <span class="n">x</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">y</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">y</span><span class="o">.</span><span class="n">AN</span> <span class="o">-</span> <span class="n">y</span><span class="o">.</span><span class="n">AC</span><span class="p">],</span> <span class="n">pop</span><span class="p">),</span>
+                <span class="p">),</span>
+                <span class="n">freq1_by_pop</span><span class="p">[</span><span class="n">pop</span><span class="p">],</span>
+                <span class="n">freq2_by_pop</span><span class="p">[</span><span class="n">pop</span><span class="p">],</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">pop</span> <span class="ow">in</span> <span class="n">pops</span>
+        <span class="p">]</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">cmh_input_expr</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">cochran_mantel_haenszel_test</span><span class="p">(</span>
+            <span class="o">*</span><span class="p">[</span><span class="n">cmh_input_expr</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">i</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)]</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">gen_ancs</span><span class="o">=</span><span class="n">cmh_input_expr</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="o">.</span><span class="n">rename</span><span class="p">({</span><span class="s2">&quot;test_statistic&quot;</span><span class="p">:</span> <span class="s2">&quot;chisq&quot;</span><span class="p">}),</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="create_final_combined_faf_release"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.create_final_combined_faf_release">[docs]</a><span class="k">def</span> <span class="nf">create_final_combined_faf_release</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">,</span>
+    <span class="n">contingency_table_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">cmh_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create the final combined FAF release Table.</span>
+
+<span class="sd">    :param ht: Table with joint exomes and genomes frequency and FAF information.</span>
+<span class="sd">    :param contingency_table_ht: Table with contingency table test results to include</span>
+<span class="sd">        on the final Table.</span>
+<span class="sd">    :param cmh_ht: Table with Cochran–Mantel–Haenszel test results to include on the</span>
+<span class="sd">        final Table.</span>
+<span class="sd">    :return: Table with final combined FAF release information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Creating final combined FAF release Table...&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_struct_by_data_type</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+        <span class="n">annotation_expr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">condition_func</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">BooleanExpression</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">postfix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Group all annotations from the same data type into a struct.</span>
+
+<span class="sd">        :param ht: Table with annotations to loop through.</span>
+<span class="sd">        :param annotation_expr: StructExpression with annotations to loop through. If</span>
+<span class="sd">            None, use ht.row.</span>
+<span class="sd">        :param condition_func: Function that returns a BooleanExpression for a</span>
+<span class="sd">            condition to check in addition to data type.</span>
+<span class="sd">        :param postfix: String to add to the end of the new annotation following data</span>
+<span class="sd">            type.</span>
+<span class="sd">        :return: StructExpression of joint data type and the corresponding data type</span>
+<span class="sd">            struct.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">condition_func</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">condition_func</span> <span class="o">=</span> <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">annotation_expr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">annotation_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">row</span>
+
+        <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}{</span><span class="n">postfix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                    <span class="o">**</span><span class="p">{</span>
+                        <span class="n">x</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">_&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">):</span> <span class="n">ht</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
+                        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">annotation_expr</span>
+                        <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="n">data_type</span><span class="p">)</span> <span class="ow">and</span> <span class="n">condition_func</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+                    <span class="p">}</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">data_type</span> <span class="ow">in</span> <span class="n">RELEASE_DATA_TYPES</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Group all the histograms into a single struct per data type.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">_get_struct_by_data_type</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span> <span class="n">condition_func</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;_hists&quot;</span><span class="p">),</span> <span class="n">postfix</span><span class="o">=</span><span class="s2">&quot;_histograms&quot;</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add capture and calling intervals as region flags.</span>
+    <span class="n">intervals</span> <span class="o">=</span> <span class="p">[(</span><span class="n">c</span><span class="p">,</span> <span class="n">calling_intervals</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;broad&quot;</span><span class="p">,</span> <span class="s2">&quot;ukb&quot;</span><span class="p">]]</span>
+    <span class="n">intervals</span> <span class="o">=</span> <span class="p">[(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_capture&quot;</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">intervals</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span>
+        <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_calling&quot;</span><span class="p">,</span> <span class="n">adjust_interval_padding</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="mi">150</span><span class="p">))</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">intervals</span>
+    <span class="p">]</span>
+
+    <span class="n">region_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;fail_interval_qc&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="o">~</span><span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span><span class="o">.</span><span class="n">pass_interval_qc</span>
+        <span class="p">),</span>
+        <span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">&quot;outside_</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_region&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">i</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">])</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">intervals</span><span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;not_called_in_</span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">_freq&quot;</span><span class="p">])</span>
+            <span class="o">|</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">_freq&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AN</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">DATA_TYPES</span>
+        <span class="p">},</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Get the stats expressions for the final Table.</span>
+    <span class="k">def</span> <span class="nf">_prep_stats_annotation</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">stat_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">stat_field</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Prepare stats expressions for the final Table.</span>
+
+<span class="sd">        :param ht: Table to add stats to.</span>
+<span class="sd">        :param stat_ht: Table with stats to add to the final Table.</span>
+<span class="sd">        :param stat_field: Field to add to the final Table.</span>
+<span class="sd">        :return: Dictionary of stats expressions for the final Table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">stat_expr</span> <span class="o">=</span> <span class="n">stat_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="n">stat_field</span><span class="p">]</span>
+        <span class="n">is_struct</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stat_expr</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">):</span>
+            <span class="n">is_struct</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">stat_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">stat_expr</span><span class="p">])</span>
+
+        <span class="n">stat_expr</span> <span class="o">=</span> <span class="n">stat_expr</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">or_missing</span><span class="p">(</span><span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_nan</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">a</span><span class="p">]),</span> <span class="n">x</span><span class="p">[</span><span class="n">a</span><span class="p">])</span>
+                    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">x</span>
+                    <span class="k">if</span> <span class="n">a</span> <span class="o">!=</span> <span class="s2">&quot;gen_ancs&quot;</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">is_struct</span><span class="p">:</span>
+            <span class="n">stat_expr</span> <span class="o">=</span> <span class="n">stat_expr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">stat_expr</span>
+
+    <span class="c1"># Prepare stats annotations for the final Table.</span>
+    <span class="n">ct_expr</span> <span class="o">=</span> <span class="n">_prep_stats_annotation</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">contingency_table_ht</span><span class="p">,</span> <span class="s2">&quot;contingency_table_test&quot;</span><span class="p">)</span>
+    <span class="n">cmh_expr</span> <span class="o">=</span> <span class="n">_prep_stats_annotation</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">cmh_ht</span><span class="p">,</span> <span class="s2">&quot;cochran_mantel_haenszel_test&quot;</span><span class="p">)</span>
+    <span class="n">anc_expr</span> <span class="o">=</span> <span class="n">cmh_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;cochran_mantel_haenszel_test&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">gen_ancs</span>
+    <span class="n">ct_union_expr</span> <span class="o">=</span> <span class="n">ct_expr</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_index_dict</span><span class="p">[</span><span class="n">anc_expr</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="s2">&quot;_adj&quot;</span><span class="p">]]</span>
+
+    <span class="c1"># Create a union stats annotation that uses the contingency table test if there is</span>
+    <span class="c1"># only one genetic ancestry group, otherwise use the CMH test.</span>
+    <span class="n">union_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">anc_expr</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">ct_union_expr</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;p_value&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">stat_test_name</span><span class="o">=</span><span class="s2">&quot;contingency_table_test&quot;</span><span class="p">,</span> <span class="n">gen_ancs</span><span class="o">=</span><span class="n">anc_expr</span>
+        <span class="p">),</span>
+        <span class="n">cmh_expr</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">&quot;p_value&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">stat_test_name</span><span class="o">=</span><span class="s2">&quot;cochran_mantel_haenszel_test&quot;</span><span class="p">,</span> <span class="n">gen_ancs</span><span class="o">=</span><span class="n">anc_expr</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">stats_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;contingency_table_test&quot;</span><span class="p">:</span> <span class="n">ct_expr</span><span class="p">,</span>
+        <span class="s2">&quot;cochran_mantel_haenszel_test&quot;</span><span class="p">:</span> <span class="n">cmh_expr</span><span class="p">,</span>
+        <span class="s2">&quot;stat_union&quot;</span><span class="p">:</span> <span class="n">union_expr</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Select the final columns for the Table, grouping all annotations from the same</span>
+    <span class="c1"># data type into a struct.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+        <span class="n">region_flags</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">region_expr</span><span class="p">),</span>
+        <span class="o">**</span><span class="n">_get_struct_by_data_type</span><span class="p">(</span><span class="n">ht</span><span class="p">),</span>
+        <span class="n">freq_comparison_stats</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">stats_expr</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Group all global annotations from the same data type into a struct.</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute_globals</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">_get_struct_by_data_type</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">annotation_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">globals</span><span class="p">,</span> <span class="n">postfix</span><span class="o">=</span><span class="s2">&quot;_globals&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;versions&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_combine_faf_resources"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_combine_faf_resources">[docs]</a><span class="k">def</span> <span class="nf">get_combine_faf_resources</span><span class="p">(</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filtered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">stats_chr</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">stats_combine_all_chr</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.</span>
+
+<span class="sd">    :param overwrite: Whether to overwrite existing resources. Default is False.</span>
+<span class="sd">    :param test: Whether to use test resources. Default is False.</span>
+<span class="sd">    :param filtered: Whether to get the resources for the filtered Tables. Default is</span>
+<span class="sd">        True.</span>
+<span class="sd">    :param stats_chr: Chromosome to get temp stats resource for. Default is None, which</span>
+<span class="sd">        will return the resources for the stats on the full exome/genome.</span>
+<span class="sd">    :param stats_combine_all_chr: Whether to also get the stats resources for all</span>
+<span class="sd">        chromosomes to be combined. Default is False.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        combined FAF resource creation pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">stats_chr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">stats_combine_all_chr</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Cannot specify both `stats_chr` and `stats_combine_all_chr`. Please &quot;</span>
+            <span class="s2">&quot;specify only one.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Initialize pipeline resource collection.</span>
+    <span class="n">combine_faf_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;combine_faf&quot;</span><span class="p">,</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the pipeline.</span>
+    <span class="n">combined_frequency</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-combined-frequency-table&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;comb_freq_ht&quot;</span><span class="p">:</span> <span class="n">get_combined_frequency</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">filtered</span><span class="o">=</span><span class="n">filtered</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;generate_freq.py&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;exomes_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">()},</span>
+            <span class="s2">&quot;generate_freq_genomes.py&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;genomes_ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">)},</span>
+            <span class="s2">&quot;final_filter.py&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;exomes_filter_ht&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">)},</span>
+            <span class="s2">&quot;final_filter_genomes.py&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;genomes_filter_ht&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span>
+            <span class="p">},</span>
+            <span class="s2">&quot;all sites AN and qual hists HTs&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;exomes_all_sites_ht&quot;</span><span class="p">:</span> <span class="n">get_all_sites_an_and_qual_hists</span><span class="p">(</span>
+                    <span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;genomes_all_sites_ht&quot;</span><span class="p">:</span> <span class="n">get_all_sites_an_and_qual_hists</span><span class="p">(</span>
+                    <span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span>
+                <span class="p">),</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">cmh_resources</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">contingency_test_resources</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">stats_chr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cmh_resources</span><span class="p">[</span><span class="s2">&quot;output_resources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;cmh_ht&quot;</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span><span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;cmh_</span><span class="si">{</span><span class="n">stats_chr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+        <span class="p">}</span>
+        <span class="n">contingency_test_resources</span><span class="p">[</span><span class="s2">&quot;output_resources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;contingency_table_ht&quot;</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;contingency_table_</span><span class="si">{</span><span class="n">stats_chr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cmh_resources</span><span class="p">[</span><span class="s2">&quot;output_resources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;cmh_ht&quot;</span><span class="p">:</span> <span class="n">get_freq_comparison</span><span class="p">(</span><span class="s2">&quot;cmh_test&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">filtered</span><span class="o">=</span><span class="n">filtered</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">contingency_test_resources</span><span class="p">[</span><span class="s2">&quot;output_resources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;contingency_table_ht&quot;</span><span class="p">:</span> <span class="n">get_freq_comparison</span><span class="p">(</span>
+                <span class="s2">&quot;contingency_table_test&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">filtered</span><span class="o">=</span><span class="n">filtered</span>
+            <span class="p">)</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">stats_combine_all_chr</span><span class="p">:</span>
+        <span class="n">cmh_resources</span><span class="p">[</span><span class="s2">&quot;input_resources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;--perform-cochran-mantel-haenszel-test --stats-chr (any chr)&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_cmh_ht&quot;</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span><span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;cmh_</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">CHR_LIST</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">contingency_test_resources</span><span class="p">[</span><span class="s2">&quot;input_resources&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;--perform-contingency-table-test --stats-chr (all chr)&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_contingency_table_ht&quot;</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                    <span class="n">get_checkpoint_path</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;contingency_table_</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">CHR_LIST</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cmh_resources</span><span class="p">[</span><span class="s2">&quot;pipeline_input_steps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">combined_frequency</span><span class="p">]</span>
+        <span class="n">contingency_test_resources</span><span class="p">[</span><span class="s2">&quot;pipeline_input_steps&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">combined_frequency</span><span class="p">]</span>
+
+    <span class="n">contingency_table_test</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--perform-contingency-table-test&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">contingency_test_resources</span>
+    <span class="p">)</span>
+    <span class="n">cmh_test</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--perform-cochran-mantel-haenszel-test&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">cmh_resources</span>
+    <span class="p">)</span>
+    <span class="n">finalize_faf</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-combined-faf-release&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;final_combined_faf_ht&quot;</span><span class="p">:</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;joint&quot;</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">combined_frequency</span><span class="p">,</span> <span class="n">contingency_table_test</span><span class="p">,</span> <span class="n">cmh_test</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the combined FAF pipeline resource collection.</span>
+    <span class="n">combine_faf_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;combined_frequency&quot;</span><span class="p">:</span> <span class="n">combined_frequency</span><span class="p">,</span>
+            <span class="s2">&quot;contingency_table_test&quot;</span><span class="p">:</span> <span class="n">contingency_table_test</span><span class="p">,</span>
+            <span class="s2">&quot;cmh_test&quot;</span><span class="p">:</span> <span class="n">cmh_test</span><span class="p">,</span>
+            <span class="s2">&quot;finalize_faf&quot;</span><span class="p">:</span> <span class="n">finalize_faf</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">combine_faf_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_combined_faf_release_ht.html#gnomad_qc.v4.create_release.create_combined_faf_release_ht.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create combined FAF resource.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/compute_combined_faf.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">_set_flags</span><span class="p">(</span><span class="n">use_ssa_logs</span><span class="o">=</span><span class="s2">&quot;1&quot;</span><span class="p">)</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_gene</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">test_y_gene</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">apply_release_filters</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">skip_apply_release_filters</span>
+    <span class="n">pops</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">GEN_ANC_GROUPS</span><span class="p">[</span><span class="s2">&quot;v3&quot;</span><span class="p">][</span><span class="s2">&quot;genomes&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">GEN_ANC_GROUPS</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">][</span><span class="s2">&quot;exomes&quot;</span><span class="p">]))</span>
+    <span class="n">faf_pops</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">pop</span> <span class="k">for</span> <span class="n">pop</span> <span class="ow">in</span> <span class="n">pops</span> <span class="k">if</span> <span class="n">pop</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">]</span>
+    <span class="p">]</span>
+    <span class="n">stats_chr</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">stats_chr</span>
+    <span class="n">stats_combine_all_chr</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">stats_combine_all_chr</span>
+    <span class="n">combine_faf_resources</span> <span class="o">=</span> <span class="n">get_combine_faf_resources</span><span class="p">(</span>
+        <span class="n">overwrite</span><span class="p">,</span>
+        <span class="n">test</span><span class="p">,</span>
+        <span class="n">apply_release_filters</span><span class="p">,</span>
+        <span class="n">stats_chr</span><span class="p">,</span>
+        <span class="n">stats_combine_all_chr</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_combined_frequency_table</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">combine_faf_resources</span><span class="o">.</span><span class="n">combined_frequency</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="n">exomes_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">exomes_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="n">genomes_ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">genomes_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+                <span class="n">exomes_ht</span> <span class="o">=</span> <span class="n">filter_gene_to_test</span><span class="p">(</span>
+                    <span class="n">exomes_ht</span><span class="p">,</span> <span class="n">pcsk9</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test_gene</span><span class="p">,</span> <span class="n">zfy</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test_y_gene</span>
+                <span class="p">)</span>
+                <span class="n">genomes_ht</span> <span class="o">=</span> <span class="n">filter_gene_to_test</span><span class="p">(</span>
+                    <span class="n">genomes_ht</span><span class="p">,</span> <span class="n">pcsk9</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test_gene</span><span class="p">,</span> <span class="n">zfy</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test_y_gene</span>
+                <span class="p">)</span>
+
+            <span class="c1"># TODO: Need to resolve the type difference.</span>
+            <span class="n">genomes_ht</span> <span class="o">=</span> <span class="n">genomes_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="n">freq</span><span class="o">=</span><span class="n">genomes_ht</span><span class="o">.</span><span class="n">freq</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                    <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">homozygote_count</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">homozygote_count</span><span class="p">))</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">exomes_ht</span> <span class="o">=</span> <span class="n">exomes_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                <span class="n">freq</span><span class="o">=</span><span class="n">exomes_ht</span><span class="o">.</span><span class="n">freq</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                    <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">homozygote_count</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">homozygote_count</span><span class="p">))</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">apply_release_filters</span><span class="p">:</span>
+                <span class="n">genomes_ht</span> <span class="o">=</span> <span class="n">genomes_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                    <span class="n">filters</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">genomes_filter_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">genomes_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">filters</span>
+                <span class="p">)</span>
+                <span class="n">exomes_ht</span> <span class="o">=</span> <span class="n">exomes_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                    <span class="n">filters</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">exomes_filter_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">exomes_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">filters</span>
+                <span class="p">)</span>
+
+            <span class="n">exomes_ht</span> <span class="o">=</span> <span class="n">extract_freq_info</span><span class="p">(</span><span class="n">exomes_ht</span><span class="p">,</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="n">apply_release_filters</span><span class="p">)</span>
+            <span class="n">genomes_ht</span> <span class="o">=</span> <span class="n">extract_freq_info</span><span class="p">(</span><span class="n">genomes_ht</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span> <span class="n">apply_release_filters</span><span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">get_joint_freq_and_faf</span><span class="p">(</span>
+                <span class="n">genomes_ht</span><span class="p">,</span>
+                <span class="n">exomes_ht</span><span class="p">,</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">genomes_all_sites_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">exomes_all_sites_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="p">)</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">versions</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                    <span class="n">exomes</span><span class="o">=</span><span class="n">CURRENT_FREQ_VERSION</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">],</span>
+                    <span class="n">genomes</span><span class="o">=</span><span class="n">CURRENT_FREQ_VERSION</span><span class="p">[</span><span class="s2">&quot;genomes&quot;</span><span class="p">],</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">comb_freq_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">perform_contingency_table_test</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">combine_faf_resources</span><span class="o">.</span><span class="n">contingency_table_test</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">stats_combine_all_chr</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+                    <span class="o">*</span><span class="p">[</span>
+                        <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_contingency_table_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;chr</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">23</span><span class="p">)]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;chrX&quot;</span><span class="p">,</span> <span class="s2">&quot;chrY&quot;</span><span class="p">]</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">comb_freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="k">if</span> <span class="n">stats_chr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">stats_chr</span><span class="p">)])</span>
+
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                    <span class="n">contingency_table_test</span><span class="o">=</span><span class="n">perform_contingency_table_test</span><span class="p">(</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq_meta</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq_meta</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">joint_freq_meta</span><span class="p">,</span>
+                        <span class="n">min_cell_count</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">min_cell_count</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">contingency_table_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">perform_cochran_mantel_haenszel_test</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">combine_faf_resources</span><span class="o">.</span><span class="n">cmh_test</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">stats_combine_all_chr</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="o">.</span><span class="n">union</span><span class="p">(</span>
+                    <span class="o">*</span><span class="p">[</span>
+                        <span class="nb">getattr</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">_cmh_ht&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;chr</span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">23</span><span class="p">)]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">&quot;chrX&quot;</span><span class="p">,</span> <span class="s2">&quot;chrY&quot;</span><span class="p">]</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">comb_freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                    <span class="n">cochran_mantel_haenszel_test</span><span class="o">=</span><span class="n">perform_cmh_test</span><span class="p">(</span>
+                        <span class="n">ht</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">genomes_freq_meta</span><span class="p">,</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">exomes_freq_meta</span><span class="p">,</span>
+                        <span class="n">pops</span><span class="o">=</span><span class="n">faf_pops</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">cmh_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">finalize_combined_faf_release</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="n">combine_faf_resources</span><span class="o">.</span><span class="n">finalize_faf</span>
+            <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">create_final_combined_faf_release</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">comb_freq_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">res</span><span class="o">.</span><span class="n">contingency_table_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">res</span><span class="o">.</span><span class="n">cmh_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="p">)</span>
+
+            <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="n">res</span><span class="o">.</span><span class="n">final_combined_faf_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span>
+            <span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying hail log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;compute_combined_faf&quot;</span><span class="p">))</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-gene&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Filter Tables to only the PCSK9 gene for testing.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-y-gene&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Test on a subset of variants in ZFY on chrY.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-combined-frequency-table&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create a Table with frequency information for exomes, genomes, and the &quot;</span>
+            <span class="s2">&quot;joint exome + genome frequencies. Included frequencies are adj, raw, and &quot;</span>
+            <span class="s2">&quot;adj for all genetic ancestry groups found in both the exomes and genomes. &quot;</span>
+            <span class="s2">&quot;The table also includes FAF computed on the joint frequencies.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--skip-apply-release-filters&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to skip applying the final release filters to the Table.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--stats-chr&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Chromosome to compute stats on.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="n">CHR_LIST</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--stats-combine-all-chr&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to combined all chromosome stats. The stats calculations must &quot;</span>
+            <span class="s2">&quot;have been performed for each chromosome using the `--stats-chr` argument.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--perform-contingency-table-test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Perform chi-squared or Fisher’s exact test of independence on the allele&quot;</span>
+            <span class="s2">&quot; frequencies based on `min_cell_count`.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--min-cell-count&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Minimum count in every cell to use the chi-squared test.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--perform-cochran-mantel-haenszel-test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Perform the Cochran–Mantel–Haenszel test, a stratified test of &quot;</span>
+            <span class="s2">&quot;independence for 2x2xK contingency tables, on the allele &quot;</span>
+            <span class="s2">&quot;frequencies where K is the number of genetic ancestry groups with FAF &quot;</span>
+            <span class="s2">&quot;computed.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--finalize-combined-faf-release&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Finalize the combined FAF Table for release.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_combined_faf</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Create finalized combined FAF release Table.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments for finalizing the combined FAF release Table.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">finalize_combined_faf</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of partitions to repartition the finalized combined FAF release &quot;</span>
+            <span class="s2">&quot;Table to.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
