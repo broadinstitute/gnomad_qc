@@ -352,7 +352,7 @@ def gen_anc_rf_path(
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: String path to sample genetic ancestry group RF model.
     """
-    return f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc.RF_fit.pickle"
+    return f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/with_oceania/gnomad.{data_type}.v{version}.gen_anc.RF_fit.pickle"
 
 
 def get_gen_anc_ht(
@@ -369,7 +369,7 @@ def get_gen_anc_ht(
     :return: TableResource of sample gen anc groups.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/with_oceania/gnomad.{data_type}.v{version}.gen_anc.ht"
     )
 
 
@@ -387,7 +387,7 @@ def get_gen_anc_pr_ht(
     :return: TableResource of genetic ancestry inference PR values.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc_pr.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/with_oceania/gnomad.{data_type}.v{version}.gen_anc_pr.ht"
     )
 
 
@@ -398,4 +398,4 @@ def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     :param version: Version of the JSON to return.
     :return: Path to per genetic ancestry group minimum RF probabilities JSON.
     """
-    return f"{get_sample_qc_root(version, data_type='joint')}/genetic_ancestry_inference/gnomad.joint.v{version}.gen_anc_min_probs.json"
+    return f"{get_sample_qc_root(version, data_type='joint')}/genetic_ancestry_inference/with_oceania/gnomad.joint.v{version}.gen_anc_min_probs.json"
