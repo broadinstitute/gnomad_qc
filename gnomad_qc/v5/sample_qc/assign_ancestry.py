@@ -742,7 +742,10 @@ def main(args):
             )
             check_resource_existence(
                 output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
+                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path,
+                    "scores_ht": genetic_ancestry_pca_scores(
+                        test=use_tmp_path, projection=True
+                    ).path,
                 },
                 overwrite=overwrite,
             )
@@ -755,7 +758,7 @@ def main(args):
                 meta_ht=project_meta.ht(),
             )
 
-            # TODO: Add option for correction factor if needed
+            # TODO: Add option for correction factor if needed.
 
             projected_gen_anc_ht = ht.checkpoint(
                 new_temp_file("projection_gen_anc_ht", extension="ht")
