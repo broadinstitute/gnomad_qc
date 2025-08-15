@@ -11,7 +11,14 @@ from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
+from gnomad_qc.v4.resources.sample_qc import (
+    hgdp_tgp_pop_outliers,
+    ancestry_pca_loadings as v4_pca_loadings,
+    per_pop_min_rf_probs_json_path as v4_per_pop_min_rf_probs_json_path,
+    onnx_rf as gnomad_v4_onnx_rf,
+    ancestry_pca_scores as v4_pca_scores,
+    get_pop_ht as v4_get_pop_ht,
+)
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
@@ -641,6 +648,93 @@ def main(args):
             )
             ht.write(get_gen_anc_pr_ht(test=use_tmp_path).path, overwrite=overwrite)
 
+        if args.project_aou_onto_pcs:
+            logger.info(
+                "Projecting AOU onto gnomAD v4.0 PCs and assigning genetic ancestry group using ONNX RF model..."
+            )
+            check_resource_existence(
+                output_step_resources={
+                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
+                },
+                overwrite=overwrite,
+            )
+            gen_anc = get_gen_anc_ht(test=use_tmp_path)
+
+            with hl.hadoop_open(gnomad_v4_onnx_rf, "rb") as f:
+                v4_onx_fit = onnx.load(f)
+
+            v4_loading_ht = v4_pca_loadings().ht()
+
+            qc_mt = get_joint_qc(test=test).mt()
+
+            # Note: All sites in the qc_mt are also present in the the loading ht so do not need to filter qc_mt to variants in loading table.
+            meta_ht = project_meta.ht()
+            # Filter qc_mt to onl
+            qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
+            qc_mt = qc_mt.filter_cols(qc_mt.meta.project == "aou")
+
+            qc_mt = qc_mt.checkpoint(new_temp_file("qc_mt", extension="mt"))
+
+            # Project dataset genotypes onto gnomAD v4.0 loadings.
+            projected_scores = hl.experimental.pc_project(
+                qc_mt.GT,
+                v4_loading_ht.loadings,
+                v4_loading_ht.pca_af,
+            )
+
+            # TODO: Add option for correction factor if needed
+
+            # Assign genetic ancestry group using ONNX RF model using first 20 PCs.
+            projection_gen_anc_ht, _ = assign_genetic_ancestry_pcs(
+                projected_scores,
+                pc_cols=projected_scores.scores[:20],
+                fit=v4_onx_fit,
+                min_prob=0.75,
+                apply_model_func=apply_onnx_classification_model,
+            )
+
+            projection_gen_anc_ht = ht.checkpoint(
+                new_temp_file("projection_gen_anc_ht", extension="ht")
+            )
+
+            # Union aou projected scores with v4 scores.
+            v4_scores = v4_pca_scores().ht()
+            v4_scores = add_project_prefix_to_sample_collisions(
+                t=v4_scores,
+                sample_collisions=sample_id_collisions.ht(),
+                project="gnomad",
+            )
+
+            scores_ht = v4_scores.union(projected_scores)
+            scores_ht.write(
+                genetic_ancestry_pca_scores(test=use_tmp_path, projection=True).path,
+                overwrite=overwrite,
+            )
+
+            # Use v4 minimum RF probabilities to assign genetic ancestry group.
+            with hl.hadoop_open(v4_per_pop_min_rf_probs_json_path(), "r") as d:
+                v4_min_probs = json.load(d)
+
+            projection_gen_anc_ht = assign_gen_anc_with_per_gen_anc_probs(
+                projection_gen_anc_ht, v4_min_probs
+            )
+            projection_gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
+
+            # Combine projected genetic ancestry groups with v4 genetic ancestry groups.
+            v4_pop_ht = v4_get_pop_ht().ht()
+            v4_pop_ht = add_project_prefix_to_sample_collisions(
+                t=v4_pop_ht,
+                sample_collisions=sample_id_collisions.ht(),
+                project="gnomad",
+            )
+
+            # Rename pop column to gen_anc.
+            v4_pop_ht = v4_pop_ht.rename({"pop": "gen_anc"}).drop(
+                "training_sample", "evaluation_sample", "training_pop"
+            )
+            gen_anc_ht = projection_gen_anc_ht.union(v4_pop_ht)
+            gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
+
         if args.apply_per_grp_min_rf_probs:
             check_resource_existence(
                 output_step_resources={
@@ -827,6 +921,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         default=0.99,
         type=float,
+    )
+    parser.add_argument(
+        "--project-aou-onto-pcs",
+        help="Project AOU onto gnomAD v4.0 PCs and assign genetic ancestry group using ONNX RF model.",
+        action="store_true",
     )
 
     return parser

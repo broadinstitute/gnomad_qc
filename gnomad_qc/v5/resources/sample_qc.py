@@ -285,6 +285,7 @@ def genetic_ancestry_pca_scores(
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
+    projection: bool = False,
 ) -> VersionedTableResource:
     """
     Get the genetic ancestry PCA scores VersionedTableResource.
@@ -293,6 +294,7 @@ def genetic_ancestry_pca_scores(
         that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :param projection: Whether the scores ht includes projection scores instead of just original scores.
     :return: Genetic ancestry PCA scores.
     """
     return VersionedTableResource(
@@ -301,7 +303,7 @@ def genetic_ancestry_pca_scores(
             version: TableResource(
                 _get_genetic_ancestry_pca_ht_path(
                     "scores", version, include_unreleasable_samples, test, data_type
-                )
+                ).replace(".ht", "_projection.ht" if projection else ".ht")
             )
             for version in SAMPLE_QC_VERSIONS
         },
