@@ -616,6 +616,17 @@ def main(args):
         if test and test_on_chr20:
             raise ValueError("Both test and test_on_chr20 cannot be set to True.")
 
+        if args.project_aou_onto_pcs & (
+            args.run_pca
+            or args.assign_gen_anc
+            or args.compute_precision_recall
+            or args.apply_per_grp_min_rf_probs
+            or args.infer_per_grp_min_rf_probs
+        ):
+            raise ValueError(
+                "'project_aou_onto_pcs' can not be set if any other arguments steps are set."
+            )
+
         # Use tmp path if either test dataset or test on chr20 is specified.
         use_tmp_path = test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
@@ -736,6 +747,43 @@ def main(args):
             )
             ht.write(get_gen_anc_pr_ht(test=use_tmp_path).path, overwrite=overwrite)
 
+        if args.apply_per_grp_min_rf_probs:
+            check_resource_existence(
+                output_step_resources={
+                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
+                },
+                overwrite=overwrite,
+            )
+
+            gen_anc = get_gen_anc_ht(test=use_tmp_path)
+            if args.infer_per_grp_min_rf_probs:
+                min_probs = infer_per_grp_min_rf_probs(
+                    get_gen_anc_pr_ht(test=use_tmp_path).ht(),
+                    min_recall=args.min_recall,
+                    min_precision=args.min_precision,
+                )
+                logger.info(
+                    "Per genetic ancestry group min prob cutoff inference: %s",
+                    min_probs,
+                )
+                min_probs = {
+                    gen_anc: cutoff["min_prob_cutoff"]
+                    for gen_anc, cutoff in min_probs.items()
+                }
+                with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "w") as d:
+                    d.write(json.dumps(min_probs))
+
+            with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "r") as d:
+                min_probs = json.load(d)
+            logger.info(
+                "Using the following min prob cutoff per ancestry group: %s", min_probs
+            )
+            gen_anc_ht = gen_anc.ht().checkpoint(
+                new_temp_file("gen_anc_ht", extension="ht")
+            )
+            gen_anc_ht = assign_gen_anc_with_per_gen_anc_probs(gen_anc_ht, min_probs)
+            gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
+
         if args.project_aou_onto_pcs:
             logger.info(
                 "Projecting AOU onto gnomAD v4.0 PCs and assigning genetic ancestry group using ONNX RF model..."
@@ -787,43 +835,6 @@ def main(args):
                 genetic_ancestry_pca_scores(test=use_tmp_path, projection=True).path,
                 overwrite=overwrite,
             )
-            gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
-
-        if args.apply_per_grp_min_rf_probs:
-            check_resource_existence(
-                output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                },
-                overwrite=overwrite,
-            )
-
-            gen_anc = get_gen_anc_ht(test=use_tmp_path)
-            if args.infer_per_grp_min_rf_probs:
-                min_probs = infer_per_grp_min_rf_probs(
-                    get_gen_anc_pr_ht(test=use_tmp_path).ht(),
-                    min_recall=args.min_recall,
-                    min_precision=args.min_precision,
-                )
-                logger.info(
-                    "Per genetic ancestry group min prob cutoff inference: %s",
-                    min_probs,
-                )
-                min_probs = {
-                    gen_anc: cutoff["min_prob_cutoff"]
-                    for gen_anc, cutoff in min_probs.items()
-                }
-                with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "w") as d:
-                    d.write(json.dumps(min_probs))
-
-            with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "r") as d:
-                min_probs = json.load(d)
-            logger.info(
-                "Using the following min prob cutoff per ancestry group: %s", min_probs
-            )
-            gen_anc_ht = gen_anc.ht().checkpoint(
-                new_temp_file("gen_anc_ht", extension="ht")
-            )
-            gen_anc_ht = assign_gen_anc_with_per_gen_anc_probs(gen_anc_ht, min_probs)
             gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
     finally:
         logger.info("Copying hail log to logging bucket...")
