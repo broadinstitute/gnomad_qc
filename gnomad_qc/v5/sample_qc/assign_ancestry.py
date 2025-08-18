@@ -8,7 +8,11 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
+from gnomad.sample_qc.ancestry import (
+    apply_onnx_classification_model,
+    assign_genetic_ancestry_pcs,
+    run_pca_with_relateds,
+)
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
