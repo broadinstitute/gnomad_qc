@@ -813,7 +813,7 @@ def main(args):
 
             # TODO: Add option for correction factor if needed.
 
-            projected_gen_anc_ht = ht.checkpoint(
+            projected_gen_anc_ht = projected_gen_anc_ht.checkpoint(
                 new_temp_file("projection_gen_anc_ht", extension="ht")
             )
 
