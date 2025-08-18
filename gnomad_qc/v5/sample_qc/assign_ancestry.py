@@ -3,11 +3,11 @@
 import argparse
 import json
 import logging
-import onnx
 import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
+import onnx
 from gnomad.sample_qc.ancestry import (
     apply_onnx_classification_model,
     assign_genetic_ancestry_pcs,
@@ -16,15 +16,15 @@ from gnomad.sample_qc.ancestry import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.resources.sample_qc import (
-    hgdp_tgp_pop_outliers,
-    ancestry_pca_loadings as v4_pca_loadings,
-    per_pop_min_rf_probs_json_path as v4_per_pop_min_rf_probs_json_path,
-    onnx_rf as gnomad_v4_onnx_rf,
-    ancestry_pca_scores as v4_pca_scores,
-    get_pop_ht as v4_get_pop_ht,
-)
+from gnomad_qc.v4.resources.sample_qc import ancestry_pca_loadings as v4_pca_loadings
+from gnomad_qc.v4.resources.sample_qc import ancestry_pca_scores as v4_pca_scores
+from gnomad_qc.v4.resources.sample_qc import get_pop_ht as v4_get_pop_ht
+from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
+from gnomad_qc.v4.resources.sample_qc import onnx_rf as gnomad_v4_onnx_rf
+from gnomad_qc.v4.resources.sample_qc import (
+    per_pop_min_rf_probs_json_path as v4_per_pop_min_rf_probs_json_path,
+)
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
