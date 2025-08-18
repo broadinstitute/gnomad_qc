@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import onnx
 import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
