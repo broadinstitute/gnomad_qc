@@ -303,7 +303,7 @@ def genetic_ancestry_pca_scores(
             version: TableResource(
                 _get_genetic_ancestry_pca_ht_path(
                     "scores", version, include_unreleasable_samples, test, data_type
-                ).replace(".ht", "_projection.ht" if projection else ".ht")
+                ).replace(".ht", ".projection.ht" if projection else ".ht")
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -371,7 +371,7 @@ def get_gen_anc_ht(
     :return: TableResource of sample gen anc groups.
     """
     return TableResource(
-        f"gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/genetic_ancestry_inference/temp_test/gnomad.{data_type}.v{version}.gen_anc.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc.ht"
     )
 
 
