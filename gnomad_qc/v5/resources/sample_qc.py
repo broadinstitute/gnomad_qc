@@ -371,7 +371,7 @@ def get_gen_anc_ht(
     :return: TableResource of sample gen anc groups.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/temp_test/gnomad.{data_type}.v{version}.gen_anc.ht"
+        f"gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/genetic_ancestry_inference/temp_test/gnomad.{data_type}.v{version}.gen_anc.ht"
     )
 
 
