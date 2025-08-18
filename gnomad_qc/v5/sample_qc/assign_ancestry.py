@@ -828,7 +828,7 @@ def main(args):
             # Combine projected scores and genetic ancestry groups with v4 scores and genetic ancestry groups.
             v4_pop_ht = v4_get_pop_ht().ht()
 
-            scores_ht, gen_anc_ht = union_projection_and_v4(
+            scores_ht, gen_anc_ht = union_projection_scores_and_assignments(
                 projected_scores=projected_scores_ht,
                 v4_scores=v4_pca_scores().ht(),
                 projected_gen_anc=projected_gen_anc_ht,
