@@ -800,7 +800,7 @@ def main(args):
             gen_anc = get_gen_anc_ht(test=use_tmp_path)
 
             projected_scores_ht, projected_gen_anc_ht = project_aou_onto_v4(
-                gnomad_v4_onnx_rf="gs://path/to/model.onnx",
+                gnomad_v4_onnx_rf=gnomad_v4_onnx_rf,
                 v4_loading_ht=v4_pca_loadings().ht(),
                 qc_mt=get_joint_qc(test=False).mt(),
                 meta_ht=project_meta.ht(),
@@ -825,7 +825,7 @@ def main(args):
 
             scores_ht, gen_anc_ht = union_projection_and_v4(
                 projected_scores=projected_scores_ht,
-                v4_scores=v4_scores_ht,
+                v4_scores=v4_pca_scores().ht(),
                 projected_gen_anc=projected_gen_anc_ht,
                 v4_gen_anc=v4_pop_ht,
                 sample_id_collisions=sample_id_collisions.ht(),
