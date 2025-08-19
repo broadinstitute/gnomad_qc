@@ -813,7 +813,8 @@ def main(args):
         if args.join_sample_qc_hts:
             joint_sample_qc_ht_path = get_joint_sample_qc(test=test).path
             check_resource_existence(
-                output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path}
+                output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path},
+                overwrite=overwrite,
             )
 
             # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs.
@@ -878,7 +879,8 @@ def main(args):
         if args.apply_regressed_filters and rerun_filtering:
             regressed_filter_ht_path = regressed_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"regressed_filter_ht": regressed_filter_ht_path}
+                output_step_resources={"regressed_filter_ht": regressed_filter_ht_path},
+                overwrite=overwrite,
             )
 
             ht = apply_filter(
@@ -906,7 +908,8 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "stratified_filter_ht": stratified_filter_ht_path
-                }
+                },
+                overwrite=overwrite,
             )
             ht = apply_filter(
                 filtering_method="stratified",
@@ -929,7 +932,10 @@ def main(args):
             nn_ht_path = nearest_neighbors(
                 test=test, approximation=nn_approximation
             ).path
-            check_resource_existence(output_step_resources={"nn_ht": nn_ht_path})
+            check_resource_existence(
+                output_step_resources={"nn_ht": nn_ht_path},
+                overwrite=overwrite,
+            )
 
             ht = determine_nearest_neighbors(
                 sample_qc_ht,
@@ -950,7 +956,8 @@ def main(args):
             nn_ht = nearest_neighbors(test=test, approximation=nn_approximation).ht()
             nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"nn_filter_ht": nn_filter_ht_path}
+                output_step_resources={"nn_filter_ht": nn_filter_ht_path},
+                overwrite=overwrite,
             )
 
             ht = apply_filter(
@@ -968,7 +975,8 @@ def main(args):
         if args.create_finalized_outlier_filter:
             final_ht_path = finalized_outlier_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"finalized_ht": final_ht_path}
+                output_step_resources={"finalized_ht": final_ht_path},
+                overwrite=overwrite,
             )
 
             finalized_input_steps = {}
