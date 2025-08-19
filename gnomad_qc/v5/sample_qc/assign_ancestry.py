@@ -567,7 +567,7 @@ def union_projection_scores_and_assignments(
     projected_gen_anc: hl.Table,
     v4_gen_anc: hl.Table,
     sample_id_collisions: hl.Table,
-) -> tuple[hl.Table, hl.Table]:
+) -> Tuple[hl.Table, hl.Table]:
     """
     Union projected PCA scores and genetic ancestry groups with v4 equivalents.
 
