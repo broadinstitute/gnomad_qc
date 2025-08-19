@@ -1182,7 +1182,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "to use for the finalized outlier filtering Table, use the parameter "
             "options from that method. e.g. To use the stratified outlier filtering "
             "with genetic ancestry stratification include the following arguments: "
-            "--apply-stratified-filters --stratify-gen-anc. If an ensemble between "
+            "--apply-stratified-filters. If an ensemble between "
             "two methods is desired, include arguments for both. The filtering Table "
             "for each method requested must already exist, the outlier filtering will "
             "not be rerun."

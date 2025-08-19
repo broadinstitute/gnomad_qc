@@ -397,7 +397,7 @@ def stratified_filtering(
     Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :return: VersionedTableResource.
+    :return: VersionedTableResource for stratified filtering.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
@@ -417,7 +417,7 @@ def regressed_filtering(
     Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :return: VersionedTableResource.
+    :return: VersionedTableResource for regressed filtering.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
@@ -435,7 +435,7 @@ def nearest_neighbors(
     approximation: bool = False,
 ) -> VersionedTableResource:
     """
-    Get VersionedTableResource for population PCA nearest neighbors.
+    Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.
 
     :param test: Whether to use a tmp path for a test resource.
     :param approximation: Whether to get resource that is approximate nearest
@@ -458,7 +458,7 @@ def nearest_neighbors(
 
 def nearest_neighbors_filtering(test: bool = False) -> VersionedTableResource:
     """
-    Get VersionedTableResource for nearest neighbors platform/population-based metrics filtering.
+    Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.
