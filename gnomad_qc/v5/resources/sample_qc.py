@@ -414,20 +414,23 @@ def stratified_filtering(
 
 def regressed_filtering(
     test: bool = False,
+    include_unreleasable_samples: bool = False,
     data_set: str = "gnomad",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
+    suffix = ".include_unreleasable_samples" if include_unreleasable_samples else ""
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed.ht"
+                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed{suffix}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -437,6 +440,7 @@ def regressed_filtering(
 def nearest_neighbors(
     test: bool = False,
     approximation: bool = False,
+    include_unreleasable_samples: bool = False,
     data_set: str = "gnomad",
 ) -> VersionedTableResource:
     """
@@ -445,12 +449,15 @@ def nearest_neighbors(
     :param test: Whether to use a tmp path for a test resource.
     :param approximation: Whether to get resource that is approximate nearest
         neighbors.
+    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
     postfix = ""
     if approximation:
         postfix += ".approximation"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
