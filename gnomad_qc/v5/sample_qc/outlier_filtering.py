@@ -43,6 +43,57 @@ logger = logging.getLogger("outlier_filtering")
 logger.setLevel(logging.INFO)
 
 
+def join_sample_qc_hts(
+    v4_sample_qc_ht: hl.Table,
+    v5_sample_qc_ht: hl.Table,
+    v4_hf_ht: hl.Table,
+    v5_hf_ht: hl.Table,
+    sample_collisions: hl.Table,
+) -> hl.Table:
+    """
+    Join v4 and v5 sample QC HTs.
+
+    Function renames sample and global fields to retain values from both versions and drops fields unique to v4.
+
+    :param v4_sample_qc_ht: v4 sample QC HT.
+    :param v5_sample_qc_ht: v5 sample QC HT.
+    :param v4_hf_ht: v4 hard filtered samples HT.
+    :param v5_hf_ht: v5 hard filtered samples HT.
+    :param sample_collisions: Table with sample collisions.
+    :return: Joint v4 + v5 sample QC HT.
+    """
+    v5_sample_qc_ht = v5_sample_qc_ht.filter(
+        hl.is_missing(v5_hf_ht[v5_sample_qc_ht.key])
+    )
+    v5_sample_qc_ht = v5_sample_qc_ht.transmute_globals(
+        v5_gq_bins=v5_sample_qc_ht.gq_bins,
+    ).select_globals("v5_gq_bins")
+    v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
+        t=v5_sample_qc_ht,
+        sample_collisions=sample_collisions,
+        project="aou",
+    )
+
+    v4_sample_qc_ht = v4_sample_qc_ht.filter(
+        hl.is_missing(v4_hf_ht[v4_sample_qc_ht.key])
+    )
+    v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
+        v4_gq_bins=v4_sample_qc_ht.gq_bins,
+    )
+    # Drop fields unique to v4.
+    v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
+    v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
+        t=v4_sample_qc_ht,
+        sample_collisions=sample_collisions,
+        project="gnomad",
+    )
+
+    joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
+    return joint_sample_qc_ht.annotate_globals(
+        v4_gq_bins=v4_sample_qc_ht.index_globals().v4_gq_bins
+    )
+
+
 def get_sample_qc_ht(
     sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
 ) -> hl.Table:
@@ -62,13 +113,6 @@ def get_sample_qc_ht(
     """
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
-
-    # Exclude hard filtered samples from the sample QC Table.
-    # They should not be included in the metric distribution stats.
-    sample_qc_ht = sample_qc_ht.filter(
-        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
-        & hl.is_missing(v4_hard_filtered_samples.ht()[sample_qc_ht.key])
-    )
 
     # Add 'r_snp_indel' annotation the sample QC HT.
     sample_qc_ht = sample_qc_ht.annotate(
@@ -771,19 +815,12 @@ def main(args):
                 output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path}
             )
 
-            # Rename sample and global fields to avoid collisions and drop fields
-            # unique to v4.
-            sample_collisions = sample_id_collisions.ht()
+            # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs.
             v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
-            v5_sample_qc_ht = v5_sample_qc_ht.transmute_globals(
-                v5_gq_bins=v5_sample_qc_ht.gq_bins,
-            ).select_globals("v5_gq_bins")
-            v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
-                t=v5_sample_qc_ht,
-                sample_collisions=sample_collisions,
-                project="aou",
-            )
+            v5_hf_samples_ht = hard_filtered_samples.ht()
 
+            # Read in v4 files: sample QC HT (under three alt alleles) and hard
+            # filtered samples HTs.
             v4_sample_qc_ht = v4_get_sample_qc(
                 "under_three_alt_alleles", test=False
             ).ht()
@@ -791,20 +828,14 @@ def main(args):
             # Read in two partitions instead if test flag is set.
             if test:
                 v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
+            v4_hf_samples_ht = v4_hard_filtered_samples.ht()
 
-            v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
-                v4_gq_bins=v4_sample_qc_ht.gq_bins,
-            )
-            v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
-            v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
-                t=v4_sample_qc_ht,
-                sample_collisions=sample_collisions,
-                project="gnomad",
-            )
-
-            joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
-            joint_sample_qc_ht = joint_sample_qc_ht.annotate_globals(
-                v4_gq_bins=v4_sample_qc_ht.index_globals().v4_gq_bins
+            joint_sample_qc_ht = join_sample_qc_hts(
+                v4_sample_qc_ht=v4_sample_qc_ht,
+                v5_sample_qc_ht=v5_sample_qc_ht,
+                v4_hf_ht=v4_hf_samples_ht,
+                v5_hf_ht=v5_hf_samples_ht,
+                sample_collisions=sample_id_collisions.ht(),
             )
             joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
 
