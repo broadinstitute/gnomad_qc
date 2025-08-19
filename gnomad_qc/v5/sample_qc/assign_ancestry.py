@@ -516,22 +516,22 @@ def assign_gen_anc_with_per_gen_anc_probs(
 
 
 def project_aou_onto_v4(
-    gnomad_v4_onnx_rf: str,
+    gnomad_v4_onnx_rf_path: str,
     v4_loading_ht: hl.Table,
     qc_mt: hl.MatrixTable,
     meta_ht: hl.Table,
-) -> tuple[hl.Table, hl.Table]:
+) -> Tuple[hl.Table, hl.Table]:
     """
     Project AoU genotypes onto gnomAD v4.0 PCA space and assign genetic ancestry groups.
 
-    :param gnomad_v4_onnx_rf: Path to the gnomAD v4 ONNX random forest model.
+    :param gnomad_v4_onnx_rf_path: Path to the gnomAD v4 ONNX random forest model.
     :param v4_loading_ht: Table containing v4 PCA loadings and allele frequencies.
     :qc_mt: QC MatrixTable.
     :meta_ht: Metadata table.
     :return: Table of PCA scores of projected AoU samples onto v4 loadings and table of genetic ancestry assignments for projected AoU samples.
     """
     # Load ONNX RF model.
-    with hl.hadoop_open(gnomad_v4_onnx_rf, "rb") as f:
+    with hl.hadoop_open(gnomad_v4_onnx_rf_path, "rb") as f:
         v4_onx_fit = onnx.load(f)
 
     # Annotate metadata onto qc_mt.
@@ -566,27 +566,27 @@ def union_projection_scores_and_assignments(
     v4_scores: hl.Table,
     projected_gen_anc: hl.Table,
     v4_gen_anc: hl.Table,
-    sample_id_collisions: hl.Table,
+    sample_collisions: hl.Table,
 ) -> Tuple[hl.Table, hl.Table]:
     """
     Union projected PCA scores and genetic ancestry groups with v4 equivalents.
 
-    :param projected_scores: hl.TablePCA scores for projected samples.
+    :param projected_scores: PCA scores for projected samples.
     :param v4_scores: PCA scores for v4 samples.
     :param projected_gen_anc: Genetic ancestry group assignments for projected samples.
     :param v4_gen_anc: Genetic ancestry group assignments for v4 samples.
-    :param sample_id_collisions: Table with sample ID collisions between gnomAD and AoU.
+    :param sample_collisions: Table with sample ID collisions between gnomAD and AoU.
     :return: Combined PCA scores (projected + v4) and combined genetic ancestry group assignments (projected + v4).
     """
-    # Prefix v4 sample IDs to accoutn for sample name collisions in v5 data.
+    # Prefix v4 sample IDs to account for sample name collisions in v5 data.
     v4_scores = add_project_prefix_to_sample_collisions(
         t=v4_scores,
-        sample_collisions=sample_id_collisions,
+        sample_collisions=sample_collisions,
         project="gnomad",
     )
     v4_gen_anc = add_project_prefix_to_sample_collisions(
         t=v4_gen_anc,
-        sample_collisions=sample_id_collisions,
+        sample_collisions=sample_collisions,
         project="gnomad",
     )
 
@@ -618,6 +618,8 @@ def main(args):
         overwrite = args.overwrite
         test = args.test
         test_on_chr20 = args.test_on_chr20
+
+        gen_anc_ht_path = get_gen_anc_ht(test=use_tmp_path).path
 
         if test and test_on_chr20:
             raise ValueError("Both test and test_on_chr20 cannot be set to True.")
@@ -679,9 +681,7 @@ def main(args):
             )
         if args.assign_gen_anc:
             check_resource_existence(
-                output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                },
+                output_step_resources={"gen_anc_ht": gen_anc_ht_path},
                 overwrite=overwrite,
             )
 
@@ -729,9 +729,7 @@ def main(args):
             )
 
             logger.info("Writing genetic ancestry group ht...")
-            gen_anc_ht.write(
-                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
-            )
+            gen_anc_ht.write(gen_anc_ht_path, overwrite=overwrite)
 
             with hl.hadoop_open(
                 gen_anc_rf_path(test=use_tmp_path),
@@ -755,9 +753,7 @@ def main(args):
 
         if args.apply_per_grp_min_rf_probs:
             check_resource_existence(
-                output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                },
+                output_step_resources={"gen_anc_ht": gen_anc_ht_path},
                 overwrite=overwrite,
             )
 
@@ -796,7 +792,7 @@ def main(args):
             )
             check_resource_existence(
                 output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path,
+                    "gen_anc_ht": gen_anc_ht_path,
                     "scores_ht": genetic_ancestry_pca_scores(
                         test=use_tmp_path, projection=True
                     ).path,
@@ -806,7 +802,7 @@ def main(args):
             gen_anc = get_gen_anc_ht(test=use_tmp_path)
 
             projected_scores_ht, projected_gen_anc_ht = project_aou_onto_v4(
-                gnomad_v4_onnx_rf=gnomad_v4_onnx_rf,
+                gnomad_v4_onnx_rf_path=gnomad_v4_onnx_rf,
                 v4_loading_ht=v4_pca_loadings().ht(),
                 qc_mt=get_joint_qc(test=False).mt(),
                 meta_ht=project_meta.ht(),
@@ -826,7 +822,8 @@ def main(args):
                 projected_gen_anc_ht, v4_min_probs
             )
 
-            # Combine projected scores and genetic ancestry groups with v4 scores and genetic ancestry groups.
+            # Combine projected scores and genetic ancestry groups with v4 scores and
+            # genetic ancestry groups.
             v4_pop_ht = v4_get_pop_ht().ht()
 
             scores_ht, gen_anc_ht = union_projection_scores_and_assignments(
@@ -834,7 +831,7 @@ def main(args):
                 v4_scores=v4_pca_scores().ht(),
                 projected_gen_anc=projected_gen_anc_ht,
                 v4_gen_anc=v4_pop_ht,
-                sample_id_collisions=sample_id_collisions.ht(),
+                sample_collisions=sample_id_collisions.ht(),
             )
 
             scores_ht.write(
