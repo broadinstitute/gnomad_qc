@@ -444,7 +444,7 @@ def nearest_neighbors(
     data_set: str = "gnomad",
 ) -> VersionedTableResource:
     """
-    Get VersionedTableResource for population PCA nearest neighbors.
+    Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.
 
     :param test: Whether to use a tmp path for a test resource.
     :param approximation: Whether to get resource that is approximate nearest
@@ -474,7 +474,7 @@ def nearest_neighbors_filtering(
     data_set: str = "gnomad",
 ) -> VersionedTableResource:
     """
-    Get VersionedTableResource for nearest neighbors platform/population-based metrics filtering.
+    Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
