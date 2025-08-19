@@ -598,7 +598,7 @@ def union_projection_scores_and_assignments(
         "training_sample", "evaluation_sample", "training_pop"
     )
 
-    # Union genetic ancestry group assginments
+    # Union genetic ancestry group assignments.
     gen_anc_ht = projected_gen_anc.union(v4_gen_anc)
 
     return scores_ht, gen_anc_ht
