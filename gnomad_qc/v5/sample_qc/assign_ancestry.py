@@ -619,8 +619,6 @@ def main(args):
         test = args.test
         test_on_chr20 = args.test_on_chr20
 
-        gen_anc_ht_path = get_gen_anc_ht(test=use_tmp_path).path
-
         if test and test_on_chr20:
             raise ValueError("Both test and test_on_chr20 cannot be set to True.")
 
@@ -638,6 +636,7 @@ def main(args):
         # Use tmp path if either test dataset or test on chr20 is specified.
         use_tmp_path = test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
+        gen_anc_ht_path = get_gen_anc_ht(test=use_tmp_path).path
 
         if args.run_pca:
             check_resource_existence(
