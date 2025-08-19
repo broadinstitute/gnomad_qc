@@ -576,7 +576,7 @@ def union_projection_scores_and_assignments(
     :param projected_gen_anc: Genetic ancestry group assignments for projected samples.
     :param v4_gen_anc: Genetic ancestry group assignments for v4 samples.
     :param sample_id_collisions: Table with sample ID collisions between gnomAD and AoU.
-    :return:  Combined PCA scores (projected + v4) and combined genetic ancestry group assignments (projected + v4).
+    :return: Combined PCA scores (projected + v4) and combined genetic ancestry group assignments (projected + v4).
     """
     # Prefix v4 sample IDs to accoutn for sample name collisions in v5 data.
     v4_scores = add_project_prefix_to_sample_collisions(
