@@ -425,12 +425,12 @@ def regressed_filtering(
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
-    suffix = ".include_unreleasable_samples" if include_unreleasable_samples else ""
+    postfix = ".include_unreleasable_samples" if include_unreleasable_samples else ""
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed{suffix}.ht"
+                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed{postfix}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
