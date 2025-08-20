@@ -15,8 +15,8 @@ from gnomad.sample_qc.filtering import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.resources.sample_qc import get_sample_qc as v4_get_sample_qc
-from gnomad_qc.v4.resources.sample_qc import (
+from gnomad_qc.v3.resources.sample_qc import get_sample_qc as v4_get_sample_qc
+from gnomad_qc.v3.resources.sample_qc import (
     hard_filtered_samples as v4_hard_filtered_samples,
 )
 from gnomad_qc.v5.resources.basics import (
@@ -822,13 +822,11 @@ def main(args):
             v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
             v5_hf_samples_ht = hard_filtered_samples.ht()
 
-            # Read in v4 files: sample QC HT (under three alt alleles) and hard
+            # Read in v4 files: sample QC HT (bi-allelic) and hard
             # filtered samples HTs.
-            v4_sample_qc_ht = v4_get_sample_qc(
-                "under_three_alt_alleles", test=False
-            ).ht()
-            # NOTE: v4 sample QC HT test version no longer exists.
+            v4_sample_qc_ht = v4_get_sample_qc("bi_allelic").ht()
             # Read in two partitions instead if test flag is set.
+            # v4 sample QC HT test does not exist.
             if test:
                 v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
             v4_hf_samples_ht = v4_hard_filtered_samples.ht()
