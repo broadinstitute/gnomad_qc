@@ -51,7 +51,8 @@ def join_sample_qc_hts(
     """
     Join v4 and v5 sample QC HTs.
 
-    Function renames sample and global fields to retain values from both versions and drops fields unique to v4.
+    Function renames sample and global fields to retain values from both versions and drops fields unique to each version
+    (but keeps all singleton annotations in v5).
 
     :param v4_sample_qc_ht: v4 sample QC HT.
     :param v5_sample_qc_ht: v5 sample QC HT.
@@ -63,9 +64,8 @@ def join_sample_qc_hts(
     v5_sample_qc_ht = v5_sample_qc_ht.filter(
         hl.is_missing(v5_hf_ht[v5_sample_qc_ht.key])
     )
-    v5_sample_qc_ht = v5_sample_qc_ht.transmute_globals(
-        v5_gq_bins=v5_sample_qc_ht.gq_bins,
-    ).select_globals("v5_gq_bins")
+    # Drop fields unique to v5.
+    v5_sample_qc_ht = v5_sample_qc_ht.drop("bases_over_gq_threshold").select_globals()
     v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
         t=v5_sample_qc_ht,
         sample_collisions=sample_collisions,
@@ -76,11 +76,16 @@ def join_sample_qc_hts(
     v4_sample_qc_ht = v4_sample_qc_ht.filter(
         hl.is_missing(v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered)
     )
-    v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
-        v4_gq_bins=v4_sample_qc_ht.gq_bins,
+    # Reformat v5 HT and drop fields unique to v4.
+    v4_sample_qc_ht = v4_sample_qc_ht.annotate(**v4_sample_qc_ht.sample_qc)
+    v4_sample_qc_ht = v4_sample_qc_ht.drop(
+        "call_rate", "n_called", "n_not_called", "n_filtered"
     )
-    # Drop fields unique to v4.
-    v4_sample_qc_ht = v4_sample_qc_ht.drop("dp_bins", "bases_over_dp_threshold")
+    v4_sample_qc_ht = v4_sample_qc_ht.annotate(
+        n_singleton_ti=hl.missing(hl.tint32),
+        n_singleton_tv=hl.missing(hl.tint32),
+        r_ti_tv_singleton=hl.missing(hl.tfloat64),
+    )
     v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
         t=v4_sample_qc_ht,
         sample_collisions=sample_collisions,
