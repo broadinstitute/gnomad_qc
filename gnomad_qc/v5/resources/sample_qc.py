@@ -449,7 +449,8 @@ def nearest_neighbors(
     :param test: Whether to use a tmp path for a test resource.
     :param approximation: Whether to get resource that is approximate nearest
         neighbors.
-    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
+    :param include_unreleasable_samples: Whether to get resource that included
+unreleasable samples in nearest neighbors determination.
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """

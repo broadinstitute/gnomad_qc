@@ -817,7 +817,7 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs.
+            # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs for AoU samples.
             v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
             v5_hf_samples_ht = hard_filtered_samples.ht()
 
