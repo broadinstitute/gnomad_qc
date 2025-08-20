@@ -421,7 +421,7 @@ def main(args):
 
         if config.export_meta:
             logger.info("Subsetting and exporting metadata...")
-            meta_ht = process_metadata_export(meta_ht, vds, config.keep_data_paths)
+            meta_ht = process_metadata_export(meta_ht, vds, config)
             meta_ht = meta_ht.checkpoint(
                 f"{config.output_path}/metadata.ht", overwrite=config.overwrite
             )
