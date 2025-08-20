@@ -823,7 +823,7 @@ def main(args):
 
             # Read in v4 files: sample QC HT (bi-allelic) and hard
             # filtered samples HTs.
-            v4_sample_qc_ht = v4_get_sample_qc("bi_allelic").ht()
+            v4_sample_qc_ht = v4_get_sample_qc("bi_allelic")
             # Read in two partitions instead if test flag is set.
             # v4 sample QC HT test does not exist.
             if test:
