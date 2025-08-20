@@ -392,20 +392,18 @@ def get_joint_sample_qc(
 
 def stratified_filtering(
     test: bool = False,
-    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.stratified_filtering.gen_anc_stratified.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.stratified_filtering.gen_anc_stratified.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -415,7 +413,6 @@ def stratified_filtering(
 def regressed_filtering(
     test: bool = False,
     include_unreleasable_samples: bool = False,
-    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
@@ -423,7 +420,6 @@ def regressed_filtering(
     :param test: Whether to use a tmp path for a test resource.
     :param include_unreleasable_samples: Whether to get resource that included
         unreleasable samples in regression.
-    :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
     postfix = ".include_unreleasable_samples" if include_unreleasable_samples else ""
@@ -431,7 +427,7 @@ def regressed_filtering(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed{postfix}.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed{postfix}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -442,7 +438,6 @@ def nearest_neighbors(
     test: bool = False,
     approximation: bool = False,
     include_unreleasable_samples: bool = False,
-    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.
@@ -452,7 +447,6 @@ def nearest_neighbors(
         neighbors.
     :param include_unreleasable_samples: Whether to get resource that included
         unreleasable samples in nearest neighbors determination.
-    :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -464,7 +458,7 @@ def nearest_neighbors(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.nearest_neighbors{postfix}.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.nearest_neighbors{postfix}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -473,20 +467,18 @@ def nearest_neighbors(
 
 def nearest_neighbors_filtering(
     test: bool = False,
-    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.nearest_neighbors_filtering.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.nearest_neighbors_filtering.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -495,20 +487,18 @@ def nearest_neighbors_filtering(
 
 def finalized_outlier_filtering(
     test: bool = False,
-    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for the finalized outlier filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_set)}/outlier_detection/gnomad.genomes.v{version}.final_outlier_filtering.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.final_outlier_filtering.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
