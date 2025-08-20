@@ -800,7 +800,7 @@ def main(args):
     nn_approximation = args.use_nearest_neighbors_approximation
 
     try:
-        if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
+        if apply_r_ti_tv_singleton_filter:
             err_msg = ""
             for metric in {"n_singleton", "r_ti_tv_singleton"}:
                 if metric not in filtering_qc_metrics:
