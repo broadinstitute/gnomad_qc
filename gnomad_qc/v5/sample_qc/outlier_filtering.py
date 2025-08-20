@@ -92,10 +92,7 @@ def join_sample_qc_hts(
         project="gnomad",
     )
 
-    joint_sample_qc_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
-    return joint_sample_qc_ht.annotate_globals(
-        v4_gq_bins=v4_sample_qc_ht.index_globals().v4_gq_bins
-    )
+    return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
 
 
 def get_sample_qc_ht(
