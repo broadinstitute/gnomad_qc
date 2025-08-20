@@ -392,7 +392,7 @@ def get_joint_sample_qc(
 
 def stratified_filtering(
     test: bool = False,
-    data_set: str = "gnomad",
+    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.
@@ -415,7 +415,7 @@ def stratified_filtering(
 def regressed_filtering(
     test: bool = False,
     include_unreleasable_samples: bool = False,
-    data_set: str = "gnomad",
+    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
@@ -442,7 +442,7 @@ def nearest_neighbors(
     test: bool = False,
     approximation: bool = False,
     include_unreleasable_samples: bool = False,
-    data_set: str = "gnomad",
+    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.
@@ -473,7 +473,7 @@ def nearest_neighbors(
 
 def nearest_neighbors_filtering(
     test: bool = False,
-    data_set: str = "gnomad",
+    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.
@@ -495,7 +495,7 @@ def nearest_neighbors_filtering(
 
 def finalized_outlier_filtering(
     test: bool = False,
-    data_set: str = "gnomad",
+    data_set: str = "joint",
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for the finalized outlier filtering.
