@@ -77,7 +77,7 @@ def join_sample_qc_hts(
         ~v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered
     )
     # Reformat v5 HT and drop fields unique to v4.
-    v4_sample_qc_ht = v4_sample_qc_ht.annotate(**v4_sample_qc_ht.sample_qc)
+    v4_sample_qc_ht = v4_sample_qc_ht.transmute(**v4_sample_qc_ht.sample_qc)
     v4_sample_qc_ht = v4_sample_qc_ht.drop(
         "call_rate", "n_called", "n_not_called", "n_filtered"
     )
