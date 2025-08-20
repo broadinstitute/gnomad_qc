@@ -385,8 +385,18 @@ def main(args):
             logger.info("Filtering to variants that passed variant QC...")
             mtds = filter_to_pass_only(mtds, config)
 
-        # Write output
         if config.output_vds:
+            if config.output_partitions:
+                logger.info(
+                    "Generating VDS with %d partitions...", config.output_partitions
+                )
+                temp_vds_path = new_temp_file("subset", "vds")
+                mtds = mtds.write(temp_vds_path)
+                mtds = hl.vds.read_vds(
+                    temp_vds_path, n_partitions=config.output_partitions
+                )
+
+            logger.info("Writing VDS subset...")
             mtds.write(f"{config.output_path}/subset.vds", overwrite=config.overwrite)
 
         if config.output_vcf:
