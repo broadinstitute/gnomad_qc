@@ -9,7 +9,11 @@ import hail as hl
 from gnomad.utils.vcf import FORMAT_DICT, adjust_vcf_incompatible_types
 from hail.utils import new_temp_file
 
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import (
+    get_gnomad_v4_genomes_vds,
+    get_gnomad_v4_vds,
+    get_logging_path,
+)
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_sites
 
@@ -45,7 +49,7 @@ class ProcessingConfig:
     output_path: str = ""
     subset_samples: Optional[str] = None
     subset_workspaces: Optional[str] = None
-    tmp_dir: str = "gs://gnomad-tmp-4day"
+    tmp_dir: str = ""
 
     def __post_init__(self):
         if self.add_variant_qc and not self.split_multi:
@@ -117,7 +121,7 @@ def get_subset_ht(
     """
     Get the subset HT.
 
-    :param subset_samples: Path to a text file with sample IDs for subsetting and a header: s.
+    :param subset_samples: Path to a text file with sample IDs for subsetting and a header: 's'.
     :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset and a header: 'terra_workspace'.
     :param meta_ht: The meta HT.
     :param vds_cols: The VDS columns.
@@ -193,7 +197,7 @@ def apply_split_multi_logic(
     if config.output_vcf:
         mtds = hl.experimental.sparse_split_multi(mtds)
         mtds = mtds.filter_rows(hl.agg.any(hl.is_defined(mtds.GT)))
-        # Used during splitting multiallelics but not longer needed after.
+        # Used during splitting multiallelics but no longer needed after.
         mtds = mtds.drop("RGQ")
     else:
         mtds = hl.vds.split_multi(
@@ -299,19 +303,19 @@ def format_vcf_info_fields(mt: hl.MatrixTable) -> hl.MatrixTable:
 def process_metadata_export(
     meta_ht: hl.Table,
     vmt: hl.MatrixTable,
-    keep_data_paths: bool,
+    config: ProcessingConfig,
 ) -> hl.Table:
     """
     Process metadata and return the processed metadata Table.
 
     :param meta_ht: The metadata Table to process.
     :param vmt: The dataset's subsetted  matrixTable containing the samples to keep.
-    :param keep_data_paths: Whether to keep data paths in the metadata.
+    :param config: Processing configuration.
     :return: The subsetted metadata Table.
     """
     meta_ht = meta_ht.semi_join(vmt.cols())
 
-    if keep_data_paths:
+    if config.keep_data_paths:
         data_to_drop = {"ukb_meta"}
     else:
         data_to_drop = {"ukb_meta", "cram", "gvcf"}
@@ -335,81 +339,90 @@ def main(args):
         tmp_dir=config.tmp_dir,
     )
 
-    logger.info("Getting the v4 %s dataset...", config.data_type)
-    vds, meta_ht = get_gnomad_datasets(
-        data_type=config.data_type,
-        n_partitions=config.rep_on_read_partitions,
-        test=config.test,
-    )
-
-    logger.info("Loading the HT with sample IDs to subset...")
-    subset_ht = get_subset_ht(config.subset_samples, config.subset_workspaces, meta_ht)
-
-    logger.info("Checking that all requested sample IDs are in the dataset...")
-    check_subset_ht(subset_ht, vds.variant_data.cols())
-
-    logger.info("Filtering the VDS to requested samples...")
-    vds = hl.vds.filter_samples(
-        vds, subset_ht, remove_dead_alleles=False if config.split_multi else True
-    )
-
-    if config.output_vcf:
-        logger.info("Densifying VDS for VCF export...")
-        mtds = hl.vds.to_dense_mt(vds)
-        mtds = mtds.checkpoint(new_temp_file("subset", "mt"))
-    else:
-        mtds = vds
-
-    if config.split_multi:
-        logger.info("Splitting multi-allelics...")
-        mtds = apply_split_multi_logic(mtds, config)
-
-    logger.info(
-        "Applying min_rep to the variant data MT because remove_dead_alleles in"
-        " hl.vds.filter_samples may result in variants that do not have the minimum"
-        " representation..."
-    )
-    mtds = apply_min_rep_logic(mtds, config)
-
-    if config.add_variant_qc:
-        logger.info("Adding variant QC annotations...")
-        mtds = apply_variant_qc_annotations(mtds, config)
-
-    if config.pass_only:
-        logger.info("Filtering to variants that passed variant QC...")
-        mtds = filter_to_pass_only(mtds, config)
-
-    # Write output
-    if config.output_vds:
-        mtds.write(f"{config.output_path}/subset.vds", overwrite=config.overwrite)
-
-    if config.output_vcf:
-        logger.info("Formatting VCF info fields for export...")
-        mtds = format_vcf_info_fields(mtds)
-        mtds = mtds.naive_coalesce(
-            config.output_partitions
-            if config.output_partitions
-            else mtds.n_partitions()
+    try:
+        logger.info("Getting the v4 %s dataset...", config.data_type)
+        vds, meta_ht = get_gnomad_datasets(
+            data_type=config.data_type,
+            n_partitions=config.rep_on_read_partitions,
+            test=config.test,
         )
+
+        logger.info("Loading the HT with sample IDs to subset...")
+        subset_ht = get_subset_ht(
+            config.subset_samples, config.subset_workspaces, meta_ht
+        )
+
+        logger.info("Checking that all requested sample IDs are in the dataset...")
+        check_subset_ht(subset_ht, vds.variant_data.cols())
+
+        logger.info("Filtering the VDS to requested samples...")
+        vds = hl.vds.filter_samples(
+            vds, subset_ht, remove_dead_alleles=False if config.split_multi else True
+        )
+
+        if config.output_vcf:
+            logger.info("Densifying VDS for VCF export...")
+            mtds = hl.vds.to_dense_mt(vds)
+            mtds = mtds.checkpoint(new_temp_file("subset", "mt"))
+        else:
+            mtds = vds
+
         if config.split_multi:
-            FORMAT_DICT.pop("RGQ")
+            logger.info("Splitting multi-allelics...")
+            mtds = apply_split_multi_logic(mtds, config)
 
-        logger.info("Exporting VCF subset...")
-        hl.export_vcf(
-            mtds,
-            f"{config.output_path}/subset.vcf.bgz",
-            metadata={"format": FORMAT_DICT},
-            parallel="header_per_shard",
-            tabix=True,
+        logger.info(
+            "Applying min_rep to the variant data MT because remove_dead_alleles in"
+            " hl.vds.filter_samples may result in variants that do not have the minimum"
+            " representation..."
         )
+        mtds = apply_min_rep_logic(mtds, config)
 
-    if config.export_meta:
-        logger.info("Subsetting and exporting metadata...")
-        meta_ht = process_metadata_export(meta_ht, vds, config.keep_data_paths)
-        meta_ht = meta_ht.checkpoint(
-            f"{config.output_path}/metadata.ht", overwrite=config.overwrite
-        )
-        meta_ht.export(f"{config.output_path}/metadata.tsv.bgz")
+        if config.add_variant_qc:
+            logger.info("Adding variant QC annotations...")
+            mtds = apply_variant_qc_annotations(mtds, config)
+
+        if config.pass_only:
+            logger.info("Filtering to variants that passed variant QC...")
+            mtds = filter_to_pass_only(mtds, config)
+
+        # Write output
+        if config.output_vds:
+            mtds.write(f"{config.output_path}/subset.vds", overwrite=config.overwrite)
+
+        if config.output_vcf:
+            logger.info("Formatting VCF info fields for export...")
+            mtds = format_vcf_info_fields(mtds)
+            mtds = mtds.naive_coalesce(
+                config.output_partitions
+                if config.output_partitions
+                else mtds.n_partitions()
+            )
+            if config.split_multi:
+                FORMAT_DICT.pop("RGQ")
+
+            logger.info("Exporting VCF subset...")
+            hl.export_vcf(
+                mtds,
+                f"{config.output_path}/subset.vcf.bgz",
+                metadata={"format": FORMAT_DICT},
+                parallel="header_per_shard",
+                tabix=True,
+            )
+
+        if config.export_meta:
+            logger.info("Subsetting and exporting metadata...")
+            meta_ht = process_metadata_export(meta_ht, vds, config.keep_data_paths)
+            meta_ht = meta_ht.checkpoint(
+                f"{config.output_path}/metadata.ht", overwrite=config.overwrite
+            )
+            meta_ht.export(f"{config.output_path}/metadata.tsv.bgz")
+
+        logger.info("Subset operation completed successfully!")
+
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("subset"))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
