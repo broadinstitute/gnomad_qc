@@ -421,7 +421,8 @@ def regressed_filtering(
     Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
+    :param include_unreleasable_samples: Whether to get resource that included
+        unreleasable samples in regression.
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :return: VersionedTableResource.
     """
