@@ -48,15 +48,9 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
     :param strat: Which stratification to return
     :return: Sample QC table
     """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            release: TableResource(
-                f"{get_sample_qc_root(release)}/sample_qc_{strat}.ht"
-            )
-            for release in VERSIONS
-        },
-    )
+    # NOTE: This resource is needed for v5 sample QC and is not in the
+    # autoclass or archive buckets.
+    return f"gs://gnomad/sample_qc/ht/genomes_v3.1/sample_qc_{strat}.ht"
 
 
 def _get_ancestry_pca_ht_path(
