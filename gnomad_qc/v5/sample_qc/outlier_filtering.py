@@ -74,7 +74,7 @@ def join_sample_qc_hts(
 
     # Use v4 metadata to remove hard filtered samples.
     v4_sample_qc_ht = v4_sample_qc_ht.filter(
-        hl.is_missing(v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered)
+        ~v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered
     )
     # Reformat v5 HT and drop fields unique to v4.
     v4_sample_qc_ht = v4_sample_qc_ht.annotate(**v4_sample_qc_ht.sample_qc)
