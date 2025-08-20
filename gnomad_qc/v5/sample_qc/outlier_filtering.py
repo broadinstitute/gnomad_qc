@@ -16,9 +16,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.sample_qc import get_sample_qc as v4_get_sample_qc
-from gnomad_qc.v3.resources.sample_qc import (
-    hard_filtered_samples as v4_hard_filtered_samples,
-)
+from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
@@ -46,7 +44,7 @@ logger.setLevel(logging.INFO)
 def join_sample_qc_hts(
     v4_sample_qc_ht: hl.Table,
     v5_sample_qc_ht: hl.Table,
-    v4_hf_ht: hl.Table,
+    v4_meta_ht: hl.Table,
     v5_hf_ht: hl.Table,
     sample_collisions: hl.Table,
 ) -> hl.Table:
@@ -57,7 +55,7 @@ def join_sample_qc_hts(
 
     :param v4_sample_qc_ht: v4 sample QC HT.
     :param v5_sample_qc_ht: v5 sample QC HT.
-    :param v4_hf_ht: v4 hard filtered samples HT.
+    :param v4_meta_ht: v4 sample QC metadata HT.
     :param v5_hf_ht: v5 hard filtered samples HT.
     :param sample_collisions: Table with sample collisions.
     :return: Joint v4 + v5 sample QC HT.
@@ -74,8 +72,9 @@ def join_sample_qc_hts(
         project="aou",
     )
 
+    # Use v4 metadata to remove hard filtered samples.
     v4_sample_qc_ht = v4_sample_qc_ht.filter(
-        hl.is_missing(v4_hf_ht[v4_sample_qc_ht.key])
+        hl.is_missing(v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered)
     )
     v4_sample_qc_ht = v4_sample_qc_ht.transmute_globals(
         v4_gq_bins=v4_sample_qc_ht.gq_bins,
@@ -829,12 +828,12 @@ def main(args):
             # v4 sample QC HT test does not exist.
             if test:
                 v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
-            v4_hf_samples_ht = v4_hard_filtered_samples.ht()
+            v4_meta_ht = v4_meta().ht()
 
             joint_sample_qc_ht = join_sample_qc_hts(
                 v4_sample_qc_ht=v4_sample_qc_ht,
                 v5_sample_qc_ht=v5_sample_qc_ht,
-                v4_hf_ht=v4_hf_samples_ht,
+                v4_meta_ht=v4_meta_ht,
                 v5_hf_ht=v5_hf_samples_ht,
                 sample_collisions=sample_id_collisions.ht(),
             )
