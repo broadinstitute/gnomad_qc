@@ -232,6 +232,9 @@ def apply_variant_qc_annotations(
     """
     Apply variant QC annotations and filtering to either a MatrixTable or VariantDataset.
 
+    .. note::
+        If the variant QC annotations are not specified, all annotations will be added.
+
     :param mtds: MatrixTable or VariantDataset to process.
     :param config: Processing configuration.
     :return: MatrixTable or VariantDataset with variant QC annotations.
