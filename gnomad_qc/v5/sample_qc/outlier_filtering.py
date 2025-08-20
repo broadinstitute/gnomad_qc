@@ -877,7 +877,9 @@ def main(args):
             rerun_filtering = True
 
         if args.apply_regressed_filters and rerun_filtering:
-            regressed_filter_ht_path = regressed_filtering(test=test).path
+            regressed_filter_ht_path = regressed_filtering(
+                test=test, include_unreleasable_samples=unreleasable_in_regression
+            ).path
             check_resource_existence(
                 output_step_resources={"regressed_filter_ht": regressed_filter_ht_path},
                 overwrite=overwrite,
@@ -930,7 +932,9 @@ def main(args):
 
         if args.determine_nearest_neighbors:
             nn_ht_path = nearest_neighbors(
-                test=test, approximation=nn_approximation
+                test=test,
+                approximation=nn_approximation,
+                include_unreleasable_samples=not exclude_releasable_samples_all_steps,
             ).path
             check_resource_existence(
                 output_step_resources={"nn_ht": nn_ht_path},
