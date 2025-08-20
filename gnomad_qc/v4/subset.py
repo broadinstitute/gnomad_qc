@@ -210,20 +210,19 @@ def apply_split_multi_logic(
 
 
 def apply_min_rep_logic(
-    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
-    config: ProcessingConfig,
-) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    vds: hl.vds.VariantDataset,
+) -> hl.vds.VariantDataset:
     """
-    Apply min_rep logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).
+    Apply min_rep logic to an unsplit VariantDataset.
 
-    :param mtds: MatrixTable or VariantDataset to process.
+    :param vds: VariantDataset to process.
     :param config: Processing configuration.
-    :return: MatrixTable or VariantDataset with rows keyed by minimum representation.
+    :return: VariantDataset with rows keyed by minimum representation.
     """
-    ds = mtds if config.output_vcf else mtds.variant_data
+    ds = vds.variant_data
     ds = ds.key_rows_by(**hl.min_rep(ds.locus, ds.alleles))
 
-    return ds if config.output_vcf else hl.vds.VariantDataset(mtds.reference_data, ds)
+    return hl.vds.VariantDataset(vds.reference_data, ds)
 
 
 def apply_variant_qc_annotations(
@@ -370,13 +369,13 @@ def main(args):
         if config.split_multi:
             logger.info("Splitting multi-allelics...")
             mtds = apply_split_multi_logic(mtds, config)
-
-        logger.info(
-            "Applying min_rep to the variant data MT because remove_dead_alleles in"
-            " hl.vds.filter_samples may result in variants that do not have the minimum"
-            " representation..."
-        )
-        mtds = apply_min_rep_logic(mtds, config)
+        else:
+            logger.info(
+                "Applying min_rep to the variant data MT because remove_dead_alleles in"
+                " hl.vds.filter_samples may result in variants that do not have the "
+                "minimumn representation in an unsplit VDS..."
+            )
+            mtds = apply_min_rep_logic(mtds, config)
 
         if config.add_variant_qc:
             logger.info("Adding variant QC annotations...")
