@@ -375,7 +375,7 @@ def main(args):
                 " hl.vds.filter_samples may result in variants that do not have the "
                 "minimumn representation in an unsplit VDS..."
             )
-            mtds = apply_min_rep_logic(mtds, config)
+            mtds = apply_min_rep_logic(mtds)
 
         if config.add_variant_qc:
             logger.info("Adding variant QC annotations...")
