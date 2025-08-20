@@ -830,7 +830,7 @@ def main(args):
             # v4 sample QC HT test does not exist.
             if test:
                 v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
-            v4_meta_ht = v4_meta().ht()
+            v4_meta_ht = v4_meta(data_type="genomes").ht()
 
             joint_sample_qc_ht = join_sample_qc_hts(
                 v4_sample_qc_ht=v4_sample_qc_ht,
