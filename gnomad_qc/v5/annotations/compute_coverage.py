@@ -26,6 +26,7 @@ from gnomad.utils.sparse_mt import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
 from gnomad_qc.v4.resources.meta import meta
 
@@ -79,6 +80,9 @@ def get_genomes_group_membership_ht() -> hl.Table:
     meta_ht = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter(meta_ht.release)
 
+    # TODO: Update this to v5 downsampling.
+    ds_ht = get_v4_downsampling(test=False).ht()
+
     ht = generate_freq_group_membership_array(
         meta_ht,
         build_freq_stratification_list(
@@ -87,6 +91,7 @@ def get_genomes_group_membership_ht() -> hl.Table:
             # gen_anc_expr=meta_ht.gen_anc_inference.gen_anc,
             gen_anc_expr=meta_ht.population_inference.pop,
         ),
+        downsamplings=hl.eval(ds_ht.downsamplings),
     )
 
     ht = ht.annotate_globals(
