@@ -31,7 +31,7 @@ from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v5.resources.basics import get_logging_path  # get_aou_vds
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
-# from gnomad_qc.resources.meta import meta
+# from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
     release_coverage_path,
@@ -44,18 +44,16 @@ logger.setLevel(logging.INFO)
 
 
 def get_genomes_group_membership_ht(
-    meta_ht: hl.Table,
 ) -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
 
-    :param meta_ht: Metadata HT.
     :return: Group membership HT.
     """
     # Filter to release samples.
+    meta = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter(meta_ht.release)
 
-    # Create group membership HT.
     ht = generate_freq_group_membership_array(
         meta_ht,
         build_freq_stratification_list(
@@ -94,7 +92,7 @@ def compute_all_release_stats_per_ref_site(
 
     :param vds: Input VDS.
     :param ref_ht: Reference HT.
-    :param coverage_over_x_bins: List of boundaries for computing samples over X.
+    :param coverage_over_x_bins: List of boundaries for computing samples over X depth.
     :param interval_ht: Interval HT.
     :param group_membership_ht: Group membership HT.
     :return: HT with allele number and quality histograms per reference site.
@@ -175,6 +173,7 @@ def compute_all_release_stats_per_ref_site(
     cov_stats_expr = _cov_stats(ht.coverage_stats[0])
 
     ht = ht.transmute(**cov_stats_expr)
+    # `qual_hists` as returned by `compute_stats_per_ref_site` is an array of length 1 so we drop the array here.
     return ht.annotate(qual_hists=ht.qual_hists[0])
 
 
@@ -224,11 +223,9 @@ def join_aou_and_gnomad_coverage_ht(
             )
         return ht
 
-    # Rename AoU and gnomAD coverage annotations.
     aou_ht = _rename_cov_annotations(aou_ht, "aou")
     gnomad_ht = _rename_cov_annotations(gnomad_ht, "gnomad")
 
-    # Merge annotations and return.
     total_count = aou_count + v4_count
     ht = aou_ht.join(gnomad_ht, "left")
     merged_fields = {
@@ -318,8 +315,7 @@ def main(args):
     n_partitions = args.n_partitions
 
     try:
-        # NOTE: Raw AoU genomes coverage Table returns Table with coverage, all
-        # sites AN, and qual hists.
+        # Retrieve raw coverage table path here because it is used in all of the script's run options.
         cov_and_an_ht_path = release_coverage_path(
             public=False,
             test=test,
@@ -330,7 +326,7 @@ def main(args):
         )
 
         if args.compute_all_cov_release_stats_ht:
-            # Read in context Table.
+            # Context Table is used because it contains every locus in the GRCh38 reference as opposed to a ref-blocked VDS reference dataset.
             ref_ht = vep_context.versions["105"].ht()
             if test_chr22_chrx_chry:
                 chrom = ["chr22", "chrX", "chrY"]
@@ -343,7 +339,6 @@ def main(args):
             # Retain only 'locus' annotation from context Table.
             ref_ht = ref_ht.key_by("locus").select().distinct()
 
-            # Read in VDS.
             vds = get_gnomad_v4_genomes_vds(
                 release_only=True,
                 remove_hard_filtered_samples=False,
@@ -361,7 +356,7 @@ def main(args):
             # )
 
             logger.info(
-                "Running compute coverage, all sites allele number, and quality histograms HT..."
+                "Computing coverage, all sites allele number, and quality histograms HT..."
             )
             check_resource_existence(
                 output_step_resources={"coverage_and_an_ht": cov_and_an_ht_path}
@@ -381,7 +376,7 @@ def main(args):
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file("aou_cov_and_an", "ht")
             )
-            # Naive coalesce and write out the intermediate HT.
+            # Write out the intermediate HT.
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
@@ -401,7 +396,7 @@ def main(args):
                 },
             )
 
-            logger.info("Exporting coverage and AN HT and TSV...")
+            logger.info("Exporting coverage HT and TSV...")
             aou_ht = hl.read_table(cov_and_an_ht_path)
             aou_ht = aou_ht.drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(

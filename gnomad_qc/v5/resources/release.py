@@ -71,7 +71,7 @@ def annotation_hists_params_path(
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "genomes".
     :param environment: Environment to use. Default is "dataproc".
-    :return: Path to file with annotation histograms
+    :return: Path to file with annotation histograms.
     """
     return f"{_release_root(version=release_version, data_type=data_type, extension='json', environment=environment)}/gnomad.{data_type}.v{release_version}_annotation_hist_params.json"
 
@@ -89,7 +89,7 @@ def qual_hists_json_path(
     :param data_type: Data type 'exomes' or 'genomes'. Default is 'genomes'.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param environment: Environment to use. Default is "dataproc".
-    :return: File path for histogram JSON
+    :return: File path for histogram JSON.
     """
     return f"{_release_root(release_version, test, data_type, extension='json', environment=environment)}/gnomad.{data_type}.v{release_version}_qual_hists.json"
 
@@ -197,7 +197,7 @@ def release_header_path(
     Fetch path to pickle file containing VCF header dictionary.
 
     :param release_version: Release version. When no release_version is supplied
-        CURRENT_RELEASE is used
+        CURRENT_RELEASE is used.
     :param data_type: Data type of release resource to return. Should be one of
         'exomes' or 'genomes'. Default is 'genomes'.
     :param test: Whether to use a tmp path for testing. Default is False.
@@ -449,7 +449,7 @@ def validated_release_ht(
     :param test: Whether to use a tmp path for testing. Default is False.
     :param data_type: 'exomes' or 'genomes'. Default is 'genomes'.
     :param environment: Environment to use. Default is "dataproc".
-    :return: Validated release Table
+    :return: Validated release Table.
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
