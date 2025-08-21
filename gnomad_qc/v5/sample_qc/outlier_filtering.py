@@ -183,9 +183,11 @@ def apply_filter(
     if apply_r_ti_tv_singleton_filter:
         ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
         ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
-        ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
+        v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
+        v4_ht = ht.filter(ht.project == "gnomad")
+        ht = v5_ht.join(v4_ht, how="outer")
     ht = ht.annotate_globals(
         apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
     )
