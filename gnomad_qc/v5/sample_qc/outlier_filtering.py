@@ -907,6 +907,7 @@ def main(args):
                 regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
                 include_unreleasable_in_regression=unreleasable_in_regression,
                 include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
+                meta_ht=meta_ht,
             )
             ht = ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps
@@ -933,6 +934,7 @@ def main(args):
                 qc_metrics=filtering_qc_metrics,
                 gen_anc_ht=gen_anc_ht,
                 include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
+                meta_ht=meta_ht,
             )
             ht = ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps
@@ -964,6 +966,7 @@ def main(args):
                 distance_metric=args.distance_metric,
                 use_approximation=nn_approximation,
                 n_trees=args.n_trees,
+                meta_ht=meta_ht,
             )
             ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps
@@ -983,6 +986,7 @@ def main(args):
                 sample_qc_ht=sample_qc_ht,
                 qc_metrics=filtering_qc_metrics,
                 nn_ht=nn_ht,
+                meta_ht=meta_ht,
             )
             ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps,
