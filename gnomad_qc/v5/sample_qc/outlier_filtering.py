@@ -48,6 +48,7 @@ def join_sample_qc_hts(
     v4_meta_ht: hl.Table,
     v5_hf_ht: hl.Table,
     sample_collisions: hl.Table,
+    meta_ht: hl.Table,
 ) -> hl.Table:
     """
     Join v4 and v5 sample QC HTs.
@@ -60,6 +61,7 @@ def join_sample_qc_hts(
     :param v4_meta_ht: v4 sample QC metadata HT.
     :param v5_hf_ht: v5 hard filtered samples HT.
     :param sample_collisions: Table with sample collisions.
+    :param meta_ht: Project metadata HT.
     :return: Joint v4 + v5 sample QC HT.
     """
     v5_sample_qc_ht = v5_sample_qc_ht.filter(
@@ -93,7 +95,9 @@ def join_sample_qc_hts(
         project="gnomad",
     )
 
-    return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
+    joint_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
+    joint_ht = joint_ht.annotate(project=meta_ht[joint_ht.key].project)
+    return joint_ht
 
 
 def get_sample_qc_ht(
@@ -801,6 +805,7 @@ def main(args):
     nn_approximation = args.use_nearest_neighbors_approximation
 
     try:
+        meta_ht = project_meta.ht()
         if apply_r_ti_tv_singleton_filter:
             err_msg = ""
             for metric in {"n_singleton", "r_ti_tv_singleton"}:
@@ -839,6 +844,7 @@ def main(args):
                 v4_meta_ht=v4_meta_ht,
                 v5_hf_ht=v5_hf_samples_ht,
                 sample_collisions=sample_id_collisions.ht(),
+                meta_ht=meta_ht,
             )
             joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
 
@@ -850,7 +856,6 @@ def main(args):
 
         # Add releasable information to the sample QC Table if unreleasable samples are
         # included, otherwise filter to only releasable samples.
-        meta_ht = project_meta.ht()
         if exclude_releasable_samples_all_steps:
             # The releasable field for AoU samples is missing.
             sample_qc_ht = sample_qc_ht.filter(
