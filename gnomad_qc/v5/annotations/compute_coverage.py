@@ -54,9 +54,9 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
 
     v5 downsampling is only applied to the AoU dataset.
     Groups:
-        - 10,000
-        - 100,000
-        - Genetic ancestry group sizes for AFR, AMR, NFE
+    - 10,000
+    - 100,000
+    - Genetic ancestry group sizes for AFR, AMR, NFE
 
     :param ht: Input Table.
     :return: Table with downsampling groups.
