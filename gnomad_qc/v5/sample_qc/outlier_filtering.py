@@ -869,7 +869,19 @@ def main(args):
             )
 
         gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test, projection=True).ht()
-        gen_anc_ht = get_gen_anc_ht(test=test).ht()
+        # TODO: remove code below (added because gen anc HT at tmp path was written in July)
+        # and rename v5_gen_anc_ht to gen_anc_ht
+        v5_gen_anc_ht = get_gen_anc_ht(test=test).ht()
+        v4_gen_anc_ht = v4_get_pop_ht().ht()
+        v4_gen_anc_ht = add_project_prefix_to_sample_collisions(
+            t=v4_gen_anc_ht,
+            sample_collisions=sample_id_collisions.ht(),
+            project="gnomad",
+        )
+        gen_anc_ht = v5_gen_anc_ht.union(v4_gen_anc_ht)
+        gen_anc_ht = gen_anc_ht.checkpoint(
+            new_temp_file("joint_gen_anc_ht", extension="ht")
+        )
 
         if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
             rerun_filtering = False
