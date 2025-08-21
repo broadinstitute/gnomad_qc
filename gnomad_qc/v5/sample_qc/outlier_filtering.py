@@ -72,7 +72,6 @@ def join_sample_qc_hts(
         sample_collisions=sample_collisions,
         project="aou",
     )
-    v5_sample_qc_ht = v5_sample_qc_ht.annotate(project="aou")
 
     # Use v4 metadata to remove hard filtered samples.
     v4_sample_qc_ht = v4_sample_qc_ht.filter(
@@ -93,7 +92,6 @@ def join_sample_qc_hts(
         sample_collisions=sample_collisions,
         project="gnomad",
     )
-    v4_sample_qc_ht = v4_sample_qc_ht.annotate(project="gnomad")
 
     return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
 
@@ -184,7 +182,7 @@ def apply_filter(
         v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
-        v4_ht = ht.filter(ht.project == "gnomad")
+        v4_ht = ht.filter(hl.is_missing(ht.r_ti_tv_singleton))
         ht = v5_ht.join(v4_ht, how="outer")
     ht = ht.annotate_globals(
         apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
@@ -477,7 +475,7 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
 
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
-    sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
+    sample_qc_ht = sample_qc_ht.filter(hl.is_defined(sample_qc_ht.r_ti_tv_singleton))
     ht = ht.filter(hl.is_defined(sample_qc_ht[ht.key]))
 
     # Extract the strata annotations from input Table globals if present (genetic ancestry group for
