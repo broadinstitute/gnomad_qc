@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.hard_filters
+===================================
+
+Script to determine samples that fail hard filtering thresholds.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.hard_filters.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.hard_filters.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.hard_filters
+
+.. automodule:: gnomad_qc.v4.sample_qc.hard_filters
+    :exclude-members: get_script_argument_parser

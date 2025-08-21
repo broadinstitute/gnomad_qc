@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.final_filter_genomes &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.variant_qc.import_variant_qc_vcf" href="import_variant_qc_vcf.html" />
+    <link rel="prev" title="gnomad_qc.v4.variant_qc.final_filter" href="final_filter.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">variant_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="evaluation.html">evaluation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="final_filter.html">final_filter</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">final_filter_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="import_variant_qc_vcf.html">import_variant_qc_vcf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="random_forest.html">random_forest</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vqsr.html">vqsr</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.variant_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.final_filter_genomes</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/variant_qc/final_filter_genomes.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-variant-qc-final-filter-genomes">
+<h1>gnomad_qc.v4.variant_qc.final_filter_genomes<a class="headerlink" href="#gnomad-qc-v4-variant-qc-final-filter-genomes" title="Permalink to this heading"></a></h1>
+<p>Script to create final filter Table for v4 genomes release.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">final_filter_genomes</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">model</span><span class="o">-</span><span class="nb">id</span> <span class="n">MODEL_ID</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">inbreeding</span><span class="o">-</span><span class="n">coeff</span><span class="o">-</span><span class="n">threshold</span> <span class="n">INBREEDING_COEFF_THRESHOLD</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="nb">filter</span><span class="o">-</span><span class="n">centromere</span><span class="o">-</span><span class="n">telomere</span><span class="p">]</span>
+                                                       <span class="p">(</span><span class="o">--</span><span class="n">snv</span><span class="o">-</span><span class="nb">bin</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">SNV_BIN_CUTOFF</span> <span class="o">|</span> <span class="o">--</span><span class="n">snv</span><span class="o">-</span><span class="n">score</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">SNV_SCORE_CUTOFF</span><span class="p">)</span>
+                                                       <span class="p">(</span><span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="nb">bin</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">INDEL_BIN_CUTOFF</span> <span class="o">|</span> <span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="n">score</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">INDEL_SCORE_CUTOFF</span><span class="p">)</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset (default: False).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Whether to run a test using only a region in PCSK9.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--model-id</kbd></dt>
+<dd><p>Filtering model ID to use.</p>
+<p>Default: “vqsr_alleleSpecificTrans”</p>
+</dd>
+<dt><kbd>--inbreeding-coeff-threshold</kbd></dt>
+<dd><p>InbreedingCoeff hard filter to use for variants.</p>
+<p>Default: -0.3</p>
+</dd>
+<dt><kbd>--filter-centromere-telomere</kbd></dt>
+<dd><p>Filter centromeres and telomeres from final filter Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--snv-bin-cutoff</kbd></dt>
+<dd><p>RF or VQSR score bin to use as cutoff for SNVs. Value should be between 1 and 100.</p>
+</dd>
+<dt><kbd>--snv-score-cutoff</kbd></dt>
+<dd><p>RF or VQSR score to use as cutoff for SNVs.</p>
+</dd>
+<dt><kbd>--indel-bin-cutoff</kbd></dt>
+<dd><p>RF or VQSR score bin to use as cutoff for indels. Value should be between 1 and 100.</p>
+</dd>
+<dt><kbd>--indel-score-cutoff</kbd></dt>
+<dd><p>RF or VQSR score to use as cutoff for indels.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.REGION_INFO_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter_genomes.REGION_INFO_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.REGION_INFO_FIELDS</span></code></a></p></td>
+<td><p>Annotations to keep in the 'region_info' field of the final filter Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.TRUTH_SET_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter_genomes.TRUTH_SET_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.TRUTH_SET_FIELDS</span></code></a></p></td>
+<td><p>Annotations to keep in the 'truth_sets' field of the final filter Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.VARIANT_QC_GLOBAL_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter_genomes.VARIANT_QC_GLOBAL_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.VARIANT_QC_GLOBAL_FIELDS</span></code></a></p></td>
+<td><p>Variant QC global annotations to keep in the final filter Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.get_final_variant_qc_resources" title="gnomad_qc.v4.variant_qc.final_filter_genomes.get_final_variant_qc_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.get_final_variant_qc_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.main" title="gnomad_qc.v4.variant_qc.final_filter_genomes.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.main</span></code></a>(args)</p></td>
+<td><p>Create final filter Table for v4 genome release.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.variant_qc.final_filter_genomes"></span><p>Script to create final filter Table for v4 genomes release.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.ALLELE_TYPE_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">ALLELE_TYPE_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['allele_type',</span> <span class="pre">'n_alt_alleles',</span> <span class="pre">'variant_type',</span> <span class="pre">'was_mixed']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.ALLELE_TYPE_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations for allele info to keep in the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.REGION_INFO_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">REGION_INFO_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['non_lcr']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.REGION_INFO_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations to keep in the ‘region_info’ field of the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.TRUTH_SET_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">TRUTH_SET_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['hapmap',</span> <span class="pre">'omni',</span> <span class="pre">'mills',</span> <span class="pre">'kgp_phase1_hc',</span> <span class="pre">'transmitted_singleton']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.TRUTH_SET_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations to keep in the ‘truth_sets’ field of the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.FINAL_FILTER_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">FINAL_FILTER_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['allele_info',</span> <span class="pre">'a_index',</span> <span class="pre">'was_split',</span> <span class="pre">'region_info',</span> <span class="pre">'features',</span> <span class="pre">'fail_hard_filters',</span> <span class="pre">'truth_sets',</span> <span class="pre">'training_info',</span> <span class="pre">'results',</span> <span class="pre">'evaluation_score_bins',</span> <span class="pre">'singleton',</span> <span class="pre">'transmitted_singleton',</span> <span class="pre">'monoallelic',</span> <span class="pre">'only_het',</span> <span class="pre">'filters',</span> <span class="pre">'AS_VQSLOD']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.FINAL_FILTER_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Top level annotations to keep in the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.VARIANT_QC_GLOBAL_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">VARIANT_QC_GLOBAL_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'adj',</span> <span class="pre">'transmitted_singletons'}</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.VARIANT_QC_GLOBAL_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Variant QC global annotations to keep in the final filter Table.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.get_final_variant_qc_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">get_final_variant_qc_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/final_filter_genomes.html#get_final_variant_qc_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.get_final_variant_qc_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather all resources for testing.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite resources if they exist.</p></li>
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Model ID to use for final variant QC.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of finalizing
+variant QC pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter_genomes.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter_genomes.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/final_filter_genomes.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter_genomes.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create final filter Table for v4 genome release.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="final_filter.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.variant_qc.final_filter" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="import_variant_qc_vcf.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.variant_qc.import_variant_qc_vcf" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
