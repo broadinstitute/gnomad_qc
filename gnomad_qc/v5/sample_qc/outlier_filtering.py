@@ -84,9 +84,9 @@ def join_sample_qc_hts(
         "call_rate", "n_called", "n_not_called", "n_filtered"
     )
     v4_sample_qc_ht = v4_sample_qc_ht.annotate(
-        n_singleton_ti=0,
-        n_singleton_tv=0,
-        r_ti_tv_singleton=0,
+        n_singleton_ti=hl.missing(hl.tint32),
+        n_singleton_tv=hl.missing(hl.tint32),
+        r_ti_tv_singleton=hl.missing(hl.tfloat64),
     )
     v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
         t=v4_sample_qc_ht,
