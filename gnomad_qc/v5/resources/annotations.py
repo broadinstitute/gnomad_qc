@@ -48,7 +48,7 @@ def get_downsampling(test: bool = False, subset: str = "aou") -> VersionedTableR
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :param subset: Subset to return downsampling Table for. Default is "aou".
-    :return: Hail Table containing subset or overall dataset downsampling annotations.
+    :return: Hail Table containing downsampling annotations.
     """
     if subset != "aou":
         raise ValueError("v5 downsamplings only applies to the AoU dataset.")
@@ -58,6 +58,24 @@ def get_downsampling(test: bool = False, subset: str = "aou") -> VersionedTableR
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+def group_membership(test: bool = False) -> VersionedTableResource:
+    """
+    Get the group membership Table for coverage, AN, quality histograms, and frequency calculations.
+
+    :param test: Whether to use a tmp path for tests. Default is False.
+    :return: Hail Table containing group membership annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.group_membership.ht"
             )
             for version in ANNOTATION_VERSIONS
         },

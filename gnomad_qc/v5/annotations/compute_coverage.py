@@ -30,7 +30,7 @@ from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsa
 from gnomad_qc.v4.resources.meta import meta
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
-from gnomad_qc.v5.resources.annotations import get_downsampling
+from gnomad_qc.v5.resources.annotations import get_downsampling, group_membership
 from gnomad_qc.v5.resources.basics import (  # get_aou_vds
     get_gnomad_v4_genomes_vds,
     get_logging_path,
@@ -407,12 +407,16 @@ def main(args):
             logger.info(
                 "Computing coverage, all sites allele number, and quality histograms HT..."
             )
+            group_membership_ht_path = group_membership(test=test).path
             check_resource_existence(
-                output_step_resources={"coverage_and_an_ht": cov_and_an_ht_path}
+                output_step_resources={
+                    "group_membership_ht": group_membership_ht_path,
+                    "coverage_and_an_ht": cov_and_an_ht_path,
+                }
             )
             group_membership_ht = get_genomes_group_membership_ht()
             group_membership_ht = group_membership_ht.checkpoint(
-                new_temp_file("group_membership", "ht")
+                group_membership_ht_path, overwrite=overwrite
             )
 
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
