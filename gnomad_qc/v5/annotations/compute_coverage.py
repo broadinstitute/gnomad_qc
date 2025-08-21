@@ -302,7 +302,7 @@ def join_aou_and_gnomad_an_ht(
     # TODO: Add support for subtracting gnomAD v4 samples.
     aou_ht = _rename_fields(aou_ht, "aou")
     gnomad_ht = _rename_fields(gnomad_ht, "gnomad")
-    ht = aou_ht.join(gnomad_ht, "outer")
+    ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.checkpoint(new_temp_file("aou_and_gnomad_join", "ht"))
 
     joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
