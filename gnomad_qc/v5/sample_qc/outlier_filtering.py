@@ -1,0 +1,1288 @@
+"""Script to determine sample QC metric outliers that should be filtered."""
+
+import argparse
+import logging
+import math
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Union
+
+import hail as hl
+from gnomad.sample_qc.filtering import (
+    compute_qc_metrics_residuals,
+    compute_stratified_metrics_filter,
+    determine_nearest_neighbors,
+)
+from hail.utils.misc import new_temp_file
+
+from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v3.resources.sample_qc import get_sample_qc as v4_get_sample_qc
+from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_logging_path,
+)
+from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
+from gnomad_qc.v5.resources.sample_qc import (
+    finalized_outlier_filtering,
+    genetic_ancestry_pca_scores,
+    get_gen_anc_ht,
+    get_joint_sample_qc,
+    get_sample_qc,
+    hard_filtered_samples,
+    nearest_neighbors,
+    nearest_neighbors_filtering,
+    regressed_filtering,
+    stratified_filtering,
+)
+
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("outlier_filtering")
+logger.setLevel(logging.INFO)
+
+
+def join_sample_qc_hts(
+    v4_sample_qc_ht: hl.Table,
+    v5_sample_qc_ht: hl.Table,
+    v4_meta_ht: hl.Table,
+    v5_hf_ht: hl.Table,
+    sample_collisions: hl.Table,
+) -> hl.Table:
+    """
+    Join v4 and v5 sample QC HTs.
+
+    Function renames sample and global fields to retain values from both versions and drops fields unique to each version
+    (but keeps all singleton annotations in v5).
+
+    :param v4_sample_qc_ht: v4 sample QC HT.
+    :param v5_sample_qc_ht: v5 sample QC HT.
+    :param v4_meta_ht: v4 sample QC metadata HT.
+    :param v5_hf_ht: v5 hard filtered samples HT.
+    :param sample_collisions: Table with sample collisions.
+    :return: Joint v4 + v5 sample QC HT.
+    """
+    v5_sample_qc_ht = v5_sample_qc_ht.filter(
+        hl.is_missing(v5_hf_ht[v5_sample_qc_ht.key])
+    )
+    # Drop fields unique to v5.
+    v5_sample_qc_ht = v5_sample_qc_ht.drop("bases_over_gq_threshold").select_globals()
+    v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
+        t=v5_sample_qc_ht,
+        sample_collisions=sample_collisions,
+        project="aou",
+    )
+
+    # Use v4 metadata to remove hard filtered samples.
+    v4_sample_qc_ht = v4_sample_qc_ht.filter(
+        ~v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered
+    )
+    # Reformat v5 HT and drop fields unique to v4.
+    v4_sample_qc_ht = v4_sample_qc_ht.transmute(**v4_sample_qc_ht.sample_qc)
+    v4_sample_qc_ht = v4_sample_qc_ht.drop(
+        "call_rate", "n_called", "n_not_called", "n_filtered"
+    )
+    v4_sample_qc_ht = v4_sample_qc_ht.annotate(
+        n_singleton_ti=hl.missing(hl.tint32),
+        n_singleton_tv=hl.missing(hl.tint32),
+        r_ti_tv_singleton=hl.missing(hl.tfloat64),
+    )
+    v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
+        t=v4_sample_qc_ht,
+        sample_collisions=sample_collisions,
+        project="gnomad",
+    )
+
+    return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
+
+
+def get_sample_qc_ht(
+    sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
+) -> hl.Table:
+    """
+    Get sample QC Table with modifications needed for outlier filtering.
+
+    The following modifications are made:
+        - Add 'r_snp_indel' metric
+        - Exclude hard filtered samples
+        - Sample 1% of the dataset if `test` is True
+
+    :param sample_qc_ht: Sample QC Table.
+    :param test: Whether to filter the input Table to a random sample of 1% of the
+        dataset. Default is False.
+    :param seed: Random seed for making test dataset. Default is 24.
+    :return: Sample QC Table for outlier filtering.
+    """
+    if test:
+        sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
+
+    # Add 'r_snp_indel' and project annotations to the sample QC HT.
+    sample_qc_ht = sample_qc_ht.annotate(
+        r_snp_indel=sample_qc_ht.n_snp
+        / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
+    )
+
+    return sample_qc_ht.select_globals()
+
+
+def apply_filter(
+    sample_qc_ht: hl.Table,
+    qc_metrics: List[str],
+    filtering_method: str,
+    apply_r_ti_tv_singleton_filter: bool = False,
+    gen_anc_scores_ht: Optional[hl.Table] = None,
+    gen_anc_ht: Optional[hl.Table] = None,
+    **kwargs: Any,
+) -> hl.Table:
+    """
+    Apply stratified, regressed, or nearest neighbors outlier filtering method.
+
+    :param sample_qc_ht: Sample QC HT.
+    :param qc_metrics: Specific metrics to use for outlier detection.
+    :param filtering_method: The filtering method to apply to `sample_qc_ht`. One of
+        'stratified', 'regressed', or 'nearest_neighbors'.
+    :param apply_r_ti_tv_singleton_filter: Whether to apply the filtering method to
+        only samples with: Number of singletons (or n_singleton residuals) >
+        median(comparison group number of singletons/n_singleton residuals).
+    :param gen_anc_scores_ht: Optional Table with genetic ancestry PCA scores.
+    :param gen_anc_ht: Optional Table with genetic ancestry group assignment.
+    :param kwargs: Additional parameters to pass to the requested filtering method
+        function.
+    :return: Table with outlier filter annotations.
+    """
+    # Create dict of expression parameters needed in filtering method.
+    ann_exprs = {}
+    if gen_anc_ht is not None:
+        ann_exprs["gen_anc_expr"] = gen_anc_ht[sample_qc_ht.key].gen_anc
+    if gen_anc_scores_ht is not None:
+        ann_exprs["gen_anc_scores_expr"] = gen_anc_scores_ht[sample_qc_ht.key].scores
+
+    # Run filtering method using defined expressions, and any other passed parameters.
+    if filtering_method == "stratified":
+        ht = apply_stratified_filtering_method(
+            sample_qc_ht, qc_metrics, **ann_exprs, **kwargs
+        )
+    elif filtering_method == "regressed":
+        ht = apply_regressed_filtering_method(
+            sample_qc_ht, qc_metrics, **ann_exprs, **kwargs
+        )
+    elif filtering_method == "nearest_neighbors":
+        ht = apply_nearest_neighbor_filtering_method(sample_qc_ht, qc_metrics, **kwargs)
+    else:
+        raise ValueError(
+            "'filtering_method' must be one of: 'stratified', 'regressed', "
+            "'nearest_neighbors'!"
+        )
+
+    # TODO: Decide if this is still relevant
+    # Apply the n_singleton median filter for the r_ti_tv_singleton filter.
+    if apply_r_ti_tv_singleton_filter:
+        ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
+        ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
+        v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
+            ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
+        )
+        ht = ht.annotate(**v5_ht[ht.key])
+    ht = ht.annotate_globals(
+        apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
+    )
+
+    return ht
+
+
+def apply_stratified_filtering_method(
+    sample_qc_ht: hl.Table,
+    qc_metrics: List[str],
+    gen_anc_expr: hl.expr.StringExpression,
+    include_unreleasable_in_cutoffs: bool = False,
+) -> hl.Table:
+    """
+    Use genetic ancestry-stratified QC metrics to determine what samples are outliers and should be filtered.
+
+    Use `compute_stratified_metrics_filter` to compute the median, MAD, and upper and
+    lower thresholds for each `qc_metrics` stratified by assigned genetic ancestry group
+    and return a `qc_metrics_filters` annotation indicating if the sample
+    falls a certain number of MAD outside the distribution.
+
+    .. note::
+
+        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
+        modify this for 'n_singleton' to be (math.inf, 8.0) and for
+        'r_het_hom_var' to be (math.inf, 4.0). The math.inf (infinity) is used to
+        prevent a lower cutoff for these metrics.
+
+    :param sample_qc_ht: Sample QC HT.
+    :param qc_metrics: Specific metrics to use for outlier detection.
+    :param gen_anc_expr: Expression with genetic ancestry group assignment.
+    param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
+        the determination of filtering cutoffs.
+    :return: Table with stratified metrics and filters.
+    """
+    logger.info(
+        "Computing QC metrics outlier filters with stratification, using metrics: %s",
+        ", ".join(qc_metrics),
+    )
+    logger.info("Outlier filtering is stratified by genetic ancestry...")
+    strata = {}
+    strata["gen_anc"] = gen_anc_expr
+    filter_ht = compute_stratified_metrics_filter(
+        sample_qc_ht,
+        qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
+        # TODO: Check whether AoU and gnomAD need to be stratified.
+        strata=strata,
+        # TODO: Check if these thresholds are still appropriate for v5.
+        metric_threshold={
+            "n_singleton": (math.inf, 8.0),
+            "r_het_hom_var": (math.inf, 4.0),
+        },
+        comparison_sample_expr=(
+            sample_qc_ht.releasable if not include_unreleasable_in_cutoffs else None
+        ),
+    )
+
+    return filter_ht
+
+
+def apply_regressed_filtering_method(
+    sample_qc_ht: hl.Table,
+    qc_metrics: List[str],
+    gen_anc_scores_expr: hl.expr.ArrayExpression,
+    regress_gen_anc_n_pcs: int = 30,
+    include_unreleasable_in_regression: bool = False,
+    include_unreleasable_in_cutoffs: bool = False,
+) -> hl.Table:
+    """
+    Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
+
+    After regression, `compute_stratified_metrics_filter` is used to compute the
+    median, MAD, and upper and lower thresholds for each of the `qc_metrics` residuals,
+    and return a `qc_metrics_filters` annotation indicating if the sample falls a
+    certain number of MAD outside the distribution.
+
+    .. note::
+
+        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
+        modify this for 'n_singleton_residual' to be (math.inf, 8.0) and for
+        'r_het_hom_var_residual' to be (math.inf, 4.0). The math.inf (infinity) is used
+        to prevent a lower cutoff for these metrics.
+
+    :param sample_qc_ht: Sample QC HT.
+    :param qc_metrics: Specific metrics to use for outlier detection.
+    :param gen_anc_scores_expr: Expression with genetic ancestry PCA scores.
+    :param regress_gen_anc_n_pcs: Number of genetic ancestry PCA scores to use in regression.
+        Default is 30.
+    :param include_unreleasable_in_regression: Whether to include unreleasable samples
+        in the regressions.
+    :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
+        the determination of filtering cutoffs.
+    :return: Table with regression residuals and outlier filters.
+    """
+    logger.info(
+        "Computing QC metrics outlier filters with PC regression, using metrics: %s",
+        ", ".join(qc_metrics),
+    )
+    ann_expr = {"scores": hl.empty_array(hl.tfloat64)}
+    global_expr = {}
+    ann_expr["scores"] = ann_expr["scores"].extend(
+        gen_anc_scores_expr[:regress_gen_anc_n_pcs]
+    )
+    global_expr["regress_gen_anc_n_pcs"] = regress_gen_anc_n_pcs
+    sample_qc_ht = sample_qc_ht.annotate(**ann_expr)
+
+    logger.info(
+        "QC metric residuals are being computed using a regression with genetic ancestry PCs...",
+    )
+    sample_qc_res_ht = compute_qc_metrics_residuals(
+        sample_qc_ht,
+        pc_scores=sample_qc_ht.scores,
+        qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
+        regression_sample_inclusion_expr=(
+            sample_qc_ht.releasable
+            if not include_unreleasable_in_regression
+            else hl.bool(True)
+        ),
+    )
+    filter_ht = compute_stratified_metrics_filter(
+        sample_qc_res_ht,
+        qc_metrics=dict(sample_qc_res_ht.row_value),
+        metric_threshold={
+            "n_singleton_residual": (math.inf, 8.0),
+            "r_het_hom_var_residual": (math.inf, 4.0),
+        },
+        comparison_sample_expr=(
+            sample_qc_ht[sample_qc_res_ht.key].releasable
+            if not include_unreleasable_in_cutoffs
+            else None
+        ),
+    )
+    sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
+    filter_ht = sample_qc_res_ht.select_globals(
+        **filter_ht.index_globals(),
+        **global_expr,
+    )
+
+    return filter_ht
+
+
+def apply_nearest_neighbor_filtering_method(
+    sample_qc_ht: hl.Table,
+    qc_metrics: List[str],
+    nn_ht: hl.Table,
+) -> hl.Table:
+    """
+    Use nearest neighbor QC metrics to determine what samples are outliers and should be filtered.
+
+    Use `compute_stratified_metrics_filter` to compute the median, MAD, and upper and
+    lower thresholds for each `qc_metrics` of the samples nearest neighbors and return
+    a `qc_metrics_filters` annotation indicating if the sample falls a certain number
+    of MAD outside the nearest neighbors metric distribution.
+
+    .. note::
+
+        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
+        modify this for 'n_singleton' to be (math.inf, 8.0) and for
+        'r_het_hom_var' and 'r_ti_tv_singleton' to be (math.inf, 4.0). The
+        math.inf is used to prevent a lower cutoff for these metrics.
+
+    :param sample_qc_ht: Sample QC HT.
+    :param qc_metrics: Specific metrics to use for outlier detection.
+    :param nn_ht: Table with nearest neighbors annotation 'nearest_neighbors'. This
+        annotation should be a List of samples that are the nearest neighbors of each
+        sample.
+    :return: Table with nearest neighbor outlier filters.
+    """
+    logger.info(
+        "Computing QC metrics outlier filters by nearest neighbor comparison, using "
+        "metrics: %s",
+        ", ".join(qc_metrics),
+    )
+    sample_qc_ht = sample_qc_ht.annotate(
+        nearest_neighbors=nn_ht[sample_qc_ht.key].nearest_neighbors
+    )
+    filter_ht = compute_stratified_metrics_filter(
+        sample_qc_ht,
+        qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
+        metric_threshold={
+            "n_singleton_residual": (math.inf, 8.0),
+            "r_het_hom_var_residual": (math.inf, 4.0),
+        },
+        comparison_sample_expr=sample_qc_ht.nearest_neighbors,
+    )
+    filter_ht = filter_ht.select_globals(**nn_ht.index_globals())
+
+    return filter_ht
+
+
+def apply_n_singleton_filter_to_r_ti_tv_singleton(
+    ht: hl.Table,
+    sample_qc_ht: hl.Table,
+    filtering_method: str,
+    ann_exprs: Dict[str, hl.expr.Expression],
+    **kwargs: Any,
+) -> hl.Table:
+    """
+    Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.
+
+    This function only applies to AoU/v5 genomes.
+
+    This function takes a Table (`ht`) returned from one of the filtering functions:
+
+        - `apply_stratified_filtering_method`
+        - `apply_regressed_filtering_method`
+        - `apply_nearest_neighbor_filtering_method`
+
+    which must include filtering information for 'n_singleton' or
+    'n_singleton_residuals'.
+
+    Median values for 'n_singleton' or 'n_singleton_residuals' are extracted from
+    'qc_metrics_stats' in `ht`. 'qc_metrics_stats' takes different forms depending on
+    `filtering_method` and the use of 'strata' (defined as a global on `ht` if used) in
+    filtering (described below).
+
+    Then the `sample_qc_ht` is filtered to only samples with 'n_singleton' (or
+    'n_singleton_residuals') > the median in 'qc_metrics_stats' that is relevant to the
+    sample. This filtered `sample_qc_ht` is rerun through the filtering function for
+    `filtering_method` using only 'r_ti_tv_singleton', and `ht` is updated with new
+    global and row values relevant to 'r_ti_tv_singleton' filtering.
+
+    If `filtering_method` is 'stratified':
+
+        - 'strata' is defined as a global annotation on `ht` in the form:
+          ``tuple<str, ...>`` where the number of string elements in the tuple depends
+          on the number of strata.
+        - 'qc_metrics_stats' is defined as a global annotation on `ht` in the form:
+
+        .. code-block::
+
+            dict<strata, struct {
+                metric: struct {
+                    'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+                }
+            }>
+
+    If `filtering_method` is 'regressed':
+
+        - 'qc_metrics_stats' is defined as a global annotation on `ht`.
+        - 'qc_metrics_stats' is in the form:
+
+        .. code-block::
+
+            struct {
+                metric_residual: struct {
+                    'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+                }
+            }
+
+    If `filtering_method` is 'nearest_neighbor':
+
+        - 'qc_metrics_stats' is defined as a row annotation on `ht` in the form:
+
+        .. code-block::
+
+            struct {
+                metric: struct {
+                'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+                }
+            }
+
+    :param ht: Input filtering Table with n_singleton or n_singleton_residuals medians
+        computed.
+    :param sample_qc_ht: Sample QC HT.
+    :param filtering_method: The filtering method to apply to `sample_qc_ht`. One of
+        'stratified', 'regressed', or 'nearest_neighbors'.
+    :param ann_exprs: Dictionary of the expressions for genetic ancestry assignment
+        on `sample_qc_ht` to be used if filtering is stratified.
+    :return: Table with outlier filter annotations updated for r_ti_tv_singleton or
+        r_ti_tv_singleton_residuals.
+    """
+    filtering_methods = {"stratified", "regressed", "nearest_neighbors"}
+    if filtering_method not in filtering_methods:
+        raise ValueError(
+            f"Filtering method must be one of: {', '.join(filtering_methods)}"
+        )
+
+    # Setup repeatedly used variables.
+    median_filter_metric = "n_singleton"
+    update_metric = "r_ti_tv_singleton"
+    filtering_qc_metrics = [update_metric]
+    empty_stats_struct = hl.struct(
+        median=hl.missing(hl.tfloat64),
+        mad=hl.missing(hl.tfloat64),
+        lower=hl.missing(hl.tfloat64),
+        upper=hl.missing(hl.tfloat64),
+    )
+
+    # Annotate the sample QC Table with annotations provided in 'ann_expr'.
+    sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
+    sample_qc_ht = sample_qc_ht.filter(hl.is_defined(sample_qc_ht.r_ti_tv_singleton))
+    ht = ht.filter(hl.is_defined(sample_qc_ht[ht.key]))
+
+    # Extract the strata annotations from input Table globals if present (genetic ancestry group for
+    # stratified filtering method).
+    ht_globals = hl.eval(ht.index_globals())
+    if "strata" in ht_globals:
+        strata = ht_globals["strata"]
+    else:
+        strata = None
+
+    # If filtering method is 'nearest_neighbors', the 'qc_metrics_stats' is per sample,
+    # so it is stored in the rows of 'ht' instead of the globals.
+    if filtering_method == "nearest_neighbors":
+        qc_metrics_stats = ht[sample_qc_ht.key].qc_metrics_stats
+    else:
+        qc_metrics_stats = ht_globals["qc_metrics_stats"]
+
+    # If the filtering method is 'regressed', the metrics will have '_residual' on the
+    # end of the annotation name and be stored in 'ht' instead of 'sample_qc_ht'.
+    if filtering_method == "regressed":
+        median_filter_metric += "_residual"
+        median_filter_metric_expr = ht[sample_qc_ht.key][median_filter_metric]
+        update_metric += "_residual"
+    else:
+        median_filter_metric_expr = sample_qc_ht[median_filter_metric]
+
+    # Determine the expression for median cutoffs of 'median_filter_metric'.
+    # When stratification is applied, 'qc_metrics_stats' has a median value per strata.
+    if median_filter_metric in qc_metrics_stats:
+        median_expr = qc_metrics_stats[median_filter_metric].median
+    else:
+        medians = hl.literal(
+            {
+                strat: cutoff_dict[median_filter_metric].median
+                for strat, cutoff_dict in qc_metrics_stats.items()
+                if cutoff_dict[median_filter_metric].median is not None
+            }
+        )
+        median_expr = medians.get(hl.tuple([sample_qc_ht[x] for x in strata]))
+
+    # Filter 'sample_qc_ht' to only samples that have 'median_filter_metric' greater
+    # than the 'median_expr'. These are the only samples that should be included in the
+    # updated outlier filtering.
+    sample_qc_ht = sample_qc_ht.filter(
+        median_filter_metric_expr > median_expr
+    ).select_globals()
+
+    filter_ht = apply_filter(
+        filtering_method=filtering_method,
+        sample_qc_ht=sample_qc_ht,
+        qc_metrics=filtering_qc_metrics,
+        apply_r_ti_tv_singleton_filter=False,
+        **{f"{ann}_expr": sample_qc_ht[ann] for ann in ann_exprs},
+        **kwargs,
+    )
+
+    # For all filtering methods other than nearest_neighbors, the global
+    # 'qc_metrics_stats' needs to be updated for the 'update_metric'.
+    if filtering_method != "nearest_neighbors":
+        updated_stats = hl.eval(filter_ht.qc_metrics_stats)
+        if strata is None:
+            qc_metrics_stats.annotate(**{update_metric: updated_stats[update_metric]})
+        else:
+            for strat in qc_metrics_stats:
+                update_stats_struct = empty_stats_struct
+                if strat in updated_stats:
+                    update_stats_struct = updated_stats[strat].get(
+                        update_metric, empty_stats_struct
+                    )
+                qc_metrics_stats[strat].annotate(**{update_metric: update_stats_struct})
+
+        ht = ht.annotate_globals(qc_metrics_stats=qc_metrics_stats)
+
+    # For all filtering methods: add a sample annotation indicating whether the sample
+    # was included in the updated outlier filtering, update the 'fail_{update_metric}'
+    # annotation, and remove 'update_metric' from 'qc_metrics_filters' if no longer
+    # filtered or add it if the sample would now be filtered.
+    ht_idx = filter_ht[ht.key]
+    ann_expr = {
+        f"{median_filter_metric}_median_filtered": hl.is_defined(ht_idx),
+        f"fail_{update_metric}": hl.coalesce(ht_idx[f"fail_{update_metric}"], False),
+        "qc_metrics_filters": (ht.qc_metrics_filters - hl.set({update_metric}))
+        | hl.coalesce(ht_idx.qc_metrics_filters, hl.empty_set(hl.tstr)),
+    }
+
+    # For the 'regressed' filtering method, residuals were recomputed, so update them.
+    if filtering_method == "regressed":
+        ann_expr[update_metric] = ht_idx[update_metric]
+
+    # For the 'nearest_neighbors' filtering method, the per sample 'qc_metrics_stats'
+    # annotation needs to be updated with the new medians and cutoffs for
+    # 'update_metric'.
+    if filtering_method == "nearest_neighbors":
+        ann_expr["qc_metrics_stats"] = ht.qc_metrics_stats.annotate(
+            **{
+                update_metric: hl.coalesce(
+                    ht_idx.qc_metrics_stats[update_metric],
+                    ht.qc_metrics_stats[update_metric],
+                )
+            }
+        )
+
+    ht = ht.annotate(**ann_expr)
+
+    return ht
+
+
+def create_finalized_outlier_filter_ht(
+    finalized_outlier_hts: Dict[str, hl.Table],
+    qc_metrics: List[str],
+    ensemble_operator: str = "and",
+) -> hl.Table:
+    """
+    Create the finalized outlier filtering Table.
+
+    .. note::
+
+        `qc_metrics` must be the same as, or a subset of the original QC metrics used
+        to create each Table in `finalized_outlier_hts`.
+
+    Tables included in `finalized_outlier_hts` are reformatted to include only
+    information from metrics in`qc_metrics`, and the 'qc_metrics_filters' annotation
+    is modified to include only metrics in `qc_metrics`.
+
+    If `finalized_outlier_hts` includes multiple Tables, the reformatted Table
+    annotations are grouped under top level annotations specified by the keys of
+    `finalized_outlier_hts`. The following annotations are also added:
+
+        - `qc_metrics_fail`: includes the combined (using `ensemble_operator`) outlier
+          fail boolean for each metric.
+        - `qc_metrics_filters`: The combined set of QC metrics that a sample is an
+          outlier for using `ensemble_operator` for the combination ('and' uses set
+          intersection, 'or' uses set union).
+
+    Finally, an `outlier_filtered` annotation is added indicating if a sample has any
+    metrics in `qc_metrics_filters`.
+
+    :param finalized_outlier_hts: Dictionary containing Tables to use for the finalized
+        outlier filtering, keyed by a string to use as a top level annotation to group
+        the annotations and global annotations under.
+    :param qc_metrics: List of sample QC metrics to use for the finalized outlier
+        filtering.
+    :param ensemble_operator: Logical operator to use for combining filtering methods
+        when multiple Tables are in `finalized_outlier_hts`. Options are ['or', 'and'].
+        Default is 'and'.
+    :return: Finalized outlier filtering Table.
+    """
+    if ensemble_operator == "and":
+        fail_combine_func = hl.all
+    elif ensemble_operator == "or":
+        fail_combine_func = hl.any
+    else:
+        raise ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
+
+    def _ensemble_func(x: hl.SetExpression, y: hl.SetExpression) -> hl.SetExpression:
+        """
+        Combine sets `x` and `y`.
+
+        If x is missing return `y`.
+
+        Logical operator for combination is determined by external `ensemble_operator`
+        variable. Uses set intersection when `ensemble_operator` is 'and', and set
+        union when `ensemble_operator` is 'or'.
+
+        :param x: Input set to combine with `y`.
+        :param y: Input set to combine with `x`.
+        :return: Combined SetExpression.
+        """
+        return (
+            hl.case()
+            .when(hl.is_missing(x), y)
+            .when(ensemble_operator == "and", x.intersection(y))
+            .when(ensemble_operator == "or", x.union(y))
+            .or_missing()
+        )
+
+    num_methods = len(finalized_outlier_hts)
+    hts = []
+    fail_map = defaultdict(dict)
+    for filter_method, ht in finalized_outlier_hts.items():
+        logger.info(
+            "Reformatting Hail Table for %s outlier filtering method...", filter_method
+        )
+
+        # Determine the annotations that should be kept in the final filter Table
+        annotations = list(ht.row.keys())
+        fail_annotations_keep = set([])
+        residual_annotations_keep = set([])
+        qc_metrics_filters_keep = set([])
+        for m in qc_metrics:
+            if f"fail_{m}" in annotations:
+                fail_map[filter_method][m] = f"fail_{m}"
+                fail_annotations_keep.add(f"fail_{m}")
+                qc_metrics_filters_keep.add(m)
+            elif f"fail_{m}_residual" in annotations:
+                fail_map[filter_method][m] = f"fail_{m}_residual"
+                residual_annotations_keep.add(f"{m}_residual")
+                fail_annotations_keep.add(f"fail_{m}_residual")
+                qc_metrics_filters_keep.add(m)
+            else:
+                raise ValueError(
+                    "The following metric is not found in the Table(s) provided for "
+                    f"outlier filtering finalization: {m}."
+                )
+
+        # If residuals are annotated on the filtering Table, re-annotate under
+        # 'qc_metrics_residuals' rather than keeping them top level
+        select_expr = {}
+        if residual_annotations_keep:
+            select_expr["qc_metrics_residuals"] = ht[ht.key].select(
+                *residual_annotations_keep
+            )
+
+        # Nearest neighbors filtering has 'qc_metrics_stats' as a row annotation
+        # instead of a global annotation. This adds it to the final Table.
+        if "qc_metrics_stats" in ht.row:
+            select_expr["qc_metrics_stats"] = ht.qc_metrics_stats.select(
+                *qc_metrics_filters_keep
+            )
+
+        # Group all filter fail annotations under 'qc_metrics_fail' rather than
+        # keeping them top level
+        select_expr.update(
+            {
+                "qc_metrics_fail": ht[ht.key].select(*fail_annotations_keep),
+                "qc_metrics_filters": hl.literal(qc_metrics_filters_keep)
+                & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", "")),
+            }
+        )
+        ht = ht.select(**select_expr)
+
+        def _update_globals(
+            global_ann: Union[hl.expr.StructExpression, hl.expr.DictExpression],
+            metrics_keep: List[str],
+        ) -> Union[hl.expr.StructExpression, hl.expr.DictExpression]:
+            """
+            Update a global annotation to have values for only the requested metrics.
+
+            :param global_ann: Dict or Struct for global annotation to modify.
+            :param metrics_keep: Metrics to keep in the global annotation.
+            :return: Updated global annotation Dict or Struct.
+            """
+            if isinstance(global_ann, hl.expr.StructExpression):
+                global_ann = global_ann.select(*metrics_keep)
+            else:
+                global_ann = {
+                    s: hl.struct(**{x: global_ann[s][x] for x in metrics_keep})
+                    for s in hl.eval(global_ann.keys())
+                }
+            return global_ann
+
+        # If multiple filtering Tables are provided, group all Table annotations under a
+        # filtering method annotation rather than keeping it top level. This is needed
+        # for joining requested filtering method Tables.
+        if num_methods > 1:
+            ht = ht.select(**{filter_method: ht[ht.key]})
+            filter_globals = ht.index_globals()
+            updated_globals = {}
+            for g in filter_globals:
+                if g == "qc_metrics_stats":
+                    update_g = _update_globals(
+                        filter_globals[g],
+                        [x.split("fail_")[1] for x in fail_annotations_keep],
+                    )
+                elif g == "lms":
+                    update_g = _update_globals(
+                        filter_globals[g],
+                        qc_metrics_filters_keep,
+                    )
+                else:
+                    update_g = filter_globals[g]
+                updated_globals[g] = update_g
+
+            ht = ht.select_globals(
+                **{f"{filter_method}_globals": hl.struct(**updated_globals)}
+            )
+            hts.append(ht)
+
+    # If multiple filtering Tables are provided, join all filtering Tables, and make
+    # top level annotations for 'qc_metrics_fail' and 'qc_metrics_filters' based on the
+    # combination of all methods using 'ensemble_operator' as the combination method.
+    if num_methods > 1:
+        ht = hts[0]
+        for ht2 in hts[1:]:
+            ht = ht.join(ht2, how="outer")
+
+        ht = ht.annotate(
+            qc_metrics_fail=hl.struct(
+                **{
+                    m: fail_combine_func(
+                        [
+                            ht[f]["qc_metrics_fail"][fail_map[f][m]]
+                            for f in finalized_outlier_hts
+                        ]
+                    )
+                    for m in qc_metrics
+                }
+            ),
+            qc_metrics_filters=hl.fold(
+                _ensemble_func,
+                hl.missing(hl.tset(hl.tstr)),
+                [ht[f]["qc_metrics_filters"] for f in finalized_outlier_hts],
+            ),
+        )
+
+    ht = ht.annotate(outlier_filtered=hl.len(ht.qc_metrics_filters) > 0)
+    ht = ht.annotate_globals(
+        filter_qc_metrics=qc_metrics, ensemble_combination_operator=ensemble_operator
+    )
+
+    return ht
+
+
+def main(args):
+    """Determine sample QC metric outliers that should be filtered."""
+    hl.init(
+        log="/home/jupyter/workspaces/gnomadproduction/outlier_filtering.log",
+        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+    )
+    hl.default_reference("GRCh38")
+
+    test = args.test
+    overwrite = args.overwrite
+    filtering_qc_metrics = args.filtering_qc_metrics
+    apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
+    unreleasable_in_cutoffs = args.include_unreleasable_in_cutoff_determination
+    unreleasable_in_regression = args.include_unreleasable_in_regression
+    exclude_unreleasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
+    nn_approximation = args.use_nearest_neighbors_approximation
+
+    try:
+        if apply_r_ti_tv_singleton_filter:
+            err_msg = ""
+            for metric in {"n_singleton", "r_ti_tv_singleton"}:
+                if metric not in filtering_qc_metrics:
+                    err_msg += (
+                        "'--apply-n-singleton-filter-to-r-ti-tv-singleton' flag is set, but"
+                        f" {metric} is not in requested 'filtering_qc_metrics'!\n"
+                    )
+            if err_msg:
+                raise ValueError(err_msg)
+
+        if args.join_sample_qc_hts:
+            joint_sample_qc_ht_path = get_joint_sample_qc(test=test).path
+            check_resource_existence(
+                output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path},
+                overwrite=overwrite,
+            )
+
+            # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs for
+            # AoU samples.
+            v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+            v5_hf_samples_ht = hard_filtered_samples.ht()
+
+            # Read in v4 files: sample QC HT (bi-allelic) and hard
+            # filtered samples HTs.
+            v4_sample_qc_ht = hl.read_table(v4_get_sample_qc("bi_allelic"))
+            # Read in two partitions instead if test flag is set.
+            # v4 sample QC HT test does not exist.
+            if test:
+                v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
+            v4_meta_ht = v4_meta(data_type="genomes").ht()
+
+            joint_sample_qc_ht = join_sample_qc_hts(
+                v4_sample_qc_ht=v4_sample_qc_ht,
+                v5_sample_qc_ht=v5_sample_qc_ht,
+                v4_meta_ht=v4_meta_ht,
+                v5_hf_ht=v5_hf_samples_ht,
+                sample_collisions=sample_id_collisions.ht(),
+            )
+            joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
+
+        sample_qc_ht = get_sample_qc_ht(
+            sample_qc_ht=get_joint_sample_qc(test=test).ht(),
+            test=test,
+            seed=args.seed,
+        )
+
+        # Add releasable information to the sample QC Table if unreleasable samples are
+        # included, otherwise filter to only releasable samples.
+        meta_ht = project_meta.ht()
+        if exclude_unreleasable_samples_all_steps:
+            # The releasable field for AoU samples is missing.
+            sample_qc_ht = sample_qc_ht.filter(
+                (meta_ht[sample_qc_ht.key].releasable)
+                | (hl.is_missing(meta_ht[sample_qc_ht.key].releasable))
+            )
+        elif not unreleasable_in_cutoffs or not unreleasable_in_regression:
+            sample_qc_ht = sample_qc_ht.annotate(
+                releasable=meta_ht[sample_qc_ht.key].releasable
+            )
+            sample_qc_ht = sample_qc_ht.transmute(
+                releasable=hl.if_else(
+                    hl.is_missing(sample_qc_ht.releasable),
+                    True,
+                    sample_qc_ht.releasable,
+                )
+            )
+
+        gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test, projection=True).ht()
+        gen_anc_ht = get_gen_anc_ht(test=test).ht()
+
+        if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
+            rerun_filtering = False
+        else:
+            rerun_filtering = True
+
+        if args.apply_regressed_filters and rerun_filtering:
+            regressed_filter_ht_path = regressed_filtering(
+                test=test, include_unreleasable_samples=unreleasable_in_regression
+            ).path
+            check_resource_existence(
+                output_step_resources={"regressed_filter_ht": regressed_filter_ht_path},
+                overwrite=overwrite,
+            )
+
+            ht = apply_filter(
+                filtering_method="regressed",
+                apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+                sample_qc_ht=sample_qc_ht,
+                qc_metrics=filtering_qc_metrics,
+                gen_anc_scores_ht=gen_anc_scores_ht,
+                regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
+                include_unreleasable_in_regression=unreleasable_in_regression,
+                include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
+            )
+            ht = ht.annotate_globals(
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
+            )
+            if not exclude_unreleasable_samples_all_steps:
+                ht = ht.annotate_globals(
+                    include_unreleasable_samples=unreleasable_in_regression,
+                    include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
+                )
+            ht.write(regressed_filter_ht_path, overwrite=overwrite)
+
+        if args.apply_stratified_filters and rerun_filtering:
+            stratified_filter_ht_path = stratified_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={
+                    "stratified_filter_ht": stratified_filter_ht_path
+                },
+                overwrite=overwrite,
+            )
+            ht = apply_filter(
+                filtering_method="stratified",
+                apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+                sample_qc_ht=sample_qc_ht,
+                qc_metrics=filtering_qc_metrics,
+                gen_anc_ht=gen_anc_ht,
+                include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
+            )
+            ht = ht.annotate_globals(
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
+            )
+            if not exclude_unreleasable_samples_all_steps:
+                ht = ht.annotate_globals(
+                    include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
+                )
+            ht.write(stratified_filter_ht_path, overwrite=overwrite)
+
+        if args.determine_nearest_neighbors:
+            nn_ht_path = nearest_neighbors(
+                test=test,
+                approximation=nn_approximation,
+                include_unreleasable_samples=not exclude_unreleasable_samples_all_steps,
+            ).path
+            check_resource_existence(
+                output_step_resources={"nn_ht": nn_ht_path},
+                overwrite=overwrite,
+            )
+
+            ht = determine_nearest_neighbors(
+                sample_qc_ht,
+                gen_anc_scores_ht[sample_qc_ht.key].scores,
+                n_pcs=args.nearest_neighbors_gen_anc_n_pcs,
+                n_neighbors=args.n_nearest_neighbors,
+                n_jobs=args.n_jobs,
+                add_neighbor_distances=args.get_neighbor_distances,
+                distance_metric=args.distance_metric,
+                use_approximation=nn_approximation,
+                n_trees=args.n_trees,
+            )
+            ht.annotate_globals(
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
+            ).write(nn_ht_path, overwrite=overwrite)
+
+        if args.apply_nearest_neighbor_filters and rerun_filtering:
+            nn_ht = nearest_neighbors(
+                test=test,
+                approximation=nn_approximation,
+                include_unreleasable_samples=not exclude_unreleasable_samples_all_steps,
+            ).ht()
+            nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={"nn_filter_ht": nn_filter_ht_path},
+                overwrite=overwrite,
+            )
+
+            ht = apply_filter(
+                filtering_method="nearest_neighbors",
+                apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+                sample_qc_ht=sample_qc_ht,
+                qc_metrics=filtering_qc_metrics,
+                nn_ht=nn_ht,
+            )
+            ht.annotate_globals(
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps,
+                nearest_neighbors_approximation=nn_approximation,
+            ).write(nn_filter_ht_path, overwrite=overwrite)
+
+        if args.create_finalized_outlier_filter:
+            final_ht_path = finalized_outlier_filtering(test=test).path
+            check_resource_existence(
+                output_step_resources={"finalized_ht": final_ht_path},
+                overwrite=overwrite,
+            )
+
+            finalized_input_steps = {}
+            if args.apply_regressed_filters:
+                finalized_input_steps["regressed_filter_ht"] = regressed_filtering(
+                    test=test
+                ).ht()
+            if args.apply_stratified_filters:
+                finalized_input_steps["stratified_filter_ht"] = stratified_filtering(
+                    test=test
+                ).ht()
+            if args.apply_nearest_neighbor_filters:
+                finalized_input_steps["nn_filter_ht"] = nearest_neighbors_filtering(
+                    test=test
+                ).ht()
+
+            if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
+                raise ValueError(
+                    "At least one filtering method and relevant options must be supplied "
+                    "when using '--create-finalized-outlier-filter'"
+                )
+
+            # Reformat input step names for use as annotation labels.
+            ht = create_finalized_outlier_filter_ht(
+                finalized_outlier_hts=finalized_input_steps,
+                qc_metrics=args.final_filtering_qc_metrics,
+                ensemble_operator=args.ensemble_method_logical_operator,
+            )
+            ht.write(final_ht_path, overwrite=overwrite)
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("outlier_detection", environment="rwb"))
+
+
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-o",
+        "--overwrite",
+        help="Overwrite output files.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test",
+        help="Test filtering using a random sample of 1%% of the dataset.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--seed",
+        help="Random seed for making random test dataset.",
+        type=int,
+        default=24,
+    )
+    parser.add_argument(
+        "--exclude-unreleasable-samples-all-steps",
+        help=(
+            "Exclude unreleasable samples in all pipeline steps including the nearest "
+            "neighbors determination, sample QC metric regressions, and sample QC "
+            "filtering."
+        ),
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--filtering-qc-metrics",
+        help="List of sample QC metrics to use for filtering.",
+        default=[
+            "n_snp",
+            "n_singleton",
+            "r_ti_tv",
+            "r_insertion_deletion",
+            "n_insertion",
+            "n_deletion",
+            "r_het_hom_var",
+            "n_transition",
+            "n_transversion",
+            "r_ti_tv_singleton",
+            "r_snp_indel",
+        ],
+        type=list,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--apply-n-singleton-filter-to-r-ti-tv-singleton",
+        help=(
+            "Whether to apply the filtering method to only samples with: Number of "
+            "singletons (or n_singleton residuals) > median(number of "
+            "singletons/n_singleton residuals) where the median is computed on only "
+            "samples within the same strata or on only the 50 nearest neighbors."
+            "This option only applies to AoU/v5 genomes."
+        ),
+        action="store_true",
+    )
+
+    joint_qc_args = parser.add_argument_group(
+        "Join gnomAD and AoU sample QC Tables.",
+    )
+    joint_qc_args.add_argument(
+        "--join-sample-qc-hts",
+        help="Join gnomAD and AoU sample QC Tables.",
+        action="store_true",
+    )
+
+    stratified_args = parser.add_argument_group(
+        "Apply stratified filtering method.",
+        "Arguments specific to stratified outlier filtering.",
+    )
+    stratified_args.add_argument(
+        "--apply-stratified-filters",
+        help="Apply stratified outlier filtering method.",
+        action="store_true",
+    )
+    unreleasable_cutoffs = stratified_args.add_argument(
+        "--include-unreleasable-in-cutoff-determination",
+        help=(
+            "Whether to include unreleasable samples when determining the sample QC "
+            "filtering MAD cutoffs."
+        ),
+        action="store_true",
+    )
+
+    regressed_args = parser.add_argument_group(
+        "Apply regression filtering method.",
+        "Arguments specific to regression outlier filtering.",
+    )
+    regressed_args.add_argument(
+        "--apply-regressed-filters",
+        help="Apply regression outlier filtering method.",
+        action="store_true",
+    )
+    regressed_args.add_argument(
+        "--regress-gen_anc-n-pcs",
+        help="Number of genetic ancestry PCs to use for sample QC metric regressions.",
+        default=20,
+        type=int,
+    )
+    regressed_args.add_argument(
+        "--include-unreleasable-in-regression",
+        help="Whether to include unreleasable samples in sample QC metric regressions.",
+        action="store_true",
+    )
+    # Indicate that the --include-unreleasable-in-cutoff-determination option applies
+    # to the "regressed_args" argument group as well as the "stratified_args" group.
+    regressed_args._group_actions.append(unreleasable_cutoffs)
+
+    nn_args = parser.add_argument_group(
+        "Determine nearest neighbors for each sample.",
+        "Arguments specific to determining nearest neighbors.",
+    )
+    nn_args.add_argument(
+        "--determine-nearest-neighbors",
+        help="Determine nearest neighbors for each sample.",
+        action="store_true",
+    )
+    nn_args.add_argument(
+        "--nearest-neighbors-gen_anc-n-pcs",
+        help="Number of genetic ancestry PCs to use for nearest neighbor determination.",
+        default=20,
+        type=int,
+    )
+    nn_args.add_argument(
+        "--n-nearest-neighbors",
+        help="Number of nearest neighbors to report for each sample.",
+        default=50,
+        type=int,
+    )
+    nn_args.add_argument(
+        "--n-jobs",
+        help=(
+            "Number of threads to use when finding the nearest neighbors. Default "
+            "is -1 which uses the number of CPUs on the head node -1."
+        ),
+        default=-1,
+        type=int,
+    )
+    nn_args.add_argument(
+        "--get-neighbor-distances",
+        help="Return distances of the nearest neighbors too.",
+        action="store_true",
+    )
+    nn_args.add_argument(
+        "--distance-metric",
+        help="Distance metric to use for nearest neighbor determination.",
+        default="euclidean",
+        type=str,
+        choices=[
+            "euclidean",
+            "cityblock",
+            "cosine",
+            "haversine",
+            "l1",
+            "l2",
+            "manhattan",
+            "angular",
+            "hamming",
+            "dot",
+        ],
+    )
+    nn_approx = nn_args.add_argument(
+        "--use-nearest-neighbors-approximation",
+        help=(
+            "Whether to use the package Annoy to determine approximate nearest "
+            "neighbors instead of using scikit-learn's `NearestNeighbors`. This method "
+            "is faster, but only needed for very large datasets, for instance "
+            "> 500,000 samples."
+        ),
+        action="store_true",
+    )
+    nn_args.add_argument(
+        "--n-trees",
+        help=(
+            "Number of trees to build in the Annoy approximate nearest neighbors "
+            "method. Only used if 'use-nearest-neighbors-approximation' is set. "
+            "'n_trees' is provided during build time and affects the build time and "
+            "the index size. A larger value will give more accurate results, but "
+            "larger indexes."
+        ),
+        default=10,
+        type=int,
+    )
+
+    nn_filter_args = parser.add_argument_group(
+        "Apply nearest neighbors filtering method.",
+        "Arguments specific to nearest neighbors outlier filtering.",
+    )
+    nn_filter_args.add_argument(
+        "--apply-nearest-neighbor-filters",
+        help="Apply nearest neighbors outlier filtering method.",
+        action="store_true",
+    )
+    # Indicate that the --use-nearest-neighbors-approximation options apply to the
+    # "nn_filter_args" argument group as well as the "nn_args" group.
+    nn_filter_args._group_actions.append(nn_approx)
+
+    final_filter_args = parser.add_argument_group(
+        "Create finalized outlier filtering Table.",
+        "Arguments for finalizing outlier filtering.",
+    )
+    final_filter_args.add_argument(
+        "--create-finalized-outlier-filter",
+        help=(
+            "Create the finalized outlier filtering Table. To specify filtering method "
+            "to use for the finalized outlier filtering Table, use the parameter "
+            "options from that method. e.g. To use the stratified outlier filtering "
+            "with genetic ancestry stratification include the following arguments: "
+            "--apply-stratified-filters. If an ensemble between "
+            "two methods is desired, include arguments for both. The filtering Table "
+            "for each method requested must already exist, the outlier filtering will "
+            "not be rerun."
+        ),
+        action="store_true",
+    )
+    final_filter_args.add_argument(
+        "--use-existing-filter-tables",
+        help=(
+            "Whether to use existing filter Tables if they exist instead of re-running "
+            "any specified filtering methods before creating the finalized outlier "
+            "filtering Table."
+        ),
+        action="store_true",
+    )
+    final_filter_args.add_argument(
+        "--final-filtering-qc-metrics",
+        help=(
+            "List of sample QC metrics to use for the finalized outlier filtering. "
+            "Note: This must be the same as, or a subset of `--filtering-qc-metrics` "
+            "used when generating the filtering Table(s) desired for final filtering."
+        ),
+        default=[
+            "r_ti_tv",
+            "r_insertion_deletion",
+            "r_het_hom_var",
+            "r_ti_tv_singleton",
+        ],
+        type=list,
+        nargs="+",
+    )
+    final_filter_args.add_argument(
+        "--ensemble-method-logical-operator",
+        help=(
+            "Logical operator to use for combining filtering methods for the ensemble "
+            "method."
+        ),
+        type=str,
+        default="and",
+        choices=["and", "or"],
+    )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    args = parser.parse_args()
+    main(args)
