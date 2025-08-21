@@ -357,7 +357,7 @@ def main(args):
         )
 
         if args.write_downsampling_ht:
-            downsampling_ht_path = get_downsampling(test=test).path()
+            downsampling_ht_path = get_downsampling(test=test).path
             check_resource_existence(
                 output_step_resources={"downsampling_ht": downsampling_ht_path},
                 overwrite=overwrite,
