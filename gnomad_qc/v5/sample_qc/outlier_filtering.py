@@ -59,7 +59,6 @@ def join_sample_qc_hts(
     :param v4_meta_ht: v4 sample QC metadata HT.
     :param v5_hf_ht: v5 hard filtered samples HT.
     :param sample_collisions: Table with sample collisions.
-    :param meta_ht: Project metadata HT.
     :return: Joint v4 + v5 sample QC HT.
     """
     v5_sample_qc_ht = v5_sample_qc_ht.filter(
