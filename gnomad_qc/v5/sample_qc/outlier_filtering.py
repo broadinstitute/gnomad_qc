@@ -17,6 +17,7 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.sample_qc import get_sample_qc as v4_get_sample_qc
 from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v4.resources.sample_qc import get_pop_ht as v4_get_pop_ht
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
