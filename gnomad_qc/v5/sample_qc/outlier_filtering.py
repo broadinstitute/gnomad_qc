@@ -477,7 +477,7 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
     sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
-    ht = ht.filter(ht.project == "aou")
+    ht = ht.filter(hl.is_defined(sample_qc_ht[ht.key]))
 
     # Extract the strata annotations from input Table globals if present (genetic ancestry group for
     # stratified filtering method).
