@@ -182,8 +182,7 @@ def apply_filter(
         v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
-        v4_ht = ht.filter(hl.is_missing(ht.r_ti_tv_singleton))
-        ht = v5_ht.join(v4_ht, how="outer")
+        ht = ht.annotate(**v5_ht[ht.key])
     ht = ht.annotate_globals(
         apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
     )
