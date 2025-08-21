@@ -27,12 +27,14 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
 from gnomad_qc.v4.resources.meta import meta
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
 from gnomad_qc.v5.resources.annotations import get_downsampling
-from gnomad_qc.v5.resources.basics import get_logging_path  # get_aou_vds
+from gnomad_qc.v5.resources.basics import (  # get_aou_vds
+    get_gnomad_v4_genomes_vds,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta
 
@@ -388,7 +390,7 @@ def main(args):
 
             vds = get_gnomad_v4_genomes_vds(
                 release_only=True,
-                remove_hard_filtered_samples=False,
+                remove_hard_filtered_samples=True,
                 test=test,
                 filter_partitions=range(2) if test_2_partitions else None,
                 annotate_meta=True,
