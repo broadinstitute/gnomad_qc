@@ -1,4 +1,9 @@
-"""Script to filter the gnomAD v4 VariantDataset to a subset of specified samples."""
+"""
+Script to filter the gnomAD v4 VariantDataset to a subset of specified samples.
+
+Run this script on Hail version 0.2.120. Higher versions of hail greatly
+increase runtime and cost and thus we enforce this version.
+"""
 
 import argparse
 import copy
@@ -335,10 +340,7 @@ def process_metadata_export(
 
 def main(args):
     """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
-    logger.info(
-        "Running gnomAD v4 subset script. Make sure you are using a n1-highmem-32 "
-        "driver, anything less than that will hit an OOM error..."
-    )
+    logger.info("Running gnomAD v4 subset script.")
     config = ProcessingConfig.from_args(args)
 
     hl.init(
@@ -346,6 +348,12 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir=config.tmp_dir,
     )
+
+    if not hl.version().startswith("0.2.120"):
+        raise ValueError(
+            "This script must be run on Hail version 0.2.120. Higher versions of hail "
+            "greatly increase runtime and cost and thus we enforce this version."
+        )
 
     try:
         logger.info("Getting the v4 %s dataset...", config.data_type)
@@ -442,7 +450,7 @@ def main(args):
 
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("subset"))
+        hl.copy_log(f"{config.output_path}/v4_subset.log")
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
