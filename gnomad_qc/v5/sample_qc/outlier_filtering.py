@@ -871,8 +871,10 @@ def main(args):
 
         gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test, projection=True).ht()
         # TODO: remove code below (added because gen anc HT at tmp path was written in July)
-        # and rename v5_gen_anc_ht to gen_anc_ht
-        v5_gen_anc_ht = get_gen_anc_ht(test=test).ht()
+        # gen_anc_ht = get_gen_anc_ht(test=test).ht()
+        v5_gen_anc_ht = hl.read_table(
+            f"gs://{WORKSPACE_BUCKET}/tmp/projection_gen_anc_ht.ht"
+        )
         v4_gen_anc_ht = v4_get_pop_ht().ht()
         v4_gen_anc_ht = v4_gen_anc_ht.rename({"pop": "gen_anc"}).drop(
             "training_sample", "evaluation_sample", "training_pop"
