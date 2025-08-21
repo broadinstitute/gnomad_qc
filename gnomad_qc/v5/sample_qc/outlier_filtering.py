@@ -386,6 +386,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     """
     Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.
 
+    This function only applies to AoU/v5 genomes.
+
     This function takes a Table (`ht`) returned from one of the filtering functions:
 
         - `apply_stratified_filtering_method`
@@ -461,6 +463,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
         raise ValueError(
             f"Filtering method must be one of: {', '.join(filtering_methods)}"
         )
+    ht = ht.filter(ht.project == "aou")
+    sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
 
     # Setup repeatedly used variables.
     median_filter_metric = "n_singleton"
@@ -1094,6 +1098,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "singletons (or n_singleton residuals) > median(number of "
             "singletons/n_singleton residuals) where the median is computed on only "
             "samples within the same strata or on only the 50 nearest neighbors."
+            "This option only applies to AoU/v5 genomes."
         ),
         action="store_true",
     )
