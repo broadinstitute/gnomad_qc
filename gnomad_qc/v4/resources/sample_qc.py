@@ -752,6 +752,10 @@ def per_pop_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     return f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
 
 
+# Path to ONNX RF model used for inferring genetic ancestry.
+onnx_rf = "gs://gcp-public-data--gnomad/release/4.0/pca/gnomad.v4.0.RF_fit.onnx"
+
+
 ######################################################################
 # Outlier detection resources
 ######################################################################

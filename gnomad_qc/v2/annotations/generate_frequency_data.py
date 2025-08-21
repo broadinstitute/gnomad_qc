@@ -3,7 +3,7 @@ import logging
 import sys
 from collections import Counter
 
-from gnomad.utils.annotations import pop_max_expr, project_max_expr
+from gnomad.utils.annotations import grpmax_expr, project_max_expr
 from gnomad.utils.file_utils import write_temp_gcs
 from gnomad.utils.slack import slack_notifications
 
@@ -252,8 +252,11 @@ def generate_frequency_data(
     [pops.discard(x) for x in POPS_TO_REMOVE_FOR_POPMAX]
 
     mt = mt.annotate_rows(
-        popmax=pop_max_expr(
-            mt.freq, mt.freq_meta, pops_to_exclude=set(POPS_TO_REMOVE_FOR_POPMAX)
+        popmax=grpmax_expr(
+            mt.freq,
+            mt.freq_meta,
+            gen_anc_groups_to_exclude=set(POPS_TO_REMOVE_FOR_POPMAX),
+            gen_anc_label="pop",
         ),
         faf=add_faf_expr(mt.freq, mt.freq_meta, mt.locus, populations=pops),
         project_max=project_max_expr(mt.project_id, mt.GT, mt.alleles),

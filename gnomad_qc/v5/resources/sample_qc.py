@@ -193,6 +193,42 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
     )
 
 
+def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.pca.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def sample_rankings(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for sample rankings for genetic ancestry PCA.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.pca.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Genetic ancestry inference resources
 ######################################################################
@@ -249,6 +285,7 @@ def genetic_ancestry_pca_scores(
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
+    projection: bool = False,
 ) -> VersionedTableResource:
     """
     Get the genetic ancestry PCA scores VersionedTableResource.
@@ -257,6 +294,7 @@ def genetic_ancestry_pca_scores(
         that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :param projection: Whether the scores ht includes projection scores instead of just original scores.
     :return: Genetic ancestry PCA scores.
     """
     return VersionedTableResource(
@@ -265,7 +303,7 @@ def genetic_ancestry_pca_scores(
             version: TableResource(
                 _get_genetic_ancestry_pca_ht_path(
                     "scores", version, include_unreleasable_samples, test, data_type
-                )
+                ).replace(".ht", ".projection.ht" if projection else ".ht")
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -355,7 +393,7 @@ def get_gen_anc_pr_ht(
     )
 
 
-def per_gen_anc_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
+def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     """
     Get path to JSON file containing per genetic ancestry group minimum RF probabilities.
 
