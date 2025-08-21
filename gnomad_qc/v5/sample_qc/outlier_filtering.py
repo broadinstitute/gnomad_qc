@@ -802,7 +802,7 @@ def main(args):
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     unreleasable_in_cutoffs = args.include_unreleasable_in_cutoff_determination
     unreleasable_in_regression = args.include_unreleasable_in_regression
-    exclude_releasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
+    exclude_unreleasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
     nn_approximation = args.use_nearest_neighbors_approximation
 
     try:
@@ -856,7 +856,7 @@ def main(args):
         # Add releasable information to the sample QC Table if unreleasable samples are
         # included, otherwise filter to only releasable samples.
         meta_ht = project_meta.ht()
-        if exclude_releasable_samples_all_steps:
+        if exclude_unreleasable_samples_all_steps:
             # The releasable field for AoU samples is missing.
             sample_qc_ht = sample_qc_ht.filter(
                 (meta_ht[sample_qc_ht.key].releasable)
@@ -902,9 +902,9 @@ def main(args):
                 include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
             )
             ht = ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_releasable_samples_all_steps
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
             )
-            if not exclude_releasable_samples_all_steps:
+            if not exclude_unreleasable_samples_all_steps:
                 ht = ht.annotate_globals(
                     include_unreleasable_samples=unreleasable_in_regression,
                     include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
@@ -928,9 +928,9 @@ def main(args):
                 include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
             )
             ht = ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_releasable_samples_all_steps
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
             )
-            if not exclude_releasable_samples_all_steps:
+            if not exclude_unreleasable_samples_all_steps:
                 ht = ht.annotate_globals(
                     include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
                 )
@@ -940,7 +940,7 @@ def main(args):
             nn_ht_path = nearest_neighbors(
                 test=test,
                 approximation=nn_approximation,
-                include_unreleasable_samples=not exclude_releasable_samples_all_steps,
+                include_unreleasable_samples=not exclude_unreleasable_samples_all_steps,
             ).path
             check_resource_existence(
                 output_step_resources={"nn_ht": nn_ht_path},
@@ -959,7 +959,7 @@ def main(args):
                 n_trees=args.n_trees,
             )
             ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_releasable_samples_all_steps
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
             ).write(nn_ht_path, overwrite=overwrite)
 
         if args.apply_nearest_neighbor_filters and rerun_filtering:
@@ -978,7 +978,7 @@ def main(args):
                 nn_ht=nn_ht,
             )
             ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_releasable_samples_all_steps,
+                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps,
                 nearest_neighbors_approximation=nn_approximation,
             ).write(nn_filter_ht_path, overwrite=overwrite)
 
