@@ -43,8 +43,7 @@ logger = logging.getLogger("coverage_and_an")
 logger.setLevel(logging.INFO)
 
 
-def get_genomes_group_membership_ht(
-) -> hl.Table:
+def get_genomes_group_membership_ht() -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
 
@@ -315,7 +314,8 @@ def main(args):
     n_partitions = args.n_partitions
 
     try:
-        # Retrieve raw coverage table path here because it is used in all of the script's run options.
+        # Retrieve raw coverage table path here because it is used in all of the
+        # script's run options.
         cov_and_an_ht_path = release_coverage_path(
             public=False,
             test=test,
@@ -326,7 +326,8 @@ def main(args):
         )
 
         if args.compute_all_cov_release_stats_ht:
-            # Context Table is used because it contains every locus in the GRCh38 reference as opposed to a ref-blocked VDS reference dataset.
+            # Context Table is used because it contains every locus in the GRCh38
+            # reference as opposed to a ref-blocked VDS reference dataset.
             ref_ht = vep_context.versions["105"].ht()
             if test_chr22_chrx_chry:
                 chrom = ["chr22", "chrX", "chrY"]
@@ -361,9 +362,7 @@ def main(args):
             check_resource_existence(
                 output_step_resources={"coverage_and_an_ht": cov_and_an_ht_path}
             )
-            group_membership_ht = get_genomes_group_membership_ht(
-                meta(data_type="genomes").ht(),
-            )
+            group_membership_ht = get_genomes_group_membership_ht()
             group_membership_ht = group_membership_ht.checkpoint(
                 new_temp_file("group_membership", "ht")
             )
