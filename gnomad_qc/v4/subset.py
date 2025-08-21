@@ -1,6 +1,7 @@
 """Script to filter the gnomAD v4 VariantDataset to a subset of specified samples."""
 
 import argparse
+import copy
 import logging
 from dataclasses import dataclass
 from typing import List, Optional, Union
@@ -316,11 +317,16 @@ def process_metadata_export(
     :return: The subsetted metadata Table.
     """
     meta_ht = meta_ht.semi_join(vmt.cols())
+    data_to_drop = []
 
-    if config.keep_data_paths:
-        data_to_drop = {"ukb_meta"}
-    else:
-        data_to_drop = {"ukb_meta", "cram", "gvcf"}
+    if config.data_type == "exomes":
+        data_to_drop.append("ukb_meta")
+
+    if not config.keep_data_paths:
+        if config.data_type == "exomes":
+            data_to_drop.extend(["cram", "gvcf"])
+        else:
+            data_to_drop.append("cram_path")
 
     meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
 
@@ -411,7 +417,9 @@ def main(args):
                 else mtds.n_partitions()
             )
             if config.split_multi:
-                FORMAT_DICT.pop("RGQ")
+                format_dict = copy.deepcopy(FORMAT_DICT)
+                print(format_dict)
+                format_dict.pop("RGQ")
 
             logger.info("Exporting VCF subset...")
             hl.export_vcf(
@@ -424,7 +432,7 @@ def main(args):
 
         if config.export_meta:
             logger.info("Subsetting and exporting metadata...")
-            meta_ht = process_metadata_export(meta_ht, vds, config)
+            meta_ht = process_metadata_export(meta_ht, vds.variant_data, config)
             meta_ht = meta_ht.checkpoint(
                 f"{config.output_path}/metadata.ht", overwrite=config.overwrite
             )
