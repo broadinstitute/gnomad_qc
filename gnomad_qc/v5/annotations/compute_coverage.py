@@ -50,7 +50,7 @@ def get_genomes_group_membership_ht() -> hl.Table:
     :return: Group membership HT.
     """
     # Filter to release samples.
-    meta = meta(data_type="genomes").ht()
+    meta_ht = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter(meta_ht.release)
 
     ht = generate_freq_group_membership_array(
