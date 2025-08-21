@@ -9,8 +9,10 @@ from gnomad.resources.grch38.gnomad import CURRENT_GENOME_AN_RELEASE as v4_AN_RE
 from gnomad.resources.grch38.gnomad import (
     CURRENT_GENOME_COVERAGE_RELEASE as v4_COVERAGE_RELEASE,
 )
+from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS
 from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.annotations import (
+    annotate_downsamplings,
     build_freq_stratification_list,
     generate_freq_group_membership_array,
     merge_array_expressions,
@@ -28,8 +30,10 @@ from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
 from gnomad_qc.v4.resources.meta import meta
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
+from gnomad_qc.v5.resources.annotations import get_downsampling
 from gnomad_qc.v5.resources.basics import get_logging_path  # get_aou_vds
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import project_meta
 
 # from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
@@ -41,6 +45,28 @@ from gnomad_qc.v5.resources.release import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage_and_an")
 logger.setLevel(logging.INFO)
+
+
+def get_downsampling_ht(ht: hl.Table) -> hl.Table:
+    """
+    Get Table with downsampling groups for all samples.
+
+    v5 downsampling is only applied to the AoU dataset.
+    Groups:
+        - 10,000
+        - 100,000
+        - Genetic ancestry group sizes for AFR, AMR, NFE
+
+    :param ht: Input Table.
+    :return: Table with downsampling groups.
+    """
+    logger.info(
+        "Determining downsampling groups for AoU...",
+    )
+    # TODO: Update to v5 downsampling.
+    downsamplings = DOWNSAMPLINGS["v4"]
+    ds_ht = annotate_downsamplings(ht, downsamplings)
+    return ds_ht
 
 
 def get_genomes_group_membership_ht() -> hl.Table:
@@ -325,6 +351,21 @@ def main(args):
             environment="rwb",
         )
 
+        if args.write_downsampling_ht:
+            downsampling_ht_path = get_downsampling(test=test).path()
+            check_resource_existence(
+                output_step_resources={"downsampling_ht": downsampling_ht_path},
+                overwrite=overwrite,
+            )
+            # TODO: Update this to filter to high quality samples once sample QC is
+            # complete.
+            ht = project_meta.ht()
+            if test:
+                ht = ht.filter(ht.project == "aou")
+                ht = ht.head(200000)
+            ds_ht = get_downsampling_ht(ht)
+            ds_ht.write(downsampling_ht_path, overwrite=overwrite)
+
         if args.compute_all_cov_release_stats_ht:
             # Context Table is used because it contains every locus in the GRCh38
             # reference as opposed to a ref-blocked VDS reference dataset.
@@ -506,6 +547,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to use for the output Table.",
         type=int,
         default=5000,
+    )
+    parser.add_argument(
+        "--write-downsampling-ht",
+        help="Write v5 downsampling HT.",
+        action="store_true",
     )
     parser.add_argument(
         "--compute-all-cov-release-stats-ht",
