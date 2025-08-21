@@ -72,6 +72,7 @@ def join_sample_qc_hts(
         sample_collisions=sample_collisions,
         project="aou",
     )
+    v5_sample_qc_ht = v5_sample_qc_ht.annotate(project="aou")
 
     # Use v4 metadata to remove hard filtered samples.
     v4_sample_qc_ht = v4_sample_qc_ht.filter(
@@ -92,12 +93,13 @@ def join_sample_qc_hts(
         sample_collisions=sample_collisions,
         project="gnomad",
     )
+    v4_sample_qc_ht = v4_sample_qc_ht.annotate(project="gnomad")
 
     return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
 
 
 def get_sample_qc_ht(
-    sample_qc_ht: hl.Table, meta_ht: hl.Table, test: bool = False, seed: int = 24
+    sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
 ) -> hl.Table:
     """
     Get sample QC Table with modifications needed for outlier filtering.
@@ -121,7 +123,6 @@ def get_sample_qc_ht(
         r_snp_indel=sample_qc_ht.n_snp
         / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
     )
-    sample_qc_ht = sample_qc_ht.annotate(project=meta_ht[sample_qc_ht.key].project)
 
     return sample_qc_ht.select_globals()
 
@@ -808,7 +809,6 @@ def main(args):
     nn_approximation = args.use_nearest_neighbors_approximation
 
     try:
-        meta_ht = project_meta.ht()
         if apply_r_ti_tv_singleton_filter:
             err_msg = ""
             for metric in {"n_singleton", "r_ti_tv_singleton"}:
@@ -852,13 +852,13 @@ def main(args):
 
         sample_qc_ht = get_sample_qc_ht(
             sample_qc_ht=get_joint_sample_qc(test=test).ht(),
-            meta_ht=meta_ht,
             test=test,
             seed=args.seed,
         )
 
         # Add releasable information to the sample QC Table if unreleasable samples are
         # included, otherwise filter to only releasable samples.
+        meta_ht = project_meta.ht()
         if exclude_releasable_samples_all_steps:
             # The releasable field for AoU samples is missing.
             sample_qc_ht = sample_qc_ht.filter(
