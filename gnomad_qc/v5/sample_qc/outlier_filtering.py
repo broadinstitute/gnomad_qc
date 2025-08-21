@@ -47,7 +47,6 @@ def join_sample_qc_hts(
     v4_meta_ht: hl.Table,
     v5_hf_ht: hl.Table,
     sample_collisions: hl.Table,
-    meta_ht: hl.Table,
 ) -> hl.Table:
     """
     Join v4 and v5 sample QC HTs.
@@ -94,9 +93,7 @@ def join_sample_qc_hts(
         project="gnomad",
     )
 
-    joint_ht = v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
-    joint_ht = joint_ht.annotate(project=meta_ht[joint_ht.key].project)
-    return joint_ht
+    return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
 
 
 def get_sample_qc_ht(
@@ -135,6 +132,7 @@ def apply_filter(
     apply_r_ti_tv_singleton_filter: bool = False,
     gen_anc_scores_ht: Optional[hl.Table] = None,
     gen_anc_ht: Optional[hl.Table] = None,
+    meta_ht: Optional[hl.Table] = None,
     **kwargs: Any,
 ) -> hl.Table:
     """
@@ -149,6 +147,7 @@ def apply_filter(
         median(comparison group number of singletons/n_singleton residuals).
     :param gen_anc_scores_ht: Optional Table with genetic ancestry PCA scores.
     :param gen_anc_ht: Optional Table with genetic ancestry group assignment.
+    :param meta_ht: Optional Table with project metadata.
     :param kwargs: Additional parameters to pass to the requested filtering method
         function.
     :return: Table with outlier filter annotations.
@@ -180,12 +179,18 @@ def apply_filter(
     # TODO: Decide if this is still relevant
     # Apply the n_singleton median filter for the r_ti_tv_singleton filter.
     if apply_r_ti_tv_singleton_filter:
+        if meta_ht is None:
+            raise ValueError("meta_ht is required for n_singleton median filtering.")
         ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
+
+        ht = ht.annotate(project=meta_ht[ht.key].project)
+        sample_qc_ht = sample_qc_ht.annotate(project=meta_ht[sample_qc_ht.key].project)
+        v5_ht = ht.filter(ht.project == "aou")
+        sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
         ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
         v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
-        v4_ht = ht.filter(ht.project == "gnomad")
         ht = v5_ht.join(v4_ht, how="outer")
     ht = ht.annotate_globals(
         apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
@@ -464,8 +469,6 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
         raise ValueError(
             f"Filtering method must be one of: {', '.join(filtering_methods)}"
         )
-    ht = ht.filter(ht.project == "aou")
-    sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
 
     # Setup repeatedly used variables.
     median_filter_metric = "n_singleton"
@@ -849,7 +852,6 @@ def main(args):
                 v4_meta_ht=v4_meta_ht,
                 v5_hf_ht=v5_hf_samples_ht,
                 sample_collisions=sample_id_collisions.ht(),
-                meta_ht=meta_ht,
             )
             joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
 
