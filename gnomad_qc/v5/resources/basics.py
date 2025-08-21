@@ -25,6 +25,7 @@ from gnomad_qc.v5.resources.constants import (
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
     low_quality_samples,
+    project_meta,
     samples_to_exclude,
 )
 
@@ -259,6 +260,101 @@ def get_aou_vds(
         vmt = vmt.checkpoint(new_temp_file("vds_loading.variant_data", "mt"))
 
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+    return vds
+
+
+def get_gnomad_v4_genomes_vds(
+    split: bool = False,
+    remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
+    annotate_meta: bool = False,
+    test: bool = False,
+    filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
+    autosomes_only: bool = False,
+    sex_chr_only: bool = False,
+    filter_variant_ht: Optional[hl.Table] = None,
+    filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
+    split_reference_blocks: bool = True,
+    entries_to_keep: Optional[List[str]] = None,
+    annotate_het_non_ref: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+    filter_samples_ht: Optional[hl.Table] = None,
+) -> hl.vds.VariantDataset:
+    """
+    Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
+
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS
+        rather than grab an already split VDS.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after sample QC).
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present).
+    :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in
+        'meta' column.
+    :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions
+        in the provided list.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
+    :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
+        False.
+    :param sex_chr_only: Whether to filter the VDS to sex chromosomes only. Default is
+        False.
+    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of
+        variants. Only supported when splitting the VDS.
+    :param filter_intervals: Optional argument to filter the VDS to specific intervals.
+    :param split_reference_blocks: Whether to split the reference data at the edges of
+        the intervals defined by `filter_intervals`. Default is True.
+    :param entries_to_keep: Optional argument to keep only specific entries in the
+        returned VDS. If splitting the VDS, use the global entries (e.g. 'GT') instead
+        of the local entries (e.g. 'LGT') to keep.
+    :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as
+        '_het_non_ref') to the variant data. Default is False.
+    :param naive_coalesce_partitions: Optional argument to coalesce the VDS to a
+        specific number of partitions using naive coalesce.
+    :param filter_samples_ht: Optional Table of samples to filter the VDS to.
+    :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
+    """
+    import gnomad_qc.v3.resources.basics as v3_basics
+    from gnomad_qc.v5.resources.sample_qc import related_samples_to_drop
+
+    vds = v3_basics.get_gnomad_v3_vds(
+        split=split,
+        remove_hard_filtered_samples=remove_hard_filtered_samples,
+        release_only=False,
+        samples_meta=False,
+        test=test,
+        filter_partitions=filter_partitions,
+        chrom=chrom,
+        autosomes_only=autosomes_only,
+        sex_chr_only=sex_chr_only,
+        filter_variant_ht=filter_variant_ht,
+        filter_intervals=filter_intervals,
+        split_reference_blocks=split_reference_blocks,
+        entries_to_keep=entries_to_keep,
+        annotate_het_non_ref=annotate_het_non_ref,
+        naive_coalesce_partitions=naive_coalesce_partitions,
+        filter_samples_ht=filter_samples_ht,
+    )
+
+    if annotate_meta or release_only:
+        if annotate_meta:
+            meta_ht = project_meta.ht()
+            vd = vds.variant_data
+            vds = hl.vds.VariantDataset(
+                vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
+            )
+        if release_only:
+            vds = hl.vds.filter_samples(
+                vds,
+                meta_ht.filter(meta_ht.release),
+            )
+            vds = hl.vds.filter_samples(
+                vds,
+                related_samples_to_drop().ht(),
+                keep=False,
+            )
 
     return vds
 
