@@ -963,7 +963,11 @@ def main(args):
             ).write(nn_ht_path, overwrite=overwrite)
 
         if args.apply_nearest_neighbor_filters and rerun_filtering:
-            nn_ht = nearest_neighbors(test=test, approximation=nn_approximation).ht()
+            nn_ht = nearest_neighbors(
+                test=test,
+                approximation=nn_approximation,
+                include_unreleasable_samples=not exclude_unreleasable_samples_all_steps,
+            ).ht()
             nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
             check_resource_existence(
                 output_step_resources={"nn_filter_ht": nn_filter_ht_path},
