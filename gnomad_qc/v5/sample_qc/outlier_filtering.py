@@ -185,12 +185,11 @@ def apply_filter(
 
         ht = ht.annotate(project=meta_ht[ht.key].project)
         sample_qc_ht = sample_qc_ht.annotate(project=meta_ht[sample_qc_ht.key].project)
-        v5_ht = ht.filter(ht.project == "aou")
-        sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
         ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
         v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
+        v4_ht = ht.filter(ht.project == "gnomad")
         ht = v5_ht.join(v4_ht, how="outer")
     ht = ht.annotate_globals(
         apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
@@ -483,6 +482,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
 
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
+    sample_qc_ht = sample_qc_ht.filter(sample_qc_ht.project == "aou")
+    ht = ht.filter(ht.project == "aou")
 
     # Extract the strata annotations from input Table globals if present (genetic ancestry group for
     # stratified filtering method).
