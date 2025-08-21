@@ -412,7 +412,8 @@ def main(args):
                 output_step_resources={
                     "group_membership_ht": group_membership_ht_path,
                     "coverage_and_an_ht": cov_and_an_ht_path,
-                }
+                },
+                overwrite=overwrite,
             )
             group_membership_ht = get_genomes_group_membership_ht()
             group_membership_ht = group_membership_ht.checkpoint(
@@ -445,6 +446,7 @@ def main(args):
                     "cov_release_ht": cov_ht_path,
                     "cov_tsv": cov_tsv_path,
                 },
+                overwrite=overwrite,
             )
 
             logger.info("Exporting coverage HT and TSV...")
@@ -486,6 +488,7 @@ def main(args):
                     "an_release_ht": an_ht_path,
                     "an_release_tsv": an_tsv_path,
                 },
+                overwrite=overwrite,
             )
 
             logger.info("Exporting AN HT and TSV...")
