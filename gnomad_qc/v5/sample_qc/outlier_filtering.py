@@ -97,7 +97,7 @@ def join_sample_qc_hts(
 
 
 def get_sample_qc_ht(
-    sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
+    sample_qc_ht: hl.Table, meta_ht: hl.Table, test: bool = False, seed: int = 24
 ) -> hl.Table:
     """
     Get sample QC Table with modifications needed for outlier filtering.
@@ -116,11 +116,12 @@ def get_sample_qc_ht(
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
 
-    # Add 'r_snp_indel' annotation the sample QC HT.
+    # Add 'r_snp_indel' and project annotations to the sample QC HT.
     sample_qc_ht = sample_qc_ht.annotate(
         r_snp_indel=sample_qc_ht.n_snp
         / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
     )
+    sample_qc_ht = sample_qc_ht.annotate(project=meta_ht[sample_qc_ht.key].project)
 
     return sample_qc_ht.select_globals()
 
@@ -132,7 +133,6 @@ def apply_filter(
     apply_r_ti_tv_singleton_filter: bool = False,
     gen_anc_scores_ht: Optional[hl.Table] = None,
     gen_anc_ht: Optional[hl.Table] = None,
-    meta_ht: Optional[hl.Table] = None,
     **kwargs: Any,
 ) -> hl.Table:
     """
@@ -147,7 +147,6 @@ def apply_filter(
         median(comparison group number of singletons/n_singleton residuals).
     :param gen_anc_scores_ht: Optional Table with genetic ancestry PCA scores.
     :param gen_anc_ht: Optional Table with genetic ancestry group assignment.
-    :param meta_ht: Optional Table with project metadata.
     :param kwargs: Additional parameters to pass to the requested filtering method
         function.
     :return: Table with outlier filter annotations.
@@ -179,12 +178,7 @@ def apply_filter(
     # TODO: Decide if this is still relevant
     # Apply the n_singleton median filter for the r_ti_tv_singleton filter.
     if apply_r_ti_tv_singleton_filter:
-        if meta_ht is None:
-            raise ValueError("meta_ht is required for n_singleton median filtering.")
         ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
-
-        ht = ht.annotate(project=meta_ht[ht.key].project)
-        sample_qc_ht = sample_qc_ht.annotate(project=meta_ht[sample_qc_ht.key].project)
         ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
         v5_ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
@@ -858,6 +852,7 @@ def main(args):
 
         sample_qc_ht = get_sample_qc_ht(
             sample_qc_ht=get_joint_sample_qc(test=test).ht(),
+            meta_ht=meta_ht,
             test=test,
             seed=args.seed,
         )
@@ -908,7 +903,6 @@ def main(args):
                 regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
                 include_unreleasable_in_regression=unreleasable_in_regression,
                 include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
-                meta_ht=meta_ht,
             )
             ht = ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps
@@ -935,7 +929,6 @@ def main(args):
                 qc_metrics=filtering_qc_metrics,
                 gen_anc_ht=gen_anc_ht,
                 include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
-                meta_ht=meta_ht,
             )
             ht = ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps
@@ -967,7 +960,6 @@ def main(args):
                 distance_metric=args.distance_metric,
                 use_approximation=nn_approximation,
                 n_trees=args.n_trees,
-                meta_ht=meta_ht,
             )
             ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps
@@ -987,7 +979,6 @@ def main(args):
                 sample_qc_ht=sample_qc_ht,
                 qc_metrics=filtering_qc_metrics,
                 nn_ht=nn_ht,
-                meta_ht=meta_ht,
             )
             ht.annotate_globals(
                 exclude_unreleasable_samples=exclude_releasable_samples_all_steps,
