@@ -72,18 +72,16 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     return ds_ht
 
 
-def get_genomes_group_membership_ht() -> hl.Table:
+def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
 
+    :param meta_ht: Meta HT.
+    :param ds_ht: Downsampling HT.
     :return: Group membership HT.
     """
     # Filter to release samples.
-    meta_ht = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter(meta_ht.release)
-
-    # TODO: Update this to v5 downsampling.
-    ds_ht = get_v4_downsampling(test=False).ht()
 
     ht = generate_freq_group_membership_array(
         meta_ht,
@@ -415,7 +413,11 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
-            group_membership_ht = get_genomes_group_membership_ht()
+            group_membership_ht = get_genomes_group_membership_ht(
+                meta_ht=meta(data_type="genomes").ht(),
+                # TODO: Update this to v5 downsampling.
+                ds_ht=get_v4_downsampling(test=False).ht(),
+            )
             group_membership_ht = group_membership_ht.checkpoint(
                 group_membership_ht_path, overwrite=overwrite
             )
