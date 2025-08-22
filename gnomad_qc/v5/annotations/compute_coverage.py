@@ -56,10 +56,12 @@ def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
     Get Table with downsampling groups for all samples.
 
     v5 downsampling is only applied to the AoU dataset.
-    Groups:
+    Desired groups:
     - 10,000
     - 100,000
     - Genetic ancestry group sizes for AFR, AMR, NFE
+    Note that the only desired genetic ancestry group sizes are AFR, AMR, and NFE,
+    but code will also generate downsamplings for all other groups.
 
     :param ht: Input Table.
     :param gen_anc_ht: Genetic ancestry HT.
@@ -71,14 +73,7 @@ def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
     # TODO: Update to v5 downsamplings when that exists.
     downsamplings = DOWNSAMPLINGS["v4"]
     ht = ht.annotate(gen_anc=gen_anc_ht[ht.key].gen_anc)
-    ht = ht.annotate(
-        ds_gen_anc=hl.case()
-        .when(ht.gen_anc == "afr", "afr")
-        .when(ht.gen_anc == "amr", "amr")
-        .when(ht.gen_anc == "nfe", "nfe")
-        .default(hl.missing(hl.tstr))
-    )
-    ht = annotate_downsamplings(ht, downsamplings, ht.ds_gen_anc)
+    ht = annotate_downsamplings(ht, downsamplings, ht.gen_anc)
     return ht
 
 
