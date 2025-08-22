@@ -98,6 +98,7 @@ def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Ta
             downsampling_expr=ds_ht.downsampling,
         ),
         downsamplings=hl.eval(ds_ht.downsamplings),
+        ds_gen_anc_counts=hl.eval(ds_ht.ds_pop_counts),
     )
 
     ht = ht.annotate_globals(
