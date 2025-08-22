@@ -14,14 +14,19 @@ from gnomad.assessment.validity_checks import (
     validate_release_t,
     vcf_field_check,
 )
-from gnomad.resources.grch38.gnomad import HGDP_POPS, POPS, SUBSETS, TGP_POPS
-from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.resources.grch38.gnomad import (
+    HGDP_GEN_ANC_GROUPS,
+    GEN_ANC_GROUPS,
+    SUBSETS,
+    TGP_GEN_ANC_GROUPS,
+)
+from gnomad.sample_qc.ancestry import GEN_ANC_NAMES
 from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     AS_VQSR_FIELDS,
-    FAF_POPS,
+    FAF_GEN_ANC_GROUPS,
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
@@ -133,15 +138,17 @@ SUBSETS = {
     "joint": [""],
 }
 
-POPS = deepcopy(POPS["v4"])
-POPS["joint"] = set(POPS["exomes"]) | set(POPS["genomes"])
+GEN_ANC_GROUPS = deepcopy(GEN_ANC_GROUPS["v4"])
+GEN_ANC_GROUPS["joint"] = set(GEN_ANC_GROUPS["exomes"]) | set(GEN_ANC_GROUPS["genomes"])
 
-# Remove unnecessary pop names from POP_NAMES dict
-POPS = {d: {pop: POP_NAMES[pop] for pop in pops} for d, pops in POPS.items()}
+# Remove unnecessary pop names from GEN_ANC_NAMES dict
+GEN_ANC_GROUPS = {
+    d: {pop: GEN_ANC_NAMES[pop] for pop in pops} for d, pops in GEN_ANC_GROUPS.items()
+}
 
 SAMPLE_SUM_SETS_AND_POPS = {
-    "exomes": {"non_ukb": POPS["exomes"]},
-    "genomes": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
+    "exomes": {"non_ukb": GEN_ANC_GROUPS["exomes"]},
+    "genomes": {"hgdp": HGDP_GEN_ANC_GROUPS, "tgp": TGP_GEN_ANC_GROUPS},
     "joint": None,
 }
 
@@ -702,8 +709,8 @@ def populate_subset_info_dict(
     subset: str,
     description_text: str,
     data_type: str = "exomes",
-    pops: Dict[str, str] = POPS["exomes"],
-    faf_pops: Dict[str, List[str]] = FAF_POPS,
+    pops: Dict[str, str] = GEN_ANC_GROUPS["exomes"],
+    faf_pops: Dict[str, List[str]] = FAF_GEN_ANC_GROUPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
     freq_comparison_included: bool = False,
@@ -723,7 +730,7 @@ def populate_subset_info_dict(
     :param data_type: One of "exomes", "genomes", or "joint". Default is "exomes".
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
-        names (values). Default is FAF_POPS.
+        names (values). Default is FAF_GEN_ANC_GROUPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label
         combinations. Default is '_'.
@@ -731,10 +738,10 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
-    # Remove unnecessary pop names from FAF_POPS dict depending on data type
-    # and version of FAF_POPS.
+    # Remove unnecessary pop names from FAF_GEN_ANC_GROUPS dict depending on data type
+    # and version of FAF_GEN_ANC_GROUPS.
     faf_pops_version = "v3" if data_type == "genomes" or subset == "genomes" else "v4"
-    faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
+    faf_pops = {pop: GEN_ANC_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
     # Add FAF fields to dict.
     faf_label_groups = create_label_groups(
@@ -817,8 +824,8 @@ def populate_info_dict(
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS["exomes"],
-    pops: Dict[str, str] = POPS["exomes"],
-    faf_pops: Dict[str, List[str]] = FAF_POPS,
+    pops: Dict[str, str] = GEN_ANC_GROUPS["exomes"],
+    faf_pops: Dict[str, List[str]] = FAF_GEN_ANC_GROUPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
@@ -852,7 +859,7 @@ def populate_info_dict(
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS["exomes"].
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
-        names (values). Default is FAF_POPS.
+        names (values). Default is FAF_GEN_ANC_GROUPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
@@ -1298,7 +1305,7 @@ def main(args):
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
-                    pops=POPS[dt],
+                    pops=GEN_ANC_GROUPS[dt],
                     site_gt_check_expr=site_gt_check_expr,
                     verbose=args.verbose,
                     delimiter="_",
@@ -1364,7 +1371,7 @@ def main(args):
                     ),
                     age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
                     subset_list=subsets,
-                    pops=POPS[data_type],
+                    pops=GEN_ANC_GROUPS[data_type],
                     data_type=data_type,
                     joint_included=joint_included,
                 )
@@ -1381,7 +1388,7 @@ def main(args):
                         ),
                         age_hist_distribution=hl.eval(dt_ht.age_distribution.bin_freq),
                         subset_list=[dt],
-                        pops=POPS[dt],
+                        pops=GEN_ANC_GROUPS[dt],
                         data_type="joint",
                         joint_included=joint_included,
                         freq_comparison_included=(dt == "joint"),

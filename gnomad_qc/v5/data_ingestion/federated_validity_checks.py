@@ -621,7 +621,7 @@ def validate_federated_data(
         t=ht,
         sexes={i["sex"] for i in hl.eval(freq_meta_expr) if "sex" in i},
         subsets=subsets,
-        pops={
+        gen_anc_groups={
             i[gen_anc_label_name]
             for i in hl.eval(freq_meta_expr)
             if gen_anc_label_name in i
@@ -1043,9 +1043,9 @@ def main(args):
         field_types = return_field_types()
         validation_errors, validated_fields = validate_required_fields(
             ht=ht,
-            field_requirements=field_types,
+            field_types=field_types,
             field_necessities=field_necessities,
-            validate_all_feilds=args.validate_all_fields,
+            validate_all_fields=args.validate_all_fields,
         )
 
         if len(validation_errors) > 0:
