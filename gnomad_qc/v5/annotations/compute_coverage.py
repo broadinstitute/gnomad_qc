@@ -27,7 +27,6 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
-from gnomad_qc.v4.resources.meta import meta
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
 from gnomad_qc.v5.resources.annotations import get_downsampling, group_membership
@@ -88,14 +87,12 @@ def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Ta
     ht = generate_freq_group_membership_array(
         meta_ht,
         build_freq_stratification_list(
-            sex_expr=meta_ht.sex_imputation.sex_karyotype,
-            # TODO: Revert this when moving to v5.
-            # gen_anc_expr=meta_ht.gen_anc_inference.gen_anc,
-            gen_anc_expr=meta_ht.population_inference.pop,
+            sex_expr=meta_ht.sex_karyotype,
+            gen_anc_expr=meta_ht.gen_anc,
             downsampling_expr=ds_ht.downsampling,
         ),
         downsamplings=hl.eval(ds_ht.downsamplings),
-        ds_gen_anc_counts=hl.eval(ds_ht.ds_pop_counts),
+        ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
     )
 
     ht = ht.annotate_globals(
@@ -360,6 +357,7 @@ def main(args):
             environment="rwb",
         )
         downsampling_ht_path = get_downsampling(test=test).path
+        meta_ht_path = project_meta.ht().path
 
         if args.write_downsampling_ht:
             check_resource_existence(
@@ -367,7 +365,7 @@ def main(args):
                 overwrite=overwrite,
             )
             # TODO: Update this for v5 once sample QC is complete.
-            ht = project_meta.ht()
+            ht = hl.read_table(meta_ht_path)
             ht = ht.filter((ht.project == "gnomad") & (ht.data_type == "genomes"))
             # ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
             ds_ht = get_downsampling_ht(ht, ht)
@@ -416,7 +414,7 @@ def main(args):
                 overwrite=overwrite,
             )
             group_membership_ht = get_genomes_group_membership_ht(
-                meta_ht=meta(data_type="genomes").ht(),
+                meta_ht=hl.read_table(meta_ht_path),
                 ds_ht=hl.read_table(downsampling_ht_path),
             )
             group_membership_ht = group_membership_ht.checkpoint(
