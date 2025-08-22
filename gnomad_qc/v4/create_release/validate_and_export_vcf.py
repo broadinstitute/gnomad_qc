@@ -15,8 +15,8 @@ from gnomad.assessment.validity_checks import (
     vcf_field_check,
 )
 from gnomad.resources.grch38.gnomad import (
-    GEN_ANC_GROUPS,
     HGDP_GEN_ANC_GROUPS,
+    GEN_ANC_GROUPS,
     SUBSETS,
     TGP_GEN_ANC_GROUPS,
 )
@@ -141,7 +141,7 @@ SUBSETS = {
 GEN_ANC_GROUPS = deepcopy(GEN_ANC_GROUPS["v4"])
 GEN_ANC_GROUPS["joint"] = set(GEN_ANC_GROUPS["exomes"]) | set(GEN_ANC_GROUPS["genomes"])
 
-# Remove unnecessary pop names from POP_NAMES dict
+# Remove unnecessary pop names from GEN_ANC_NAMES dict
 GEN_ANC_GROUPS = {
     d: {pop: GEN_ANC_NAMES[pop] for pop in pops} for d, pops in GEN_ANC_GROUPS.items()
 }
@@ -738,8 +738,8 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
-    # Remove unnecessary pop names from FAF_POPS dict depending on data type
-    # and version of FAF_POPS.
+    # Remove unnecessary pop names from FAF_GEN_ANC_GROUPS dict depending on data type
+    # and version of FAF_GEN_ANC_GROUPS.
     faf_pops_version = "v3" if data_type == "genomes" or subset == "genomes" else "v4"
     faf_pops = {pop: GEN_ANC_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
@@ -1305,7 +1305,11 @@ def main(args):
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
+<<<<<<< HEAD
                     gen_anc_groups=GEN_ANC_GROUPS[dt],
+=======
+                    pops=GEN_ANC_GROUPS[dt],
+>>>>>>> 06551f51 (pop to gen anc)
                     site_gt_check_expr=site_gt_check_expr,
                     verbose=args.verbose,
                     delimiter="_",
