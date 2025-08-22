@@ -15,11 +15,7 @@ import hail as hl
 from gnomad.utils.vcf import FORMAT_DICT, adjust_vcf_incompatible_types
 from hail.utils import new_temp_file
 
-from gnomad_qc.v4.resources.basics import (
-    get_gnomad_v4_genomes_vds,
-    get_gnomad_v4_vds,
-    get_logging_path,
-)
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_sites
 
@@ -136,7 +132,9 @@ def get_subset_ht(
         raise ValueError("A meta HT must be provided if subsetting by workspaces.")
 
     if subset_workspaces:
-        terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
+        terra_workspaces = hl.literal(
+            subset_workspaces.terra_workspace.lower().collect()
+        )
         subset_ht = meta_ht.filter(
             terra_workspaces.contains(meta_ht.project_meta.terra_workspace.lower())
         ).select()
