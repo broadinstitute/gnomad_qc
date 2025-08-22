@@ -367,9 +367,9 @@ def main(args):
             data_set="aou",
             environment="rwb",
         )
+        downsampling_ht_path = get_downsampling(test=test).path
 
         if args.write_downsampling_ht:
-            downsampling_ht_path = get_downsampling(test=test).path
             check_resource_existence(
                 output_step_resources={"downsampling_ht": downsampling_ht_path},
                 overwrite=overwrite,
@@ -425,8 +425,7 @@ def main(args):
             )
             group_membership_ht = get_genomes_group_membership_ht(
                 meta_ht=meta(data_type="genomes").ht(),
-                # TODO: Update this to v5 downsampling.
-                ds_ht=get_v4_downsampling(test=False).ht(),
+                ds_ht=hl.read_table(downsampling_ht_path),
             )
             group_membership_ht = group_membership_ht.checkpoint(
                 group_membership_ht_path, overwrite=overwrite
