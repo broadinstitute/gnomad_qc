@@ -89,7 +89,7 @@ def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Ta
         build_freq_stratification_list(
             sex_expr=meta_ht.sex_karyotype,
             gen_anc_expr=meta_ht.gen_anc,
-            downsampling_expr=ds_ht.downsampling,
+            downsampling_expr=ds_ht[meta_ht.key].downsampling,
         ),
         downsamplings=hl.eval(ds_ht.downsamplings),
         ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
