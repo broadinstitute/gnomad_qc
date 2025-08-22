@@ -15,7 +15,7 @@ def _annotations_root(
     version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     data_type: str = "genomes",
-    data_set: str = "rwb",
+    data_set: str = "aou",
 ) -> str:
     """
     Get root path to the variant annotation files.
