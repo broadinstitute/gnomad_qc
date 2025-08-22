@@ -369,7 +369,9 @@ def main(args):
             )
             # TODO: Update this for v5 once sample QC is complete.
             ht = hl.read_table(meta_ht_path)
-            ht = ht.filter((ht.project == "gnomad") & (ht.data_type == "genomes"))
+            ht = ht.filter(
+                (ht.project == "gnomad") & (ht.data_type == "genomes") & (ht.release)
+            )
             # ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
             ds_ht = get_downsampling_ht(ht, ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
