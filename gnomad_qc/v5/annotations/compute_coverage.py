@@ -160,7 +160,7 @@ def compute_all_release_stats_per_ref_site(
     # produce both adj and raw histograms.
 
     vmt = vds.variant_data
-    vmt = vmt.annotate_cols(sex_karyotype=vmt.meta.sex_imputation.sex_karyotype)
+    vmt = vmt.annotate_cols(sex_karyotype=vmt.meta.sex_karyotype)
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     ht = compute_stats_per_ref_site(
