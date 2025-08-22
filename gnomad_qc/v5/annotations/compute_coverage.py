@@ -68,7 +68,14 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     )
     # TODO: Update to v5 downsampling.
     downsamplings = DOWNSAMPLINGS["v4"]
-    ds_ht = annotate_downsamplings(ht, downsamplings)
+    ds_ht = ds_ht.annotate(
+        ds_gen_anc=hl.case()
+        .when(ds_ht.gen_anc == "afr", "afr")
+        .when(ds_ht.gen_anc == "amr", "amr")
+        .when(ds_ht.gen_anc == "nfe", "nfe")
+        .default(hl.missing(hl.tstr))
+    )
+    ds_ht = annotate_downsamplings(ht, downsamplings, ht.ds_gen_anc)
     return ds_ht
 
 
