@@ -64,12 +64,15 @@ ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
 REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
-# Define function that returns the field requirements for the Hail Table. Preferable to have function rather than defining a dictionary
+# Define function that returns the field types for the Hail Table. Preferable to have function rather than defining a dictionary
 # here to avoid initializing hail before main.
-def return_field_requirements() -> Dict[str, Dict[str, Any]]:
-    """Return the field requirements for the Hail Table."""
+def return_field_types() -> Dict[str, Dict[str, Any]]:
+    """Return the field types for the Hail Table.
+
+    :return: A dictionary mapping field names to their Hail types.
+    """
     return {
-        "global_field_requirements": {
+        "global_field_types": {
             "freq_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
             "freq_index_dict": hl.tdict(hl.tstr, hl.tint32),
             "freq_meta_sample_count": hl.tarray(hl.tint32),
@@ -81,8 +84,34 @@ def return_field_requirements() -> Dict[str, Dict[str, Any]]:
             "vrs_versions.vrs_python_version": hl.tstr,
             "vrs_versions.seqrepo_version": hl.tstr,
             "date": hl.tstr,
+            "faf_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
+            "faf_index_dict": hl.tdict(hl.tstr, hl.tint32),
+            "filtering_model.filter_name": hl.tstr,
+            "filtering_model.score_name": hl.tstr,
+            "filtering_model.snv_cutoff.bin": hl.tint32,
+            "filtering_model.snv_cutoff.min_score": hl.tfloat64,
+            "filtering_model.indel_cutoff.bin": hl.tint32,
+            "filtering_model.indel_cutoff.min_score": hl.tfloat64,
+            "filtering_model.snv_training_variables": hl.tarray(hl.tstr),
+            "filtering_model.indel_training_variables": hl.tarray(hl.tstr),
+            "inbreeding_coeff_cutoff": hl.tfloat64,
+            "tool_versions.cadd_version": hl.tstr,
+            "tool_versions.revel_version": hl.tstr,
+            "tool_versions.spliceai_version": hl.tstr,
+            "tool_versions.pangolin_version": hl.tarray(hl.tstr),
+            "tool_versions.phylop_version": hl.tstr,
+            "tool_versions.dbsnp_version": hl.tstr,
+            "tool_versions.sift_version": hl.tstr,
+            "tool_versions.polyphen_version": hl.tstr,
+            "vep_globals.vep_version": hl.tstr,
+            "vep_globals.vep_help": hl.tstr,
+            "vep_globals.vep_config": hl.tstr,
+            "vep_globals.gencode_version": hl.tstr,
+            "vep_globals.mane_select_version": hl.tstr,
+            "frequency_README": hl.tstr,
+            "version": hl.tstr,
         },
-        "row_field_requirements": {
+        "row_field_types": {
             "locus": hl.tlocus("GRCh38"),
             "alleles": hl.tarray(hl.tstr),
             "freq.AC": hl.tarray(hl.tint32),  # Use arrays to check freq annotations.
@@ -168,6 +197,41 @@ def return_field_requirements() -> Dict[str, Dict[str, Any]]:
             "histograms.raw_qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
             "histograms.raw_qual_hists.ab_hist_alt.n_smaller": hl.tint64,
             "histograms.raw_qual_hists.ab_hist_alt.n_larger": hl.tint64,
+            "grpmax.AC": hl.tint32,
+            "grpmax.AF": hl.tfloat64,
+            "grpmax.AN": hl.tint32,
+            "grpmax.homozygote_count": hl.tint32,
+            "grpmax.gen_anc": hl.tstr,
+            "faf.faf95": hl.tfloat64,
+            "faf.faf99": hl.tfloat64,
+            "fafmax.faf95_max": hl.tfloat64,
+            "fafmax.faf95_max_gen_anc": hl.tstr,
+            "fafmax.faf99_max": hl.tfloat64,
+            "fafmax.faf99_max_gen_anc": hl.tstr,
+            "rsid": hl.tset(hl.tstr),
+            "info.omni": hl.tbool,
+            "info.mills": hl.tbool,
+            "info.monoallelic": hl.tbool,
+            "info.only_het": hl.tbool,
+            "vqsr_results.AS_VQSLOD": hl.tfloat64,
+            "vqsr_results.AS_culprit": hl.tstr,
+            "vqsr_results.positive_train_site": hl.tbool,
+            "vqsr_results.negative_train_site": hl.tbool,
+            "region_flags.non_par": hl.tbool,
+            "region_flags.lcr": hl.tbool,
+            "region_flags.segdup": hl.tbool,
+            "allele_info.allele_type": hl.tstr,
+            "allele_info.n_alt_alleles": hl.tint32,
+            "allele_info.variant_type": hl.tstr,
+            "allele_info.was_mixed": hl.tbool,
+            "in_silico_predictors.cadd.phred": hl.tfloat32,
+            "in_silico_predictors.cadd.raw_score": hl.tfloat32,
+            "in_silico_predictors.revel_max": hl.tfloat64,
+            "in_silico_predictors.spliceai_ds_max": hl.tfloat32,
+            "in_silico_predictors.pangolin_largest_ds": hl.tfloat64,
+            "in_silico_predictors.phylop": hl.tfloat64,
+            "in_silico_predictors.sift_max": hl.tfloat64,
+            "in_silico_predictors.polyphen_max": hl.tfloat64,
         },
     }
 
@@ -208,6 +272,8 @@ def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
                 field_dict[field] = "required"
             elif "optional" in necessity_clean:
                 field_dict[field] = "optional"
+            elif "not needed" in necessity_clean:
+                field_dict[field] = "not_needed"
         # End of table.
         elif in_table and not line.strip():
             in_table = False
@@ -310,8 +376,9 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
 
 def validate_required_fields(
     ht: hl.Table,
-    field_requirements: Dict[str, Dict[str, Any]],
+    field_types: Dict[str, Dict[str, Any]],
     field_necessities: Dict[str, str],
+    validate_all_fields: bool = False,
 ) -> List[str]:
     """
     Validate that the table contains the required global and row fields and that their values are of the expected types.
@@ -321,12 +388,17 @@ def validate_required_fields(
         Required fields can be nested (e.g., 'info.QD' indicates that the 'QD' field is nested within the 'info' struct).
 
     :param ht: Table to validate.
-    :param field_requirements: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_requirements" and "row_field_requirements", respectively containing the global and row fields as keys and their expected types as values.
+    :param field_types: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_types" and "row_field_types", respectively containing the global and row fields as keys and their expected types as values.
     :param field_necessities: Flat dictionary with annotation fields as keys and values field necessity("required" or "optional") as values.
+    :param validate_all_fields: Whether to validate all fields or only the required/optional ones.
     :return: List of validation issues.
     """
     issues = []
     validated = []
+
+    # If validate_all_fields is True, set all field necessities to "required".
+    if validate_all_fields:
+        field_necessities = {k: "required" for k in field_necessities}
 
     def _check_field_exists_and_type(
         root_expr: hl.expr.Expression,
@@ -347,6 +419,10 @@ def validate_required_fields(
         current_field = root_expr
 
         field_necessity = field_necessities.get(field_path, "required")
+
+        # Unless specified, only check optional and required fields.
+        if field_necessity == "not_needed":
+            return
 
         for i, part in enumerate(parts):
             dtype = current_field.dtype
@@ -406,11 +482,11 @@ def validate_required_fields(
             )
 
     # Validate global fields.
-    for field, expected_type in field_requirements["global_field_requirements"].items():
+    for field, expected_type in field_types["global_field_types"].items():
         _check_field_exists_and_type(ht.globals, field, expected_type, "global")
 
     # Validate row fields.
-    for field, expected_type in field_requirements["row_field_requirements"].items():
+    for field, expected_type in field_types["row_field_types"].items():
         _check_field_exists_and_type(ht.row, field, expected_type, "row")
 
     return (set(issues), set(validated))
@@ -964,11 +1040,12 @@ def main(args):
             ]["faf_meta"]
 
         logger.info("Validate required fields...")
-        field_requirements = return_field_requirements()
+        field_types = return_field_types()
         validation_errors, validated_fields = validate_required_fields(
             ht=ht,
-            field_requirements=field_requirements,
+            field_requirements=field_types,
             field_necessities=field_necessities,
+            validate_all_feilds=args.validate_all_fields,
         )
 
         if len(validation_errors) > 0:
@@ -1112,6 +1189,11 @@ if __name__ == "__main__":
             "check_mono_and_only_het: Boolean indicating whether to check for monoallelic and 100 percent heterozygous sites in the Table ('monoallelic' and 'only_het' annotations must be present)."
         ),
         type=str,
+    )
+    parser.add_argument(
+        "--validate_all_fields",
+        help="Validate all fields, not just required ones",
+        action="store_true",
     )
     parser.add_argument(
         "--verbose",
