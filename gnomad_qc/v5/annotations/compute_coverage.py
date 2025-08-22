@@ -357,7 +357,7 @@ def main(args):
             environment="rwb",
         )
         downsampling_ht_path = get_downsampling(test=test).path
-        meta_ht_path = project_meta.ht().path
+        meta_ht_path = project_meta.path
 
         if args.write_downsampling_ht:
             check_resource_existence(
