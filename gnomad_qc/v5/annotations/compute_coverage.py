@@ -372,7 +372,7 @@ def main(args):
                 overwrite=overwrite,
             )
             # TODO: Update this for v5 once sample QC is complete.
-            ht = project_meta.ht().select("project")
+            ht = project_meta.ht()
             ht = ht.filter(ht.project == "gnomad")
             # ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
             ds_ht = get_downsampling_ht(ht, ht)
