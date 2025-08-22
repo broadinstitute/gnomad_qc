@@ -98,7 +98,7 @@ def get_gnomad_datasets(data_type: str, n_partitions: Optional[int], test: bool)
     :param data_type: Type of data to subset.
     :param n_partitions: Number of desired partitions for the VDS, repartioned on read.
     :param test: Whether to filter to the first 2 partitions for testing.
-    :return: The gnomAD v4 VariantDataset.
+    :return: The gnomAD v4 VariantDataset and metadata Table.
     """
     if data_type == "exomes":
         vds = get_gnomad_v4_vds(
@@ -130,7 +130,6 @@ def get_subset_ht(
     :param subset_samples: Path to a text file with sample IDs for subsetting and a header: 's'.
     :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset and a header: 'terra_workspace'.
     :param meta_ht: The meta HT.
-    :param vds_cols: The VDS columns.
     :return: The subset HT.
     """
     if subset_workspaces and not meta_ht:
@@ -139,7 +138,7 @@ def get_subset_ht(
     if subset_workspaces:
         terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
         subset_ht = meta_ht.filter(
-            terra_workspaces.contains(meta_ht.project_meta.terra_workspace)
+            terra_workspaces.contains(meta_ht.project_meta.terra_workspace.lower())
         ).select()
 
     if subset_samples:
@@ -279,7 +278,7 @@ def filter_to_pass_only(
     """
     release_ht = release_sites(data_type=config.data_type).ht()
     ds = mtds if config.output_vcf else mtds.variant_data
-    ds = ds.filter_rows(release_ht[ds.row_key].filters.length() == 0)
+    ds = ds.filter_rows(hl.len(release_ht[ds.row_key].filters) == 0)
 
     return ds if config.output_vcf else hl.vds.VariantDataset(mtds.reference_data, ds)
 
@@ -390,7 +389,7 @@ def main(args):
             logger.info(
                 "Applying min_rep to the variant data MT because remove_dead_alleles in"
                 " hl.vds.filter_samples may result in variants that do not have the "
-                "minimumn representation in an unsplit VDS..."
+                "minimum representation in an unsplit VDS..."
             )
             mtds = apply_min_rep_logic(mtds)
 
@@ -408,7 +407,7 @@ def main(args):
                     "Generating VDS with %d partitions...", config.output_partitions
                 )
                 temp_vds_path = new_temp_file("subset", "vds")
-                mtds = mtds.write(temp_vds_path)
+                mtds.write(temp_vds_path)
                 mtds = hl.vds.read_vds(
                     temp_vds_path, n_partitions=config.output_partitions
                 )
@@ -424,8 +423,8 @@ def main(args):
                 if config.output_partitions
                 else mtds.n_partitions()
             )
+            format_dict = copy.deepcopy(FORMAT_DICT)
             if config.split_multi:
-                format_dict = copy.deepcopy(FORMAT_DICT)
                 print(format_dict)
                 format_dict.pop("RGQ")
 
@@ -433,7 +432,7 @@ def main(args):
             hl.export_vcf(
                 mtds,
                 f"{config.output_path}/subset.vcf.bgz",
-                metadata={"format": FORMAT_DICT},
+                metadata={"format": format_dict},
                 parallel="header_per_shard",
                 tabix=True,
             )
