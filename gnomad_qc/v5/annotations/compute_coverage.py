@@ -44,13 +44,14 @@ from gnomad_qc.v5.resources.release import (
     release_coverage_path,
     release_coverage_tsv_path,
 )
+from gnomad_qc.v5.resources.sample_qc import get_gen_anc_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage_and_an")
 logger.setLevel(logging.INFO)
 
 
-def get_downsampling_ht(ht: hl.Table) -> hl.Table:
+def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
     """
     Get Table with downsampling groups for all samples.
 
@@ -61,22 +62,24 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     - Genetic ancestry group sizes for AFR, AMR, NFE
 
     :param ht: Input Table.
+    :param gen_anc_ht: Genetic ancestry HT.
     :return: Table with downsampling groups.
     """
     logger.info(
         "Determining downsampling groups for AoU...",
     )
-    # TODO: Update to v5 downsampling.
+    # TODO: Update to v5 downsamplings when that exists.
     downsamplings = DOWNSAMPLINGS["v4"]
-    ds_ht = ds_ht.annotate(
+    ht = ht.annotate(gen_anc=gen_anc_ht[ht.key].gen_anc)
+    ht = ht.annotate(
         ds_gen_anc=hl.case()
-        .when(ds_ht.gen_anc == "afr", "afr")
-        .when(ds_ht.gen_anc == "amr", "amr")
-        .when(ds_ht.gen_anc == "nfe", "nfe")
+        .when(ht.gen_anc == "afr", "afr")
+        .when(ht.gen_anc == "amr", "amr")
+        .when(ht.gen_anc == "nfe", "nfe")
         .default(hl.missing(hl.tstr))
     )
-    ds_ht = annotate_downsamplings(ht, downsamplings, ht.ds_gen_anc)
-    return ds_ht
+    ht = annotate_downsamplings(ht, downsamplings, ht.ds_gen_anc)
+    return ht
 
 
 def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Table:
@@ -372,11 +375,11 @@ def main(args):
             )
             # TODO: Update this to filter to high quality samples once sample QC is
             # complete.
-            ht = project_meta.ht()
+            ht = project_meta.ht().select("project")
             if test:
                 ht = ht.filter(ht.project == "aou")
                 ht = ht.head(200000)
-            ds_ht = get_downsampling_ht(ht)
+            ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
         if args.compute_all_cov_release_stats_ht:
