@@ -90,7 +90,7 @@ def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Ta
             # TODO: Revert this when moving to v5.
             # gen_anc_expr=meta_ht.gen_anc_inference.gen_anc,
             gen_anc_expr=meta_ht.population_inference.pop,
-            downsampling_expr=hl.eval(ds_ht.downsamplings),
+            downsampling_expr=ds_ht.downsampling,
         ),
         downsamplings=hl.eval(ds_ht.downsamplings),
     )
