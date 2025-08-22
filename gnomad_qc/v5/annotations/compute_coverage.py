@@ -85,9 +85,6 @@ def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Ta
     :param ds_ht: Downsampling HT.
     :return: Group membership HT.
     """
-    # Filter to release samples.
-    meta_ht = meta_ht.filter(meta_ht.release)
-
     # TODO: remove this for v5.
     ds_ht = ds_ht.transmute(
         downsampling=ds_ht.downsampling.annotate(gen_idx=ds_ht.downsampling.pop_idx)
