@@ -317,11 +317,13 @@ def get_gnomad_v4_genomes_vds(
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
     import gnomad_qc.v3.resources.basics as v3_basics
+    from gnomad_qc.v4.resources.meta import meta
     from gnomad_qc.v5.resources.sample_qc import related_samples_to_drop
 
     vds = v3_basics.get_gnomad_v3_vds(
         split=split,
-        remove_hard_filtered_samples=remove_hard_filtered_samples,
+        # False because v3 hard filtered samples HT no longer exists.
+        remove_hard_filtered_samples=False,
         release_only=False,
         samples_meta=False,
         test=test,
@@ -338,7 +340,17 @@ def get_gnomad_v4_genomes_vds(
         filter_samples_ht=filter_samples_ht,
     )
 
-    if annotate_meta or release_only:
+    if remove_hard_filtered_samples or annotate_meta or release_only:
+        if remove_hard_filtered_samples:
+            hard_filtered_samples_ht = meta(data_type="genomes").ht()
+            hard_filtered_samples_ht = hard_filtered_samples_ht.filter(
+                hard_filtered_samples_ht.sample_filters.hard_filtered
+            )
+            vds = hl.vds.filter_samples(
+                vds,
+                hard_filtered_samples_ht,
+                keep=False,
+            )
         if annotate_meta:
             meta_ht = project_meta.ht()
             vd = vds.variant_data
