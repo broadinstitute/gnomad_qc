@@ -44,7 +44,8 @@ from gnomad_qc.v5.resources.release import (
     release_coverage_path,
     release_coverage_tsv_path,
 )
-from gnomad_qc.v5.resources.sample_qc import get_gen_anc_ht
+
+# from gnomad_qc.v5.resources.sample_qc import get_gen_anc_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage_and_an")
@@ -71,8 +72,7 @@ def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
         "Determining downsampling groups for AoU...",
     )
     # TODO: Update to v5 downsamplings when that exists.
-    downsamplings = DOWNSAMPLINGS["v4"]
-    ht = ht.annotate(gen_anc=gen_anc_ht[ht.key].gen_anc)
+    downsamplings = DOWNSAMPLINGS["v3"]
     ht = annotate_downsamplings(ht, downsamplings, ht.gen_anc)
     return ht
 
@@ -374,13 +374,11 @@ def main(args):
                 output_step_resources={"downsampling_ht": downsampling_ht_path},
                 overwrite=overwrite,
             )
-            # TODO: Update this to filter to high quality samples once sample QC is
-            # complete.
+            # TODO: Update this for v5 once sample QC is complete.
             ht = project_meta.ht().select("project")
-            if test:
-                ht = ht.filter(ht.project == "aou")
-                ht = ht.head(200000)
-            ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
+            ht = ht.filter(ht.project == "gnomad")
+            # ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
+            ds_ht = get_downsampling_ht(ht, ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
         if args.compute_all_cov_release_stats_ht:
