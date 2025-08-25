@@ -202,8 +202,8 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
             "grpmax.AN": hl.tint32,
             "grpmax.homozygote_count": hl.tint32,
             "grpmax.gen_anc": hl.tstr,
-            "faf.faf95": hl.tfloat64,
-            "faf.faf99": hl.tfloat64,
+            "faf.faf95": hl.tarray(hl.tfloat64),
+            "faf.faf99": hl.tarray(hl.tfloat64),
             "fafmax.faf95_max": hl.tfloat64,
             "fafmax.faf95_max_gen_anc": hl.tstr,
             "fafmax.faf99_max": hl.tfloat64,
@@ -1191,7 +1191,7 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--validate_all_fields",
+        "--validate-all-fields",
         help="Validate all fields, not just required ones",
         action="store_true",
     )
