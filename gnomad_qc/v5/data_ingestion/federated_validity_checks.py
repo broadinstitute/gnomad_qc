@@ -1058,11 +1058,16 @@ def main(args):
                 or "incorrect element type" in e
             }
             optional_errors = validation_errors - required_errors
+
             if required_errors:
+                required_errors = "| ".join(sorted(required_errors))
                 logger.info(f"Failed validation of required fields: {required_errors}")
             if optional_errors:
+                optional_errors = "| ".join(sorted(optional_errors))
                 logger.warning(f"Issues with optional fields: {optional_errors}")
+
         if len(validated_fields) > 0:
+            validated_fields = "| ".join(sorted(validated_fields))
             logger.info(f"Validated fields: {validated_fields}")
 
         # TODO: Add in lof per person check.
