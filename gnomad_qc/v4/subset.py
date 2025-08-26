@@ -132,8 +132,12 @@ def get_subset_ht(
         raise ValueError("A meta HT must be provided if subsetting by workspaces.")
 
     if subset_workspaces:
+        logger.info("Subsetting by workspaces...")
+        subset_workspaces_ht = hl.import_table(subset_workspaces).key_by(
+            "terra_workspace"
+        )
         terra_workspaces = hl.literal(
-            subset_workspaces.terra_workspace.lower().collect()
+            subset_workspaces_ht.terra_workspace.lower().collect()
         )
         subset_ht = meta_ht.filter(
             terra_workspaces.contains(meta_ht.project_meta.terra_workspace.lower())
