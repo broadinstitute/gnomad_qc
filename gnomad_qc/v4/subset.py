@@ -92,7 +92,7 @@ def get_gnomad_datasets(data_type: str, n_partitions: Optional[int], test: bool)
     Get requested data type's v4 VariantDataset.
 
     :param data_type: Type of data to subset.
-    :param n_partitions: Number of desired partitions for the VDS, repartioned on read.
+    :param n_partitions: Number of desired partitions for the VDS, repartitioned on read.
     :param test: Whether to filter to the first 2 partitions for testing.
     :return: The gnomAD v4 VariantDataset and metadata Table.
     """
