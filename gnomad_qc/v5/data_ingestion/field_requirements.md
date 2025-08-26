@@ -34,6 +34,7 @@ All histograms annotations must use the same bin edges as defined in their respe
 | <span style="color:#999;">filtering_model.</span>snv_training_variables | `array<str>` | Variant annotations used as features in the SNV filtering model. | — | Not Needed |
 | <span style="color:#999;">filtering_model.</span>indel_training_variables | `array<str>` | Variant annotations used as features in the indel filtering model. | — | Not Needed |
 | **inbreeding_coeff_cutoff** | `float64` | Inbreeding Coefficient threshold used to hard filter variants | — | Not Needed |
+| **excess_het_cutoff** | `float64` | Excess heterozygosity threshold used to hard filter variants | — | Not Needed |
 | **tool_versions** | `struct { ... }` | Versions of in silico predictors used in the callset. | — | Not Needed |
 | <span style="color:#999;">tool_versions</span>.cadd_version | `str` | Combined Annotation Dependent Depletion (CADD) version. | — | Not Needed |
 | <span style="color:#999;">tool_versions</span>.revel_version | `str` | Rare Exome Variant Ensemble Learner (REVEL) version. | — | Not Needed |
@@ -137,6 +138,7 @@ Data must be supplied as a "split" dataset, where multiallelic variants are spli
 | <span style="color:#999;">info</span>.monoallelic | `bool` | All samples are homozygous alternate for the variant. | — | Not Needed |
 | <span style="color:#999;">info</span>.only_het | `bool` | All samples are heterozygous for the variant (no homozygous reference or alternate genotype calls). | — | Not Needed |
 | <span style="color:#999;">info</span>.inbreeding_coeff | `float64` | Inbreeding coefficient, the excess heterozygosity at a variant site, computed as `1 - (the number of heterozygous genotypes) / (the number of heterozygous genotypes expected under Hardy-Weinberg equilibrium)`. | — | Not Needed |
+| <span style="color:#999;">info</span>.excess_het | `float64` | Phred-scaled p-value for exact test of excess heterozygosity. | — | Not Needed |
 | <span style="color:#999;">info</span>.vrs | `struct { ... }` | Struct containing information related to the Global Alliance for Genomic Health (GA4GH) Variant Representation Specification (VRS) standard. VRS annotations must be created using the following tool versions: (vrs_schema_version=`2.0.1`, vrs_python_version=`2.1.3`, seqrepo_version=`2024-12-20`). <br><br> | — | Optional |
 | <span style="color:#999;">info.vrs</span>.VRS_Allele_IDs | `array<str>` | The computed identifiers for the GA4GH VRS Alleles corresponding to the values in the alleles column. | `["ga4gh:VA.oTAtTrgYxm81O9fu6Mrhfo1t3eHsgg4L","ga4gh:VA.Y283OnlLjyi1T1IT_JzvW255rC6YJsW6"]` | Optional |
 | <span style="color:#999;">info.vrs</span>.VRS_Starts | `array<int32>` | Interresidue coordinates used as the location starts for the GA4GH VRS Alleles corresponding to the values in the alleles column. | `[10030,10030]` | Optional |
