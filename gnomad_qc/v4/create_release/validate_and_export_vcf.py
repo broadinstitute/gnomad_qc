@@ -1305,11 +1305,7 @@ def main(args):
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
-<<<<<<< HEAD
                     gen_anc_groups=GEN_ANC_GROUPS[dt],
-=======
-                    pops=GEN_ANC_GROUPS[dt],
->>>>>>> 06551f51 (pop to gen anc)
                     site_gt_check_expr=site_gt_check_expr,
                     verbose=args.verbose,
                     delimiter="_",
