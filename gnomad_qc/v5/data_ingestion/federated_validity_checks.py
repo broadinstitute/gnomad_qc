@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from io import StringIO
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple, Set
 
 import hail as hl
 from bs4 import BeautifulSoup
@@ -80,6 +80,7 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
             "age_distribution.bin_freq": hl.tarray(hl.tint32),
             "age_distribution.n_smaller": hl.tint32,
             "age_distribution.n_larger": hl.tint32,
+            "downsamplings": hl.tdict(hl.tstr, hl.tarray(hl.tint32)),
             "vrs_versions.vrs_schema_version": hl.tstr,
             "vrs_versions.vrs_python_version": hl.tstr,
             "vrs_versions.seqrepo_version": hl.tstr,
@@ -114,7 +115,7 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
         "row_field_types": {
             "locus": hl.tlocus("GRCh38"),
             "alleles": hl.tarray(hl.tstr),
-            "freq.AC": hl.tarray(hl.tint32),  # Use arrays to check freq annotations.
+            "freq.AC": hl.tarray(hl.tint32),
             "freq.AF": hl.tarray(hl.tfloat64),
             "freq.AN": hl.tarray(hl.tint32),
             "freq.homozygote_count": hl.tarray(hl.tint32),
@@ -153,10 +154,15 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
             "info.AS_VarDP": hl.tint32,
             "info.singleton": hl.tbool,
             "info.transmitted_singleton": hl.tbool,
+            "info.sibling_singleton": hl.tbool,
             "info.vrs.VRS_Allele_IDs": hl.tarray(hl.tstr),
             "info.vrs.VRS_Starts": hl.tarray(hl.tint32),
             "info.vrs.VRS_Ends": hl.tarray(hl.tint32),
             "info.vrs.VRS_States": hl.tarray(hl.tstr),
+            "info.omni": hl.tbool,
+            "info.mills": hl.tbool,
+            "info.monoallelic": hl.tbool,
+            "info.only_het": hl.tbool,
             "histograms.qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
             "histograms.qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
             "histograms.qual_hists.gq_hist_all.n_smaller": hl.tint64,
@@ -202,17 +208,13 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
             "grpmax.AN": hl.tint32,
             "grpmax.homozygote_count": hl.tint32,
             "grpmax.gen_anc": hl.tstr,
-            "faf.faf95": hl.tarray(hl.tfloat64),
-            "faf.faf99": hl.tarray(hl.tfloat64),
+            "faf.faf95": hl.tfloat64,
+            "faf.faf99": hl.tfloat64,
             "fafmax.faf95_max": hl.tfloat64,
             "fafmax.faf95_max_gen_anc": hl.tstr,
             "fafmax.faf99_max": hl.tfloat64,
             "fafmax.faf99_max_gen_anc": hl.tstr,
             "rsid": hl.tset(hl.tstr),
-            "info.omni": hl.tbool,
-            "info.mills": hl.tbool,
-            "info.monoallelic": hl.tbool,
-            "info.only_het": hl.tbool,
             "vqsr_results.AS_VQSLOD": hl.tfloat64,
             "vqsr_results.AS_culprit": hl.tstr,
             "vqsr_results.positive_train_site": hl.tbool,
@@ -313,7 +315,7 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     if config.get("faf_fields"):
         array_struct_annotations.append(config["faf_fields"]["faf"])
 
-    # Check that all neccesaary fields are present in the Table.
+    # Check that all necessary fields are present in the Table.
     missing_fields = {}
 
     # Check that specified global annotations are present.
@@ -379,7 +381,7 @@ def validate_required_fields(
     field_types: Dict[str, Dict[str, Any]],
     field_necessities: Dict[str, str],
     validate_all_fields: bool = False,
-) -> List[str]:
+) -> Tuple[Set[str], Set[str]]:
     """
     Validate that the table contains the required global and row fields and that their values are of the expected types.
 
@@ -391,7 +393,7 @@ def validate_required_fields(
     :param field_types: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_types" and "row_field_types", respectively containing the global and row fields as keys and their expected types as values.
     :param field_necessities: Flat dictionary with annotation fields as keys and values field necessity("required" or "optional") as values.
     :param validate_all_fields: Whether to validate all fields or only the required/optional ones.
-    :return: List of validation issues.
+    :return: Tuple of fields checked and whether or not they passed validation checks.
     """
     issues = []
     validated = []
@@ -552,7 +554,7 @@ def validate_federated_data(
     missingness_threshold: float = 0.50,
     struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
     freq_annotations_to_sum: List[str] = ["AC", "AN", "homozygote_count"],
-    sort_order: List[str] = ["subset", "gen_anc", "sex", "group"],
+    sort_order: List[str] = ["subset", "downsampling", "gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
     subsets: List[str] = None,
@@ -568,7 +570,7 @@ def validate_federated_data(
         `meta_indexed_expr`. The most often used expression is `freq_meta` to index into
         a 'freq' array (example: ht.freq_meta).
     :param freq_annotations_to_sum: List of annotation fields within `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count'].
-    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "gen_anc", "sex", "group"].
+    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "downsampling", gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
@@ -1058,14 +1060,12 @@ def main(args):
                 or "incorrect element type" in e
             }
             optional_errors = validation_errors - required_errors
-
             if required_errors:
                 required_errors = "| ".join(sorted(required_errors))
                 logger.info(f"Failed validation of required fields: {required_errors}")
             if optional_errors:
                 optional_errors = "| ".join(sorted(optional_errors))
                 logger.warning(f"Issues with optional fields: {optional_errors}")
-
         if len(validated_fields) > 0:
             validated_fields = "| ".join(sorted(validated_fields))
             logger.info(f"Validated fields: {validated_fields}")
@@ -1197,7 +1197,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--validate-all-fields",
-        help="Validate all fields, not just required ones",
+        help="Validate all fields, regardless of necessity status.",
         action="store_true",
     )
     parser.add_argument(
