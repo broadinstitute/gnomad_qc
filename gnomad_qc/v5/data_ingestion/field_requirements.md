@@ -33,8 +33,8 @@ All histograms annotations must use the same bin edges as defined in their respe
 | <span style="color:#999;">filtering_model.indel_cutoff.</span>min_score | `float64` | Minimum score at indel filtering percentile cutoff. | — | Not Needed |
 | <span style="color:#999;">filtering_model.</span>snv_training_variables | `array<str>` | Variant annotations used as features in the SNV filtering model. | — | Not Needed |
 | <span style="color:#999;">filtering_model.</span>indel_training_variables | `array<str>` | Variant annotations used as features in the indel filtering model. | — | Not Needed |
-| **inbreeding_coeff_cutoff** | `float64` | Inbreeding Coefficient threshold used to hard filter variants | — | Not Needed |
-| **excess_het_cutoff** | `float64` | Excess heterozygosity threshold used to hard filter variants | — | Not Needed |
+| **inbreeding_coeff_cutoff** | `float64` | Inbreeding Coefficient threshold used to hard filter variants. | — | Not Needed |
+| **excess_het_cutoff** | `float64` | Excess heterozygosity threshold used to hard filter variants. | — | Not Needed |
 | **tool_versions** | `struct { ... }` | Versions of in silico predictors used in the callset. | — | Not Needed |
 | <span style="color:#999;">tool_versions</span>.cadd_version | `str` | Combined Annotation Dependent Depletion (CADD) version. | — | Not Needed |
 | <span style="color:#999;">tool_versions</span>.revel_version | `str` | Rare Exome Variant Ensemble Learner (REVEL) version. | — | Not Needed |
