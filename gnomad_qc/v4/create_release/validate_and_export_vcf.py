@@ -15,8 +15,8 @@ from gnomad.assessment.validity_checks import (
     vcf_field_check,
 )
 from gnomad.resources.grch38.gnomad import (
-    HGDP_GEN_ANC_GROUPS,
     GEN_ANC_GROUPS,
+    HGDP_GEN_ANC_GROUPS,
     SUBSETS,
     TGP_GEN_ANC_GROUPS,
 )

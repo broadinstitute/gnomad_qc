@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from io import StringIO
-from typing import Any, Dict, List, Tuple, Set
+from typing import Any, Dict, List, Set, Tuple
 
 import hail as hl
 from bs4 import BeautifulSoup
