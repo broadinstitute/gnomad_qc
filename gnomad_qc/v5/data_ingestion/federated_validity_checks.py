@@ -454,7 +454,9 @@ def validate_required_fields(
 
             else:
                 logger.info(
-                    f"Unsupported type while traversing {'.'.join(parts[:i])}: {dtype}"
+                    "Unsupported type while traversing %s: %s",
+                    ".'".join(parts[:i]),
+                    dtype,
                 )
                 return
 
@@ -1062,13 +1064,14 @@ def main(args):
             optional_errors = validation_errors - required_errors
             if required_errors:
                 required_errors = "| ".join(sorted(required_errors))
-                logger.info(f"Failed validation of required fields: {required_errors}")
+                logger.info("Failed validation of required fields %s", required_errors)
             if optional_errors:
                 optional_errors = "| ".join(sorted(optional_errors))
-                logger.warning(f"Issues with optional fields: {optional_errors}")
+                logger.info("Failed validation of optional errors %s", optional_errors)
+
         if len(validated_fields) > 0:
             validated_fields = "| ".join(sorted(validated_fields))
-            logger.info(f"Validated fields: {validated_fields}")
+            logger.info("Validated fields: %s", validated_fields)
 
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
