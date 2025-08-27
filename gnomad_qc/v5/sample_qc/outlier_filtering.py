@@ -753,7 +753,7 @@ def main(args):
                 raise ValueError(err_msg)
 
         sample_qc_ht = get_sample_qc_ht(
-            sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+            sample_qc_ht=get_sample_qc("bi_allelic").ht(),
             hard_filtered_samples_ht=hard_filtered_samples.ht(),
             sample_collisions=sample_id_collisions.ht(),
             test=test,
