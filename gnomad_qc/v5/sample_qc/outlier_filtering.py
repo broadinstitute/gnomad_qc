@@ -64,10 +64,6 @@ def get_sample_qc_ht(
     :param seed: Random seed for making test dataset. Default is 24.
     :return: Sample QC Table for outlier filtering.
     """
-    # Filter sample QC HT partitions to make code testing faster.
-    if test:
-        sample_qc_ht = sample_qc_ht._filter_partitions(range(2))
-
     sample_qc_ht = sample_qc_ht.filter(
         hl.is_missing(hard_filtered_samples_ht[sample_qc_ht.key])
     )
@@ -765,8 +761,16 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
+
+            raw_sample_qc_ht = get_sample_qc("bi_allelic").ht()
+            filter_partitions = args.filter_partitions
+            if filter_partitions:
+                raw_sample_qc_ht = raw_sample_qc_ht._filter_partitions(
+                    range(filter_partitions)
+                )
+
             sample_qc_ht = get_sample_qc_ht(
-                sample_qc_ht=get_sample_qc("bi_allelic").ht(),
+                sample_qc_ht=raw_sample_qc_ht,
                 hard_filtered_samples_ht=hard_filtered_samples.ht(),
                 sample_collisions=sample_id_collisions.ht(),
                 test=test,
@@ -961,6 +965,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     sample_qc_args.add_argument(
         "--get-outlier-detection-sample-qc",
         help="Get sample QC Table for sample outlier detection.",
+        action="store_true",
+    )
+    sample_qc_args.add_argument(
+        "--filter-partitions",
+        help="Number of partitions to retain in the sample QC Table for testing.",
         action="store_true",
     )
 
