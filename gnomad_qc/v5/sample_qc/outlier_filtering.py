@@ -763,10 +763,10 @@ def main(args):
             )
 
             raw_sample_qc_ht = get_sample_qc("bi_allelic").ht()
-            filter_partitions = args.filter_partitions
-            if filter_partitions:
+            num_filter_partitions = args.num_filter_partitions
+            if num_filter_partitions:
                 raw_sample_qc_ht = raw_sample_qc_ht._filter_partitions(
-                    range(filter_partitions)
+                    range(num_filter_partitions)
                 )
 
             sample_qc_ht = get_sample_qc_ht(
@@ -968,7 +968,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     sample_qc_args.add_argument(
-        "--filter-partitions",
+        "--num-filter-partitions",
         help="Number of partitions to retain in the sample QC Table for testing.",
         action="store_true",
     )
