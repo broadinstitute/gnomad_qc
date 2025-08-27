@@ -183,7 +183,6 @@ def apply_stratified_filtering_method(
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
-        # TODO: Check whether AoU and gnomAD need to be stratified.
         strata=strata,
         # TODO: Check if these thresholds are still appropriate for v5.
         metric_threshold={
