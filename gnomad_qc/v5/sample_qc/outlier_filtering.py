@@ -970,7 +970,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     sample_qc_args.add_argument(
         "--num-filter-partitions",
         help="Number of partitions to retain in the sample QC Table for testing.",
-        action="store_true",
+        type=int,
     )
 
     stratified_args = parser.add_argument_group(
