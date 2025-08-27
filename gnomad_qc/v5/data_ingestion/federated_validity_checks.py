@@ -242,10 +242,6 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
     }
 
 
-import hail as hl
-import re
-
-
 def hail_type_from_string(type_str: str) -> Any:
     """
     Convert a type string from the markdown to a Hail type.
@@ -296,9 +292,8 @@ def hail_type_from_string(type_str: str) -> Any:
     raise ValueError(f"Unrecognized type string: {type_str}")
 
 
-# Only add if it’s a primitive, array of primitive, or array of non-empty struct
 def is_concrete_type(htype) -> bool:
-    """Determine whether a Hail type represents a "concrete" field that should be added to field_types, as opposed to an empty container.
+    """Determine whether a Hail type represents a "concrete" field that should be added to field_types, as opposed to an empty container (such as an empty array or struct).
 
     Empty structs and arrays are not concrete types. Arrays are interpreted recursively.
     :param htype: Hail type to check (ex: hl.tint32, hl.tarray(hl.tfloat64), hl.tstruct()).
@@ -1069,10 +1064,6 @@ def main(args):
                 "If running a Hail Dataproc job, be sure to include it with the --files argument:\n"
                 "  hailctl dataproc submit <cluster-name> --files field_requirements.md  federated_validity_checks.py..."
             )
-
-        # parsed=parse_field_info_from_md(md_text)
-        print("PRINTING PARSED:")
-        # print(parsed)
 
         field_necessities, field_types = parse_field_necessity_from_md(md_text)
 
