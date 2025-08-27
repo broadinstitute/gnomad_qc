@@ -408,6 +408,33 @@ def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
 ######################################################################
 
 
+def get_outlier_detection_sample_qc(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get modified sample QC Table for sample outlier detection.
+
+    This table has the following modifications:
+        - Remove hard filtered samples
+        - Add project prefix to sample collisions
+        - Add 'r_snp_indel' metric
+        - Exclude hard filtered samples
+        - Sample 1% of the dataset if `test` is True
+
+    :param test: Whether to use the test version of the sample QC TableResource.
+    :return: Modified sample QC Table.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.v{version}.outlier_detection_sample_qc.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
 def stratified_filtering(
     test: bool = False,
 ) -> VersionedTableResource:

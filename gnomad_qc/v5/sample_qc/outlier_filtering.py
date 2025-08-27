@@ -25,6 +25,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     genetic_ancestry_pca_scores,
     get_gen_anc_ht,
+    get_outlier_detection_sample_qc,
     get_sample_qc,
     hard_filtered_samples,
     nearest_neighbors,
@@ -739,6 +740,7 @@ def main(args):
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     nn_approximation = args.use_nearest_neighbors_approximation
+    sample_qc_ht_path = get_outlier_detection_sample_qc(test=test).path
 
     try:
         if apply_r_ti_tv_singleton_filter:
@@ -752,14 +754,23 @@ def main(args):
             if err_msg:
                 raise ValueError(err_msg)
 
-        sample_qc_ht = get_sample_qc_ht(
-            sample_qc_ht=get_sample_qc("bi_allelic").ht(),
-            hard_filtered_samples_ht=hard_filtered_samples.ht(),
-            sample_collisions=sample_id_collisions.ht(),
-            test=test,
-            seed=args.seed,
-        )
+        if args.get_outlier_detection_sample_qc:
+            check_resource_existence(
+                output_step_resources={
+                    "outlier_detection_sample_qc_ht": sample_qc_ht_path
+                },
+                overwrite=overwrite,
+            )
+            sample_qc_ht = get_sample_qc_ht(
+                sample_qc_ht=get_sample_qc("bi_allelic").ht(),
+                hard_filtered_samples_ht=hard_filtered_samples.ht(),
+                sample_collisions=sample_id_collisions.ht(),
+                test=test,
+                seed=args.seed,
+            )
+            sample_qc_ht.write(sample_qc_ht_path, overwrite=overwrite)
 
+        sample_qc_ht = hl.read_table(sample_qc_ht_path)
         gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test, projection=True).ht()
         gen_anc_ht = get_gen_anc_ht(test=test).ht()
 
@@ -940,12 +951,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    joint_qc_args = parser.add_argument_group(
-        "Join gnomAD and AoU sample QC Tables.",
+    sample_qc_args = parser.add_argument_group(
+        "Get sample QC Table for sample outlier detection.",
     )
-    joint_qc_args.add_argument(
-        "--join-sample-qc-hts",
-        help="Join gnomAD and AoU sample QC Tables.",
+    sample_qc_args.add_argument(
+        "--get-outlier-detection-sample-qc",
+        help="Get sample QC Table for sample outlier detection.",
         action="store_true",
     )
 
