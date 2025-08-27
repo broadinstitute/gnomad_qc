@@ -408,26 +408,6 @@ def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
 ######################################################################
 
 
-def get_joint_sample_qc(
-    test: bool = False,
-) -> VersionedTableResource:
-    """
-    Get VersionedTableResource for joint gnomAD and AoU sample QC.
-
-    :param test: Whether to use the test version of the joint sample QC TableResource.
-    :return: Joint gnomAD + AoU sample QC table.
-    """
-    return VersionedTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
-        {
-            version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint', data_set='aou')}/outlier_detection/gnomad.v{version}.joint.sample_qc.ht"
-            )
-            for version in SAMPLE_QC_VERSIONS
-        },
-    )
-
-
 def stratified_filtering(
     test: bool = False,
 ) -> VersionedTableResource:

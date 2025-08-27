@@ -15,8 +15,6 @@ from gnomad.sample_qc.filtering import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v3.resources.sample_qc import get_sample_qc as v4_get_sample_qc
-from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
@@ -27,7 +25,6 @@ from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     genetic_ancestry_pca_scores,
     get_gen_anc_ht,
-    get_joint_sample_qc,
     get_sample_qc,
     hard_filtered_samples,
     nearest_neighbors,
@@ -41,77 +38,39 @@ logger = logging.getLogger("outlier_filtering")
 logger.setLevel(logging.INFO)
 
 
-def join_sample_qc_hts(
-    v4_sample_qc_ht: hl.Table,
-    v5_sample_qc_ht: hl.Table,
-    v4_meta_ht: hl.Table,
-    v5_hf_ht: hl.Table,
-    sample_collisions: hl.Table,
-) -> hl.Table:
-    """
-    Join v4 and v5 sample QC HTs.
-
-    Function renames sample and global fields to retain values from both versions and drops fields unique to each version
-    (but keeps all singleton annotations in v5).
-
-    :param v4_sample_qc_ht: v4 sample QC HT.
-    :param v5_sample_qc_ht: v5 sample QC HT.
-    :param v4_meta_ht: v4 sample QC metadata HT.
-    :param v5_hf_ht: v5 hard filtered samples HT.
-    :param sample_collisions: Table with sample collisions.
-    :return: Joint v4 + v5 sample QC HT.
-    """
-    v5_sample_qc_ht = v5_sample_qc_ht.filter(
-        hl.is_missing(v5_hf_ht[v5_sample_qc_ht.key])
-    )
-    # Drop fields unique to v5.
-    v5_sample_qc_ht = v5_sample_qc_ht.drop("bases_over_gq_threshold").select_globals()
-    v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
-        t=v5_sample_qc_ht,
-        sample_collisions=sample_collisions,
-        project="aou",
-    )
-
-    # Use v4 metadata to remove hard filtered samples.
-    v4_sample_qc_ht = v4_sample_qc_ht.filter(
-        ~v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered
-    )
-    # Reformat v5 HT and drop fields unique to v4.
-    v4_sample_qc_ht = v4_sample_qc_ht.transmute(**v4_sample_qc_ht.sample_qc)
-    v4_sample_qc_ht = v4_sample_qc_ht.drop(
-        "call_rate", "n_called", "n_not_called", "n_filtered"
-    )
-    v4_sample_qc_ht = v4_sample_qc_ht.annotate(
-        n_singleton_ti=hl.missing(hl.tint32),
-        n_singleton_tv=hl.missing(hl.tint32),
-        r_ti_tv_singleton=hl.missing(hl.tfloat64),
-    )
-    v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
-        t=v4_sample_qc_ht,
-        sample_collisions=sample_collisions,
-        project="gnomad",
-    )
-
-    return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
-
-
 def get_sample_qc_ht(
-    sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
+    sample_qc_ht: hl.Table,
+    hard_filtered_samples_ht: hl.Table,
+    sample_collisions: hl.Table,
+    test: bool = False,
+    seed: int = 24,
 ) -> hl.Table:
     """
     Get sample QC Table with modifications needed for outlier filtering.
 
     The following modifications are made:
+        - Remove hard filtered samples
+        - Add project prefix to sample collisions
         - Add 'r_snp_indel' metric
         - Exclude hard filtered samples
         - Sample 1% of the dataset if `test` is True
 
     :param sample_qc_ht: Sample QC Table.
+    :param hard_filtered_samples_ht: Hard filtered samples Table.
+    :param sample_collisions: Table with sample collisions.
     :param test: Whether to filter the input Table to a random sample of 1% of the
         dataset. Default is False.
     :param seed: Random seed for making test dataset. Default is 24.
     :return: Sample QC Table for outlier filtering.
     """
+    sample_qc_ht = sample_qc_ht.filter(
+        hl.is_missing(hard_filtered_samples_ht[sample_qc_ht.key])
+    )
+    sample_qc_ht = add_project_prefix_to_sample_collisions(
+        t=sample_qc_ht,
+        sample_collisions=sample_collisions,
+        project="gnomad",
+    )
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
 
@@ -816,38 +775,10 @@ def main(args):
             if err_msg:
                 raise ValueError(err_msg)
 
-        if args.join_sample_qc_hts:
-            joint_sample_qc_ht_path = get_joint_sample_qc(test=test).path
-            check_resource_existence(
-                output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path},
-                overwrite=overwrite,
-            )
-
-            # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs for
-            # AoU samples.
-            v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
-            v5_hf_samples_ht = hard_filtered_samples.ht()
-
-            # Read in v4 files: sample QC HT (bi-allelic) and hard
-            # filtered samples HTs.
-            v4_sample_qc_ht = hl.read_table(v4_get_sample_qc("bi_allelic"))
-            # Read in two partitions instead if test flag is set.
-            # v4 sample QC HT test does not exist.
-            if test:
-                v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
-            v4_meta_ht = v4_meta(data_type="genomes").ht()
-
-            joint_sample_qc_ht = join_sample_qc_hts(
-                v4_sample_qc_ht=v4_sample_qc_ht,
-                v5_sample_qc_ht=v5_sample_qc_ht,
-                v4_meta_ht=v4_meta_ht,
-                v5_hf_ht=v5_hf_samples_ht,
-                sample_collisions=sample_id_collisions.ht(),
-            )
-            joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
-
         sample_qc_ht = get_sample_qc_ht(
-            sample_qc_ht=get_joint_sample_qc(test=test).ht(),
+            sample_qc_ht=get_sample_qc("bi_allelic", test=test).ht(),
+            hard_filtered_samples_ht=hard_filtered_samples.ht(),
+            sample_collisions=sample_id_collisions.ht(),
             test=test,
             seed=args.seed,
         )
