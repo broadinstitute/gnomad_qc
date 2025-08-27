@@ -6,6 +6,7 @@ import logging
 import re
 from io import StringIO
 from typing import Any, Dict, List, Set, Tuple
+import sys
 
 import hail as hl
 from bs4 import BeautifulSoup
@@ -241,15 +242,90 @@ def return_field_types() -> Dict[str, Dict[str, Any]]:
     }
 
 
-def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
+import hail as hl
+import re
+
+
+def hail_type_from_string(type_str: str) -> Any:
+    """
+    Convert a type string from the markdown to a Hail type.
+
+    :param type_str: Type string from markdown text, sach as `int32`.
+    :return: Hail type represented by the type string.
+    """
+    type_str = type_str.strip().strip("`")
+
+    if type_str in {"int64"}:
+        return hl.tint64
+    if type_str in {"int32"}:
+        return hl.tint32
+    elif type_str in {"float64"}:
+        return hl.tfloat64
+    elif type_str in {"float32"}:
+        return hl.tfloat32
+    elif type_str in {"str", "string"}:
+        return hl.tstr
+    elif type_str in {"bool", "boolean"}:
+        return hl.tbool
+    elif type_str in {"locus<GRCh38>"}:
+        return hl.tlocus("GRCh38")
+
+    # Handle arrays.
+    array_match = re.match(r"array<(.+)>", type_str)
+    if array_match:
+        inner_type = hail_type_from_string(array_match.group(1))
+        return hl.tarray(inner_type)
+
+    # Handel sets.
+    set_match = re.match(r"set<(.+)>", type_str)
+    if set_match:
+        inner_type = hail_type_from_string(set_match.group(1))
+        return hl.tset(inner_type)
+
+    # Handle dictionaries.
+    dict_match = re.match(r"dict<(.+),\s*(.+)>", type_str)
+    if dict_match:
+        key_type = hail_type_from_string(dict_match.group(1))
+        value_type = hail_type_from_string(dict_match.group(2))
+        return hl.tdict(key_type, value_type)
+
+    # Handle structs (if type is struct, it will always be a parent type for which  we can skip obtaining the type).
+    if type_str.startswith("struct"):
+        return hl.tstruct()
+
+    raise ValueError(f"Unrecognized type string: {type_str}")
+
+
+# Only add if it’s a primitive, array of primitive, or array of non-empty struct
+def is_concrete_type(htype) -> bool:
+    """Determine whether a Hail type represents a "concrete" field that should be added to field_types, as opposed to an empty container.
+
+    Empty structs and arrays are not concrete types. Arrays are interpreted recursively.
+    :param htype: Hail type to check (ex: hl.tint32, hl.tarray(hl.tfloat64), hl.tstruct()).
+    :return: Bool of whether or not the hail type is considered "concrete".
+    """
+    if isinstance(htype, hl.tstruct):
+        return len(htype.fields) > 0  # only add if struct has fields
+    elif isinstance(htype, hl.tarray):
+        return is_concrete_type(htype.element_type)  # recursive
+    else:
+        return True  # primitives (int/float/str/bool) are concrete
+
+
+def parse_field_necessity_from_md(
+    md_text: str,
+) -> Tuple[Dict[str, str], Dict[str, Any]]:
     """Create dictionary of field necessity from parsing markdown text.
 
     :param md_text: Markdown text to parse.
-    :return: Dictionary of field names and their necessity.
+    :return: Dictionary of field names and their necessity and dictionary of field names and their names.
     """
-    field_dict = {}
+    field_necessities = {}
+    field_types = {}
     lines = md_text.splitlines()
     in_table = False
+
+    parent_types = {}
 
     for line in lines:
         # Detect table header.
@@ -265,27 +341,47 @@ def parse_field_necessity_from_md(md_text: str) -> Dict[str, str]:
             if len(parts) < 2:
                 continue
             field_raw = parts[0]
+            field_type = parts[1]
             necessity = parts[-1]
 
             # Strip HTML tags and extra formatting.
             field = BeautifulSoup(field_raw, "html.parser").get_text()
             field = re.sub(r"[*`]", "", field).strip()
 
+            # Convert the types in string format to hail types.
+            field_type = hail_type_from_string(field_type)
+
+            field_parts = field.split(".")
+            # Keep track of parent fields in the 'parent_types' dictionary.
+            if len(field_parts) == 1:
+                parent_types[field] = field_type
+
+            # If the parent type of a given field is an array, warp the field type within tarray.
+            if len(field_parts) > 1:
+                parent = field_parts[0]
+                parent_type = parent_types[parent]
+                if isinstance(parent_type, hl.tarray):
+                    field_type = hl.tarray(field_type)
+
+            # Skip recording the field type is the field is a parent type with further nodes (will be arry or struct with no defined inner types).
+            if is_concrete_type(field_type):
+                field_types[field] = field_type
+
             # Normalize necessity label.
             necessity_clean = necessity.strip().lower()
             if "required" in necessity_clean:
-                field_dict[field] = "required"
+                field_necessities[field] = "required"
             elif "optional" in necessity_clean:
-                field_dict[field] = "optional"
+                field_necessities[field] = "optional"
             elif "not needed" in necessity_clean:
-                field_dict[field] = "not_needed"
+                field_necessities[field] = "not_needed"
         # End of table.
         elif in_table and not line.strip():
             in_table = False
         elif in_table and not line.strip().startswith("|"):
             in_table = False
 
-    return field_dict
+    return field_necessities, field_types
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -974,7 +1070,16 @@ def main(args):
                 "  hailctl dataproc submit <cluster-name> --files field_requirements.md  federated_validity_checks.py..."
             )
 
-        field_necessities = parse_field_necessity_from_md(md_text)
+        # parsed=parse_field_info_from_md(md_text)
+        print("PRINTING PARSED:")
+        # print(parsed)
+
+        field_necessities, field_types = parse_field_necessity_from_md(md_text)
+
+        for k, v in field_types.items():
+            print(f"{k}: {v}")
+
+        sys.exit()
 
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
