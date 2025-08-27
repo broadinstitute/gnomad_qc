@@ -401,9 +401,12 @@ def validate_required_fields(
     issues = []
     validated = []
 
+    default_necessity = "not_needed"
+
     # If validate_all_fields is True, set all field necessities to "required".
     if validate_all_fields:
         field_necessities = {k: "required" for k in field_necessities}
+        default_necessity = "required"
 
     def _check_field_exists_and_type(
         root_expr: hl.expr.Expression,
@@ -423,7 +426,7 @@ def validate_required_fields(
         parts = field_path.split(".")
         current_field = root_expr
 
-        field_necessity = field_necessities.get(field_path, "required")
+        field_necessity = field_necessities.get(field_path, default_necessity)
 
         # Unless specified, only check optional and required fields.
         if field_necessity == "not_needed":
