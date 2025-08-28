@@ -1,4 +1,4 @@
-"""Script to convert required fields markdown to html. Note: run 'python field_md_to_html.py' after any edits to 'field_requiremnts.md' to keep 'field_requirements.html' in sync."""
+"""Script to convert required fields markdown to html. Note: run 'python field_md_to_html.py' after any edits to 'field_requirements.md' to keep 'field_requirements.html' in sync."""
 
 import os
 
