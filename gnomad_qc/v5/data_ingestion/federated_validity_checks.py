@@ -129,7 +129,8 @@ def hail_type_from_string(type_str: str) -> Any:
         value_type = hail_type_from_string(dict_match.group(2))
         return hl.tdict(key_type, value_type)
 
-    # Handle structs (if type is struct, it will always be a parent type for which we can skip obtaining the type).
+    # Handle structs (if type is struct, it will always be a parent type for
+    # which we can skip obtaining the type).
     if type_str.startswith("struct"):
         return hl.tstruct()
 
@@ -197,14 +198,16 @@ def parse_field_necessity_from_md(
             if len(field_parts) == 1:
                 parent_types[field] = field_type
 
-            # If the parent type of a given field is an array, warp the field type within tarray.
+            # If the parent type of a given field is an array, warp the field type
+            # within tarray.
             if len(field_parts) > 1:
                 parent = field_parts[0]
                 parent_type = parent_types[parent]
                 if isinstance(parent_type, hl.tarray):
                     field_type = hl.tarray(field_type)
 
-            # Skip recording the field type is the field is a parent type with further nodes (will be arry or struct with no defined inner types).
+            # Skip recording the field type is the field is a parent type with further
+            # nodes (will be arry or struct with no defined inner types).
             if is_concrete_type(field_type):
                 if table_kind == "global":
                     field_types["global_field_types"][field] = field_type
