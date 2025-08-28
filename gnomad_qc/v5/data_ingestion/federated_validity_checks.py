@@ -4,9 +4,9 @@ import argparse
 import json
 import logging
 import re
+import sys
 from io import StringIO
 from typing import Any, Dict, List, Set, Tuple
-import sys
 
 import hail as hl
 from bs4 import BeautifulSoup
