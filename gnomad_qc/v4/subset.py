@@ -1,12 +1,21 @@
-"""Script to filter the gnomAD v4 VariantDataset to a subset of specified samples."""
+"""
+Script to filter the gnomAD v4 VariantDataset to a subset of specified samples.
+
+Run this script on Hail version 0.2.120. Higher versions of hail greatly
+increase runtime and cost and thus we enforce this version.
+"""
 
 import argparse
+import copy
 import logging
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Union
 
 import hail as hl
+from gnomad.utils.vcf import FORMAT_DICT, adjust_vcf_incompatible_types
+from hail.utils import new_temp_file
 
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import release_sites
 
@@ -14,256 +23,450 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
 
-HEADER_DICT = {
-    "format": {
-        "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
-        "AD": {
-            "Description": (
-                "Allelic depths for the ref and alt alleles in the order listed"
-            ),
-            "Number": "R",
-            "Type": "Integer",
-        },
-        "DP": {
-            "Description": "Approximate read depth",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "GQ": {
-            "Description": (
-                "Phred-scaled confidence that the genotype assignment is correct. Value"
-                " is the difference between the second lowest PL and the lowest PL"
-                " (always normalized to 0)."
-            ),
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "MIN_DP": {
-            "Description": "Minimum DP observed within the GVCF block",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "PGT": {
-            "Description": (
-                "Physical phasing haplotype information, describing how the alternate"
-                " alleles are phased in relation to one another"
-            ),
-            "Number": "1",
-            "Type": "String",
-        },
-        "PID": {
-            "Description": (
-                "Physical phasing ID information, where each unique ID within a given"
-                " sample (but not across samples) connects records within a phasing"
-                " group"
-            ),
-            "Number": "1",
-            "Type": "String",
-        },
-        "PL": {
-            "Description": (
-                "Normalized, phred-scaled likelihoods for genotypes as defined in the"
-                " VCF specification"
-            ),
-            "Number": "G",
-            "Type": "Integer",
-        },
-        "SB": {
-            "Description": (
-                "Per-sample component statistics which comprise the Fisher's exact test"
-                " to detect strand bias. Values are: depth of reference allele on"
-                " forward strand, depth of reference allele on reverse strand, depth of"
-                " alternate allele on forward strand, depth of alternate allele on"
-                " reverse strand."
-            ),
-            "Number": "4",
-            "Type": "Integer",
-        },
-        "RGQ": {
-            "Description": (
-                "Unconditional reference genotype confidence, encoded as a phred"
-                " quality -10*log10 p(genotype call is wrong)"
-            ),
-            "Number": "1",
-            "Type": "Integer",
-        },
-    },
-}
 
+@dataclass
+class ProcessingConfig:
+    """Configuration for data processing operations."""
 
-def make_variant_qc_annotations_dict(
-    key_expr: hl.expr.StructExpression,
-    vqc_annotations: Optional[List[str]] = None,
-) -> Dict[str, hl.expr.Expression]:
-    """
-    Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
+    # Processing options
+    split_multi: bool
+    pass_only: bool
+    add_variant_qc: bool
+    variant_qc_annotations: Optional[List[str]]
+    data_type: str
 
-    :param key_expr: Key to join annotations on.
-    :param vqc_annotations: Optional list of desired annotations from the release HT.
-    :return: Dictionary containing Hail expressions to annotate onto subset.
-    """
-    ht = release_sites().ht()
-    selected_variant_qc_annotations = {}
-    if vqc_annotations is None:
-        vqc_annotations = list(ht.row_value.keys())
-        vqc_annotations.remove("a_index")
-        vqc_annotations.remove("was_split")
+    # Output options
+    output_vcf: bool = False
+    output_vds: bool = False
+    export_meta: bool = False
+    keep_data_paths: bool = False
+    overwrite: bool = False
+    output_partitions: Optional[int] = None
 
-    for ann in vqc_annotations:
-        if ann not in ht.row:
-            raise ValueError(f"{ann} is not a valid variant QC annotation.")
-        selected_variant_qc_annotations.update([(ann, ht[key_expr][ann])])
+    # Data loading options
+    test: bool = False
+    rep_on_read_partitions: Optional[int] = None
 
-    return selected_variant_qc_annotations
+    # File paths
+    output_path: str = ""
+    subset_samples: Optional[str] = None
+    subset_workspaces: Optional[str] = None
+    tmp_dir: str = ""
 
+    def __post_init__(self):
+        if self.add_variant_qc and not self.split_multi:
+            raise ValueError("Variant QC annotations require split_multi=True.")
+        if self.pass_only and not self.split_multi:
+            raise ValueError("PASS-only filtering requires split_multi=True.")
+        if self.output_vcf and not self.split_multi:
+            raise ValueError(
+                "VCF export without split multi is not supported at this time."
+            )
 
-def main(args):
-    """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
-    hl.init(
-        log="/v4_subset.log",
-        default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
-    )
-    test = args.test
-    output_path = args.output_path
-    header_dict = HEADER_DICT
-    add_variant_qc = args.add_variant_qc
-    variant_qc_annotations = args.variant_qc_annotations
-    pass_only = args.pass_only
-    split_multi = args.split_multi
-
-    if args.vcf and not split_multi:
-        raise ValueError(
-            "VCF export without split multi is not supported at this time."
-        )
-    if (add_variant_qc or pass_only) and not split_multi:
-        raise ValueError(
-            "Cannot annotate variant QC annotations or filter to PASS variants on an"
-            " unsplit dataset."
+    @classmethod
+    def from_args(cls, args) -> "ProcessingConfig":
+        """Create ProcessingConfig from argparse arguments."""
+        return cls(
+            split_multi=args.split_multi,
+            add_variant_qc=args.add_variant_qc,
+            pass_only=args.pass_only,
+            variant_qc_annotations=args.variant_qc_annotations,
+            data_type=args.data_type,
+            output_vcf=args.output_vcf,
+            output_vds=args.output_vds,
+            export_meta=args.export_meta,
+            keep_data_paths=args.keep_data_paths,
+            overwrite=args.overwrite,
+            test=args.test,
+            rep_on_read_partitions=args.rep_on_read_partitions,
+            output_partitions=args.output_partitions,
+            output_path=args.output_path,
+            subset_samples=args.subset_samples,
+            subset_workspaces=args.subset_workspaces,
+            tmp_dir=args.tmp_dir,
         )
 
-    vds = get_gnomad_v4_vds(
-        n_partitions=args.n_partitions, remove_hard_filtered_samples=False
-    )
+
+def get_gnomad_datasets(data_type: str, n_partitions: Optional[int], test: bool):
+    """
+    Get requested data type's v4 VariantDataset.
+
+    :param data_type: Type of data to subset.
+    :param n_partitions: Number of desired partitions for the VDS, repartitioned on read.
+    :param test: Whether to filter to the first 2 partitions for testing.
+    :return: The gnomAD v4 VariantDataset and metadata Table.
+    """
+    if data_type == "exomes":
+        vds = get_gnomad_v4_vds(
+            n_partitions=n_partitions, remove_hard_filtered_samples=False
+        )
+    else:
+        vds = get_gnomad_v4_genomes_vds(
+            n_partitions=n_partitions, remove_hard_filtered_samples=False
+        )
 
     if test:
         vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(range(2)),
             vds.variant_data._filter_partitions(range(2)),
         )
+    meta_ht = meta(data_type=data_type).ht()
 
-    meta_ht = meta().ht()
-    subset_ht = hl.import_table(args.subset_samples or args.subset_workspaces)
+    return vds, meta_ht
 
-    if args.subset_workspaces:
-        terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
-        subset_ht = meta_ht.filter(
-            terra_workspaces.contains(meta_ht.project_meta.terra_workspace)
-        ).select()
-        logger.info(
-            "Keeping %d samples using the list of terra workspaces.", subset_ht.count()
+
+def get_subset_ht(
+    subset_samples: Optional[str],
+    subset_workspaces: Optional[str],
+    meta_ht: Optional[hl.Table],
+) -> hl.Table:
+    """
+    Get the subset HT.
+
+    :param subset_samples: Path to a text file with sample IDs for subsetting and a header: 's'.
+    :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset and a header: 'terra_workspace'.
+    :param meta_ht: The meta HT.
+    :return: The subset HT.
+    """
+    if subset_workspaces and not meta_ht:
+        raise ValueError("A meta HT must be provided if subsetting by workspaces.")
+
+    if subset_workspaces:
+        logger.info("Subsetting by workspaces...")
+        subset_workspaces_ht = hl.import_table(subset_workspaces).key_by(
+            "terra_workspace"
         )
+        terra_workspaces = hl.literal(
+            subset_workspaces_ht.terra_workspace.lower().collect()
+        )
+        subset_ht = meta_ht.filter(
+            terra_workspaces.contains(meta_ht.project_meta.terra_workspace.lower())
+        ).select()
 
-    if args.subset_samples:
+    if subset_samples:
+        subset_ht = hl.import_table(subset_samples)
         subset_ht = subset_ht.key_by("s")
 
-    vds = hl.vds.filter_samples(
-        vds, subset_ht, remove_dead_alleles=False if split_multi else True
-    )
-    logger.info(
-        "Final number of samples being kept in the VDS: %d.",
-        vds.variant_data.count_cols(),
-    )
+    return subset_ht
 
-    vd = vds.variant_data
-    if split_multi:
-        logger.info("Splitting multi-allelics")
-        vd = vd.annotate_rows(
-            n_unsplit_alleles=hl.len(vd.alleles),
-            mixed_site=(hl.len(vd.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+
+def check_subset_ht(subset_ht: hl.Table, vmt_cols: hl.Table):
+    """
+    Check that the subset HT is valid.
+
+    :param subset_ht: The subset HT.
+    :param vmt_cols: The variant data MatrixTable samples.
+    """
+    requested_sample_count = subset_ht.count()
+    logger.info("Subset request has %d samples...", requested_sample_count)
+    anti_join_ht = subset_ht.anti_join(vmt_cols)
+    anti_join_ht_count = anti_join_ht.count()
+    if anti_join_ht_count != 0:
+        missing_samples = anti_join_ht.s.collect()
+        message = (
+            f"Only {requested_sample_count - anti_join_ht_count} out of {requested_sample_count} "
+            f"subsetting-table IDs matched IDs in the dataset.\n"
+            f"IDs that aren't in the callset: {missing_samples}\n"
         )
-        vds = hl.vds.split_multi(
-            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
-        )
+        raise ValueError(message)
     else:
-        logger.info(
-            "Applying min_rep to the variant data MT because remove_dead_alleles in"
-            " hl.vds.filter_samples may result in variants that do not have the minimum"
-            " representation."
-        )
-        vds = hl.vds.VariantDataset(
-            vds.reference_data,
-            vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
+        logger.info("All subsetting-table IDs are in the callset...")
+
+
+def apply_split_multi_logic(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    config: ProcessingConfig,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Apply split multi logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).
+
+    :param mtds: MatrixTable or VariantDataset to process.
+    :param config: Processing configuration.
+    :return: MatrixTable or VariantDataset with multi-allelic sites split.
+    """
+
+    def _add_split_annotations(mtds):
+        """Add annotations needed for split multi processing."""
+        ds = mtds if config.output_vcf else mtds.variant_data
+        ds = ds.annotate_rows(
+            n_unsplit_alleles=hl.len(ds.alleles),
+            mixed_site=(hl.len(ds.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(ds.alleles[0], a), ds.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(ds.alleles[0], a), ds.alleles[1:]),
         )
 
-    if add_variant_qc or pass_only:
-        vd = vds.variant_data
-        ht = release_sites().ht()
-        if pass_only:
-            logger.info("Filtering to variants that passed variant QC.")
-            vd = vd.filter_rows(ht[vd.row_key].filters.length() == 0)
-        if add_variant_qc:
-            logger.info("Adding variant QC annotations.")
-            vd = vd.annotate_rows(
-                **make_variant_qc_annotations_dict(vd.row_key, variant_qc_annotations)
+        return (
+            ds if config.output_vcf else hl.vds.VariantDataset(mtds.reference_data, ds)
+        )
+
+    mtds = _add_split_annotations(mtds)
+
+    if config.output_vcf:
+        mtds = hl.experimental.sparse_split_multi(mtds)
+        mtds = mtds.filter_rows(hl.agg.any(hl.is_defined(mtds.GT)))
+        # Used during splitting multiallelics but no longer needed after.
+        mtds = mtds.drop("RGQ")
+    else:
+        mtds = hl.vds.split_multi(
+            mtds,
+            filter_changed_loci=True,
+        )
+        mtds = hl.vds.VariantDataset(mtds.reference_data, mtds.variant_data.drop("RGQ"))
+
+    return mtds
+
+
+def apply_min_rep_logic(
+    vds: hl.vds.VariantDataset,
+) -> hl.vds.VariantDataset:
+    """
+    Apply min_rep logic to an unsplit VariantDataset.
+
+    :param vds: VariantDataset to process.
+    :param config: Processing configuration.
+    :return: VariantDataset with rows keyed by minimum representation.
+    """
+    ds = vds.variant_data
+    ds = ds.key_rows_by(**hl.min_rep(ds.locus, ds.alleles))
+
+    return hl.vds.VariantDataset(vds.reference_data, ds)
+
+
+def apply_variant_qc_annotations(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    config: ProcessingConfig,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Apply variant QC annotations and filtering to either a MatrixTable or VariantDataset.
+
+    .. note::
+        If the variant QC annotations are not specified, all annotations will be added.
+
+    :param mtds: MatrixTable or VariantDataset to process.
+    :param config: Processing configuration.
+    :return: MatrixTable or VariantDataset with variant QC annotations.
+    """
+    ds = mtds if config.output_vcf else mtds.variant_data
+    ht = release_sites(data_type=config.data_type).ht()
+    selected_variant_qc_annotations = {}
+
+    if config.variant_qc_annotations is None:
+        vqc_annotations = list(ht.row_value.keys())
+        vqc_annotations.remove("a_index")
+        vqc_annotations.remove("was_split")
+    else:
+        vqc_annotations = config.variant_qc_annotations
+
+    for ann in vqc_annotations:
+        if ann not in ht.row:
+            raise ValueError(f"{ann} is not a valid variant QC annotation.")
+        selected_variant_qc_annotations.update([(ann, ht[ds.row_key][ann])])
+
+    ds = ds.annotate_rows(**selected_variant_qc_annotations)
+
+    return ds if config.output_vcf else hl.vds.VariantDataset(mtds.reference_data, ds)
+
+
+def filter_to_pass_only(
+    mtds: Union[hl.MatrixTable, hl.vds.VariantDataset],
+    config: ProcessingConfig,
+) -> Union[hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Filter to variants that passed variant QC.
+
+    :param mtds: MatrixTable or VariantDataset to filter.
+    :param config: Processing configuration.
+    :return: MatrixTable or VariantDataset containing only variants that passed variant QC.
+    """
+    release_ht = release_sites(data_type=config.data_type).ht()
+    ds = mtds if config.output_vcf else mtds.variant_data
+    ds = ds.filter_rows(hl.len(release_ht[ds.row_key].filters) == 0)
+
+    return ds if config.output_vcf else hl.vds.VariantDataset(mtds.reference_data, ds)
+
+
+def format_vcf_info_fields(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Apply VCF-specific formatting to info fields for export.
+
+    :param mt: MatrixTable to format.
+    :return: MatrixTable with fields formatted for VCF export.
+    """
+    # Note: AS_SB_TABLE should be an array of arrays of int32s.
+    mt = mt.annotate_rows(
+        info=mt.info.annotate(
+            AS_SB_TABLE=hl.array([mt.info.AS_SB_TABLE[:2], mt.info.AS_SB_TABLE[2:]]),
+        )
+    )
+    mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
+    ht = adjust_vcf_incompatible_types(
+        mt.select_rows("info").rows(), pipe_delimited_annotations=[]
+    )
+    mt = mt.annotate_rows(info=ht[mt.row_key].info)
+    mt = mt.drop("gvcf_info")
+    mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
+
+    return mt
+
+
+def process_metadata_export(
+    meta_ht: hl.Table,
+    vmt: hl.MatrixTable,
+    config: ProcessingConfig,
+) -> hl.Table:
+    """
+    Process metadata and return the processed metadata Table.
+
+    :param meta_ht: The metadata Table to process.
+    :param vmt: The dataset's subsetted  matrixTable containing the samples to keep.
+    :param config: Processing configuration.
+    :return: The subsetted metadata Table.
+    """
+    meta_ht = meta_ht.semi_join(vmt.cols())
+    data_to_drop = []
+
+    if config.data_type == "exomes":
+        data_to_drop.append("ukb_meta")
+
+    if not config.keep_data_paths:
+        if config.data_type == "exomes":
+            data_to_drop.extend(["cram", "gvcf"])
+        else:
+            data_to_drop.append("cram_path")
+
+    meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
+
+    return meta_ht
+
+
+def main(args):
+    """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
+    logger.info("Running gnomAD v4 subset script.")
+    config = ProcessingConfig.from_args(args)
+
+    hl.init(
+        log="/v4_subset.log",
+        default_reference="GRCh38",
+        tmp_dir=config.tmp_dir,
+    )
+
+    if not hl.version().startswith("0.2.120"):
+        raise ValueError(
+            "This script must be run on Hail version 0.2.120. Higher versions of hail "
+            "greatly increase runtime and cost and thus we enforce this version."
+        )
+
+    try:
+        logger.info("Getting the v4 %s dataset...", config.data_type)
+        vds, meta_ht = get_gnomad_datasets(
+            data_type=config.data_type,
+            n_partitions=config.rep_on_read_partitions,
+            test=config.test,
+        )
+
+        logger.info("Loading the HT with sample IDs to subset...")
+        subset_ht = get_subset_ht(
+            config.subset_samples, config.subset_workspaces, meta_ht
+        )
+
+        logger.info("Checking that all requested sample IDs are in the dataset...")
+        check_subset_ht(subset_ht, vds.variant_data.cols())
+
+        logger.info("Filtering the VDS to requested samples...")
+        vds = hl.vds.filter_samples(
+            vds, subset_ht, remove_dead_alleles=False if config.split_multi else True
+        )
+
+        if config.output_vcf:
+            logger.info("Densifying VDS for VCF export...")
+            mtds = hl.vds.to_dense_mt(vds)
+            mtds = mtds.checkpoint(new_temp_file("subset", "mt"))
+        else:
+            mtds = vds
+
+        if config.split_multi:
+            logger.info("Splitting multi-allelics...")
+            mtds = apply_split_multi_logic(mtds, config)
+        else:
+            logger.info(
+                "Applying min_rep to the variant data MT because remove_dead_alleles in"
+                " hl.vds.filter_samples may result in variants that do not have the "
+                "minimum representation in an unsplit VDS..."
             )
-        vds = hl.vds.VariantDataset(vds.reference_data, vd)
+            mtds = apply_min_rep_logic(mtds)
 
-    if args.vcf or args.dense_mt:
-        logger.info("Densifying VDS")
-        mt = hl.vds.to_dense_mt(vds)
+        if config.add_variant_qc:
+            logger.info("Adding variant QC annotations...")
+            mtds = apply_variant_qc_annotations(mtds, config)
 
-        if args.dense_mt:
-            mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
+        if config.pass_only:
+            logger.info("Filtering to variants that passed variant QC...")
+            mtds = filter_to_pass_only(mtds, config)
 
-        # TODO: add num-vcf-shards where no sharding happens if this is not set.
-        if args.vcf:
-            mt = mt.drop("gvcf_info")
-            mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
-            mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
+        if config.output_vds:
+            if config.output_partitions:
+                logger.info(
+                    "Generating VDS with %d partitions...", config.output_partitions
+                )
+                temp_vds_path = new_temp_file("subset", "vds")
+                mtds.write(temp_vds_path)
+                mtds = hl.vds.read_vds(
+                    temp_vds_path, n_partitions=config.output_partitions
+                )
+
+            logger.info("Writing VDS subset...")
+            mtds.write(f"{config.output_path}/subset.vds", overwrite=config.overwrite)
+
+        if config.output_vcf:
+            logger.info("Formatting VCF info fields for export...")
+            mtds = format_vcf_info_fields(mtds)
+            mtds = mtds.naive_coalesce(
+                config.output_partitions
+                if config.output_partitions
+                else mtds.n_partitions()
+            )
+            format_dict = copy.deepcopy(FORMAT_DICT)
+            if config.split_multi:
+                print(format_dict)
+                format_dict.pop("RGQ")
+
+            logger.info("Exporting VCF subset...")
             hl.export_vcf(
-                mt,
-                f"{output_path}/subset.vcf.bgz",
-                metadata=header_dict,
+                mtds,
+                f"{config.output_path}/subset.vcf.bgz",
+                metadata={"format": format_dict},
                 parallel="header_per_shard",
                 tabix=True,
             )
 
-    if args.vds:
-        vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
+        if config.export_meta:
+            logger.info("Subsetting and exporting metadata...")
+            meta_ht = process_metadata_export(meta_ht, vds.variant_data, config)
+            meta_ht = meta_ht.checkpoint(
+                f"{config.output_path}/metadata.ht", overwrite=config.overwrite
+            )
+            meta_ht.export(f"{config.output_path}/metadata.tsv.bgz")
 
-    if args.export_meta:
-        logger.info("Exporting metadata")
-        meta_ht = meta_ht.semi_join(vds.variant_data.cols())
-        if args.keep_data_paths:
-            data_to_drop = {"ukb_meta"}
-        else:
-            data_to_drop = {"ukb_meta", "cram", "gvcf"}
+        logger.info("Subset operation completed successfully!")
 
-        meta_ht = meta_ht.annotate(
-            project_meta=meta_ht.project_meta.drop(*data_to_drop)
-        )
-        meta_ht = meta_ht.checkpoint(
-            f"{output_path}/metadata.ht", overwrite=args.overwrite
-        )
-        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(f"{config.output_path}/v4_subset.log")
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
-    parser = argparse.ArgumentParser(
+    arg_parser = argparse.ArgumentParser(
         description=(
             "This script subsets gnomAD using a list of samples or terra workspaces."
         )
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--test",
         help="Filter to the first 2 partitions for testing.",
         action="store_true",
     )
-    subset_id_parser = parser.add_mutually_exclusive_group(required=True)
+    subset_id_parser = arg_parser.add_mutually_exclusive_group(required=True)
     subset_id_parser.add_argument(
         "--subset-samples",
         help="Path to a text file with sample IDs for subsetting and a header: s.",
@@ -275,30 +478,36 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " subset, must use a header of 'terra_workspace'."
         ),
     )
-    parser.add_argument(
-        "--vds", help="Whether to make a subset VDS.", action="store_true"
+    arg_parser.add_argument(
+        "--data-type",
+        help="Type of data to subset.",
+        default="exomes",
+        choices=["exomes", "genomes"],
     )
-    parser.add_argument(
-        "--vcf", help="Whether to make a subset VCF.", action="store_true"
+
+    # Make output options mutually exclusive
+    output_group = arg_parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument(
+        "--output-vds", help="Whether to output a subset VDS.", action="store_true"
     )
-    parser.add_argument(
-        "--dense-mt", help="Whether to make a dense MT", action="store_true"
+    output_group.add_argument(
+        "--output-vcf", help="Whether to output a subset VCF.", action="store_true"
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--split-multi",
         help="Whether to split multi-allelic variants.",
         action="store_true",
     )
-    parser.add_argument(
-        "--n-partitions",
+    arg_parser.add_argument(
+        "--rep-on-read-partitions",
         help=(
-            "Number of desired partitions for the subset VDS if --vds and/or MT if"
-            " --dense-mt is set and/or the number of shards in the output VCF if --vcf"
-            " is set. By default, there will be no change in partitioning."
+            "Number of partitions to pass when reading in the VDS. If passed, and the "
+            "--output-partitions is not, this will be the number of output "
+            "partitions. By default, there will be no change in partitioning."
         ),
         type=int,
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--add-variant-qc",
         help=(
             "Annotate exported file with gnomAD's variant QC annotations. Defaults to"
@@ -307,7 +516,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--pass-only",
         help=(
             "Keep only the variants that passed variant QC, i.e. the filter field is"
@@ -315,7 +524,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--variant-qc-annotations",
         nargs="+",
         type=str,
@@ -324,31 +533,41 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " annotations."
         ),
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--export-meta",
         help="Pull sample subset metadata and export to a HT and .tsv.",
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--keep-data-paths",
         help="Keep CRAM and gVCF paths in the project metadata export.",
         action="store_true",
     )
-    parser.add_argument(
+    arg_parser.add_argument(
         "--output-path",
         help=(
             "Output file path for subsetted VDS/VCF/MT, do not include file extension."
         ),
         required=True,
     )
-    parser.add_argument(
+    arg_parser.add_argument(
+        "--output-partitions",
+        help="Number of desired partitions for the output file.",
+        type=int,
+    )
+    arg_parser.add_argument(
         "-o",
         "--overwrite",
         help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
+    arg_parser.add_argument(
+        "--tmp-dir",
+        help="Temporary directory for Hail to write files to.",
+        default="gs://gnomad-tmp-4day",
+    )
 
-    return parser
+    return arg_parser
 
 
 if __name__ == "__main__":
