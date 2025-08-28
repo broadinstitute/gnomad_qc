@@ -116,7 +116,7 @@ def hail_type_from_string(type_str: str) -> Any:
         inner_type = hail_type_from_string(array_match.group(1))
         return hl.tarray(inner_type)
 
-    # Handel sets.
+    # Handle sets.
     set_match = re.match(r"set<(.+)>", type_str)
     if set_match:
         inner_type = hail_type_from_string(set_match.group(1))
