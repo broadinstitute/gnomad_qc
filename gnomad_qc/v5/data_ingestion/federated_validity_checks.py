@@ -65,181 +65,25 @@ ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
 REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
-# Define function that returns the field types for the Hail Table. Preferable to have function rather than defining a dictionary
-# here to avoid initializing hail before main.
-def return_field_types() -> Dict[str, Dict[str, Any]]:
-    """Return the field types for the Hail Table.
+def get_table_kind(lines, header_index) -> str:
+    """Determine whether a markdown table corresponds to "global" or "row" fields by scanning upward from the table header line.
 
-    :return: A dictionary mapping field names to their Hail types.
+    :param lines: The full list of lines from the markdown document.
+    :param header_index: The index of the table header line (the line with column names).
+    :return: String 'global' if the nearest preceding section marker indicates global fields, 'row' if it indicates row fields, or 'None' if neither is found.
     """
-    return {
-        "global_field_types": {
-            "freq_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
-            "freq_index_dict": hl.tdict(hl.tstr, hl.tint32),
-            "freq_meta_sample_count": hl.tarray(hl.tint32),
-            "age_distribution.bin_edges": hl.tarray(hl.tfloat64),
-            "age_distribution.bin_freq": hl.tarray(hl.tint32),
-            "age_distribution.n_smaller": hl.tint32,
-            "age_distribution.n_larger": hl.tint32,
-            "downsamplings": hl.tdict(hl.tstr, hl.tarray(hl.tint32)),
-            "vrs_versions.vrs_schema_version": hl.tstr,
-            "vrs_versions.vrs_python_version": hl.tstr,
-            "vrs_versions.seqrepo_version": hl.tstr,
-            "date": hl.tstr,
-            "faf_meta": hl.tarray(hl.tdict(hl.tstr, hl.tstr)),
-            "faf_index_dict": hl.tdict(hl.tstr, hl.tint32),
-            "filtering_model.filter_name": hl.tstr,
-            "filtering_model.score_name": hl.tstr,
-            "filtering_model.snv_cutoff.bin": hl.tint32,
-            "filtering_model.snv_cutoff.min_score": hl.tfloat64,
-            "filtering_model.indel_cutoff.bin": hl.tint32,
-            "filtering_model.indel_cutoff.min_score": hl.tfloat64,
-            "filtering_model.snv_training_variables": hl.tarray(hl.tstr),
-            "filtering_model.indel_training_variables": hl.tarray(hl.tstr),
-            "inbreeding_coeff_cutoff": hl.tfloat64,
-            "excess_het_cutoff": hl.float64,
-            "tool_versions.cadd_version": hl.tstr,
-            "tool_versions.revel_version": hl.tstr,
-            "tool_versions.spliceai_version": hl.tstr,
-            "tool_versions.pangolin_version": hl.tarray(hl.tstr),
-            "tool_versions.phylop_version": hl.tstr,
-            "tool_versions.dbsnp_version": hl.tstr,
-            "tool_versions.sift_version": hl.tstr,
-            "tool_versions.polyphen_version": hl.tstr,
-            "vep_globals.vep_version": hl.tstr,
-            "vep_globals.vep_help": hl.tstr,
-            "vep_globals.vep_config": hl.tstr,
-            "vep_globals.gencode_version": hl.tstr,
-            "vep_globals.mane_select_version": hl.tstr,
-            "frequency_README": hl.tstr,
-            "version": hl.tstr,
-        },
-        "row_field_types": {
-            "locus": hl.tlocus("GRCh38"),
-            "alleles": hl.tarray(hl.tstr),
-            "freq.AC": hl.tarray(hl.tint32),
-            "freq.AF": hl.tarray(hl.tfloat64),
-            "freq.AN": hl.tarray(hl.tint32),
-            "freq.homozygote_count": hl.tarray(hl.tint32),
-            "was_split": hl.tbool,
-            "filters": hl.tset(hl.tstr),
-            "info.FS": hl.tfloat64,
-            "info.MQ": hl.tfloat64,
-            "info.MQRankSum": hl.tfloat64,
-            "info.MQRankSum_cdf.levels": hl.tarray(hl.tint32),
-            "info.MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
-            "info.MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-            "info.QUALapprox": hl.tint64,
-            "info.QD": hl.tfloat32,
-            "info.ReadPosRankSum": hl.tfloat64,
-            "info.ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
-            "info.ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
-            "info.ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-            "info.SB": hl.tarray(hl.tint32),
-            "info.SOR": hl.tfloat64,
-            "info.VarDP": hl.tint32,
-            "info.AS_FS": hl.tfloat64,
-            "info.AS_MQ": hl.tfloat64,
-            "info.AS_MQRankSum": hl.tfloat64,
-            "info.AS_MQRankSum_cdf.levels": hl.tarray(hl.tint32),
-            "info.AS_MQRankSum_cdf.items": hl.tarray(hl.tfloat64),
-            "info.AS_MQRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-            "info.AS_pab_max": hl.tfloat64,
-            "info.AS_QUALapprox": hl.tint64,
-            "info.AS_QD": hl.tfloat32,
-            "info.AS_ReadPosRankSum": hl.tfloat64,
-            "info.AS_ReadPosRankSum_cdf.levels": hl.tarray(hl.tint32),
-            "info.AS_ReadPosRankSum_cdf.items": hl.tarray(hl.tfloat64),
-            "info.AS_ReadPosRankSum_cdf._compaction_counts": hl.tarray(hl.tint32),
-            "info.AS_SB_TABLE": hl.tarray(hl.tint32),
-            "info.AS_SOR": hl.tfloat64,
-            "info.AS_VarDP": hl.tint32,
-            "info.singleton": hl.tbool,
-            "info.transmitted_singleton": hl.tbool,
-            "info.sibling_singleton": hl.tbool,
-            "info.vrs.VRS_Allele_IDs": hl.tarray(hl.tstr),
-            "info.vrs.VRS_Starts": hl.tarray(hl.tint32),
-            "info.vrs.VRS_Ends": hl.tarray(hl.tint32),
-            "info.vrs.VRS_States": hl.tarray(hl.tstr),
-            "info.omni": hl.tbool,
-            "info.mills": hl.tbool,
-            "info.monoallelic": hl.tbool,
-            "info.only_het": hl.tbool,
-            "info.inbreeding_coeff": hl.tfloat64,
-            "info.excess_het": hl.tfloat64,
-            "histograms.qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
-            "histograms.qual_hists.gq_hist_all.n_smaller": hl.tint64,
-            "histograms.qual_hists.gq_hist_all.n_larger": hl.tint64,
-            "histograms.qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
-            "histograms.qual_hists.dp_hist_all.n_smaller": hl.tint64,
-            "histograms.qual_hists.dp_hist_all.n_larger": hl.tint64,
-            "histograms.qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
-            "histograms.qual_hists.gq_hist_alt.n_smaller": hl.tint64,
-            "histograms.qual_hists.gq_hist_alt.n_larger": hl.tint64,
-            "histograms.qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
-            "histograms.qual_hists.dp_hist_alt.n_smaller": hl.tint64,
-            "histograms.qual_hists.dp_hist_alt.n_larger": hl.tint64,
-            "histograms.qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
-            "histograms.qual_hists.ab_hist_alt.n_smaller": hl.tint64,
-            "histograms.qual_hists.ab_hist_alt.n_larger": hl.tint64,
-            "histograms.raw_qual_hists.gq_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.raw_qual_hists.gq_hist_all.bin_freq": hl.tarray(hl.tint64),
-            "histograms.raw_qual_hists.gq_hist_all.n_smaller": hl.tint64,
-            "histograms.raw_qual_hists.gq_hist_all.n_larger": hl.tint64,
-            "histograms.raw_qual_hists.dp_hist_all.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.raw_qual_hists.dp_hist_all.bin_freq": hl.tarray(hl.tint64),
-            "histograms.raw_qual_hists.dp_hist_all.n_smaller": hl.tint64,
-            "histograms.raw_qual_hists.dp_hist_all.n_larger": hl.tint64,
-            "histograms.raw_qual_hists.gq_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.raw_qual_hists.gq_hist_alt.bin_freq": hl.tarray(hl.tint64),
-            "histograms.raw_qual_hists.gq_hist_alt.n_smaller": hl.tint64,
-            "histograms.raw_qual_hists.gq_hist_alt.n_larger": hl.tint64,
-            "histograms.raw_qual_hists.dp_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.raw_qual_hists.dp_hist_alt.bin_freq": hl.tarray(hl.tint64),
-            "histograms.raw_qual_hists.dp_hist_alt.n_smaller": hl.tint64,
-            "histograms.raw_qual_hists.dp_hist_alt.n_larger": hl.tint64,
-            "histograms.raw_qual_hists.ab_hist_alt.bin_edges": hl.tarray(hl.tfloat64),
-            "histograms.raw_qual_hists.ab_hist_alt.bin_freq": hl.tarray(hl.tint64),
-            "histograms.raw_qual_hists.ab_hist_alt.n_smaller": hl.tint64,
-            "histograms.raw_qual_hists.ab_hist_alt.n_larger": hl.tint64,
-            "grpmax.AC": hl.tint32,
-            "grpmax.AF": hl.tfloat64,
-            "grpmax.AN": hl.tint32,
-            "grpmax.homozygote_count": hl.tint32,
-            "grpmax.gen_anc": hl.tstr,
-            "faf.faf95": hl.tfloat64,
-            "faf.faf99": hl.tfloat64,
-            "fafmax.faf95_max": hl.tfloat64,
-            "fafmax.faf95_max_gen_anc": hl.tstr,
-            "fafmax.faf99_max": hl.tfloat64,
-            "fafmax.faf99_max_gen_anc": hl.tstr,
-            "rsid": hl.tset(hl.tstr),
-            "vqsr_results.AS_VQSLOD": hl.tfloat64,
-            "vqsr_results.AS_culprit": hl.tstr,
-            "vqsr_results.positive_train_site": hl.tbool,
-            "vqsr_results.negative_train_site": hl.tbool,
-            "region_flags.non_par": hl.tbool,
-            "region_flags.lcr": hl.tbool,
-            "region_flags.segdup": hl.tbool,
-            "allele_info.allele_type": hl.tstr,
-            "allele_info.n_alt_alleles": hl.tint32,
-            "allele_info.variant_type": hl.tstr,
-            "allele_info.was_mixed": hl.tbool,
-            "in_silico_predictors.cadd.phred": hl.tfloat32,
-            "in_silico_predictors.cadd.raw_score": hl.tfloat32,
-            "in_silico_predictors.revel_max": hl.tfloat64,
-            "in_silico_predictors.spliceai_ds_max": hl.tfloat32,
-            "in_silico_predictors.pangolin_largest_ds": hl.tfloat64,
-            "in_silico_predictors.phylop": hl.tfloat64,
-            "in_silico_predictors.sift_max": hl.tfloat64,
-            "in_silico_predictors.polyphen_max": hl.tfloat64,
-        },
-    }
+    for j in range(header_index - 1, -1, -1):
+        prev_line = lines[j].lower().strip()
+        if not prev_line:
+            continue
+        if "global" in prev_line:
+            return "global"
+        if "row" in prev_line:
+            return "row"
+        # Stop if we hit a heading.
+        if prev_line.startswith("#"):
+            break
+    return None
 
 
 def hail_type_from_string(type_str: str) -> Any:
@@ -309,24 +153,26 @@ def is_concrete_type(htype) -> bool:
 
 def parse_field_necessity_from_md(
     md_text: str,
-) -> Tuple[Dict[str, str], Dict[str, Any]]:
+) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
     """Create dictionary of field necessity from parsing markdown text.
 
     :param md_text: Markdown text to parse.
-    :return: Dictionary of field names and their necessity and dictionary of field names and their names.
+    :return: Dictionary of field names and their necessity, and dictionary split into 'global_field_types' and 'row_field_types' keys, containing field names and their types.
     """
     field_necessities = {}
-    field_types = {}
+    field_types = {"global_field_types": {}, "row_field_types": {}}
     lines = md_text.splitlines()
     in_table = False
 
     parent_types = {}
 
-    for line in lines:
-        # Detect table header.
+    for i, line in enumerate(lines):
+        # Detect table header to distinguish between global and row fields.
         if line.strip().startswith("| Field") and "Field Necessity" in line:
             in_table = True
+            table_kind = get_table_kind(lines, i)
             continue
+
         # Skip alignment row.
         if in_table and re.match(r"^\|[-| ]+\|$", line):
             continue
@@ -360,7 +206,10 @@ def parse_field_necessity_from_md(
 
             # Skip recording the field type is the field is a parent type with further nodes (will be arry or struct with no defined inner types).
             if is_concrete_type(field_type):
-                field_types[field] = field_type
+                if table_kind == "global":
+                    field_types["global_field_types"][field] = field_type
+                elif table_kind == "row":
+                    field_types["row_field_types"][field] = field_type
 
             # Normalize necessity label.
             necessity_clean = necessity.strip().lower()
@@ -1054,7 +903,6 @@ def main(args):
 
         # Read in field necessity markdown file.
         # When submitting hail dataproc job, include "--files field_requirements.md".
-
         try:
             with open("field_requirements.md", "r") as f:
                 md_text = f.read()
@@ -1067,10 +915,11 @@ def main(args):
 
         field_necessities, field_types = parse_field_necessity_from_md(md_text)
 
+        print("PRINTING FIELD TYPES")
         for k, v in field_types.items():
             print(f"{k}: {v}")
 
-        sys.exit()
+        # sys.exit()
 
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
@@ -1146,7 +995,6 @@ def main(args):
             ]["faf_meta"]
 
         logger.info("Validate required fields...")
-        field_types = return_field_types()
         validation_errors, validated_fields = validate_required_fields(
             ht=ht,
             field_types=field_types,
@@ -1166,10 +1014,10 @@ def main(args):
             optional_errors = validation_errors - required_errors
             if required_errors:
                 required_errors = "| ".join(sorted(required_errors))
-                logger.info("Failed validation of required fields %s", required_errors)
+                logger.info("Failed validation of required fields: %s", required_errors)
             if optional_errors:
                 optional_errors = "| ".join(sorted(optional_errors))
-                logger.info("Failed validation of optional errors %s", optional_errors)
+                logger.warn("Issues with optional fields: %s", optional_errors)
 
         if len(validated_fields) > 0:
             validated_fields = "| ".join(sorted(validated_fields))
