@@ -198,7 +198,7 @@ def parse_field_necessity_from_md(
             if len(field_parts) == 1:
                 parent_types[field] = field_type
 
-            # If the parent type of a given field is an array, warp the field type
+            # If the parent type of a given field is an array, wrap the field type
             # within tarray.
             if len(field_parts) > 1:
                 parent = field_parts[0]
