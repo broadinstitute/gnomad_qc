@@ -90,7 +90,7 @@ def hail_type_from_string(type_str: str) -> Any:
     """
     Convert a type string from the markdown to a Hail type.
 
-    :param type_str: Type string from markdown text, sach as `int32`.
+    :param type_str: Type string from markdown text, such as `int32`.
     :return: Hail type represented by the type string.
     """
     type_str = type_str.strip().strip("`")
@@ -206,8 +206,8 @@ def parse_field_necessity_from_md(
                 if isinstance(parent_type, hl.tarray):
                     field_type = hl.tarray(field_type)
 
-            # Skip recording the field type is the field is a parent type with further
-            # nodes (will be arry or struct with no defined inner types).
+            # Skip recording the field type if the field is a parent type with further
+            # nodes (will be array or struct with no defined inner types).
             if is_concrete_type(field_type):
                 if table_kind == "global":
                     field_types["global_field_types"][field] = field_type

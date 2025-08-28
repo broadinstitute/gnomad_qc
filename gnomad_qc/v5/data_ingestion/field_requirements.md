@@ -45,7 +45,7 @@ All histograms annotations must use the same bin edges as defined in their respe
 | <span style="color:#999;">tool_versions</span>.sift_version | `str` | Sorting Intolerant from Tolerant (SIFT) version. | — | Not Needed |
 | <span style="color:#999;">tool_versions</span>.polyphen_version | `str` | Polymorphism Phenotyping v2 (Polyphen-v2) version. | — | Not Needed |
 | **vrs_versions** | `struct { ... }` | The Variant Representation Specification version that was used to compute IDs on the callset. Global and row VRS annotations are optional, but the global annotaions must be filled out if the row annotations are provided. | — | Optional |
-| <span style="color:#999;">vrs_versions</span>.vrs_schema_version | `str` | The version of the VRS schema that is used to represent variants and compute identifiers. Must be `2.0.1`. | `"2.0.1` | Optional |
+| <span style="color:#999;">vrs_versions</span>.vrs_schema_version | `str` | The version of the VRS schema that is used to represent variants and compute identifiers. Must be `2.0.1`. | `"2.0.1"` | Optional |
 | <span style="color:#999;">vrs_versions</span>.vrs_python_version | `str` | The version of the vrs-python library that was used to compute IDs on the callset. Must be `2.1.3`. | `"2.1.3"` | Optional |
 | <span style="color:#999;">vrs_versions</span>.seqrepo_version | `str` | The version of the SeqRepo database that was used in VRS computations. Must be `2024-12-20`. | `"2024-12-20"` | Optional |
 | **vep_globals** | `struct { ... }` | Information about VEP annotations. | — | Not Needed |
