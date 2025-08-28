@@ -193,36 +193,52 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
     )
 
 
-def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+def related_samples_to_drop(
+    test: bool = False, release: bool = False
+) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
+    Get the VersionedTableResource for samples to drop for genetic ancestry PCA or release.
+
+    Default to returning the VersionedTableResource for samples to drop for genetic ancestry PCA.
+    If release is set to True, retrieve the VersionedTableResource of related samples
+    to remove for release which accounts for sample outlier filtering.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release: Whether to return resource for related samples to drop for the
+        release.
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.{'release' if release else 'pca'}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
     )
 
 
-def sample_rankings(test: bool = False) -> VersionedTableResource:
+def sample_rankings(
+    test: bool = False, release: bool = False
+) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for sample rankings for genetic ancestry PCA.
+    Get the VersionedTableResource for sample rankings for genetic ancestry PCA or release.
+
+    Default to returning the VersionedTableResource for genetic ancestry PCA sample rankings. If
+    release is set to True, retrieve the VersionedTableResource of sample rankings for
+    removing relateds for release which accounts for sample outlier filtering.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release:  Whether to return resource for related samples to drop for the
+        release..
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.{'release' if release else 'pca'}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
