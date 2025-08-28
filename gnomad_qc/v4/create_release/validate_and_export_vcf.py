@@ -141,7 +141,7 @@ SUBSETS = {
 GEN_ANC_GROUPS = deepcopy(GEN_ANC_GROUPS["v4"])
 GEN_ANC_GROUPS["joint"] = set(GEN_ANC_GROUPS["exomes"]) | set(GEN_ANC_GROUPS["genomes"])
 
-# Remove unnecessary pop names from POP_NAMES dict
+# Remove unnecessary pop names from GEN_ANC_NAMES dict
 GEN_ANC_GROUPS = {
     d: {pop: GEN_ANC_NAMES[pop] for pop in pops} for d, pops in GEN_ANC_GROUPS.items()
 }
@@ -738,8 +738,8 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
-    # Remove unnecessary pop names from FAF_POPS dict depending on data type
-    # and version of FAF_POPS.
+    # Remove unnecessary pop names from FAF_GEN_ANC_GROUPS dict depending on data type
+    # and version of FAF_GEN_ANC_GROUPS.
     faf_pops_version = "v3" if data_type == "genomes" or subset == "genomes" else "v4"
     faf_pops = {pop: GEN_ANC_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
