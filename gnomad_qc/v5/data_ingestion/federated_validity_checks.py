@@ -80,7 +80,7 @@ def get_table_kind(lines, header_index) -> str:
             return "global"
         if "row" in prev_line:
             return "row"
-        # Stop if we hit a heading.
+        # Stop if hit a heading.
         if prev_line.startswith("#"):
             break
     return None
@@ -129,7 +129,7 @@ def hail_type_from_string(type_str: str) -> Any:
         value_type = hail_type_from_string(dict_match.group(2))
         return hl.tdict(key_type, value_type)
 
-    # Handle structs (if type is struct, it will always be a parent type for which  we can skip obtaining the type).
+    # Handle structs (if type is struct, it will always be a parent type for which we can skip obtaining the type).
     if type_str.startswith("struct"):
         return hl.tstruct()
 
@@ -914,12 +914,6 @@ def main(args):
             )
 
         field_necessities, field_types = parse_field_necessity_from_md(md_text)
-
-        print("PRINTING FIELD TYPES")
-        for k, v in field_types.items():
-            print(f"{k}: {v}")
-
-        # sys.exit()
 
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
