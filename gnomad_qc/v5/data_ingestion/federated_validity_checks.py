@@ -8,6 +8,8 @@ import sys
 from io import StringIO
 from typing import Any, Dict, List, Set, Tuple
 
+
+from collections import defaultdict
 import hail as hl
 from bs4 import BeautifulSoup
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
@@ -327,7 +329,7 @@ def validate_required_fields(
     field_types: Dict[str, Dict[str, Any]],
     field_necessities: Dict[str, str],
     validate_all_fields: bool = False,
-) -> Tuple[Set[str], Set[str]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Validate that the table contains the required global and row fields and that their values are of the expected types.
 
@@ -341,8 +343,10 @@ def validate_required_fields(
     :param validate_all_fields: Whether to validate all fields or only the required/optional ones.
     :return: Tuple of fields checked and whether or not they passed validation checks.
     """
-    issues = []
-    validated = []
+    field_issues = defaultdict(lambda: defaultdict(list))
+    type_issues = []
+    fields_validated = defaultdict(lambda: defaultdict(list))
+    types_validated = []
 
     default_necessity = "not_needed"
 
@@ -378,25 +382,18 @@ def validate_required_fields(
         for i, part in enumerate(parts):
             dtype = current_field.dtype
 
-            # Check for presence of required struct fields.
             if isinstance(dtype, hl.tstruct):
                 if part not in dtype.fields:
-                    issues.append(
-                        f"MISSING {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} "
-                    )
+                    field_issues[field_necessity][annotation_kind].append(field_path)
                     return
                 current_field = current_field[part]
-                validated.append(
-                    f"Found {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} "
-                )
 
-            # Check for presence of required array fields.
             elif isinstance(dtype, hl.tarray) and isinstance(
                 dtype.element_type, hl.tstruct
             ):
-                if not part in dtype.element_type.fields:
-                    issues.append(
-                        f"MISSING {field_necessity} {annotation_kind} field: {'.'.join(parts[:i+1])} \n Available fields in array struct: {list(dtype.element_type.fields.keys())}"
+                if part not in dtype.element_type.fields:
+                    field_issues[field_necessity][annotation_kind].append(
+                        f"{field_path} (available in array struct: {list(dtype.element_type.fields.keys())})"
                     )
                     return
                 current_field = current_field.map(lambda x: x[part])
@@ -404,33 +401,36 @@ def validate_required_fields(
             else:
                 logger.info(
                     "Unsupported type while traversing %s: %s",
-                    ".'".join(parts[:i]),
+                    ".".join(parts[:i]),
                     dtype,
                 )
                 return
+
+        # If we make it here, the field exists fully.
+        fields_validated[field_necessity][annotation_kind].append(field_path)
 
         # Check that the field type matches expectation.
         if isinstance(expected_type, hl.tarray) and isinstance(
             current_field.dtype, hl.tarray
         ):
             if expected_type.element_type != current_field.dtype.element_type:
-                issues.append(
+                type_issues.append(
                     f"{annotation_kind.capitalize()} field '{field_path}' is an array with incorrect element type: "
                     f"expected {expected_type.element_type}, found {current_field.dtype.element_type}"
                 )
                 return
 
-            validated.append(
+            types_validated.append(
                 f"{annotation_kind.capitalize()} field '{field_path}' IS an array with correct element type {expected_type.element_type}"
             )
         else:
             if current_field.dtype != expected_type:
-                issues.append(
+                type_issues.append(
                     f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
                 )
                 return
 
-            validated.append(
+            types_validated.append(
                 f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
             )
 
@@ -442,7 +442,7 @@ def validate_required_fields(
     for field, expected_type in field_types["row_field_types"].items():
         _check_field_exists_and_type(ht.row, field, expected_type, "row")
 
-    return (set(issues), set(validated))
+    return field_issues, type_issues, fields_validated, types_validated
 
 
 def check_missingness(
@@ -992,33 +992,60 @@ def main(args):
             ]["faf_meta"]
 
         logger.info("Validate required fields...")
-        validation_errors, validated_fields = validate_required_fields(
-            ht=ht,
-            field_types=field_types,
-            field_necessities=field_necessities,
-            validate_all_fields=args.validate_all_fields,
+        field_issues, type_issues, fields_validated, types_validated = (
+            validate_required_fields(
+                ht=ht,
+                field_types=field_types,
+                field_necessities=field_necessities,
+                validate_all_fields=args.validate_all_fields,
+            )
         )
 
-        if len(validation_errors) > 0:
-            # Separate validation issues by necessity.
-            required_errors = {
-                e
-                for e in validation_errors
-                if "MISSING required" in e
-                or "is not of type" in e
-                or "incorrect element type" in e
-            }
-            optional_errors = validation_errors - required_errors
-            if required_errors:
-                required_errors = "| ".join(sorted(required_errors))
-                logger.info("Failed validation of required fields: %s", required_errors)
-            if optional_errors:
-                optional_errors = "| ".join(sorted(optional_errors))
-                logger.warn("Issues with optional fields: %s", optional_errors)
+        # Log missing fields
+        for necessity, annos in field_issues.items():
+            for annotation_type, fields in annos.items():
+                if not fields:
+                    continue
 
-        if len(validated_fields) > 0:
-            validated_fields = "| ".join(sorted(validated_fields))
-            logger.info("Validated fields: %s", validated_fields)
+                if necessity == "required":
+                    msg = "FAILED FIELD VALIDATIONS: missing required %s fields: %s" % (
+                        annotation_type,
+                        ", ".join(sorted(fields)),
+                    )
+                    logger.error(msg)
+
+                elif necessity == "optional":
+                    msg = "MISSING optional %s fields: %s" % (
+                        annotation_type,
+                        ", ".join(sorted(fields)),
+                    )
+                    logger.warning(msg)
+
+                else:  # catch-all for other cases like "not_needed"
+                    msg = "MISSING %s %s fields: %s" % (
+                        necessity,
+                        annotation_type,
+                        ", ".join(sorted(fields)),
+                    )
+                    logger.info(msg)
+
+        # Log found/validated fields
+        for necessity, annos in fields_validated.items():
+            for annotation_type, fields in annos.items():
+                if fields:
+                    logger.info(
+                        "Found %s %s fields: %s",
+                        necessity,
+                        annotation_type,
+                        ", ".join(sorted(fields)),
+                    )
+
+        # Log type validations
+        if types_validated:
+            logger.info(
+                "Validated types: %s",
+                " | ".join(sorted(types_validated)),
+            )
 
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
