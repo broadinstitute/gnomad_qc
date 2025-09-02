@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import re
-import sys
 from io import StringIO
 from typing import Any, Dict, List, Set, Tuple
 
@@ -231,6 +230,75 @@ def parse_field_necessity_from_md(
             in_table = False
 
     return field_necessities, field_types
+
+
+def log_field_validation_results(
+    field_issues: Dict[str, Dict[str, List[str]]],
+    fields_validated: Dict[str, Dict[str, List[str]]],
+    type_issues: List[str],
+    types_validated: List[str],
+) -> None:
+    """
+    Log the results of field existence and type validation.
+
+    This function consolidates and logs:
+      1. Missing fields (required, optional, or other categories).
+      2. Found/validated fields.
+      3. Successful type validations.
+
+    :param field_issues: Nested dictionary mapping necessity ("required", "optional") and annotation_kind ("row", "global") to list of missing field names.
+    :param fields_validated:  Nested dictionary mapping necessity ("required", "optional") and annotation_kind ("row", "global") to list of fields successfully found.
+    :param type_issues: List of strings describing fields with incorrect or mismatched types.
+    :param types_validated: List of strings describing successful type validations.
+    :return: None
+    """
+    # Log missing fields.
+    for necessity, annos in field_issues.items():
+        for annotation_type, fields in annos.items():
+            if not fields:
+                continue
+
+            if necessity == "required":
+                msg = "FAILED FIELD VALIDATIONS: missing %s fields: %s" % (
+                    annotation_type,
+                    ", ".join(sorted(fields)),
+                )
+                logger.error(msg)
+
+            elif necessity == "optional":
+                msg = "MISSING optional %s fields: %s" % (
+                    annotation_type,
+                    ", ".join(sorted(fields)),
+                )
+                logger.warning(msg)
+
+            else:
+                raise ValueError("neccessity must be one of 'required' or 'optional")
+
+    # Log found/validated fields.
+    for necessity, annos in fields_validated.items():
+        for annotation_type, fields in annos.items():
+            if fields:
+                logger.info(
+                    "Found %s %s fields: %s",
+                    necessity,
+                    annotation_type,
+                    ", ".join(sorted(fields)),
+                )
+
+    # Log type validations.
+    if type_issues:
+        logger.error(
+            "Type issues: %s",
+            " | ".join(sorted(type_issues)),
+        )
+
+    # Log type validations.
+    if types_validated:
+        logger.info(
+            "Validated types: %s",
+            " | ".join(sorted(types_validated)),
+        )
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -1001,51 +1069,9 @@ def main(args):
             )
         )
 
-        # Log missing fields
-        for necessity, annos in field_issues.items():
-            for annotation_type, fields in annos.items():
-                if not fields:
-                    continue
-
-                if necessity == "required":
-                    msg = "FAILED FIELD VALIDATIONS: missing required %s fields: %s" % (
-                        annotation_type,
-                        ", ".join(sorted(fields)),
-                    )
-                    logger.error(msg)
-
-                elif necessity == "optional":
-                    msg = "MISSING optional %s fields: %s" % (
-                        annotation_type,
-                        ", ".join(sorted(fields)),
-                    )
-                    logger.warning(msg)
-
-                else:  # catch-all for other cases like "not_needed"
-                    msg = "MISSING %s %s fields: %s" % (
-                        necessity,
-                        annotation_type,
-                        ", ".join(sorted(fields)),
-                    )
-                    logger.info(msg)
-
-        # Log found/validated fields
-        for necessity, annos in fields_validated.items():
-            for annotation_type, fields in annos.items():
-                if fields:
-                    logger.info(
-                        "Found %s %s fields: %s",
-                        necessity,
-                        annotation_type,
-                        ", ".join(sorted(fields)),
-                    )
-
-        # Log type validations
-        if types_validated:
-            logger.info(
-                "Validated types: %s",
-                " | ".join(sorted(types_validated)),
-            )
+        log_field_validation_results(
+            field_issues, fields_validated, type_issues, types_validated
+        )
 
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
