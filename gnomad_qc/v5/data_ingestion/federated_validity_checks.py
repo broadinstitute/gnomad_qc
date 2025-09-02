@@ -4,11 +4,10 @@ import argparse
 import json
 import logging
 import re
+from collections import defaultdict
 from io import StringIO
 from typing import Any, Dict, List, Set, Tuple
 
-
-from collections import defaultdict
 import hail as hl
 from bs4 import BeautifulSoup
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
