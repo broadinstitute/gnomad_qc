@@ -241,11 +241,6 @@ def log_field_validation_results(
     """
     Log the results of field existence and type validation.
 
-    This function consolidates and logs:
-      1. Missing fields (required, optional, or other categories).
-      2. Found/validated fields.
-      3. Successful type validations.
-
     :param field_issues: Nested dictionary mapping necessity ("required", "optional") and annotation_kind ("row", "global") to list of missing field names.
     :param fields_validated:  Nested dictionary mapping necessity ("required", "optional") and annotation_kind ("row", "global") to list of fields successfully found.
     :param type_issues: List of strings describing fields with incorrect or mismatched types.
