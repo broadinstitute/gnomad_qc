@@ -91,6 +91,9 @@ def hail_type_from_string(type_str: str) -> Any:
     """
     Convert a type string from the markdown to a Hail type.
 
+    This function expects flattened fields (no nested dicts or nested structs).
+    Complex nested types may not be fully supported.
+
     :param type_str: Type string from markdown text, such as `int32`.
     :return: Hail type represented by the type string.
     """
@@ -98,7 +101,7 @@ def hail_type_from_string(type_str: str) -> Any:
 
     if type_str in {"int64"}:
         return hl.tint64
-    if type_str in {"int32"}:
+    elif type_str in {"int32"}:
         return hl.tint32
     elif type_str in {"float64"}:
         return hl.tfloat64
@@ -142,15 +145,16 @@ def is_concrete_type(htype) -> bool:
     """Determine whether a Hail type represents a "concrete" field that should be added to field_types, as opposed to an empty container (such as an empty array or struct).
 
     Empty structs and arrays are not concrete types. Arrays are interpreted recursively.
+
     :param htype: Hail type to check (ex: hl.tint32, hl.tarray(hl.tfloat64), hl.tstruct()).
     :return: Bool of whether or not the hail type is considered "concrete".
     """
     if isinstance(htype, hl.tstruct):
-        return len(htype.fields) > 0  # only add if struct has fields
+        return len(htype.fields) > 0
     elif isinstance(htype, hl.tarray):
-        return is_concrete_type(htype.element_type)  # recursive
+        return is_concrete_type(htype.element_type)
     else:
-        return True  # primitives (int/float/str/bool) are concrete
+        return True
 
 
 def parse_field_necessity_from_md(
@@ -181,8 +185,6 @@ def parse_field_necessity_from_md(
         # Process table rows.
         elif in_table and line.strip().startswith("|"):
             parts = [c.strip() for c in line.strip().split("|") if c.strip()]
-            if len(parts) < 2:
-                continue
             field_raw = parts[0]
             field_type = parts[1]
             necessity = parts[-1]
@@ -199,11 +201,11 @@ def parse_field_necessity_from_md(
             if len(field_parts) == 1:
                 parent_types[field] = field_type
 
-            # If the parent type of a given field is an array, wrap the field type
-            # within tarray.
             if len(field_parts) > 1:
                 parent = field_parts[0]
                 parent_type = parent_types[parent]
+                # If the parent type of a given field is an array, wrap the field type
+                # within tarray.
                 if isinstance(parent_type, hl.tarray):
                     field_type = hl.tarray(field_type)
 
@@ -308,7 +310,7 @@ def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
         validate(instance=config, schema=schema)
         logger.info("JSON is valid.")
     except ValidationError as e:
-        raise ValueError(f"JSON validation error: %s, {e.message}")
+        raise ValueError(f"JSON validation error: {e.message}")
 
 
 def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
@@ -589,7 +591,7 @@ def validate_federated_data(
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
     :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "AS_VQSR".
-    :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
+    :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "non_par", "segdup"].
     :param site_gt_check_expr: Optional dictionary of strings and boolean expressions typically used to log how many monoallelic or 100% heterozygous sites are in the Table.
     :return: None
     """
