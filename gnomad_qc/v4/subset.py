@@ -427,7 +427,6 @@ def main(args):
             )
             format_dict = copy.deepcopy(FORMAT_DICT)
             if config.split_multi:
-                print(format_dict)
                 format_dict.pop("RGQ")
 
             logger.info("Exporting VCF subset...")
