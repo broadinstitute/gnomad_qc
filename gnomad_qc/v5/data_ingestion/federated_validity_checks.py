@@ -61,8 +61,8 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
-REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
+ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["genomes"]
+REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["genomes"]
 
 
 def get_table_kind(lines, header_index) -> str:
@@ -269,7 +269,7 @@ def log_field_validation_results(
                 logger.warning(msg)
 
             else:
-                raise ValueError("neccessity must be one of 'required' or 'optional")
+                raise ValueError("necessity must be one of 'required' or 'optional")
 
     # Log found/validated fields.
     for necessity, annos in fields_validated.items():
@@ -988,7 +988,7 @@ def main(args):
 
         else:
             # TODO: Add resources to intake federated data once obtained.
-            ht = public_release(data_type="exomes").ht()
+            ht = public_release(data_type="genomes").ht()
 
             # Check that fields specified in the config are present in the Table.
             validate_config_fields_in_ht(ht=ht, config=config)
@@ -1079,14 +1079,29 @@ def main(args):
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
         info_dict = {}
+
+        # Add region_flag fields if present.
+        missing_region_flags = []
         if "region_flags" in ht.row:
-            # Add region_flag to info dict.
             for field in REGION_FLAG_FIELDS:
-                info_dict[field] = ht["region_flags"][f"{field}"]
-        # Add allele_info fields to info dict.
+                if field in ht["region_flags"]:
+                    info_dict[field] = ht["region_flags"][field]
+                else:
+                    missing_region_flags.append(field)
+        region_flags = [f for f in REGION_FLAG_FIELDS if f not in missing_region_flags]
+        if missing_region_flags:
+            logger.warning("Missing region_flag fields: %s", missing_region_flags)
+
+        # Add allele_info fields if present.
+        missing_allele_info = []
         if "allele_info" in ht.row:
             for field in ALLELE_TYPE_FIELDS:
-                info_dict[field] = ht["allele_info"][f"{field}"]
+                if field in ht["allele_info"]:
+                    info_dict[field] = ht["allele_info"][field]
+                else:
+                    missing_allele_info.append(field)
+        if missing_allele_info:
+            logger.warning("Missing allele type fields: %s", missing_allele_info)
 
         # Add monoallelic and only_het fields to info dict.
         if "monoallelic" in ht.row:
@@ -1119,7 +1134,7 @@ def main(args):
             verbose=verbose,
             subsets=config["subsets"],
             variant_filter_field=config["variant_filter_field"],
-            problematic_regions=REGION_FLAG_FIELDS,
+            problematic_regions=region_flags,
             site_gt_check_expr=site_gt_check_expr,
         )
 
