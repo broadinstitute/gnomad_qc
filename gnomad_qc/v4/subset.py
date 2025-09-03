@@ -202,7 +202,7 @@ def apply_split_multi_logic(
     mtds = _add_split_annotations(mtds)
 
     if config.output_vcf:
-        mtds = hl.experimental.sparse_split_multi(mtds)
+        mtds = hl.experimental.sparse_split_multi(mtds, filter_changed_loci=True)
         mtds = mtds.filter_rows(hl.agg.any(hl.is_defined(mtds.GT)))
         # Used during splitting multiallelics but no longer needed after.
         mtds = mtds.drop("RGQ")
