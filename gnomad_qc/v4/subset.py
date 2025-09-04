@@ -47,8 +47,9 @@ class ProcessingConfig:
     test: bool = False
     rep_on_read_partitions: Optional[int] = None
 
-    # File paths
+    # File paths and names
     output_path: str = ""
+    output_filename: str = "subset"
     subset_samples: Optional[str] = None
     subset_workspaces: Optional[str] = None
     tmp_dir: str = ""
@@ -81,6 +82,7 @@ class ProcessingConfig:
             rep_on_read_partitions=args.rep_on_read_partitions,
             output_partitions=args.output_partitions,
             output_path=args.output_path,
+            output_filename=args.output_filename,
             subset_samples=args.subset_samples,
             subset_workspaces=args.subset_workspaces,
             tmp_dir=args.tmp_dir,
@@ -202,7 +204,7 @@ def apply_split_multi_logic(
     mtds = _add_split_annotations(mtds)
 
     if config.output_vcf:
-        mtds = hl.experimental.sparse_split_multi(mtds)
+        mtds = hl.experimental.sparse_split_multi(mtds, filter_changed_loci=True)
         mtds = mtds.filter_rows(hl.agg.any(hl.is_defined(mtds.GT)))
         # Used during splitting multiallelics but no longer needed after.
         mtds = mtds.drop("RGQ")
@@ -415,7 +417,10 @@ def main(args):
                 )
 
             logger.info("Writing VDS subset...")
-            mtds.write(f"{config.output_path}/subset.vds", overwrite=config.overwrite)
+            mtds.write(
+                f"{config.output_path}/{config.output_filename}.vds",
+                overwrite=config.overwrite,
+            )
 
         if config.output_vcf:
             logger.info("Formatting VCF info fields for export...")
@@ -427,13 +432,12 @@ def main(args):
             )
             format_dict = copy.deepcopy(FORMAT_DICT)
             if config.split_multi:
-                print(format_dict)
                 format_dict.pop("RGQ")
 
             logger.info("Exporting VCF subset...")
             hl.export_vcf(
                 mtds,
-                f"{config.output_path}/subset.vcf.bgz",
+                f"{config.output_path}/{config.output_filename}.vcf.bgz",
                 metadata={"format": format_dict},
                 parallel="header_per_shard",
                 tabix=True,
@@ -546,9 +550,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     arg_parser.add_argument(
         "--output-path",
         help=(
-            "Output file path for subsetted VDS/VCF/MT, do not include file extension."
+            "Output file path for subsetted VDS/VCF/MT, do not include file name or file extension."
         ),
         required=True,
+    )
+    arg_parser.add_argument(
+        "--output-filename",
+        help="Name of the output file, do not include file extension.",
+        default="subset",
     )
     arg_parser.add_argument(
         "--output-partitions",
