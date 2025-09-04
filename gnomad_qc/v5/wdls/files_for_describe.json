@@ -1,0 +1,5 @@
+{
+    "describe_ht_workflow.input_ht": "gs://gcp-public-data--gnomad/release/4.1/ht/exomes/gnomad.exomes.v4.1.sites.ht",
+    "describe_ht_workflow.output_name": "my_ht_description",
+    "describe_ht_workflow.workspace_bucket": "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1"
+  }
