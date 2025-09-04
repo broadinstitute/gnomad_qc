@@ -550,7 +550,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     arg_parser.add_argument(
         "--output-path",
         help=(
-            "Output file path for subsetted VDS/VCF/MT, do not include file extension."
+            "Output file path for subsetted VDS/VCF/MT, do not include file name or file extension."
         ),
         required=True,
     )
