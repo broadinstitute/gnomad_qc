@@ -21,14 +21,11 @@ task helloTask {
   }
 
   command <<< 
+    echo "DEBUG: Workspace bucket is '${workspace_bucket}'"
+    gsutil ls "${workspace_bucket}" || echo "Bucket path does not exist"
     echo "Hello world" > hello.txt
-    pwd
-    ls -l
-    echo "Workspace bucket is: ${workspace_bucket}"
-    gsutil ls ${workspace_bucket} || echo "Bucket path does not exist"
-    gsutil cp hello.txt ${workspace_bucket}/hello.txt
+    gsutil cp hello.txt "${workspace_bucket}/hello.txt"
 >>>
-
 
   output {
     File hello_txt = "hello.txt"
