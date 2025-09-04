@@ -22,8 +22,11 @@ task helloTask {
 
   command <<< 
     echo "Hello world" > hello.txt
+    pwd
+    ls -l
     gsutil cp hello.txt ${workspace_bucket}/hello.txt
-  >>>
+>>>
+
 
   output {
     File hello_txt = "hello.txt"
