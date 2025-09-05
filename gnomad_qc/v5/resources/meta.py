@@ -35,16 +35,6 @@ For more information, see Known Issue #1 in the AoU QC document:
 https://support.researchallofus.org/hc/en-us/articles/29390274413716-All-of-Us-Genomic-Quality-Report.
 """
 
-failing_metrics_samples = ExpressionResource(
-    path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.failing_genomic_metrics_samples.he",
-)
-"""
-SetExpression containing IDs of 4030 samples failing coverage hard filters and 1490 samples with non-XX/XY sex ploidies.
-
-For more information about samples failing coverage hard filters, see
-docstring of `get_aou_failing_genomic_metrics_samples`.
-"""
-
 samples_to_exclude = ExpressionResource(
     path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.samples_to_exclude.he",
 )
