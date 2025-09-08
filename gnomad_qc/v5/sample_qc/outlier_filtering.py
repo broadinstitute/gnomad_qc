@@ -752,7 +752,7 @@ def main(args):
             if err_msg:
                 raise ValueError(err_msg)
 
-        if args.get_outlier_detection_sample_qc:
+        if args.prepare_outlier_detection_sample_qc:
             check_resource_existence(
                 output_step_resources={
                     "outlier_detection_sample_qc_ht": sample_qc_ht_path
@@ -961,7 +961,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "Get sample QC Table for sample outlier detection.",
     )
     sample_qc_args.add_argument(
-        "--get-outlier-detection-sample-qc",
+        "--prepare-outlier-detection-sample-qc",
         help="Get sample QC Table for sample outlier detection.",
         action="store_true",
     )
