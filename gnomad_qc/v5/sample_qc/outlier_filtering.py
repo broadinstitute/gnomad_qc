@@ -58,8 +58,7 @@ def get_sample_qc_ht(
     :param sample_qc_ht: Sample QC Table.
     :param hard_filtered_samples_ht: Hard filtered samples Table.
     :param sample_collisions: Table with sample collisions.
-    :param test: Whether to filter the input Table to first two partitions and to a random sample of 1% of the
-        dataset. Default is False.
+    :param test: Whether to sample 1% of the dataset. Default is False.
     :param seed: Random seed for making test dataset. Default is 24.
     :return: Sample QC Table for outlier filtering.
     """
