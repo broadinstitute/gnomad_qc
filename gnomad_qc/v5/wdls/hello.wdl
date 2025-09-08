@@ -24,7 +24,7 @@ task helloTask {
     gsutil ls "~{workspace_bucket_name}" || echo "Bucket path does not exist"
     echo "Hello world" > hello.txt
     gsutil cp hello.txt "~{workspace_bucket_name}/hello.txt"
-    >>>
+>>>
 
   output {
     File hello_txt = "hello.txt"
