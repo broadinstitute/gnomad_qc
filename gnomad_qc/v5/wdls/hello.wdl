@@ -5,7 +5,10 @@ workflow hello_workflow {
     String workspace_bucket
   }
 
-  call helloTask
+  call helloTask {
+    input:
+      workspace_bucket_name = workspace_bucket
+  }
 
   output {
     File hello_file = helloTask.hello_txt
@@ -13,12 +16,15 @@ workflow hello_workflow {
 }
 
 task helloTask {
+    String workspace_bucket_name
+  
+
   command <<< 
-    echo "DEBUG: Workspace bucket is '~{workspace_bucket}'"
-    gsutil ls "~{workspace_bucket}" || echo "Bucket path does not exist"
+    echo "DEBUG: Workspace bucket is '~{workspace_bucket_name}'"
+    gsutil ls "~{workspace_bucket_name}" || echo "Bucket path does not exist"
     echo "Hello world" > hello.txt
-    gsutil cp hello.txt "~{workspace_bucket}/hello.txt"
->>>
+    gsutil cp hello.txt "~{workspace_bucket_name}/hello.txt"
+    >>>
 
   output {
     File hello_txt = "hello.txt"
