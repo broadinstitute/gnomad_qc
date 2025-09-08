@@ -760,6 +760,9 @@ def main(args):
                 overwrite=overwrite,
             )
 
+            # Get AoU genomes sample QC Table.
+            # Note that the distribution of alleles in AoU looks more like the gnomAD genomes than exomes,
+            # which is why we use the 'bi_allelic' stratification.
             raw_sample_qc_ht = get_sample_qc("bi_allelic").ht()
             num_filter_partitions = args.num_filter_partitions
             if num_filter_partitions:
