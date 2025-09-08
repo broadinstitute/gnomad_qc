@@ -408,20 +408,26 @@ def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
 ######################################################################
 
 
-def get_joint_sample_qc(
+def get_outlier_detection_sample_qc(
     test: bool = False,
 ) -> VersionedTableResource:
     """
-    Get VersionedTableResource for joint gnomAD and AoU sample QC.
+    Get modified sample QC Table for sample outlier detection.
 
-    :param test: Whether to use the test version of the joint sample QC TableResource.
-    :return: Joint gnomAD + AoU sample QC table.
+    This table has the following modifications:
+        - Remove hard filtered samples
+        - Add project prefix to sample collisions
+        - Add 'r_snp_indel' metric
+        - Sample 1% of the dataset if `test` is True
+
+    :param test: Whether to use the test version of the sample QC TableResource.
+    :return: Modified sample QC Table.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint', data_set='aou')}/outlier_detection/gnomad.v{version}.joint.sample_qc.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.v{version}.outlier_detection_sample_qc.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },

@@ -15,19 +15,17 @@ from gnomad.sample_qc.filtering import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v3.resources.sample_qc import get_sample_qc as v4_get_sample_qc
-from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
+from gnomad_qc.v5.resources.meta import sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     genetic_ancestry_pca_scores,
     get_gen_anc_ht,
-    get_joint_sample_qc,
+    get_outlier_detection_sample_qc,
     get_sample_qc,
     hard_filtered_samples,
     nearest_neighbors,
@@ -41,77 +39,37 @@ logger = logging.getLogger("outlier_filtering")
 logger.setLevel(logging.INFO)
 
 
-def join_sample_qc_hts(
-    v4_sample_qc_ht: hl.Table,
-    v5_sample_qc_ht: hl.Table,
-    v4_meta_ht: hl.Table,
-    v5_hf_ht: hl.Table,
-    sample_collisions: hl.Table,
-) -> hl.Table:
-    """
-    Join v4 and v5 sample QC HTs.
-
-    Function renames sample and global fields to retain values from both versions and drops fields unique to each version
-    (but keeps all singleton annotations in v5).
-
-    :param v4_sample_qc_ht: v4 sample QC HT.
-    :param v5_sample_qc_ht: v5 sample QC HT.
-    :param v4_meta_ht: v4 sample QC metadata HT.
-    :param v5_hf_ht: v5 hard filtered samples HT.
-    :param sample_collisions: Table with sample collisions.
-    :return: Joint v4 + v5 sample QC HT.
-    """
-    v5_sample_qc_ht = v5_sample_qc_ht.filter(
-        hl.is_missing(v5_hf_ht[v5_sample_qc_ht.key])
-    )
-    # Drop fields unique to v5.
-    v5_sample_qc_ht = v5_sample_qc_ht.drop("bases_over_gq_threshold").select_globals()
-    v5_sample_qc_ht = add_project_prefix_to_sample_collisions(
-        t=v5_sample_qc_ht,
-        sample_collisions=sample_collisions,
-        project="aou",
-    )
-
-    # Use v4 metadata to remove hard filtered samples.
-    v4_sample_qc_ht = v4_sample_qc_ht.filter(
-        ~v4_meta_ht[v4_sample_qc_ht.key].sample_filters.hard_filtered
-    )
-    # Reformat v5 HT and drop fields unique to v4.
-    v4_sample_qc_ht = v4_sample_qc_ht.transmute(**v4_sample_qc_ht.sample_qc)
-    v4_sample_qc_ht = v4_sample_qc_ht.drop(
-        "call_rate", "n_called", "n_not_called", "n_filtered"
-    )
-    v4_sample_qc_ht = v4_sample_qc_ht.annotate(
-        n_singleton_ti=hl.missing(hl.tint32),
-        n_singleton_tv=hl.missing(hl.tint32),
-        r_ti_tv_singleton=hl.missing(hl.tfloat64),
-    )
-    v4_sample_qc_ht = add_project_prefix_to_sample_collisions(
-        t=v4_sample_qc_ht,
-        sample_collisions=sample_collisions,
-        project="gnomad",
-    )
-
-    return v5_sample_qc_ht.union(v4_sample_qc_ht, unify=True)
-
-
 def get_sample_qc_ht(
-    sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
+    sample_qc_ht: hl.Table,
+    hard_filtered_samples_ht: hl.Table,
+    sample_collisions: hl.Table,
+    test: bool = False,
+    seed: int = 24,
 ) -> hl.Table:
     """
     Get sample QC Table with modifications needed for outlier filtering.
 
     The following modifications are made:
+        - Remove hard filtered samples
+        - Add project prefix to sample collisions
         - Add 'r_snp_indel' metric
-        - Exclude hard filtered samples
         - Sample 1% of the dataset if `test` is True
 
     :param sample_qc_ht: Sample QC Table.
-    :param test: Whether to filter the input Table to a random sample of 1% of the
-        dataset. Default is False.
+    :param hard_filtered_samples_ht: Hard filtered samples Table.
+    :param sample_collisions: Table with sample collisions.
+    :param test: Whether to sample 1% of the dataset. Default is False.
     :param seed: Random seed for making test dataset. Default is 24.
     :return: Sample QC Table for outlier filtering.
     """
+    sample_qc_ht = sample_qc_ht.filter(
+        hl.is_missing(hard_filtered_samples_ht[sample_qc_ht.key])
+    )
+    sample_qc_ht = add_project_prefix_to_sample_collisions(
+        t=sample_qc_ht,
+        sample_collisions=sample_collisions,
+        project="gnomad",
+    )
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
 
@@ -193,7 +151,6 @@ def apply_stratified_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
     gen_anc_expr: hl.expr.StringExpression,
-    include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Use genetic ancestry-stratified QC metrics to determine what samples are outliers and should be filtered.
@@ -213,8 +170,6 @@ def apply_stratified_filtering_method(
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
     :param gen_anc_expr: Expression with genetic ancestry group assignment.
-    param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
-        the determination of filtering cutoffs.
     :return: Table with stratified metrics and filters.
     """
     logger.info(
@@ -227,16 +182,13 @@ def apply_stratified_filtering_method(
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
-        # TODO: Check whether AoU and gnomAD need to be stratified.
         strata=strata,
         # TODO: Check if these thresholds are still appropriate for v5.
         metric_threshold={
             "n_singleton": (math.inf, 8.0),
             "r_het_hom_var": (math.inf, 4.0),
         },
-        comparison_sample_expr=(
-            sample_qc_ht.releasable if not include_unreleasable_in_cutoffs else None
-        ),
+        comparison_sample_expr=None,
     )
 
     return filter_ht
@@ -247,8 +199,6 @@ def apply_regressed_filtering_method(
     qc_metrics: List[str],
     gen_anc_scores_expr: hl.expr.ArrayExpression,
     regress_gen_anc_n_pcs: int = 30,
-    include_unreleasable_in_regression: bool = False,
-    include_unreleasable_in_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
@@ -270,10 +220,6 @@ def apply_regressed_filtering_method(
     :param gen_anc_scores_expr: Expression with genetic ancestry PCA scores.
     :param regress_gen_anc_n_pcs: Number of genetic ancestry PCA scores to use in regression.
         Default is 30.
-    :param include_unreleasable_in_regression: Whether to include unreleasable samples
-        in the regressions.
-    :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in
-        the determination of filtering cutoffs.
     :return: Table with regression residuals and outlier filters.
     """
     logger.info(
@@ -295,11 +241,7 @@ def apply_regressed_filtering_method(
         sample_qc_ht,
         pc_scores=sample_qc_ht.scores,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
-        regression_sample_inclusion_expr=(
-            sample_qc_ht.releasable
-            if not include_unreleasable_in_regression
-            else hl.bool(True)
-        ),
+        regression_sample_inclusion_expr=hl.bool(True),
     )
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_res_ht,
@@ -308,11 +250,7 @@ def apply_regressed_filtering_method(
             "n_singleton_residual": (math.inf, 8.0),
             "r_het_hom_var_residual": (math.inf, 4.0),
         },
-        comparison_sample_expr=(
-            sample_qc_ht[sample_qc_res_ht.key].releasable
-            if not include_unreleasable_in_cutoffs
-            else None
-        ),
+        comparison_sample_expr=None,
     )
     sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
     filter_ht = sample_qc_res_ht.select_globals(
@@ -799,10 +737,8 @@ def main(args):
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
-    unreleasable_in_cutoffs = args.include_unreleasable_in_cutoff_determination
-    unreleasable_in_regression = args.include_unreleasable_in_regression
-    exclude_unreleasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
     nn_approximation = args.use_nearest_neighbors_approximation
+    sample_qc_ht_path = get_outlier_detection_sample_qc(test=test).path
 
     try:
         if apply_r_ti_tv_singleton_filter:
@@ -816,63 +752,34 @@ def main(args):
             if err_msg:
                 raise ValueError(err_msg)
 
-        if args.join_sample_qc_hts:
-            joint_sample_qc_ht_path = get_joint_sample_qc(test=test).path
+        if args.prepare_outlier_detection_sample_qc:
             check_resource_existence(
-                output_step_resources={"joint_sample_qc_ht": joint_sample_qc_ht_path},
+                output_step_resources={
+                    "outlier_detection_sample_qc_ht": sample_qc_ht_path
+                },
                 overwrite=overwrite,
             )
 
-            # Read v5 files: sample QC (bi-allelic) and hard filtered samples HTs for
-            # AoU samples.
-            v5_sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
-            v5_hf_samples_ht = hard_filtered_samples.ht()
-
-            # Read in v4 files: sample QC HT (bi-allelic) and hard
-            # filtered samples HTs.
-            v4_sample_qc_ht = hl.read_table(v4_get_sample_qc("bi_allelic"))
-            # Read in two partitions instead if test flag is set.
-            # v4 sample QC HT test does not exist.
-            if test:
-                v4_sample_qc_ht = v4_sample_qc_ht._filter_partitions(range(2))
-            v4_meta_ht = v4_meta(data_type="genomes").ht()
-
-            joint_sample_qc_ht = join_sample_qc_hts(
-                v4_sample_qc_ht=v4_sample_qc_ht,
-                v5_sample_qc_ht=v5_sample_qc_ht,
-                v4_meta_ht=v4_meta_ht,
-                v5_hf_ht=v5_hf_samples_ht,
-                sample_collisions=sample_id_collisions.ht(),
-            )
-            joint_sample_qc_ht.write(joint_sample_qc_ht_path, overwrite=overwrite)
-
-        sample_qc_ht = get_sample_qc_ht(
-            sample_qc_ht=get_joint_sample_qc(test=test).ht(),
-            test=test,
-            seed=args.seed,
-        )
-
-        # Add releasable information to the sample QC Table if unreleasable samples are
-        # included, otherwise filter to only releasable samples.
-        meta_ht = project_meta.ht()
-        if exclude_unreleasable_samples_all_steps:
-            # The releasable field for AoU samples is missing.
-            sample_qc_ht = sample_qc_ht.filter(
-                (meta_ht[sample_qc_ht.key].releasable)
-                | (hl.is_missing(meta_ht[sample_qc_ht.key].releasable))
-            )
-        elif not unreleasable_in_cutoffs or not unreleasable_in_regression:
-            sample_qc_ht = sample_qc_ht.annotate(
-                releasable=meta_ht[sample_qc_ht.key].releasable
-            )
-            sample_qc_ht = sample_qc_ht.transmute(
-                releasable=hl.if_else(
-                    hl.is_missing(sample_qc_ht.releasable),
-                    True,
-                    sample_qc_ht.releasable,
+            # Get AoU genomes sample QC Table.
+            # Note that the distribution of alleles in AoU looks more like the gnomAD genomes than exomes,
+            # which is why we use the 'bi_allelic' stratification.
+            raw_sample_qc_ht = get_sample_qc("bi_allelic").ht()
+            num_filter_partitions = args.num_filter_partitions
+            if num_filter_partitions:
+                raw_sample_qc_ht = raw_sample_qc_ht._filter_partitions(
+                    range(num_filter_partitions)
                 )
-            )
 
+            sample_qc_ht = get_sample_qc_ht(
+                sample_qc_ht=raw_sample_qc_ht,
+                hard_filtered_samples_ht=hard_filtered_samples.ht(),
+                sample_collisions=sample_id_collisions.ht(),
+                test=test,
+                seed=args.seed,
+            )
+            sample_qc_ht.write(sample_qc_ht_path, overwrite=overwrite)
+
+        sample_qc_ht = hl.read_table(sample_qc_ht_path)
         gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test, projection=True).ht()
         gen_anc_ht = get_gen_anc_ht(test=test).ht()
 
@@ -883,7 +790,7 @@ def main(args):
 
         if args.apply_regressed_filters and rerun_filtering:
             regressed_filter_ht_path = regressed_filtering(
-                test=test, include_unreleasable_samples=unreleasable_in_regression
+                test=test,
             ).path
             check_resource_existence(
                 output_step_resources={"regressed_filter_ht": regressed_filter_ht_path},
@@ -897,17 +804,7 @@ def main(args):
                 qc_metrics=filtering_qc_metrics,
                 gen_anc_scores_ht=gen_anc_scores_ht,
                 regress_gen_anc_n_pcs=args.regress_gen_anc_n_pcs,
-                include_unreleasable_in_regression=unreleasable_in_regression,
-                include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
             )
-            ht = ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
-            )
-            if not exclude_unreleasable_samples_all_steps:
-                ht = ht.annotate_globals(
-                    include_unreleasable_samples=unreleasable_in_regression,
-                    include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
-                )
             ht.write(regressed_filter_ht_path, overwrite=overwrite)
 
         if args.apply_stratified_filters and rerun_filtering:
@@ -924,22 +821,13 @@ def main(args):
                 sample_qc_ht=sample_qc_ht,
                 qc_metrics=filtering_qc_metrics,
                 gen_anc_ht=gen_anc_ht,
-                include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
             )
-            ht = ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
-            )
-            if not exclude_unreleasable_samples_all_steps:
-                ht = ht.annotate_globals(
-                    include_unreleasable_in_cutoffs=unreleasable_in_cutoffs,
-                )
             ht.write(stratified_filter_ht_path, overwrite=overwrite)
 
         if args.determine_nearest_neighbors:
             nn_ht_path = nearest_neighbors(
                 test=test,
                 approximation=nn_approximation,
-                include_unreleasable_samples=not exclude_unreleasable_samples_all_steps,
             ).path
             check_resource_existence(
                 output_step_resources={"nn_ht": nn_ht_path},
@@ -957,15 +845,12 @@ def main(args):
                 use_approximation=nn_approximation,
                 n_trees=args.n_trees,
             )
-            ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps
-            ).write(nn_ht_path, overwrite=overwrite)
+            ht.write(nn_ht_path, overwrite=overwrite)
 
         if args.apply_nearest_neighbor_filters and rerun_filtering:
             nn_ht = nearest_neighbors(
                 test=test,
                 approximation=nn_approximation,
-                include_unreleasable_samples=not exclude_unreleasable_samples_all_steps,
             ).ht()
             nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
             check_resource_existence(
@@ -981,7 +866,6 @@ def main(args):
                 nn_ht=nn_ht,
             )
             ht.annotate_globals(
-                exclude_unreleasable_samples=exclude_unreleasable_samples_all_steps,
                 nearest_neighbors_approximation=nn_approximation,
             ).write(nn_filter_ht_path, overwrite=overwrite)
 
@@ -1044,15 +928,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=24,
     )
-    parser.add_argument(
-        "--exclude-unreleasable-samples-all-steps",
-        help=(
-            "Exclude unreleasable samples in all pipeline steps including the nearest "
-            "neighbors determination, sample QC metric regressions, and sample QC "
-            "filtering."
-        ),
-        action="store_true",
-    )
 
     parser.add_argument(
         "--filtering-qc-metrics",
@@ -1085,13 +960,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    joint_qc_args = parser.add_argument_group(
-        "Join gnomAD and AoU sample QC Tables.",
+    sample_qc_args = parser.add_argument_group(
+        "Get sample QC Table for sample outlier detection.",
     )
-    joint_qc_args.add_argument(
-        "--join-sample-qc-hts",
-        help="Join gnomAD and AoU sample QC Tables.",
+    sample_qc_args.add_argument(
+        "--prepare-outlier-detection-sample-qc",
+        help="Get sample QC Table for sample outlier detection.",
         action="store_true",
+    )
+    sample_qc_args.add_argument(
+        "--num-filter-partitions",
+        help="Number of partitions to retain in the sample QC Table for testing.",
+        type=int,
     )
 
     stratified_args = parser.add_argument_group(
@@ -1101,14 +981,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     stratified_args.add_argument(
         "--apply-stratified-filters",
         help="Apply stratified outlier filtering method.",
-        action="store_true",
-    )
-    unreleasable_cutoffs = stratified_args.add_argument(
-        "--include-unreleasable-in-cutoff-determination",
-        help=(
-            "Whether to include unreleasable samples when determining the sample QC "
-            "filtering MAD cutoffs."
-        ),
         action="store_true",
     )
 
@@ -1127,14 +999,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=20,
         type=int,
     )
-    regressed_args.add_argument(
-        "--include-unreleasable-in-regression",
-        help="Whether to include unreleasable samples in sample QC metric regressions.",
-        action="store_true",
-    )
-    # Indicate that the --include-unreleasable-in-cutoff-determination option applies
-    # to the "regressed_args" argument group as well as the "stratified_args" group.
-    regressed_args._group_actions.append(unreleasable_cutoffs)
 
     nn_args = parser.add_argument_group(
         "Determine nearest neighbors for each sample.",
