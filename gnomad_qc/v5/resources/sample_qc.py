@@ -418,7 +418,6 @@ def get_outlier_detection_sample_qc(
         - Remove hard filtered samples
         - Add project prefix to sample collisions
         - Add 'r_snp_indel' metric
-        - Exclude hard filtered samples
         - Sample 1% of the dataset if `test` is True
 
     :param test: Whether to use the test version of the sample QC TableResource.
