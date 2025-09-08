@@ -5,10 +5,7 @@ workflow hello_workflow {
     String workspace_bucket
   }
 
-  call helloTask {
-    input:
-      workspace_bucket = workspace_bucket
-  }
+  call helloTask
 
   output {
     File hello_file = helloTask.hello_txt
@@ -16,10 +13,6 @@ workflow hello_workflow {
 }
 
 task helloTask {
-  input {
-    String workspace_bucket
-  }
-
   command <<< 
     echo "DEBUG: Workspace bucket is '~{workspace_bucket}'"
     gsutil ls "~{workspace_bucket}" || echo "Bucket path does not exist"
