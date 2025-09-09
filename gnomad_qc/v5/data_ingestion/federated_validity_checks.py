@@ -6,7 +6,7 @@ import logging
 import re
 from collections import defaultdict
 from io import StringIO
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Tuple
 
 import hail as hl
 from bs4 import BeautifulSoup
