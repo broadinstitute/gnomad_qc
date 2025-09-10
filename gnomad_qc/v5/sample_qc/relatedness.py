@@ -285,10 +285,20 @@ def run_compute_related_samples_to_drop(
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
+    v4_release_keep = meta_ht.aggregate(
+        hl.agg.filter(
+            (meta_ht.release) & (meta_ht.project == "gnomad"),
+            hl.agg.collect_as_set(meta_ht.s),
+        ),
+        _localize=False,
+    )
+
     samples_to_drop_ht = compute_related_samples_to_drop(
         ht,
         rank_ht,
         second_degree_min_kin,
+        keep_samples=v4_release_keep,
+        keep_samples_when_related=True,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
         second_degree_min_kin=second_degree_min_kin,
