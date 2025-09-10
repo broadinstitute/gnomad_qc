@@ -163,6 +163,9 @@ def compute_all_release_stats_per_ref_site(
     vmt = vmt.annotate_cols(sex_karyotype=vmt.meta.sex_karyotype)
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
+    # TODO: Add adj here? also add sex ploidy adjustment?
+    # see:
+    # https://github.com/broadinstitute/gnomad_qc/blob/23b962a08a054df48aa4a29fc8bdca298cb26b7a/gnomad_qc/v4/annotations/fix_freq_an.py#L583
     ht = compute_stats_per_ref_site(
         vds,
         ref_ht,
