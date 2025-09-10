@@ -330,7 +330,26 @@ def get_additional_samples_to_drop(
     ).select()
 
     meta_ht = update_meta_ht_for_additional_samples_to_drop(meta_ht)
-    new_gnomad_samples_to_drop_ht = ()
+
+    # Use v4 meta to estimate v5 release numbers
+    release_expr = (
+        (meta_ht.releasable)
+        & (meta_ht.v4_high_quality)
+        & ~meta_ht.control
+        & ~meta_ht.exclude
+    )
+
+    meta_ht = meta_ht.annotate(
+        to_be_in_v5_release=(
+            ~hl.is_defined(samples_to_drop[meta_ht.key]) & release_expr
+        )
+    )
+    # Get gnomAD samples that would be in v5 but were not in v4
+    new_gnomad_samples_to_drop_ht = meta_ht.filter(
+        meta_ht.to_be_in_v5_release
+        & ~meta_ht.in_v4_release
+        & (meta_ht.project == "gnomad")
+    ).select()
 
     return consent_drop_ht.union(new_gnomad_samples_to_drop_ht)
 
@@ -409,7 +428,7 @@ def run_compute_related_samples_to_drop(
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
         second_degree_min_kin=second_degree_min_kin,
     )
-    meta_ht = update_meta_ht_for_additional_samples_to_drop(meta_ht)
+
     additional_samples_to_drop_ht = get_additional_samples_to_drop(
         samples_to_drop_ht, meta_ht
     )
