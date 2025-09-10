@@ -241,6 +241,7 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     ht = ht.select(
         "mean_depth",
+        in_aou=ht.project == "aou",
         is_genome=ht.data_type == "genomes",
         in_v4_release=ht.release,
     )
@@ -248,6 +249,7 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     ht_select = ["rank"]
     rank_order.extend(
         [
+            hl.desc(ht.in_aou),
             hl.desc(ht.in_v4_release),
             hl.desc(ht.is_genome),
             hl.desc(ht.mean_depth),
