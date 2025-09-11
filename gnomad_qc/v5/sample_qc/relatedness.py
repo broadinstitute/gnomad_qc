@@ -21,6 +21,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import (
+    consent_samples_to_drop,
     project_meta,
     sample_id_collisions,
     samples_to_exclude,
@@ -308,50 +309,31 @@ def update_meta_ht_for_additional_samples_to_drop(v5_meta_ht: hl.Table) -> hl.Ta
     return all_v5_meta
 
 
-def get_additional_samples_to_drop(
-    samples_to_drop_ht: hl.Table, meta_ht: hl.Table
-) -> hl.Table:
+def get_consent_samples_to_drop(meta_ht: hl.Table) -> None:
     """
-    Get additional samples to drop for release.
+    Create additional samples to drop for release HailExpression resource.
 
-    Additional samples to drop are samples that are no longer consented to be in gnomAD
-    or gnomAD samples being inserted into the release by the maximal independent set
-    that were not in the v4 release due to slight differences in relatedness estimates.
-    We made a choice to ONLY keep gnomAD v4 release samples in the v5 release. See slack
-    thread: https://atgu.slack.com/archives/CRA2TKTV0/p1757336429532189 for more details.
+    Additional samples to drop are samples that are no longer consented to be in gnomAD (n = 897).
 
-    :param samples_to_drop_ht: Table with samples to drop from the maximal independent set.
+    .. note ::
+
+        We are adding this function in this script (rather than earlier in the pipeline) due to the timing of confirmation
+        of the consent drop.
+
     :param meta_ht: Metadata Table.
-    :return: Table with additional samples to drop.
+    :return: None.
     """
+    # RP-1061: 776 samples.
+    # RP-1411: 121 samples.
     consent_drop_ht = meta_ht.filter(
         (meta_ht.project_meta.research_project_key == "RP-1061")
         | (meta_ht.project_meta.research_project_key == "RP-1411")
-    ).select()
-
-    meta_ht = update_meta_ht_for_additional_samples_to_drop(meta_ht)
-
-    # Use v4 meta to estimate v5 release numbers
-    release_expr = (
-        (meta_ht.releasable)
-        & (meta_ht.v4_high_quality)
-        & ~meta_ht.control
-        & ~meta_ht.exclude
     )
-
-    meta_ht = meta_ht.annotate(
-        to_be_in_v5_release=(
-            ~hl.is_defined(samples_to_drop[meta_ht.key]) & release_expr
-        )
+    consent_drop_s = consent_drop_ht.aggregate(hl.agg.collect_as_set(consent_drop_ht.s))
+    hl.experimental.write_expression(
+        consent_drop_s,
+        consent_samples_to_drop.path,
     )
-    # Get gnomAD samples that would be in v5 but were not in v4
-    new_gnomad_samples_to_drop_ht = meta_ht.filter(
-        meta_ht.to_be_in_v5_release
-        & ~meta_ht.in_v4_release
-        & (meta_ht.project == "gnomad")
-    ).select()
-
-    return consent_drop_ht.union(new_gnomad_samples_to_drop_ht)
 
 
 def compute_rank_ht(ht: hl.Table) -> hl.Table:
