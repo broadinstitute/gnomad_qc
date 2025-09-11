@@ -349,10 +349,9 @@ def run_compute_related_samples_to_drop(
 
     filtered_samples = None
     if release:
-        filtered_samples = hl.literal(
-            rank_ht.aggregate(
-                hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
-            )
+        filtered_samples = rank_ht.aggregate(
+            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
+            _localize=False,
         )
 
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
