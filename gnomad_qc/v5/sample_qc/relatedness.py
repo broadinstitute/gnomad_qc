@@ -358,7 +358,7 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
 
-    Favor v4 release samples, then genomes, then higher mean depth
+    Favor AoU samples, then v4 release samples, then genomes, then higher mean depth
     ('chr20_mean_dp' from gnomad and 'mean_coverage' from AoU).
 
     :param ht: Table to add rank to.
