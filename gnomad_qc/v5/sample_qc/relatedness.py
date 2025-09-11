@@ -14,9 +14,17 @@ from gnomad.sample_qc.relatedness import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v5.resources.basics import (
+    add_project_prefix_to_sample_collisions,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta
+from gnomad_qc.v5.resources.meta import (
+    project_meta,
+    sample_id_collisions,
+    samples_to_exclude,
+)
 from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
@@ -229,6 +237,123 @@ def finalize_relatedness_ht(
     return ht
 
 
+def update_meta_ht_for_additional_samples_to_drop(v5_meta_ht: hl.Table) -> hl.Table:
+    """
+    Update the meta HT for additional samples to drop.
+
+    :param v5_meta_ht: v5 meta HT.
+    :return: Updated meta HT.
+    """
+    collisions = sample_id_collisions.ht()
+
+    v4_exome_meta = v4_meta(data_type="exomes").ht()
+    v4_exome_meta = add_project_prefix_to_sample_collisions(
+        v4_exome_meta, collisions, "gnomad"
+    )
+    v4_genome_meta = v4_meta(data_type="genomes").ht()
+    v4_genome_meta = add_project_prefix_to_sample_collisions(
+        v4_genome_meta, collisions, "gnomad"
+    )
+
+    # Standardize v4 metadata with fields we'll need to mock release composition
+    v4_exome_meta = v4_exome_meta.select(
+        v4_exome_meta.project_meta.releasable,
+        v4_exome_meta.sample_filters.control,
+        v4_exome_meta.high_quality,
+        v4_exome_meta.release,
+        exclude=v4_exome_meta.sample_filters.elgh2_project,
+    )
+    v4_genome_meta = v4_genome_meta.select(
+        v4_genome_meta.project_meta.releasable,
+        control=hl.missing(hl.tbool),
+        high_quality=v4_genome_meta.high_quality,
+        release=v4_genome_meta.release,
+        exclude=v4_genome_meta.project_meta.exclude,
+    )
+    all_v4_meta = v4_exome_meta.union(v4_genome_meta).select_globals()
+
+    # Annotate v4 metadata onto v5 to mock v5 release set composition
+    all_v5_meta = all_v5_meta.annotate(
+        in_v4_release=hl.if_else(
+            hl.is_defined(all_v4_meta[all_v5_meta.key].release),
+            all_v4_meta[all_v5_meta.key].release,
+            False,
+        ),
+        releasable=hl.if_else(
+            hl.is_defined(all_v4_meta[all_v5_meta.key].releasable),
+            all_v4_meta[all_v5_meta.key].releasable,
+            ~samples_to_drop.contains(all_v5_meta.s),
+        ),
+        v4_high_quality=hl.if_else(
+            hl.is_defined(all_v4_meta[all_v5_meta.key].high_quality),
+            all_v4_meta[all_v5_meta.key].high_quality,
+            True,
+        ),
+        control=hl.if_else(
+            hl.is_defined(all_v4_meta[all_v5_meta.key].control),
+            all_v4_meta[all_v5_meta.key].control,
+            False,
+        ),
+        exclude=hl.if_else(
+            samples_to_exclude.he().contains(all_v5_meta.s),
+            True,
+            hl.if_else(
+                hl.is_defined(all_v4_meta[all_v5_meta.key].exclude),
+                all_v4_meta[all_v5_meta.key].exclude,
+                False,
+            ),
+        ),
+    )
+
+    return all_v5_meta
+
+
+def get_additional_samples_to_drop(
+    samples_to_drop_ht: hl.Table, meta_ht: hl.Table
+) -> hl.Table:
+    """
+    Get additional samples to drop for release.
+
+    Additional samples to drop are samples that are no longer consented to be in gnomAD
+    or gnomAD samples being inserted into the release by the maximal independent set
+    that were not in the v4 release due to slight differences in relatedness estimates.
+    We made a choice to ONLY keep gnomAD v4 release samples in the v5 release. See slack
+    thread: https://atgu.slack.com/archives/CRA2TKTV0/p1757336429532189 for more details.
+
+    :param samples_to_drop_ht: Table with samples to drop from the maximal independent set.
+    :param meta_ht: Metadata Table.
+    :return: Table with additional samples to drop.
+    """
+    consent_drop_ht = meta_ht.filter(
+        (meta_ht.project_meta.research_project_key == "RP-1061")
+        | (meta_ht.project_meta.research_project_key == "RP-1411")
+    ).select()
+
+    meta_ht = update_meta_ht_for_additional_samples_to_drop(meta_ht)
+
+    # Use v4 meta to estimate v5 release numbers
+    release_expr = (
+        (meta_ht.releasable)
+        & (meta_ht.v4_high_quality)
+        & ~meta_ht.control
+        & ~meta_ht.exclude
+    )
+
+    meta_ht = meta_ht.annotate(
+        to_be_in_v5_release=(
+            ~hl.is_defined(samples_to_drop[meta_ht.key]) & release_expr
+        )
+    )
+    # Get gnomAD samples that would be in v5 but were not in v4
+    new_gnomad_samples_to_drop_ht = meta_ht.filter(
+        meta_ht.to_be_in_v5_release
+        & ~meta_ht.in_v4_release
+        & (meta_ht.project == "gnomad")
+    ).select()
+
+    return consent_drop_ht.union(new_gnomad_samples_to_drop_ht)
+
+
 def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
@@ -241,6 +366,7 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     ht = ht.select(
         "mean_depth",
+        in_aou=ht.project == "aou",
         is_genome=ht.data_type == "genomes",
         in_v4_release=ht.release,
     )
@@ -248,6 +374,7 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     ht_select = ["rank"]
     rank_order.extend(
         [
+            hl.desc(ht.in_aou),
             hl.desc(ht.in_v4_release),
             hl.desc(ht.is_genome),
             hl.desc(ht.mean_depth),
@@ -283,14 +410,29 @@ def run_compute_related_samples_to_drop(
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
+    v4_release_keep = meta_ht.aggregate(
+        hl.agg.filter(
+            (meta_ht.release) & (meta_ht.project == "gnomad"),
+            hl.agg.collect_as_set(meta_ht.s),
+        ),
+        _localize=False,
+    )
+
     samples_to_drop_ht = compute_related_samples_to_drop(
         ht,
         rank_ht,
         second_degree_min_kin,
+        keep_samples=v4_release_keep,
+        keep_samples_when_related=True,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
         second_degree_min_kin=second_degree_min_kin,
     )
+
+    additional_samples_to_drop_ht = get_additional_samples_to_drop(
+        samples_to_drop_ht, meta_ht
+    )
+    samples_to_drop_ht = samples_to_drop_ht.union(additional_samples_to_drop_ht)
 
     return rank_ht, samples_to_drop_ht
 
@@ -391,9 +533,9 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "sample_rankings_ht": sample_rankings(test=test).path,
-                    "related_samples_to_drop_ht": related_samples_to_drop(
-                        test=test
-                    ).path,
+                    "related_samples_to_drop_ht": (
+                        related_samples_to_drop(test=test).path
+                    ),
                 }
             )
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
