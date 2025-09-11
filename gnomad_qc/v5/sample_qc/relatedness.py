@@ -390,7 +390,8 @@ def run_compute_related_samples_to_drop(
         consent_drop_ht = get_consent_samples_to_drop(write_resource=False)
         samples_to_drop_ht = samples_to_drop_ht.union(
             v4_unreleased_ht,
-        ).union(consent_drop_ht)
+            consent_drop_ht,
+        )
 
     return rank_ht, samples_to_drop_ht
 
