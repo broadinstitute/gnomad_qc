@@ -497,7 +497,8 @@ def main(args):
                     "related_samples_to_drop_ht": [
                         (related_samples_to_drop(test=test, release=release).path)
                     ],
-                }
+                },
+                overwrite=overwrite,
             )
             filter_ht = None
             if release:
