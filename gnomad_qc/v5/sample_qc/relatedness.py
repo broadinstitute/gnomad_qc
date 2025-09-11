@@ -3,7 +3,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -303,6 +303,7 @@ def run_compute_related_samples_to_drop(
     ht: hl.Table,
     meta_ht: hl.Table,
     release: bool = False,
+    filter_ht: Optional[hl.Table] = None,
 ) -> Tuple[hl.Table, hl.Table]:
     """
     Determine the minimal set of related samples to prune for genetic ancestry PCA.
@@ -320,13 +321,25 @@ def run_compute_related_samples_to_drop(
         individuals.
     :param release: Whether to determine related samples to drop for the release based
         on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
-        Default is False.
+        `filter_ht` must be supplied. Default is False.
+    :param filter_ht: Optional Table with outlier filtering of sample QC metrics to
+        use if `release` is True. Default is None.
     :return: Table with sample rank and a Table with related samples to drop for PCA.
     """
+    if release and filter_ht is None:
+        raise ValueError("'filter_ht' must be supplied when 'release' is True!")
+
     # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
     # pruning samples.
     rank_ht = compute_rank_ht(meta_ht)
     rank_ht = rank_ht.checkpoint(new_temp_file("rank", extension="ht"))
+
+    filtered_samples = None
+    if release:
+        filtered_samples = rank_ht.aggregate(
+            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
+            _localize=False,
+        )
 
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
@@ -356,6 +369,7 @@ def run_compute_related_samples_to_drop(
         ht,
         rank_ht,
         second_degree_min_kin,
+        filtered_samples=filtered_samples,
         # Force maximal independent set to keep v4 release samples minus consent
         # drop samples.
         keep_samples=v4_release_keep,
