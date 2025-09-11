@@ -455,7 +455,8 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "relatedness_ht": [relatedness(test=test, raw=True).path]
-                }
+                },
+                overwrite=overwrite,
             )
             ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
@@ -466,7 +467,8 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "final_relatedness_ht": [relatedness(test=test).path]
-                }
+                },
+                overwrite=overwrite,
             )
             relatedness_args = {
                 "parent_child_max_y": args.parent_child_max_ibs0_over_ibs2,
