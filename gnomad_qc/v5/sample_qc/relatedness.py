@@ -23,6 +23,7 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
+    hard_filtered_samples,
     related_samples_to_drop,
     relatedness,
     sample_rankings,
@@ -498,10 +499,24 @@ def main(args):
                     ),
                 }
             )
+            filter_ht = None
+            if release:
+                # TODO: Replace this with outlier filtering HT when that exists.
+                filter_ht_path = hard_filtered_samples.path
+                check_resource_existence(
+                    input_step_resources={
+                        "filter_ht": filter_ht_path,
+                    }
+                )
+                filter_ht = hl.read_table(filter_ht_path)
+                # TODO: Remove this when have outlier table.
+                filter_ht = filter_ht.annotate(filtered=True).select("filtered")
+
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 relatedness(test=test).ht(),
                 joint_meta.select_globals().semi_join(joint_qc_mt.cols()),
                 release=release,
+                filter_ht=filter_ht,
             )
             rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
             drop_ht.write(
