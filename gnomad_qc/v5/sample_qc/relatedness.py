@@ -525,7 +525,9 @@ def main(args):
                 )
                 filter_ht = hl.read_table(filter_ht_path)
                 # TODO: Remove this when have outlier table.
-                filter_ht = filter_ht.annotate(filtered=True).select("filtered")
+                filter_ht = filter_ht.annotate(outlier_filtered=True).select(
+                    "outlier_filtered"
+                )
 
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 relatedness(test=test).ht(),
