@@ -400,7 +400,7 @@ def run_compute_related_samples_to_drop(
             .select()
         )
         consent_drop_ht = get_consent_samples_to_drop(write_resource=False)
-        samples_to_drop_ht = samples_to_drop_ht.union(
+        samples_to_drop_ht = samples_to_drop_ht.select().union(
             v4_unreleased_ht,
             consent_drop_ht,
         )
