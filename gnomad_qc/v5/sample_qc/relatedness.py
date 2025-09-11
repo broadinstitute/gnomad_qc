@@ -336,7 +336,7 @@ def run_compute_related_samples_to_drop(
         fname=consent_samples_to_drop.path,
         error_if_not_exists=False,
     ):
-        get_consent_samples_to_drop(meta_ht, write_resource=True)
+        get_consent_samples_to_drop(write_resource=True)
     consent_drop_s = hl.experimental.read_expression(consent_samples_to_drop.path)
 
     # Get set of 806,296 v4 release samples to keep.
@@ -372,7 +372,7 @@ def run_compute_related_samples_to_drop(
             .select_globals()
             .select()
         )
-        consent_drop_ht = get_consent_samples_to_drop(meta_ht, write_resource=False)
+        consent_drop_ht = get_consent_samples_to_drop(write_resource=False)
         samples_to_drop_ht = samples_to_drop_ht.union(
             v4_unreleased_ht,
         ).union(consent_drop_ht)
