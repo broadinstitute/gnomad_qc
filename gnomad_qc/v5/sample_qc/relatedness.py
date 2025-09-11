@@ -454,7 +454,7 @@ def main(args):
             logger.info("Converting cuKING outputs to Hail Table...")
             check_resource_existence(
                 output_step_resources={
-                    "relatedness_ht": relatedness(test=test, raw=True).path
+                    "relatedness_ht": [relatedness(test=test, raw=True).path]
                 }
             )
             ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
@@ -465,7 +465,7 @@ def main(args):
             logger.info("Finalizing relatedness HT...")
             check_resource_existence(
                 output_step_resources={
-                    "final_relatedness_ht": relatedness(test=test).path
+                    "final_relatedness_ht": [relatedness(test=test).path]
                 }
             )
             relatedness_args = {
@@ -493,10 +493,10 @@ def main(args):
             logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
                 output_step_resources={
-                    "sample_rankings_ht": sample_rankings(test=test).path,
-                    "related_samples_to_drop_ht": (
-                        related_samples_to_drop(test=test, release=release).path
-                    ),
+                    "sample_rankings_ht": [sample_rankings(test=test).path],
+                    "related_samples_to_drop_ht": [
+                        (related_samples_to_drop(test=test, release=release).path)
+                    ],
                 }
             )
             filter_ht = None
@@ -505,7 +505,7 @@ def main(args):
                 filter_ht_path = hard_filtered_samples.path
                 check_resource_existence(
                     input_step_resources={
-                        "filter_ht": filter_ht_path,
+                        "filter_ht": [filter_ht_path],
                     }
                 )
                 filter_ht = hl.read_table(filter_ht_path)
