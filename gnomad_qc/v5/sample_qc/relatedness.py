@@ -292,6 +292,7 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
 def run_compute_related_samples_to_drop(
     ht: hl.Table,
     meta_ht: hl.Table,
+    release: bool = False,
 ) -> Tuple[hl.Table, hl.Table]:
     """
     Determine the minimal set of related samples to prune for genetic ancestry PCA.
@@ -307,6 +308,9 @@ def run_compute_related_samples_to_drop(
     :param meta_ht: Metadata Table with 'project', 'data_type', 'release', and
         'mean_depth' annotations to be used in ranking and filtering of related
         individuals.
+    :param release: Whether to determine related samples to drop for the release based
+        on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
+        Default is False.
     :return: Table with sample rank and a Table with related samples to drop for PCA.
     """
     # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
@@ -351,18 +355,20 @@ def run_compute_related_samples_to_drop(
         second_degree_min_kin=second_degree_min_kin,
     )
 
-    # Filter samples to drop HT to remove unreleased v4 samples.
-    samples_to_drop_ht = samples_to_drop_ht.annotate(
-        release=meta_ht[samples_to_drop_ht.s].release,
-    )
-    samples_to_drop_ht = samples_to_drop_ht.filter(
-        # Keep released v4 samples (release=True) and samples missing release (AoU
-        # samples).
-        samples_to_drop_ht.release
-        | hl.is_missing(samples_to_drop_ht.release)
-    )
+    if release:
+        # Filter samples to drop HT to remove unreleased v4 samples.
+        samples_to_drop_ht = samples_to_drop_ht.annotate(
+            release=meta_ht[samples_to_drop_ht.s].release,
+        )
+        samples_to_drop_ht = samples_to_drop_ht.filter(
+            # Keep released v4 samples (release=True) and samples missing release (AoU
+            # samples).
+            samples_to_drop_ht.release
+            | hl.is_missing(samples_to_drop_ht.release)
+        )
+        samples_to_drop_ht = samples_to_drop_ht.drop("release")
 
-    return rank_ht, samples_to_drop_ht.drop("release")
+    return rank_ht, samples_to_drop_ht
 
 
 def main(args):
@@ -371,6 +377,7 @@ def main(args):
     overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
     second_degree_min_kin = args.second_degree_min_kin
+    release = args.release
 
     if args.print_cuking_command:
         print_cuking_command(
@@ -462,18 +469,24 @@ def main(args):
                 output_step_resources={
                     "sample_rankings_ht": sample_rankings(test=test).path,
                     "related_samples_to_drop_ht": (
-                        related_samples_to_drop(test=test).path
+                        related_samples_to_drop(test=test, release=release).path
                     ),
                 }
             )
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 relatedness(test=test).ht(),
                 joint_meta.select_globals().semi_join(joint_qc_mt.cols()),
+                release=release,
             )
             rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
-            drop_ht.write(related_samples_to_drop(test=test).path, overwrite=overwrite)
+            drop_ht.write(
+                related_samples_to_drop(test=test, release=release).path,
+                overwrite=overwrite,
+            )
             # Export the related samples to drop Table to a TSV file for SV team.
-            drop_ht.export(related_samples_to_drop(test=test).path[:-3] + ".tsv")
+            drop_ht.export(
+                related_samples_to_drop(test=test, release=release).path[:-3] + ".tsv"
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -617,6 +630,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     drop_related_samples.add_argument(
         "--compute-related-samples-to-drop",
         help="Determine the minimal set of related samples to prune for ancestry PCA.",
+        action="store_true",
+    )
+    drop_related_samples.add_argument(
+        "--release",
+        help=(
+            "Whether to determine related samples to drop for the release based on "
+            "outlier filtering of sample QC metrics."
+        ),
         action="store_true",
     )
     return parser
