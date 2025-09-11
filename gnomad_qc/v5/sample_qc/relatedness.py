@@ -11,21 +11,13 @@ from gnomad.sample_qc.relatedness import (
     compute_related_samples_to_drop,
     get_slope_int_relationship_expr,
 )
+from gnomad.utils.file_utils import check_file_exists_raise_error
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.resources.meta import meta as v4_meta
-from gnomad_qc.v5.resources.basics import (
-    add_project_prefix_to_sample_collisions,
-    get_logging_path,
-)
+from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import (
-    consent_samples_to_drop,
-    project_meta,
-    sample_id_collisions,
-    samples_to_exclude,
-)
+from gnomad_qc.v5.resources.meta import consent_samples_to_drop, project_meta
 from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
@@ -307,6 +299,10 @@ def run_compute_related_samples_to_drop(
     Runs `compute_related_samples_to_drop` from gnomad_methods after computing the
     sample rankings using `compute_rank_ht`.
 
+    .. note ::
+        After some discussion, we have decided to force v4 retention (see slack thread: https://atgu.slack.com/archives/CRA2TKTV0/p1757336429532189)
+        and prioritize AoU samples in the ranking because this retains 1,608 more AoU samples.
+
     :param ht: Input relatedness Table.
     :param meta_ht: Metadata Table with 'project', 'data_type', 'release', and
         'mean_depth' annotations to be used in ranking and filtering of related
@@ -321,18 +317,33 @@ def run_compute_related_samples_to_drop(
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
-    v4_release_keep = meta_ht.aggregate(
-        hl.agg.filter(
-            (meta_ht.release) & (meta_ht.project == "gnomad"),
-            hl.agg.collect_as_set(meta_ht.s),
-        ),
-        _localize=False,
+    # Create consent drop HailExpression resource if it does not exist.
+    if not check_file_exists_raise_error(
+        fname=consent_samples_to_drop.path,
+        error_if_not_exists=False,
+    ):
+        get_consent_samples_to_drop(meta_ht)
+    consent_drop_s = hl.experimental.read_expression(consent_samples_to_drop.path)
+
+    # Get set of 806,296 v4 release samples to keep.
+    v4_release_ht = meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
+    v4_release_s = hl.literal(
+        v4_release_ht.aggregate(hl.agg.collect_as_set(v4_release_ht.s))
     )
+    v4_release_keep = v4_release_s.difference(consent_drop_s)
+    if hl.eval(hl.len(v4_release_keep) != 806296):
+        raise ValueError(
+            "Expected 806,296 v4 release samples to keep, but got {}.".format(
+                hl.len(v4_release_keep)
+            )
+        )
 
     samples_to_drop_ht = compute_related_samples_to_drop(
         ht,
         rank_ht,
         second_degree_min_kin,
+        # Force maximal independent set to keep v4 release samples minus consent
+        # drop samples.
         keep_samples=v4_release_keep,
         keep_samples_when_related=True,
     )
@@ -340,12 +351,18 @@ def run_compute_related_samples_to_drop(
         second_degree_min_kin=second_degree_min_kin,
     )
 
-    additional_samples_to_drop_ht = get_additional_samples_to_drop(
-        samples_to_drop_ht, meta_ht
+    # Filter samples to drop HT to remove unreleased v4 samples.
+    samples_to_drop_ht = samples_to_drop_ht.annotate(
+        release=meta_ht[samples_to_drop_ht.s].release,
     )
-    samples_to_drop_ht = samples_to_drop_ht.union(additional_samples_to_drop_ht)
+    samples_to_drop_ht = samples_to_drop_ht.filter(
+        # Keep released v4 samples (release=True) and samples missing release (AoU
+        # samples).
+        samples_to_drop_ht.release
+        | hl.is_missing(samples_to_drop_ht.release)
+    )
 
-    return rank_ht, samples_to_drop_ht
+    return rank_ht, samples_to_drop_ht.drop("release")
 
 
 def main(args):
