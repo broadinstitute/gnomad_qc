@@ -15,6 +15,7 @@ from gnomad.utils.file_utils import check_file_exists_raise_error
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import consent_samples_to_drop, project_meta
@@ -230,23 +231,21 @@ def finalize_relatedness_ht(
     return ht
 
 
-def get_consent_samples_to_drop(
-    meta_ht: hl.Table, write_resource: bool = False
-) -> Union[hl.Table, None]:
+def get_consent_samples_to_drop(write_resource: bool = False) -> Union[hl.Table, None]:
     """
     Create additional samples to drop for release HailExpression resource.
 
-    Additional samples to drop are samples that are no longer consented to be in gnomAD (n = 897).
+    Additional samples to drop are genomes that are no longer consented to be in gnomAD (n = 897).
 
     .. note ::
 
         We are adding this function in this script (rather than earlier in the pipeline) due to the timing of confirmation
         of the consent drop.
 
-    :param meta_ht: Metadata Table.
     :param write_resource: Whether to write the consent drop samples to a HailExpression resource.
     :return: Either Table with consent drop samples or None if writing resource.
     """
+    meta_ht = v4_meta(data_type="genomes").ht()
     # RP-1061: 776 samples.
     # RP-1411: 121 samples.
     consent_drop_ht = (
