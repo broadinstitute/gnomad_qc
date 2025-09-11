@@ -268,14 +268,19 @@ def get_consent_samples_to_drop(write_resource: bool = False) -> Union[hl.Table,
     return consent_drop_ht
 
 
-def compute_rank_ht(ht: hl.Table) -> hl.Table:
+def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
 
     Favor AoU samples, then v4 release samples, then genomes, then higher mean depth
     ('chr20_mean_dp' from gnomad and 'mean_coverage' from AoU).
 
+    If `filter_ht` is provided, rank based on filtering 'outlier_filtered' annotation
+    first.
+
     :param ht: Table to add rank to.
+    :param filter_ht: Optional Table with 'outlier_filtered' annotation to be used in
+        ranking.
     :return: Table containing sample ID and rank.
     """
     ht = ht.select(
@@ -286,6 +291,13 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     )
     rank_order = []
     ht_select = ["rank"]
+    if filter_ht is not None:
+        ht = ht.annotate(
+            filtered=hl.coalesce(filter_ht[ht.key].outlier_filtered, False)
+        )
+        rank_order = [ht.filtered]
+        ht_select.append("filtered")
+
     rank_order.extend(
         [
             hl.desc(ht.in_aou),
@@ -332,7 +344,7 @@ def run_compute_related_samples_to_drop(
 
     # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
     # pruning samples.
-    rank_ht = compute_rank_ht(meta_ht)
+    rank_ht = compute_rank_ht(meta_ht, filter_ht=filter_ht if release else None)
     rank_ht = rank_ht.checkpoint(new_temp_file("rank", extension="ht"))
 
     filtered_samples = None
