@@ -3,7 +3,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -230,7 +230,9 @@ def finalize_relatedness_ht(
     return ht
 
 
-def get_consent_samples_to_drop(meta_ht: hl.Table) -> None:
+def get_consent_samples_to_drop(
+    meta_ht: hl.Table, write_resource: bool = False
+) -> Union[hl.Table, None]:
     """
     Create additional samples to drop for release HailExpression resource.
 
@@ -242,19 +244,28 @@ def get_consent_samples_to_drop(meta_ht: hl.Table) -> None:
         of the consent drop.
 
     :param meta_ht: Metadata Table.
-    :return: None.
+    :param write_resource: Whether to write the consent drop samples to a HailExpression resource.
+    :return: Either Table with consent drop samples or None if writing resource.
     """
     # RP-1061: 776 samples.
     # RP-1411: 121 samples.
-    consent_drop_ht = meta_ht.filter(
-        (meta_ht.project_meta.research_project_key == "RP-1061")
-        | (meta_ht.project_meta.research_project_key == "RP-1411")
+    consent_drop_ht = (
+        meta_ht.filter(
+            (meta_ht.project_meta.research_project_key == "RP-1061")
+            | (meta_ht.project_meta.research_project_key == "RP-1411")
+        )
+        .select_globals()
+        .select()
     )
-    consent_drop_s = consent_drop_ht.aggregate(hl.agg.collect_as_set(consent_drop_ht.s))
-    hl.experimental.write_expression(
-        consent_drop_s,
-        consent_samples_to_drop.path,
-    )
+    if write_resource:
+        consent_drop_s = consent_drop_ht.aggregate(
+            hl.agg.collect_as_set(consent_drop_ht.s)
+        )
+        hl.experimental.write_expression(
+            consent_drop_s,
+            consent_samples_to_drop.path,
+        )
+    return consent_drop_ht
 
 
 def compute_rank_ht(ht: hl.Table) -> hl.Table:
@@ -326,7 +337,7 @@ def run_compute_related_samples_to_drop(
         fname=consent_samples_to_drop.path,
         error_if_not_exists=False,
     ):
-        get_consent_samples_to_drop(meta_ht)
+        get_consent_samples_to_drop(meta_ht, write_resource=True)
     consent_drop_s = hl.experimental.read_expression(consent_samples_to_drop.path)
 
     # Get set of 806,296 v4 release samples to keep.
@@ -356,17 +367,16 @@ def run_compute_related_samples_to_drop(
     )
 
     if release:
-        # Filter samples to drop HT to remove unreleased v4 samples.
-        samples_to_drop_ht = samples_to_drop_ht.annotate(
-            release=meta_ht[samples_to_drop_ht.s].release,
+        # Add samples to drop to the drop HT.
+        v4_unreleased_ht = (
+            meta_ht.filter((meta_ht.project == "gnomad") & ~meta_ht.release)
+            .select_globals()
+            .select()
         )
-        samples_to_drop_ht = samples_to_drop_ht.filter(
-            # Keep released v4 samples (release=True) and samples missing release (AoU
-            # samples).
-            samples_to_drop_ht.release
-            | hl.is_missing(samples_to_drop_ht.release)
-        )
-        samples_to_drop_ht = samples_to_drop_ht.drop("release")
+        consent_drop_ht = get_consent_samples_to_drop(meta_ht, write_resource=False)
+        samples_to_drop_ht = samples_to_drop_ht.union(
+            v4_unreleased_ht,
+        ).union(consent_drop_ht)
 
     return rank_ht, samples_to_drop_ht
 
