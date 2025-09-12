@@ -55,7 +55,7 @@ Contains samples that should not have been included in the AoU v8 release
 (3 samples with unspecified quality issues and 4030 samples failing coverage hard filters)
 and 1490 samples with non-XX/XY sex ploidies.
 
-The total number of samples to exclude is 5514, not 5523 because 9 samples fail coverage filters
+The total number of samples to exclude is 5514, not 5523 because 9 samples both fail coverage filters
 and have non-XX/XY sex ploidies.
 """
 
