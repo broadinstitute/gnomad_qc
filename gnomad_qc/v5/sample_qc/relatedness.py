@@ -232,21 +232,29 @@ def finalize_relatedness_ht(
     return ht
 
 
-def get_consent_samples_to_drop(write_resource: bool = False) -> hl.Table:
+def get_consent_samples_to_drop(overwrite: bool = False) -> hl.Table:
     """
     Create additional samples to drop for release HailExpression resource.
 
     Additional samples to drop are genomes that are no longer consented to be in gnomAD (n = 897).
+
+    Function will create a Table resource if it does not already exist.
 
     .. note ::
 
         We are adding this function in this script (rather than earlier in the pipeline) due to the timing of confirmation
         of the consent drop.
 
-    :param write_resource: Whether to write the consent drop samples to a HailExpression resource.
-    :return: Either Table with consent drop samples or None if writing resource.
+    :param overwrite: Whether to overwrite the consent drop Table resource. Default is False.
+    :return: Table with consent drop samples.
     """
-    if write_resource:
+    if (
+        not check_file_exists_raise_error(
+            fname=consent_samples_to_drop.path,
+            error_if_not_exists=False,
+        )
+        or overwrite
+    ):
         meta_ht = v4_meta(data_type="genomes").ht()
         # RP-1061: 776 samples.
         # RP-1411: 121 samples.
@@ -258,7 +266,7 @@ def get_consent_samples_to_drop(write_resource: bool = False) -> hl.Table:
             .select_globals()
             .select()
         )
-        consent_drop_ht.write(consent_samples_to_drop.path, overwrite=True)
+        consent_drop_ht.write(consent_samples_to_drop.path, overwrite=overwrite)
 
     consent_drop_ht = hl.read_table(consent_samples_to_drop.path)
     return consent_drop_ht
@@ -353,20 +361,13 @@ def run_compute_related_samples_to_drop(
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
-    # Create consent drop HailExpression resource if it does not exist.
-    if not check_file_exists_raise_error(
-        fname=consent_samples_to_drop.path,
-        error_if_not_exists=False,
-    ):
-        get_consent_samples_to_drop(write_resource=True)
-    consent_drop_s = hl.read_table(consent_samples_to_drop.path)
-
     # Get set of 806,296 v4 release samples to keep.
     v4_release_ht = (
         meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
         .select_globals()
         .select()
     )
+    consent_drop_s = get_consent_samples_to_drop()
     v4_release_ht = v4_release_ht.anti_join(consent_drop_s)
     # This `aggregate` converts the sample set from Hail to Python,
     # which is useful for the length check.
@@ -401,7 +402,7 @@ def run_compute_related_samples_to_drop(
             .select_globals()
             .select()
         )
-        consent_drop_ht = get_consent_samples_to_drop(write_resource=False)
+        consent_drop_ht = get_consent_samples_to_drop()
         samples_to_drop_ht = samples_to_drop_ht.select().union(
             v4_unreleased_ht,
             consent_drop_ht,
