@@ -3,7 +3,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -232,7 +232,7 @@ def finalize_relatedness_ht(
     return ht
 
 
-def get_consent_samples_to_drop(write_resource: bool = False) -> Union[hl.Table, None]:
+def get_consent_samples_to_drop(write_resource: bool = False) -> hl.Table:
     """
     Create additional samples to drop for release HailExpression resource.
 
@@ -246,26 +246,21 @@ def get_consent_samples_to_drop(write_resource: bool = False) -> Union[hl.Table,
     :param write_resource: Whether to write the consent drop samples to a HailExpression resource.
     :return: Either Table with consent drop samples or None if writing resource.
     """
-    meta_ht = v4_meta(data_type="genomes").ht()
-    # RP-1061: 776 samples.
-    # RP-1411: 121 samples.
-    consent_drop_ht = (
-        meta_ht.filter(
-            (meta_ht.project_meta.research_project_key == "RP-1061")
-            | (meta_ht.project_meta.research_project_key == "RP-1411")
-        )
-        .select_globals()
-        .select()
-    )
     if write_resource:
-        consent_drop_s = consent_drop_ht.aggregate(
-            hl.agg.collect_as_set(consent_drop_ht.s)
+        meta_ht = v4_meta(data_type="genomes").ht()
+        # RP-1061: 776 samples.
+        # RP-1411: 121 samples.
+        consent_drop_ht = (
+            meta_ht.filter(
+                (meta_ht.project_meta.research_project_key == "RP-1061")
+                | (meta_ht.project_meta.research_project_key == "RP-1411")
+            )
+            .select_globals()
+            .select()
         )
-        hl.experimental.write_expression(
-            consent_drop_s,
-            consent_samples_to_drop.path,
-        )
-        return None
+        consent_drop_ht.write(consent_samples_to_drop.path, overwrite=True)
+
+    consent_drop_ht = hl.read_table(consent_samples_to_drop.path)
     return consent_drop_ht
 
 
@@ -364,15 +359,21 @@ def run_compute_related_samples_to_drop(
         error_if_not_exists=False,
     ):
         get_consent_samples_to_drop(write_resource=True)
-    consent_drop_s = hl.experimental.read_expression(consent_samples_to_drop.path)
+    consent_drop_s = hl.read_table(consent_samples_to_drop.path)
 
     # Get set of 806,296 v4 release samples to keep.
-    v4_release_ht = meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
-    v4_release_s = hl.literal(
-        v4_release_ht.aggregate(hl.agg.collect_as_set(v4_release_ht.s))
+    v4_release_ht = (
+        meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
+        .select_globals()
+        .select()
     )
-    v4_release_keep = v4_release_s.difference(consent_drop_s)
-    if hl.eval(hl.len(v4_release_keep) != 806296):
+    v4_release_ht = v4_release_ht.anti_join(consent_drop_s)
+    # This `aggregate` converts the sample set from Hail to Python,
+    # which is useful for the length check.
+    # Add the literal later to avoid an extra Hail -> Python conversion with
+    # `hl.eval(hl.len(v4_release_keep))`.
+    v4_release_keep = v4_release_ht.aggregate(hl.agg.collect_as_set(v4_release_ht.s))
+    if len(v4_release_keep) != 806296:
         raise ValueError(
             "Expected 806,296 v4 release samples to keep, but got {}.".format(
                 hl.len(v4_release_keep)
@@ -386,7 +387,7 @@ def run_compute_related_samples_to_drop(
         filtered_samples=filtered_samples,
         # Force maximal independent set to keep v4 release samples minus consent
         # drop samples.
-        keep_samples=v4_release_keep,
+        keep_samples=hl.literal(v4_release_keep),
         keep_samples_when_related=True,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
