@@ -55,3 +55,14 @@ Contains samples that should not have been included in the AoU v8 release
 (3 samples with unspecified quality issues and 4030 samples failing coverage hard filters)
 and 1490 samples with non-XX/XY sex ploidies.
 """
+
+consent_samples_to_drop = TableResource(
+    path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.ht",
+)
+"""
+Table containing IDs of 897 samples that are no longer consented to be in gnomAD.
+
+Samples are from the following projects:
+- RP-1061: 776 samples.
+- RP-1411: 121 samples.
+"""

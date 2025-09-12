@@ -193,18 +193,23 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
     )
 
 
-def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+def related_samples_to_drop(
+    test: bool = False, release: bool = False
+) -> VersionedTableResource:
     """
     Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release: Whether to determine related samples to drop for the release based
+        on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
+        Default is False.
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.{'release' if release else 'pca'}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
