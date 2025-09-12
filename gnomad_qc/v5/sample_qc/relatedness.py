@@ -265,6 +265,7 @@ def get_consent_samples_to_drop(write_resource: bool = False) -> Union[hl.Table,
             consent_drop_s,
             consent_samples_to_drop.path,
         )
+        return None
     return consent_drop_ht
 
 
