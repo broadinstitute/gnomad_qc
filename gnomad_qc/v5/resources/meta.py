@@ -56,11 +56,11 @@ Contains samples that should not have been included in the AoU v8 release
 and 1490 samples with non-XX/XY sex ploidies.
 """
 
-consent_samples_to_drop = ExpressionResource(
-    path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.he",
+consent_samples_to_drop = TableResource(
+    path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.ht",
 )
 """
-SetExpression containing IDs of 897 samples that are no longer consented to be in gnomAD.
+Table containing IDs of 897 samples that are no longer consented to be in gnomAD.
 
 Samples are from the following projects:
 - RP-1061: 776 samples.
