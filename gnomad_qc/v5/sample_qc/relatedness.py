@@ -377,7 +377,7 @@ def run_compute_related_samples_to_drop(
     if len(v4_release_keep) != 806296:
         raise ValueError(
             "Expected 806,296 v4 release samples to keep, but got {}.".format(
-                hl.len(v4_release_keep)
+                len(v4_release_keep)
             )
         )
 
