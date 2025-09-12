@@ -49,11 +49,14 @@ samples_to_exclude = ExpressionResource(
     path=f"gs://{WORKSPACE_BUCKET}/v5.0/metadata/gnomad.v5.0.samples_to_exclude.he",
 )
 """
-SetExpression containing IDs of samples to exclude from v5 analysis.
+SetExpression containing IDs of 5514 samples to exclude from v5 analysis.
 
 Contains samples that should not have been included in the AoU v8 release
 (3 samples with unspecified quality issues and 4030 samples failing coverage hard filters)
 and 1490 samples with non-XX/XY sex ploidies.
+
+The total number of samples to exclude is 5514, not 5523 because 9 samples fail coverage filters
+and have non-XX/XY sex ploidies.
 """
 
 consent_samples_to_drop = TableResource(
