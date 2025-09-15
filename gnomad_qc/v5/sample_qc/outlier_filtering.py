@@ -54,6 +54,7 @@ def get_sample_qc_ht(
         - Add project prefix to sample collisions
         - Add 'r_snp_indel' metric
         - Sample 1% of the dataset if `test` is True
+        - Set r_ti_tv_singleton to 0 for samples with no singleton transversions
 
     :param sample_qc_ht: Sample QC Table.
     :param hard_filtered_samples_ht: Hard filtered samples Table.
@@ -79,6 +80,15 @@ def get_sample_qc_ht(
         / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
     )
 
+    # Set r_ti_tv_singleton to 0 for samples that are missing this metric.
+    # 8 samples in AoU v8 are missing r_ti_tv_singleton because their
+    # n_singleton_tv is 0.
+    sample_qc_ht = sample_qc_ht.annotate(
+        r_ti_tv_singleton=hl.coalesce(
+            sample_qc_ht.r_ti_tv_singleton,
+            0,
+        )
+    )
     return sample_qc_ht.select_globals()
 
 
