@@ -798,7 +798,6 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
-            gen_anc = get_gen_anc_ht(test=use_tmp_path)
 
             projected_scores_ht, projected_gen_anc_ht = project_aou_onto_v4(
                 gnomad_v4_onnx_rf_path=gnomad_v4_onnx_rf,
@@ -821,6 +820,11 @@ def main(args):
                 projected_gen_anc_ht, v4_min_probs
             )
 
+            gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path, projection_only=True).path,
+                overwrite=overwrite,
+            )
+
             # Combine projected scores and genetic ancestry groups with v4 scores and
             # genetic ancestry groups.
             v4_pop_ht = v4_get_pop_ht().ht()
@@ -837,7 +841,9 @@ def main(args):
                 genetic_ancestry_pca_scores(test=use_tmp_path, projection=True).path,
                 overwrite=overwrite,
             )
-            gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
+            gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
+            )
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
