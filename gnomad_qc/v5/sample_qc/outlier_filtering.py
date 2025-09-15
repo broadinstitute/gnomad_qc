@@ -755,7 +755,7 @@ def main(args):
         if args.prepare_outlier_detection_sample_qc:
             check_resource_existence(
                 output_step_resources={
-                    "outlier_detection_sample_qc_ht": sample_qc_ht_path
+                    "outlier_detection_sample_qc_ht": [sample_qc_ht_path]
                 },
                 overwrite=overwrite,
             )
@@ -793,7 +793,9 @@ def main(args):
                 test=test,
             ).path
             check_resource_existence(
-                output_step_resources={"regressed_filter_ht": regressed_filter_ht_path},
+                output_step_resources={
+                    "regressed_filter_ht": [regressed_filter_ht_path]
+                },
                 overwrite=overwrite,
             )
 
@@ -811,7 +813,7 @@ def main(args):
             stratified_filter_ht_path = stratified_filtering(test=test).path
             check_resource_existence(
                 output_step_resources={
-                    "stratified_filter_ht": stratified_filter_ht_path
+                    "stratified_filter_ht": [stratified_filter_ht_path]
                 },
                 overwrite=overwrite,
             )
@@ -830,7 +832,7 @@ def main(args):
                 approximation=nn_approximation,
             ).path
             check_resource_existence(
-                output_step_resources={"nn_ht": nn_ht_path},
+                output_step_resources={"nn_ht": [nn_ht_path]},
                 overwrite=overwrite,
             )
 
@@ -854,7 +856,7 @@ def main(args):
             ).ht()
             nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"nn_filter_ht": nn_filter_ht_path},
+                output_step_resources={"nn_filter_ht": [nn_filter_ht_path]},
                 overwrite=overwrite,
             )
 
@@ -872,7 +874,7 @@ def main(args):
         if args.create_finalized_outlier_filter:
             final_ht_path = finalized_outlier_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"finalized_ht": final_ht_path},
+                output_step_resources={"finalized_ht": [final_ht_path]},
                 overwrite=overwrite,
             )
 
