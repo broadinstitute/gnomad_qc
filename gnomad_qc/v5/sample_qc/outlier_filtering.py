@@ -68,7 +68,7 @@ def get_sample_qc_ht(
     sample_qc_ht = add_project_prefix_to_sample_collisions(
         t=sample_qc_ht,
         sample_collisions=sample_collisions,
-        project="gnomad",
+        project="aou",
     )
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
