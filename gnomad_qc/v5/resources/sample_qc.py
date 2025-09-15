@@ -366,6 +366,7 @@ def get_gen_anc_ht(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "joint",
+    projection_only: bool = False,
 ):
     """
     Get the TableResource of samples' inferred genetic ancestry group for the indicated gnomAD version.
@@ -373,10 +374,11 @@ def get_gen_anc_ht(
     :param version: Version of gen anc group TableResource to return.
     :param test: Whether to use the test version of the genetic ancestry TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    projection_only: Whether the inference results consist of just the results for the projected samples. When set to False, probability scores will not be included as they cannot be obtained for all samples.
     :return: TableResource of sample gen anc groups.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc{'_projection_only' if projection_only else ''}.ht"
     )
 
 
