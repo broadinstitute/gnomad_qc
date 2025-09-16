@@ -54,6 +54,7 @@ def get_sample_qc_ht(
         - Add project prefix to sample collisions
         - Add 'r_snp_indel' metric
         - Sample 1% of the dataset if `test` is True
+        - Set r_ti_tv_singleton to 0 for samples with no singleton transversions
 
     :param sample_qc_ht: Sample QC Table.
     :param hard_filtered_samples_ht: Hard filtered samples Table.
@@ -68,7 +69,7 @@ def get_sample_qc_ht(
     sample_qc_ht = add_project_prefix_to_sample_collisions(
         t=sample_qc_ht,
         sample_collisions=sample_collisions,
-        project="gnomad",
+        project="aou",
     )
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
@@ -79,6 +80,15 @@ def get_sample_qc_ht(
         / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
     )
 
+    # Set r_ti_tv_singleton to 0 for samples that are missing this metric.
+    # 8 samples in AoU v8 are missing r_ti_tv_singleton because their
+    # n_singleton_tv is 0.
+    sample_qc_ht = sample_qc_ht.annotate(
+        r_ti_tv_singleton=hl.coalesce(
+            sample_qc_ht.r_ti_tv_singleton,
+            0,
+        )
+    )
     return sample_qc_ht.select_globals()
 
 
@@ -755,7 +765,7 @@ def main(args):
         if args.prepare_outlier_detection_sample_qc:
             check_resource_existence(
                 output_step_resources={
-                    "outlier_detection_sample_qc_ht": sample_qc_ht_path
+                    "outlier_detection_sample_qc_ht": [sample_qc_ht_path]
                 },
                 overwrite=overwrite,
             )
@@ -793,7 +803,9 @@ def main(args):
                 test=test,
             ).path
             check_resource_existence(
-                output_step_resources={"regressed_filter_ht": regressed_filter_ht_path},
+                output_step_resources={
+                    "regressed_filter_ht": [regressed_filter_ht_path]
+                },
                 overwrite=overwrite,
             )
 
@@ -811,7 +823,7 @@ def main(args):
             stratified_filter_ht_path = stratified_filtering(test=test).path
             check_resource_existence(
                 output_step_resources={
-                    "stratified_filter_ht": stratified_filter_ht_path
+                    "stratified_filter_ht": [stratified_filter_ht_path]
                 },
                 overwrite=overwrite,
             )
@@ -830,7 +842,7 @@ def main(args):
                 approximation=nn_approximation,
             ).path
             check_resource_existence(
-                output_step_resources={"nn_ht": nn_ht_path},
+                output_step_resources={"nn_ht": [nn_ht_path]},
                 overwrite=overwrite,
             )
 
@@ -854,7 +866,7 @@ def main(args):
             ).ht()
             nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"nn_filter_ht": nn_filter_ht_path},
+                output_step_resources={"nn_filter_ht": [nn_filter_ht_path]},
                 overwrite=overwrite,
             )
 
@@ -872,7 +884,7 @@ def main(args):
         if args.create_finalized_outlier_filter:
             final_ht_path = finalized_outlier_filtering(test=test).path
             check_resource_existence(
-                output_step_resources={"finalized_ht": final_ht_path},
+                output_step_resources={"finalized_ht": [final_ht_path]},
                 overwrite=overwrite,
             )
 
