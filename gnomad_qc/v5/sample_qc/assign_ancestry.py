@@ -603,7 +603,7 @@ def union_projection_scores_and_assignments(
     )
     meta_ht = meta_ht.select("gen_anc")
 
-    gen_anc_ht = projected_gen_anc.union(v4_gen_anc)
+    gen_anc_ht = projected_gen_anc.union(meta_ht)
 
     return scores_ht, gen_anc_ht
 
@@ -835,7 +835,7 @@ def main(args):
                 projected_gen_anc_ht, v4_min_probs
             )
 
-            gen_anc_ht.write(
+            projected_gen_anc_ht.write(
                 get_gen_anc_ht(test=use_tmp_path, projection_only=True).path,
                 overwrite=overwrite,
             )
