@@ -592,7 +592,7 @@ def union_projection_scores_and_assignments(
     # The resulting table will not retain probalility scores per genetic ancestry group as these are no longer available
     # for gnomAD genome samples.
     projected_gen_anc = projected_gen_anc.select("gen_anc")
-    meta_ht = meta_ht.annotate(projected_gen_anc=projected_aou_ht[meta_ht.key].gen_anc)
+    meta_ht = meta_ht.annotate(projected_gen_anc=projected_gen_anc[meta_ht.key].gen_anc)
     meta_ht = meta_ht.annotate(
         gen_anc=hl.if_else(meta_ht.gen_anc == "oth", "remaining", meta_ht.gen_anc)
     )
