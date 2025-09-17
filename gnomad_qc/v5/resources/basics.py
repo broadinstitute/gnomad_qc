@@ -381,7 +381,7 @@ def get_samples_to_exclude(
             low_quality_samples.path
         )
         failing_genomic_metrics_samples = hl.experimental.read_expression(
-            failing_genomic_metrics_samples.path
+            failing_metrics_samples.path
         )
         s_to_exclude = low_quality_sample_ids.union(failing_genomic_metrics_samples)
         hl.experimental.write_expression(
