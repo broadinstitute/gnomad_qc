@@ -370,7 +370,7 @@ def get_samples_to_exclude(
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(
                 "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
-                failing_genomic_metrics_samples.size(),
+                len(failing_genomic_metrics_samples),
             )
             hl.experimental.write_expression(
                 hl.set(failing_genomic_metrics_samples), failing_metrics_samples.path
