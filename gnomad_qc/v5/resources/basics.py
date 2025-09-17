@@ -362,8 +362,9 @@ def get_samples_to_exclude(
             low_quality_sample_ids = low_quality_ht.aggregate(
                 hl.agg.collect_as_set(low_quality_ht.research_id)
             )
-            low_quality_sample_ids.write(low_quality_samples.path)
-
+            hl.experimental.write_expression(
+                hl.set(low_quality_sample_ids), low_quality_samples.path
+            )
         if not file_exists(failing_metrics_samples.path):
             # Load and count samples failing genomic metrics filters.
             failing_genomic_metrics_samples_ht = (
@@ -380,7 +381,9 @@ def get_samples_to_exclude(
                     )
                 )
             )
-            failing_genomic_metrics_samples.write(failing_metrics_samples.path)
+            hl.experimental.write_expression(
+                hl.set(failing_genomic_metrics_samples), failing_metrics_samples.path
+            )
 
         # Union all samples to exclude and write out.
         low_quality_sample_ids = hl.experimental.read_expression(
