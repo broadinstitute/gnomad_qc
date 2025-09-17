@@ -287,7 +287,7 @@ See same links as above (in `acaf_mt`) for more information.
 """
 
 
-def get_aou_failing_genomic_metrics_samples() -> hl.expr.SetExpression:
+def get_aou_failing_genomic_metrics_samples() -> Set[str]:
     """
     Import AoU genomic metrics and filter to samples that fail specific quality criteria, including low coverage and ambiguous sex ploidy.
 
@@ -300,7 +300,7 @@ def get_aou_failing_genomic_metrics_samples() -> hl.expr.SetExpression:
 
         In addition, we exclude samples with ambiguous sex ploidy (i.e., not "XX" or "XY") from the callset.
 
-    :return: SetExpression of samples failing coverage filters or with non-XX-XY sex ploidies.
+    :return: Set of sample IDs failing coverage filters or with non-XX-XY sex ploidies.
     """
     types = {
         "research_id": hl.tstr,
