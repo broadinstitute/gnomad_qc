@@ -565,7 +565,7 @@ def union_projection_scores_and_assignments(
     projected_scores: hl.Table,
     v4_scores: hl.Table,
     projected_gen_anc: hl.Table,
-    v4_gen_anc: hl.Table,
+    meta_ht: hl.Table,
     sample_collisions: hl.Table,
 ) -> Tuple[hl.Table, hl.Table]:
     """
@@ -574,7 +574,7 @@ def union_projection_scores_and_assignments(
     :param projected_scores: PCA scores for projected samples.
     :param v4_scores: PCA scores for v4 samples.
     :param projected_gen_anc: Genetic ancestry group assignments for projected samples.
-    :param v4_gen_anc: Genetic ancestry group assignments for v4 samples.
+    :param meta_ht: Metadata Table containing previous genetic ancestry group assignments.
     :param sample_collisions: Table with sample ID collisions between gnomAD and AoU.
     :return: Combined PCA scores (projected + v4) and combined genetic ancestry group assignments (projected + v4).
     """
@@ -584,22 +584,23 @@ def union_projection_scores_and_assignments(
         sample_collisions=sample_collisions,
         project="gnomad",
     )
-    v4_gen_anc = add_project_prefix_to_sample_collisions(
-        t=v4_gen_anc,
-        sample_collisions=sample_collisions,
-        project="gnomad",
-    )
 
     # Union PCA scores.
     scores_ht = v4_scores.union(projected_scores)
 
-    # Standardize v4 ancestry schema.
-    v4_gen_anc = v4_gen_anc.rename({"pop": "gen_anc"}).drop(
-        "training_sample", "evaluation_sample", "training_pop"
+    # Combine genetic ancestry group assignments. Use previous genetic ancestry group assignments for gnomAD samples.
+    # The resulting table will not retain probability scores per genetic ancestry group as these are no longer available
+    # for gnomAD genome samples.
+    meta_ht = meta_ht.annotate(projected_gen_anc=projected_gen_anc[meta_ht.key].gen_anc)
+    meta_ht = meta_ht.annotate(
+        gen_anc=hl.if_else(meta_ht.gen_anc == "oth", "remaining", meta_ht.gen_anc)
     )
-
-    # Union genetic ancestry group assignments.
-    gen_anc_ht = projected_gen_anc.union(v4_gen_anc)
+    meta_ht = meta_ht.annotate(
+        gen_anc=hl.if_else(
+            meta_ht.project == "gnomad", meta_ht.gen_anc, meta_ht.projected_gen_anc
+        )
+    )
+    gen_anc_ht = meta_ht.select("gen_anc")
 
     return scores_ht, gen_anc_ht
 
@@ -641,15 +642,21 @@ def main(args):
         if args.run_pca:
             check_resource_existence(
                 output_step_resources={
-                    "genetic_ancestry_pca_eigenvalues": genetic_ancestry_pca_eigenvalues(
-                        include_unreleasable_samples, use_tmp_path
-                    ).path,
-                    "genetic_ancestry_pca_scores": genetic_ancestry_pca_scores(
-                        include_unreleasable_samples, use_tmp_path
-                    ).path,
-                    "genetic_ancestry_pca_loadings": genetic_ancestry_pca_loadings(
-                        include_unreleasable_samples, use_tmp_path
-                    ).path,
+                    "genetic_ancestry_pca_eigenvalues": [
+                        genetic_ancestry_pca_eigenvalues(
+                            include_unreleasable_samples, use_tmp_path
+                        ).path
+                    ],
+                    "genetic_ancestry_pca_scores": [
+                        genetic_ancestry_pca_scores(
+                            include_unreleasable_samples, use_tmp_path
+                        ).path
+                    ],
+                    "genetic_ancestry_pca_loadings": [
+                        genetic_ancestry_pca_loadings(
+                            include_unreleasable_samples, use_tmp_path
+                        ).path
+                    ],
                 },
                 overwrite=overwrite,
             )
@@ -680,7 +687,7 @@ def main(args):
             )
         if args.assign_gen_anc:
             check_resource_existence(
-                output_step_resources={"gen_anc_ht": gen_anc_ht_path},
+                output_step_resources={"gen_anc_ht": [gen_anc_ht_path]},
                 overwrite=overwrite,
             )
 
@@ -739,7 +746,7 @@ def main(args):
         if args.compute_precision_recall:
             check_resource_existence(
                 output_step_resources={
-                    "gen_anc_pr_ht": get_gen_anc_pr_ht(test=use_tmp_path).path
+                    "gen_anc_pr_ht": [get_gen_anc_pr_ht(test=use_tmp_path).path]
                 },
                 overwrite=overwrite,
             )
@@ -752,7 +759,7 @@ def main(args):
 
         if args.apply_per_grp_min_rf_probs:
             check_resource_existence(
-                output_step_resources={"gen_anc_ht": gen_anc_ht_path},
+                output_step_resources={"gen_anc_ht": [gen_anc_ht_path]},
                 overwrite=overwrite,
             )
 
@@ -791,14 +798,18 @@ def main(args):
             )
             check_resource_existence(
                 output_step_resources={
-                    "gen_anc_ht": gen_anc_ht_path,
-                    "scores_ht": genetic_ancestry_pca_scores(
-                        test=use_tmp_path, projection=True
-                    ).path,
+                    "gen_anc_projection_ht": [
+                        get_gen_anc_ht(test=use_tmp_path, projection_only=True).path
+                    ],
+                    "gen_anc_ht": [get_gen_anc_ht(test=use_tmp_path).path],
+                    "scores_ht": [
+                        genetic_ancestry_pca_scores(
+                            test=use_tmp_path, projection=True
+                        ).path
+                    ],
                 },
                 overwrite=overwrite,
             )
-            gen_anc = get_gen_anc_ht(test=use_tmp_path)
 
             projected_scores_ht, projected_gen_anc_ht = project_aou_onto_v4(
                 gnomad_v4_onnx_rf_path=gnomad_v4_onnx_rf,
@@ -821,15 +832,18 @@ def main(args):
                 projected_gen_anc_ht, v4_min_probs
             )
 
+            projected_gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path, projection_only=True).path,
+                overwrite=overwrite,
+            )
+
             # Combine projected scores and genetic ancestry groups with v4 scores and
             # genetic ancestry groups.
-            v4_pop_ht = v4_get_pop_ht().ht()
-
             scores_ht, gen_anc_ht = union_projection_scores_and_assignments(
                 projected_scores=projected_scores_ht,
                 v4_scores=v4_pca_scores().ht(),
                 projected_gen_anc=projected_gen_anc_ht,
-                v4_gen_anc=v4_pop_ht,
+                meta_ht=project_meta.ht(),
                 sample_collisions=sample_id_collisions.ht(),
             )
 
@@ -837,7 +851,9 @@ def main(args):
                 genetic_ancestry_pca_scores(test=use_tmp_path, projection=True).path,
                 overwrite=overwrite,
             )
-            gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
+            gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
+            )
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
