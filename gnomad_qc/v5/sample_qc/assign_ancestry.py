@@ -588,7 +588,7 @@ def union_projection_scores_and_assignments(
     # Union PCA scores.
     scores_ht = v4_scores.union(projected_scores)
 
-    # Union genetic ancestry group assignments. Use previous genetic ancestry group assignments for gnomAD samples.
+    # Combine genetic ancestry group assignments. Use previous genetic ancestry group assignments for gnomAD samples.
     # The resulting table will not retain probability scores per genetic ancestry group as these are no longer available
     # for gnomAD genome samples.
     projected_gen_anc = projected_gen_anc.select("gen_anc")
@@ -602,8 +602,6 @@ def union_projection_scores_and_assignments(
         )
     )
     meta_ht = meta_ht.select("gen_anc")
-
-    gen_anc_ht = projected_gen_anc.union(meta_ht)
 
     return scores_ht, gen_anc_ht
 
