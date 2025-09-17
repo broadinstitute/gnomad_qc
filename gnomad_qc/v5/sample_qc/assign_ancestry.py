@@ -601,7 +601,7 @@ def union_projection_scores_and_assignments(
             meta_ht.project == "gnomad", meta_ht.gen_anc, meta_ht.projected_gen_anc
         )
     )
-    meta_ht = meta_ht.select("gen_anc")
+    gen_anc_ht = meta_ht.select("gen_anc")
 
     return scores_ht, gen_anc_ht
 
