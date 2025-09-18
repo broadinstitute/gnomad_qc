@@ -1,0 +1,16 @@
+gnomad_qc.analyses.compute_pext
+===============================
+
+Script to get release pext annotation files.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.analyses.compute_pext
+
+.. automodule:: gnomad_qc.analyses.compute_pext
+    :exclude-members: get_script_argument_parser
