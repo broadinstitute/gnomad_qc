@@ -25,6 +25,7 @@ def get_gnomad_v3_vds(
     release_only: bool = False,
     samples_meta: bool = False,
     test: bool = False,
+    n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
@@ -48,6 +49,8 @@ def get_gnomad_v3_vds(
         release (can only be used if metadata is present).
     :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column.
     :param test: Whether to use the test VDS instead of the full v3 VDS.
+    :param n_partitions: Optional argument to read the VDS with a specific number of
+        partitions.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
         in the provided list.
     :param chrom: Optional argument to filter the VDS to specific chromosomes.
@@ -72,6 +75,8 @@ def get_gnomad_v3_vds(
     """
     if test:
         vds = gnomad_v3_testset_vds.vds()
+    elif n_partitions:
+        vds = hl.vds.read_vds(gnomad_v3_genotypes_vds.path, n_partitions=n_partitions)
     else:
         vds = gnomad_v3_genotypes_vds.vds()
 

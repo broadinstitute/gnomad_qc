@@ -1,12 +1,15 @@
-"""Script to generate annotations for variant QC on gnomAD v4."""
+"""Script to perform validity checks on input federated data or final release files."""
 
 import argparse
 import json
 import logging
+import re
+from collections import defaultdict
 from io import StringIO
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import hail as hl
+from bs4 import BeautifulSoup
 from gnomad.assessment.parse_validity_logs import generate_html_report, parse_log_file
 from gnomad.assessment.validity_checks import (
     check_global_and_row_annot_lengths,
@@ -58,8 +61,240 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
-REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
+ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["genomes"]
+REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["genomes"]
+
+
+def get_table_kind(lines, header_index) -> str:
+    """Determine whether a markdown table corresponds to "global" or "row" fields by scanning upward from the table header line.
+
+    :param lines: The full list of lines from the markdown document.
+    :param header_index: The index of the table header line (the line with column names).
+    :return: String 'global' if the nearest preceding section marker indicates global fields, 'row' if it indicates row fields, or 'None' if neither is found.
+    """
+    for j in range(header_index - 1, -1, -1):
+        prev_line = lines[j].lower().strip()
+        if not prev_line:
+            continue
+        if "global" in prev_line:
+            return "global"
+        if "row" in prev_line:
+            return "row"
+        # Stop if hit a heading.
+        if prev_line.startswith("#"):
+            break
+    return None
+
+
+def hail_type_from_string(type_str: str) -> Any:
+    """
+    Convert a type string from the markdown to a Hail type.
+
+    This function expects flattened fields (no nested dicts or nested structs).
+    Complex nested types may not be fully supported.
+
+    :param type_str: Type string from markdown text, such as `int32`.
+    :return: Hail type represented by the type string.
+    """
+    type_str = type_str.strip().strip("`")
+
+    if type_str in {"int64"}:
+        return hl.tint64
+    elif type_str in {"int32"}:
+        return hl.tint32
+    elif type_str in {"float64"}:
+        return hl.tfloat64
+    elif type_str in {"float32"}:
+        return hl.tfloat32
+    elif type_str in {"str", "string"}:
+        return hl.tstr
+    elif type_str in {"bool", "boolean"}:
+        return hl.tbool
+    elif type_str in {"locus<GRCh38>"}:
+        return hl.tlocus("GRCh38")
+
+    # Handle arrays.
+    array_match = re.match(r"array<(.+)>", type_str)
+    if array_match:
+        inner_type = hail_type_from_string(array_match.group(1))
+        return hl.tarray(inner_type)
+
+    # Handle sets.
+    set_match = re.match(r"set<(.+)>", type_str)
+    if set_match:
+        inner_type = hail_type_from_string(set_match.group(1))
+        return hl.tset(inner_type)
+
+    # Handle dictionaries.
+    dict_match = re.match(r"dict<(.+),\s*(.+)>", type_str)
+    if dict_match:
+        key_type = hail_type_from_string(dict_match.group(1))
+        value_type = hail_type_from_string(dict_match.group(2))
+        return hl.tdict(key_type, value_type)
+
+    # Handle structs (if type is struct, it will always be a parent type for
+    # which we can skip obtaining the type).
+    if type_str.startswith("struct"):
+        return hl.tstruct()
+
+    raise ValueError(f"Unrecognized type string: {type_str}")
+
+
+def is_concrete_type(htype) -> bool:
+    """Determine whether a Hail type represents a "concrete" field that should be added to field_types, as opposed to an empty container (such as an empty array or struct).
+
+    Empty structs and arrays are not concrete types. Arrays are interpreted recursively.
+
+    :param htype: Hail type to check (ex: hl.tint32, hl.tarray(hl.tfloat64), hl.tstruct()).
+    :return: Bool of whether or not the hail type is considered "concrete".
+    """
+    if isinstance(htype, hl.tstruct):
+        return len(htype.fields) > 0
+    elif isinstance(htype, hl.tarray):
+        return is_concrete_type(htype.element_type)
+    else:
+        return True
+
+
+def parse_field_necessity_from_md(
+    md_text: str,
+) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
+    """Create dictionary of field necessity from parsing markdown text.
+
+    :param md_text: Markdown text to parse.
+    :return: Dictionary of field names and their necessity, and dictionary split into 'global_field_types' and 'row_field_types' keys, containing field names and their types.
+    """
+    field_necessities = {}
+    field_types = {"global_field_types": {}, "row_field_types": {}}
+    lines = md_text.splitlines()
+    in_table = False
+
+    parent_types = {}
+
+    for i, line in enumerate(lines):
+        # Detect table header to distinguish between global and row fields.
+        if line.strip().startswith("| Field") and "Field Necessity" in line:
+            in_table = True
+            table_kind = get_table_kind(lines, i)
+            continue
+
+        # Skip alignment row.
+        if in_table and re.match(r"^\|[-| ]+\|$", line):
+            continue
+        # Process table rows.
+        elif in_table and line.strip().startswith("|"):
+            parts = [c.strip() for c in line.strip().split("|") if c.strip()]
+            field_raw = parts[0]
+            field_type = parts[1]
+            necessity = parts[-1]
+
+            # Strip HTML tags and extra formatting.
+            field = BeautifulSoup(field_raw, "html.parser").get_text()
+            field = re.sub(r"[*`]", "", field).strip()
+
+            # Convert the types in string format to hail types.
+            field_type = hail_type_from_string(field_type)
+
+            field_parts = field.split(".")
+            # Keep track of parent fields in the 'parent_types' dictionary.
+            if len(field_parts) == 1:
+                parent_types[field] = field_type
+
+            if len(field_parts) > 1:
+                parent = field_parts[0]
+                parent_type = parent_types[parent]
+                # If the parent type of a given field is an array, wrap the field type
+                # within tarray.
+                if isinstance(parent_type, hl.tarray):
+                    field_type = hl.tarray(field_type)
+
+            # Skip recording the field type if the field is a parent type with further
+            # nodes (will be array or struct with no defined inner types).
+            if is_concrete_type(field_type):
+                if table_kind == "global":
+                    field_types["global_field_types"][field] = field_type
+                elif table_kind == "row":
+                    field_types["row_field_types"][field] = field_type
+
+            # Normalize necessity label.
+            necessity_clean = necessity.strip().lower()
+            if "required" in necessity_clean:
+                field_necessities[field] = "required"
+            elif "optional" in necessity_clean:
+                field_necessities[field] = "optional"
+            elif "not needed" in necessity_clean:
+                field_necessities[field] = "not_needed"
+        # End of table.
+        elif in_table and not line.strip():
+            in_table = False
+        elif in_table and not line.strip().startswith("|"):
+            in_table = False
+
+    return field_necessities, field_types
+
+
+def log_field_validation_results(
+    field_issues: Dict[str, Dict[str, List[str]]],
+    fields_validated: Dict[str, Dict[str, List[str]]],
+    type_issues: List[str],
+    types_validated: List[str],
+) -> None:
+    """
+    Log the results of field existence and type validation.
+
+    :param field_issues: Nested dictionary mapping necessity ("required", "optional") and annotation_kind ("row", "global") to list of missing field names.
+    :param fields_validated:  Nested dictionary mapping necessity ("required", "optional") and annotation_kind ("row", "global") to list of fields successfully found.
+    :param type_issues: List of strings describing fields with incorrect or mismatched types.
+    :param types_validated: List of strings describing successful type validations.
+    :return: None
+    """
+    # Log missing fields.
+    for necessity, annos in field_issues.items():
+        for annotation_type, fields in annos.items():
+            if not fields:
+                continue
+
+            if necessity == "required":
+                msg = "FAILED FIELD VALIDATIONS: missing %s fields: %s" % (
+                    annotation_type,
+                    ", ".join(sorted(fields)),
+                )
+                logger.error(msg)
+
+            elif necessity == "optional":
+                msg = "MISSING optional %s fields: %s" % (
+                    annotation_type,
+                    ", ".join(sorted(fields)),
+                )
+                logger.warning(msg)
+
+            else:
+                raise ValueError("necessity must be one of 'required' or 'optional")
+
+    # Log found/validated fields.
+    for necessity, annos in fields_validated.items():
+        for annotation_type, fields in annos.items():
+            if fields:
+                logger.info(
+                    "Found %s %s fields: %s",
+                    necessity,
+                    annotation_type,
+                    ", ".join(sorted(fields)),
+                )
+
+    # Log type validations.
+    if type_issues:
+        logger.error(
+            "Type issues: %s",
+            " | ".join(sorted(type_issues)),
+        )
+
+    # Log type validations.
+    if types_validated:
+        logger.info(
+            "Validated types: %s",
+            " | ".join(sorted(types_validated)),
+        )
 
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
@@ -74,10 +309,10 @@ def validate_config(config: Dict[str, Any], schema: Dict[str, Any]) -> None:
         validate(instance=config, schema=schema)
         logger.info("JSON is valid.")
     except ValidationError as e:
-        raise ValueError(f"JSON validation error: %s, {e.message}")
+        raise ValueError(f"JSON validation error: {e.message}")
 
 
-def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
+def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     """Check that necessary fields defined in the JSON config are present in the Hail Table.
 
     :param ht: Hail Table.
@@ -92,7 +327,7 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     if config.get("faf_fields"):
         array_struct_annotations.append(config["faf_fields"]["faf"])
 
-    # Check that all neccesaary fields are present in the Table.
+    # Check that all necessary fields are present in the Table.
     missing_fields = {}
 
     # Check that specified global annotations are present.
@@ -109,8 +344,18 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
 
     # Check that specified row annotations are present.
     row_fields = array_struct_annotations + config["struct_annotations_for_missingness"]
+
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
+
+    # Check that specified info annotations are present.
+    if config.get("check_mono_and_only_het"):
+        info_annotations = ["monoallelic", "only_het"]
+        info_fields = list(ht.info.dtype)
+        missing_info_fields = [f for f in info_annotations if f not in info_fields]
+        missing_fields["missing_info_fields"] = missing_info_fields
+    else:
+        missing_fields["missing_info_fields"] = []
 
     # Check that freq_annotations_to_sum values are present in the 'freq' struct.
     freq_fields = list(ht.freq.dtype.element_type)
@@ -130,7 +375,8 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
     # Check that specified subsets are present as values within the
     # freq_meta_expr subset key.
     subset_values = {i["subset"] for i in freq_meta_list if "subset" in i}
-    missing_subsets = set(config["subsets"]) - subset_values
+    subsets = [subset for subset in config.get("subsets", []) if subset]
+    missing_subsets = set(subsets) - subset_values
     missing_fields["missing_subsets"] = missing_subsets
 
     if any(missing_fields.values()):
@@ -140,6 +386,127 @@ def validate_ht_fields(ht: hl.Table, config: Dict[str, Any]) -> None:
         raise ValueError(error_message)
     else:
         logger.info("Validated presence of config fields in the Table.")
+
+
+def validate_required_fields(
+    ht: hl.Table,
+    field_types: Dict[str, Dict[str, Any]],
+    field_necessities: Dict[str, str],
+    validate_all_fields: bool = False,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Validate that the table contains the required global and row fields and that their values are of the expected types.
+
+    .. note::
+
+        Required fields can be nested (e.g., 'info.QD' indicates that the 'QD' field is nested within the 'info' struct).
+
+    :param ht: Table to validate.
+    :param field_types: Nested dictionary of both global and row fields and their expected types. There are two keys: "global_field_types" and "row_field_types", respectively containing the global and row fields as keys and their expected types as values.
+    :param field_necessities: Flat dictionary with annotation fields as keys and values field necessity("required" or "optional") as values.
+    :param validate_all_fields: Whether to validate all fields or only the required/optional ones.
+    :return: Tuple of fields checked and whether or not they passed validation checks.
+    """
+    field_issues = defaultdict(lambda: defaultdict(list))
+    type_issues = []
+    fields_validated = defaultdict(lambda: defaultdict(list))
+    types_validated = []
+
+    default_necessity = "not_needed"
+
+    # If validate_all_fields is True, set all field necessities to "required".
+    if validate_all_fields:
+        field_necessities = {k: "required" for k in field_necessities}
+        default_necessity = "required"
+
+    def _check_field_exists_and_type(
+        root_expr: hl.expr.Expression,
+        field_path: str,
+        expected_type: Any,
+        annotation_kind: str = "row",
+    ) -> None:
+        """
+        Check that the field exists and is of the expected type.
+
+        :param root_expr: Root expression to check.
+        :param field_path: Path to the field to check, where a period indicates a nested field.
+        :param expected_type: Expected type of the field.
+        :param annotation_kind: Kind of annotation to check ("row" or "global").
+        :return: None.
+        """
+        parts = field_path.split(".")
+        current_field = root_expr
+
+        field_necessity = field_necessities.get(field_path, default_necessity)
+
+        # Unless specified, only check optional and required fields.
+        if field_necessity == "not_needed":
+            return
+
+        for i, part in enumerate(parts):
+            dtype = current_field.dtype
+
+            if isinstance(dtype, hl.tstruct):
+                if part not in dtype.fields:
+                    field_issues[field_necessity][annotation_kind].append(field_path)
+                    return
+                current_field = current_field[part]
+
+            elif isinstance(dtype, hl.tarray) and isinstance(
+                dtype.element_type, hl.tstruct
+            ):
+                if part not in dtype.element_type.fields:
+                    field_issues[field_necessity][annotation_kind].append(
+                        f"{field_path} (available in array struct: {list(dtype.element_type.fields.keys())})"
+                    )
+                    return
+                current_field = current_field.map(lambda x: x[part])
+
+            else:
+                logger.info(
+                    "Unsupported type while traversing %s: %s",
+                    ".".join(parts[:i]),
+                    dtype,
+                )
+                return
+
+        # If we make it here, the field exists fully.
+        fields_validated[field_necessity][annotation_kind].append(field_path)
+
+        # Check that the field type matches expectation.
+        if isinstance(expected_type, hl.tarray) and isinstance(
+            current_field.dtype, hl.tarray
+        ):
+            if expected_type.element_type != current_field.dtype.element_type:
+                type_issues.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' is an array with incorrect element type: "
+                    f"expected {expected_type.element_type}, found {current_field.dtype.element_type}"
+                )
+                return
+
+            types_validated.append(
+                f"{annotation_kind.capitalize()} field '{field_path}' IS an array with correct element type {expected_type.element_type}"
+            )
+        else:
+            if current_field.dtype != expected_type:
+                type_issues.append(
+                    f"{annotation_kind.capitalize()} field '{field_path}' is not of type {expected_type}, found {current_field.dtype}"
+                )
+                return
+
+            types_validated.append(
+                f"{annotation_kind.capitalize()} field '{field_path}' IS of expected type {expected_type}"
+            )
+
+    # Validate global fields.
+    for field, expected_type in field_types["global_field_types"].items():
+        _check_field_exists_and_type(ht.globals, field, expected_type, "global")
+
+    # Validate row fields.
+    for field, expected_type in field_types["row_field_types"].items():
+        _check_field_exists_and_type(ht.row, field, expected_type, "row")
+
+    return field_issues, type_issues, fields_validated, types_validated
 
 
 def check_missingness(
@@ -202,12 +569,13 @@ def validate_federated_data(
     missingness_threshold: float = 0.50,
     struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
     freq_annotations_to_sum: List[str] = ["AC", "AN", "homozygote_count"],
-    sort_order: List[str] = ["subset", "gen_anc", "sex", "group"],
+    sort_order: List[str] = ["subset", "downsampling", "gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
     verbose: bool = False,
     subsets: List[str] = None,
     variant_filter_field: str = "AS_VQSR",
     problematic_regions: List[str] = ["lcr", "non_par", "segdup"],
+    site_gt_check_expr: Dict[str, hl.expr.BooleanExpression] = None,
 ) -> None:
     """
     Perform validity checks on federated data.
@@ -217,12 +585,13 @@ def validate_federated_data(
         `meta_indexed_expr`. The most often used expression is `freq_meta` to index into
         a 'freq' array (example: ht.freq_meta).
     :param freq_annotations_to_sum: List of annotation fields within `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count'].
-    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "gen_anc", "sex", "group"].
+    :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "downsampling", gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.
     :param subsets: List of sample subsets.
     :param variant_filter_field: String of variant filtration used in the filters annotation on `ht` (e.g. RF, VQSR, AS_VQSR). Default is "AS_VQSR".
-    :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "segdup", "nonpar"].
+    :param problematic_regions: List of regions considered problematic to run filter check in. Default is ["lcr", "non_par", "segdup"].
+    :param site_gt_check_expr: Optional dictionary of strings and boolean expressions typically used to log how many monoallelic or 100% heterozygous sites are in the Table.
     :return: None
     """
     # Summarize variants and check that all contigs exist.
@@ -236,6 +605,7 @@ def validate_federated_data(
         variant_filter_field=variant_filter_field,
         problematic_regions=problematic_regions,
         single_filter_count=True,
+        site_gt_check_expr=site_gt_check_expr,
     )
 
     # Check for missingness.
@@ -267,7 +637,7 @@ def validate_federated_data(
     sum_group_callstats(
         t=ht,
         sexes={i["sex"] for i in hl.eval(freq_meta_expr) if "sex" in i},
-        subsets=[""],
+        subsets=subsets,
         gen_anc_groups={
             i[gen_anc_label_name]
             for i in hl.eval(freq_meta_expr)
@@ -295,7 +665,7 @@ def validate_federated_data(
     logger.info("Checking raw and adj callstats...")
     check_raw_and_adj_callstats(
         t=ht,
-        subsets=[""],
+        subsets=subsets,
         verbose=verbose,
         metric_first_field=True,
         nhomalt_metric=nhomalt_metric,
@@ -474,7 +844,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
                     AC=hl.tint32,
                     AF=hl.tfloat64,
                     AN=hl.tint32,
-                    homozygote_count=hl.tint32,
+                    homozygote_count=hl.tint64,
                 )
             ),
             faf=hl.tarray(hl.tstruct(faf95=hl.tfloat64, faf99=hl.tfloat64)),
@@ -514,7 +884,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         freq_meta_sample_count=freq_meta_sample_count,
-        faf_meta_sample_count=freq_meta_sample_count,
+        faf_meta_sample_count=faf_meta_sample_count,
     )
 
     # Add in retired terms to globals.
@@ -568,6 +938,8 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     )
 
     ht = ht.annotate(grpmax=grpmax, fafmax=fafmax)
+    # Add monoallelic and only_het annotations.
+    ht = ht.annotate(monoallelic=hl.rand_bool(0.50), only_het=hl.rand_bool(0.10))
     ht = ht.key_by("locus", "alleles")
 
     return ht
@@ -596,16 +968,30 @@ def main(args):
 
         validate_config(config, schema)
 
+        # Read in field necessity markdown file.
+        # When submitting hail dataproc job, include "--files field_requirements.md".
+        try:
+            with open("field_requirements.md", "r") as f:
+                md_text = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                "Missing required file 'field_requirements.md'.\n"
+                "If running a Hail Dataproc job, be sure to include it with the --files argument:\n"
+                "  hailctl dataproc submit <cluster-name> --files field_requirements.md  federated_validity_checks.py..."
+            )
+
+        field_necessities, field_types = parse_field_necessity_from_md(md_text)
+
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
         else:
             # TODO: Add resources to intake federated data once obtained.
-            ht = public_release(data_type="exomes").ht()
+            ht = public_release(data_type="genomes").ht()
 
             # Check that fields specified in the config are present in the Table.
-            validate_ht_fields(ht=ht, config=config)
+            validate_config_fields_in_ht(ht=ht, config=config)
 
             # Confirm Table is using build GRCh38.
             build = get_reference_genome(ht.locus).name
@@ -669,6 +1055,20 @@ def main(args):
                 "faf_fields"
             ]["faf_meta"]
 
+        logger.info("Validate required fields...")
+        field_issues, type_issues, fields_validated, types_validated = (
+            validate_required_fields(
+                ht=ht,
+                field_types=field_types,
+                field_necessities=field_necessities,
+                validate_all_fields=args.validate_all_fields,
+            )
+        )
+
+        log_field_validation_results(
+            field_issues, fields_validated, type_issues, types_validated
+        )
+
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(
@@ -679,16 +1079,47 @@ def main(args):
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
         info_dict = {}
+
+        # Add region_flag fields if present.
+        missing_region_flags = []
         if "region_flags" in ht.row:
-            # Add region_flag to info dict.
             for field in REGION_FLAG_FIELDS:
-                info_dict[field] = ht["region_flags"][f"{field}"]
-        # Add allele_info fields to info dict.
+                if field in ht["region_flags"]:
+                    info_dict[field] = ht["region_flags"][field]
+                else:
+                    missing_region_flags.append(field)
+        region_flags = [f for f in REGION_FLAG_FIELDS if f not in missing_region_flags]
+        if missing_region_flags:
+            logger.warning("Missing region_flag fields: %s", missing_region_flags)
+
+        # Add allele_info fields if present.
+        missing_allele_info = []
         if "allele_info" in ht.row:
             for field in ALLELE_TYPE_FIELDS:
-                info_dict[field] = ht["allele_info"][f"{field}"]
+                if field in ht["allele_info"]:
+                    info_dict[field] = ht["allele_info"][field]
+                else:
+                    missing_allele_info.append(field)
+        if missing_allele_info:
+            logger.warning("Missing allele type fields: %s", missing_allele_info)
+
+        # Add monoallelic and only_het fields to info dict.
+        if "monoallelic" in ht.row:
+            info_dict["monoallelic"] = ht["monoallelic"]
+        if "only_het" in ht.row:
+            info_dict["only_het"] = ht["only_het"]
 
         ht = ht.annotate(info=ht.info.annotate(**info_dict))
+
+        # If config specifies to check for monoallelic and only heterozygous sites,
+        # create the site_gt_check_expr to pass to validate_federated_data.
+        if config.get("check_mono_and_only_het"):
+            site_gt_check_expr = {
+                "monoallelic": ht.info.monoallelic,
+                "only_het": ht.info.only_het,
+            }
+        else:
+            site_gt_check_expr = None
 
         validate_federated_data(
             ht=ht,
@@ -703,7 +1134,8 @@ def main(args):
             verbose=verbose,
             subsets=config["subsets"],
             variant_filter_field=config["variant_filter_field"],
-            problematic_regions=REGION_FLAG_FIELDS,
+            problematic_regions=region_flags,
+            site_gt_check_expr=site_gt_check_expr,
         )
 
         handler.flush()
@@ -773,9 +1205,14 @@ if __name__ == "__main__":
             "nhomalt_metric: Name of metric denoting homozygous alternate count."
             "subsets: List of sample subsets to include for the subset validity check."
             "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
+            "check_mono_and_only_het: Boolean indicating whether to check for monoallelic and 100 percent heterozygous sites in the Table ('monoallelic' and 'only_het' annotations must be present)."
         ),
-        required=True,
         type=str,
+    )
+    parser.add_argument(
+        "--validate-all-fields",
+        help="Validate all fields, regardless of necessity status.",
+        action="store_true",
     )
     parser.add_argument(
         "--verbose",

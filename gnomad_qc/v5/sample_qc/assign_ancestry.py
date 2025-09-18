@@ -7,12 +7,24 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
-from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
+import onnx
+from gnomad.sample_qc.ancestry import (
+    apply_onnx_classification_model,
+    assign_genetic_ancestry_pcs,
+    run_pca_with_relateds,
+)
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.sample_qc import ancestry_pca_loadings as v4_pca_loadings
+from gnomad_qc.v4.resources.sample_qc import ancestry_pca_scores as v4_pca_scores
+from gnomad_qc.v4.resources.sample_qc import get_pop_ht as v4_get_pop_ht
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
+from gnomad_qc.v4.resources.sample_qc import onnx_rf as gnomad_v4_onnx_rf
+from gnomad_qc.v4.resources.sample_qc import (
+    per_pop_min_rf_probs_json_path as v4_per_pop_min_rf_probs_json_path,
+)
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
@@ -503,6 +515,96 @@ def assign_gen_anc_with_per_gen_anc_probs(
     return gen_anc_ht
 
 
+def project_aou_onto_v4(
+    gnomad_v4_onnx_rf_path: str,
+    v4_loading_ht: hl.Table,
+    qc_mt: hl.MatrixTable,
+    meta_ht: hl.Table,
+) -> Tuple[hl.Table, hl.Table]:
+    """
+    Project AoU genotypes onto gnomAD v4.0 PCA space and assign genetic ancestry groups.
+
+    :param gnomad_v4_onnx_rf_path: Path to the gnomAD v4 ONNX random forest model.
+    :param v4_loading_ht: Table containing v4 PCA loadings and allele frequencies.
+    :qc_mt: QC MatrixTable.
+    :meta_ht: Metadata table.
+    :return: Table of PCA scores of projected AoU samples onto v4 loadings and table of genetic ancestry assignments for projected AoU samples.
+    """
+    # Load ONNX RF model.
+    with hl.hadoop_open(gnomad_v4_onnx_rf_path, "rb") as f:
+        v4_onx_fit = onnx.load(f)
+
+    # Annotate metadata onto qc_mt.
+    qc_mt = qc_mt.annotate_cols(meta=meta_ht[qc_mt.s])
+
+    # Keep only AoU samples for projection.
+    qc_mt = qc_mt.filter_cols(qc_mt.meta.project == "aou")
+    qc_mt = qc_mt.checkpoint(new_temp_file("qc_mt", extension="mt"))
+
+    # Note: All sites in the qc_mt are also present in the the loading ht so do not need to filter qc_mt to variants in loading table.
+    # Project genotypes onto v4 loadings
+    projected_scores = hl.experimental.pc_project(
+        qc_mt.GT,
+        v4_loading_ht.loadings,
+        v4_loading_ht.pca_af,
+    )
+
+    # Assign genetic ancestry using ONNX RF model
+    projected_gen_anc_ht, _ = assign_genetic_ancestry_pcs(
+        projected_scores,
+        pc_cols=projected_scores.scores[:20],
+        fit=v4_onx_fit,
+        min_prob=0.75,
+        apply_model_func=apply_onnx_classification_model,
+    )
+
+    return projected_scores, projected_gen_anc_ht
+
+
+def union_projection_scores_and_assignments(
+    projected_scores: hl.Table,
+    v4_scores: hl.Table,
+    projected_gen_anc: hl.Table,
+    meta_ht: hl.Table,
+    sample_collisions: hl.Table,
+) -> Tuple[hl.Table, hl.Table]:
+    """
+    Union projected PCA scores and genetic ancestry groups with v4 equivalents.
+
+    :param projected_scores: PCA scores for projected samples.
+    :param v4_scores: PCA scores for v4 samples.
+    :param projected_gen_anc: Genetic ancestry group assignments for projected samples.
+    :param meta_ht: Metadata Table containing previous genetic ancestry group assignments.
+    :param sample_collisions: Table with sample ID collisions between gnomAD and AoU.
+    :return: Combined PCA scores (projected + v4) and combined genetic ancestry group assignments (projected + v4).
+    """
+    # Prefix v4 sample IDs to account for sample name collisions in v5 data.
+    v4_scores = add_project_prefix_to_sample_collisions(
+        t=v4_scores,
+        sample_collisions=sample_collisions,
+        project="gnomad",
+    )
+
+    # Union PCA scores.
+    scores_ht = v4_scores.union(projected_scores)
+
+    # Combine genetic ancestry group assignments. Use previous genetic ancestry group assignments for gnomAD samples.
+    # The resulting table will not retain probability scores per genetic ancestry group as these are no longer available
+    # for gnomAD genome samples.
+    meta_ht = meta_ht.annotate(projected_gen_anc=projected_gen_anc[meta_ht.key].gen_anc)
+    meta_ht = meta_ht.annotate(
+        gen_anc=hl.if_else(meta_ht.gen_anc == "oth", "remaining", meta_ht.gen_anc)
+    )
+    meta_ht = meta_ht.annotate(
+        gen_anc=hl.if_else(
+            meta_ht.project == "gnomad", meta_ht.gen_anc, meta_ht.projected_gen_anc
+        )
+    )
+    gen_anc_ht = meta_ht.select("gen_anc")
+
+    return scores_ht, gen_anc_ht
+
+
 def main(args):
     """Assign genetic ancestry group labels to samples."""
     hl.init(
@@ -521,23 +623,42 @@ def main(args):
         if test and test_on_chr20:
             raise ValueError("Both test and test_on_chr20 cannot be set to True.")
 
+        if args.project_aou_onto_pcs & (
+            args.run_pca
+            or args.assign_gen_anc
+            or args.compute_precision_recall
+            or args.apply_per_grp_min_rf_probs
+            or args.infer_per_grp_min_rf_probs
+        ):
+            raise ValueError(
+                "'project_aou_onto_pcs' can not be set if any other arguments steps are set."
+            )
+
         # Use tmp path if either test dataset or test on chr20 is specified.
         use_tmp_path = test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
+        gen_anc_ht_path = get_gen_anc_ht(test=use_tmp_path).path
 
         if args.run_pca:
             check_resource_existence(
                 output_step_resources={
-                    "genetic_ancestry_pca_eigenvalues": genetic_ancestry_pca_eigenvalues(
-                        include_unreleasable_samples, use_tmp_path
-                    ).path,
-                    "genetic_ancestry_pca_scores": genetic_ancestry_pca_scores(
-                        include_unreleasable_samples, use_tmp_path
-                    ).path,
-                    "genetic_ancestry_pca_loadings": genetic_ancestry_pca_loadings(
-                        include_unreleasable_samples, use_tmp_path
-                    ).path,
-                }
+                    "genetic_ancestry_pca_eigenvalues": [
+                        genetic_ancestry_pca_eigenvalues(
+                            include_unreleasable_samples, use_tmp_path
+                        ).path
+                    ],
+                    "genetic_ancestry_pca_scores": [
+                        genetic_ancestry_pca_scores(
+                            include_unreleasable_samples, use_tmp_path
+                        ).path
+                    ],
+                    "genetic_ancestry_pca_loadings": [
+                        genetic_ancestry_pca_loadings(
+                            include_unreleasable_samples, use_tmp_path
+                        ).path
+                    ],
+                },
+                overwrite=overwrite,
             )
             qc_mt = get_joint_qc(test=test).mt()
 
@@ -566,9 +687,8 @@ def main(args):
             )
         if args.assign_gen_anc:
             check_resource_existence(
-                output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                }
+                output_step_resources={"gen_anc_ht": [gen_anc_ht_path]},
+                overwrite=overwrite,
             )
 
             gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
@@ -615,9 +735,7 @@ def main(args):
             )
 
             logger.info("Writing genetic ancestry group ht...")
-            gen_anc_ht.write(
-                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
-            )
+            gen_anc_ht.write(gen_anc_ht_path, overwrite=overwrite)
 
             with hl.hadoop_open(
                 gen_anc_rf_path(test=use_tmp_path),
@@ -628,8 +746,9 @@ def main(args):
         if args.compute_precision_recall:
             check_resource_existence(
                 output_step_resources={
-                    "gen_anc_pr_ht": get_gen_anc_pr_ht(test=use_tmp_path).path
-                }
+                    "gen_anc_pr_ht": [get_gen_anc_pr_ht(test=use_tmp_path).path]
+                },
+                overwrite=overwrite,
             )
 
             ht = compute_precision_recall(
@@ -640,9 +759,8 @@ def main(args):
 
         if args.apply_per_grp_min_rf_probs:
             check_resource_existence(
-                output_step_resources={
-                    "gen_anc_ht": get_gen_anc_ht(test=use_tmp_path).path
-                }
+                output_step_resources={"gen_anc_ht": [gen_anc_ht_path]},
+                overwrite=overwrite,
             )
 
             gen_anc = get_gen_anc_ht(test=use_tmp_path)
@@ -673,6 +791,69 @@ def main(args):
             )
             gen_anc_ht = assign_gen_anc_with_per_gen_anc_probs(gen_anc_ht, min_probs)
             gen_anc_ht.write(gen_anc.path, overwrite=overwrite)
+
+        if args.project_aou_onto_pcs:
+            logger.info(
+                "Projecting AOU onto gnomAD v4.0 PCs and assigning genetic ancestry group using ONNX RF model..."
+            )
+            check_resource_existence(
+                output_step_resources={
+                    "gen_anc_projection_ht": [
+                        get_gen_anc_ht(test=use_tmp_path, projection_only=True).path
+                    ],
+                    "gen_anc_ht": [get_gen_anc_ht(test=use_tmp_path).path],
+                    "scores_ht": [
+                        genetic_ancestry_pca_scores(
+                            test=use_tmp_path, projection=True
+                        ).path
+                    ],
+                },
+                overwrite=overwrite,
+            )
+
+            projected_scores_ht, projected_gen_anc_ht = project_aou_onto_v4(
+                gnomad_v4_onnx_rf_path=gnomad_v4_onnx_rf,
+                v4_loading_ht=v4_pca_loadings().ht(),
+                qc_mt=get_joint_qc(test=False).mt(),
+                meta_ht=project_meta.ht(),
+            )
+
+            # TODO: Add option for correction factor if needed.
+
+            projected_gen_anc_ht = projected_gen_anc_ht.checkpoint(
+                new_temp_file("projection_gen_anc_ht", extension="ht")
+            )
+
+            # Use v4 minimum RF probabilities to assign genetic ancestry group.
+            with hl.hadoop_open(v4_per_pop_min_rf_probs_json_path(), "r") as d:
+                v4_min_probs = json.load(d)
+
+            projected_gen_anc_ht = assign_gen_anc_with_per_gen_anc_probs(
+                projected_gen_anc_ht, v4_min_probs
+            )
+
+            projected_gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path, projection_only=True).path,
+                overwrite=overwrite,
+            )
+
+            # Combine projected scores and genetic ancestry groups with v4 scores and
+            # genetic ancestry groups.
+            scores_ht, gen_anc_ht = union_projection_scores_and_assignments(
+                projected_scores=projected_scores_ht,
+                v4_scores=v4_pca_scores().ht(),
+                projected_gen_anc=projected_gen_anc_ht,
+                meta_ht=project_meta.ht(),
+                sample_collisions=sample_id_collisions.ht(),
+            )
+
+            scores_ht.write(
+                genetic_ancestry_pca_scores(test=use_tmp_path, projection=True).path,
+                overwrite=overwrite,
+            )
+            gen_anc_ht.write(
+                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
+            )
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
@@ -823,6 +1004,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         default=0.99,
         type=float,
+    )
+    parser.add_argument(
+        "--project-aou-onto-pcs",
+        help="Project AoU onto gnomAD v4.0 PCs and assign genetic ancestry group using ONNX RF model.",
+        action="store_true",
     )
 
     return parser
