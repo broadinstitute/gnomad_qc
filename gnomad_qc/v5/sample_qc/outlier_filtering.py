@@ -740,6 +740,7 @@ def main(args):
     hl.init(
         log="/home/jupyter/workspaces/gnomadproduction/outlier_filtering.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        quiet=args.quiet,
     )
     hl.default_reference("GRCh38")
 
@@ -939,6 +940,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Random seed for making random test dataset.",
         type=int,
         default=24,
+    )
+    parser.add_argument(
+        "--quiet",
+        help="Initialize Hail in quiet mode (fewer log messages).",
+        action="store_true",
     )
 
     parser.add_argument(
