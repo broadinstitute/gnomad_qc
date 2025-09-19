@@ -231,6 +231,8 @@ def join_aou_and_gnomad_coverage_ht(
     :return: Joined HT.
     """
     # TODO: Add support for subtracting gnomAD v4 samples.
+    # Would need to update v4 group membership HT.
+    # This would need to happen here or in the frequency code.
     # Get total number of AoU v8 release samples.
     aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
 
