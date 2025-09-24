@@ -407,6 +407,7 @@ def run_compute_related_samples_to_drop(
             v4_unreleased_ht,
             consent_drop_ht,
         )
+        samples_to_drop_ht = samples_to_drop_ht.distinct()
 
     return rank_ht, samples_to_drop_ht
 
