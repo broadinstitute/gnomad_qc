@@ -509,9 +509,11 @@ def main(args):
             logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
                 output_step_resources={
-                    "sample_rankings_ht": [sample_rankings(test=test).path],
+                    "sample_rankings_ht": [
+                        sample_rankings(test=test, release=release).path
+                    ],
                     "related_samples_to_drop_ht": [
-                        (related_samples_to_drop(test=test, release=release).path)
+                        related_samples_to_drop(test=test, release=release).path
                     ],
                 },
                 overwrite=overwrite,
@@ -533,7 +535,9 @@ def main(args):
                 release=release,
                 filter_ht=filter_ht,
             )
-            rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
+            rank_ht.write(
+                sample_rankings(test=test, release=release).path, overwrite=overwrite
+            )
             drop_ht.write(
                 related_samples_to_drop(test=test, release=release).path,
                 overwrite=overwrite,
