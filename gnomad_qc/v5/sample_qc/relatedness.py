@@ -24,7 +24,6 @@ from gnomad_qc.v5.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
-    hard_filtered_samples,
     related_samples_to_drop,
     relatedness,
     sample_rankings,
