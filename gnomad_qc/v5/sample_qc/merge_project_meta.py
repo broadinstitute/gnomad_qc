@@ -1,28 +1,4 @@
-"""
-Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata.
-
-NOTE:
-Use the util_functions.ipynb notebook with function restart_kernel_with_gnomad_packages
-to clone the gnomad_qc repository, update the gnomAD package, and restart the kernel. If
-this is not done, the gnomad_qc imports will fail below.
-"""
-
-import papermill as pm
-from IPython.display import Javascript, display
-
-# This block clones the gnomad repos so you can import gnomad_qc and the most recent
-# gnomad_methods commits. Change the branch parameters to your desired branch then
-# run in the v5 workspace notebook.
-pm.execute_notebook(  # noqa
-    "utils_restart_kernel_with_gnomad_packages.ipynb",
-    "utils_restart_notebook_output.ipynb",
-    parameters={
-        "GNOMAD_QC_BRANCH": "main",
-        "GNOMAD_METHODS_BRANCH": "main",
-    },
-)
-# Restart the kernel -- this needs to be run here, in the open notebook.
-display(Javascript("Jupyter.notebook.kernel.restart()"))  # noqa
+"""Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata."""
 
 import logging
 import os
