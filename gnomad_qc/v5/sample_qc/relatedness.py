@@ -361,7 +361,8 @@ def run_compute_related_samples_to_drop(
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
-    # Get set of 806,296 v4 release samples to keep.
+    # Get set of 806,296 v4 release samples to keep. Since we force v4 retention and
+    # a set of samples consent changed between v4 and v5, we remove these samples here.
     v4_release_ht = (
         meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
         .select_globals()
