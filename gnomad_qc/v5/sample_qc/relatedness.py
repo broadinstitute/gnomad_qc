@@ -397,9 +397,9 @@ def run_compute_related_samples_to_drop(
     )
 
     if release:
-        # Add all unreleased v4 samples (including hard filtered samples) to samples to drop list since we force v4 retention.
-        # Add consent drop samples to samples to drop list since these were considered
-        # in the forced v4 retention.
+        # Add all unreleased v4 samples (including hard filtered samples) to samples to
+        # drop list since we force v4 retention. Add consent drop samples to samples to
+        # drop list since these were considered in the forced v4 retention.
         project_meta_ht = project_meta.ht()
         v4_unreleased_ht = (
             project_meta_ht.filter(
