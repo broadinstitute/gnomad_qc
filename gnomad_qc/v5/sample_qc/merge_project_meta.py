@@ -214,6 +214,16 @@ def select_only_final_fields(
     Filter metadata inputs to include only relevant fields since not all inputs have all
     final fields.
 
+    .. note ::
+
+        There were 897 gnomAD samples that withdrew consent during v5 production.
+        Because of the timing of the confirmation of the consent change, the releasable
+        field is being reannotated after the original creation of the v5 metadata
+        The original metadata was used through generating the release relateds to drop
+        HT. However, this use was of no consequence to the outcome of sample QC modules
+        as the releasable field is only considered during the final `release` annotation
+        in sample QC metadata creation.
+
     :param ht: Input Hail Table with metadata.
     :param project: Project identifier (e.g., "gnomad", "aou").
     :param data_type: Data type ("genomes" or "exomes").
