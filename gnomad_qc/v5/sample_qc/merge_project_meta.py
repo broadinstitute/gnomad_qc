@@ -134,6 +134,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                         "outlier_filters": "sample_filters.qc_metrics_filters",
                         "releasable": "project_meta.releasable",
                         "release": "release",
+                        "research_project_key": "project_meta.research_project_key",
                     },
                 }
             ],
@@ -236,8 +237,8 @@ def select_only_final_fields(
         ht = ht.annotate(age=hl.if_else(hl.is_defined(ht.age), ht.age, ht.age_alt))
         ht = ht.annotate(
             releasable=hl.if_else(
-                (ht.project_meta.research_project_key == "RP-1061")
-                | (ht.project_meta.research_project_key == "RP-1411"),
+                (ht.research_project_key == "RP-1061")
+                | (ht.research_project_key == "RP-1411"),
                 False,
                 ht.releasable,
             )
