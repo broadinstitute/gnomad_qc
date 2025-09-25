@@ -361,7 +361,8 @@ def run_compute_related_samples_to_drop(
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
-    # Get set of 806,296 v4 release samples to keep.
+    # Get set of 806,296 v4 release samples to keep. Since we force v4 retention and
+    # a set of samples consent changed between v4 and v5, we remove these samples here.
     v4_release_ht = (
         meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
         .select_globals()
@@ -396,17 +397,22 @@ def run_compute_related_samples_to_drop(
     )
 
     if release:
-        # Add unreleased v4 samples and consent drop samples to the drop HT.
+        # Add all unreleased v4 samples (including hard filtered samples) to samples to
+        # drop list since we force v4 retention. Add consent drop samples to samples to
+        # drop list since these were considered in the forced v4 retention.
+        project_meta_ht = project_meta.ht()
         v4_unreleased_ht = (
-            meta_ht.filter((meta_ht.project == "gnomad") & ~meta_ht.release)
+            project_meta_ht.filter(
+                (project_meta_ht.project == "gnomad") & ~project_meta_ht.release
+            )
             .select_globals()
             .select()
         )
         consent_drop_ht = get_consent_samples_to_drop()
         samples_to_drop_ht = samples_to_drop_ht.select().union(
-            v4_unreleased_ht,
-            consent_drop_ht,
+            v4_unreleased_ht, consent_drop_ht
         )
+        samples_to_drop_ht = samples_to_drop_ht.distinct()
 
     return rank_ht, samples_to_drop_ht
 
