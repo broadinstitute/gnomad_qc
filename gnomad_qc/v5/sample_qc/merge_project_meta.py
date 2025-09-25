@@ -213,9 +213,13 @@ def select_only_final_fields(
         ht = ht.annotate(age=hl.if_else(hl.is_defined(ht.age), ht.age, ht.age_alt))
         ht = ht.annotate(
             releasable=hl.if_else(
-                (ht.research_project_key == "RP-1061")
-                | (ht.research_project_key == "RP-1411"),
-                False,
+                hl.is_defined(ht.research_project_key),
+                hl.if_else(
+                    (ht.research_project_key == "RP-1061")
+                    | (ht.research_project_key == "RP-1411"),
+                    False,
+                    ht.releasable,
+                ),
                 ht.releasable,
             )
         )
