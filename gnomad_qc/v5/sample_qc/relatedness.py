@@ -397,15 +397,23 @@ def run_compute_related_samples_to_drop(
 
     if release:
         # Add unreleased v4 samples and consent drop samples to the drop HT.
+<<<<<<< HEAD
         project_meta = project_meta.ht()
         v4_unreleased_ht = (
             project_meta.filter(
                 (project_meta.project == "gnomad") & ~project_meta.release
+=======
+        project_meta_ht = project_meta.ht()
+        v4_unreleased_ht = (
+            project_meta_ht.filter(
+                (project_meta_ht.project == "gnomad") & ~project_meta_ht.release
+>>>>>>> a7961c8a (Use project_meta so gnomad hard filter samples are included in samples to drop)
             )
             .select_globals()
             .select()
         )
         consent_drop_ht = get_consent_samples_to_drop()
+
         samples_to_drop_ht = samples_to_drop_ht.select().union(
             v4_unreleased_ht,
             consent_drop_ht,
