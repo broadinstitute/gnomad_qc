@@ -406,7 +406,11 @@ def run_compute_related_samples_to_drop(
             .select_globals()
             .select()
         )
-        samples_to_drop_ht = samples_to_drop_ht.select().union(v4_unreleased_ht)
+        consent_drop_ht = get_consent_samples_to_drop()
+
+        samples_to_drop_ht = samples_to_drop_ht.select().union(
+            v4_unreleased_ht, consent_drop_ht
+        )
         samples_to_drop_ht = samples_to_drop_ht.distinct()
 
     return rank_ht, samples_to_drop_ht
