@@ -220,10 +220,18 @@ def select_only_final_fields(
     :return: Filtered Hail Table containing only fields required for the final schema.
     """
     # gnomAD v4 genome metadata has some samples with age_alt, which is the mean age of
-    # the age_bin field. This creates a single age field.
+    # the age_bin field. This creates a single age field. Also, 897 samples were consented
+    # to be in gnomAD v4 but not v5, so we need to set their releasable field to False.
     if project == "gnomad" and data_type == "genomes":
         ht = ht.annotate(age=hl.if_else(hl.is_defined(ht.age), ht.age, ht.age_alt))
-
+        ht = ht.annotate(
+            releasable=hl.if_else(
+                (ht.project_meta.research_project_key == "RP-1061")
+                | (ht.project_meta.research_project_key == "RP-1411"),
+                False,
+                ht.releasable,
+            )
+        )
     present_fields = {
         field for field in ht.row if field in FINAL_SCHEMA_FIELDS_AND_TYPES.keys()
     }
