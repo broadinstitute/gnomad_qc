@@ -396,7 +396,7 @@ def run_compute_related_samples_to_drop(
     )
 
     if release:
-        # Add unreleased v4 samples and consent drop samples to the drop HT.
+        # Add unreleased v4 samples to samples to drop list since we force v4 retention.
         project_meta_ht = project_meta.ht()
         v4_unreleased_ht = (
             project_meta_ht.filter(
@@ -405,12 +405,7 @@ def run_compute_related_samples_to_drop(
             .select_globals()
             .select()
         )
-        consent_drop_ht = get_consent_samples_to_drop()
-
-        samples_to_drop_ht = samples_to_drop_ht.select().union(
-            v4_unreleased_ht,
-            consent_drop_ht,
-        )
+        samples_to_drop_ht = samples_to_drop_ht.select().union(v4_unreleased_ht)
         samples_to_drop_ht = samples_to_drop_ht.distinct()
 
     return rank_ht, samples_to_drop_ht
