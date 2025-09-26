@@ -238,14 +238,7 @@ def process_gnomad_dataset(
     logger.info(
         "Filtering VDS to consent withdrawal samples and preparing for frequency calculation..."
     )
-    # vds = hl.vds.filter_samples(vds, consent_samples_list, keep=True)
-    vmt = vds.variant_data
-    rmt = vds.reference_data
-    consent_samples_set = hl.set(consent_samples_list)
-    vmt = vmt.filter_cols(consent_samples_set.contains(vmt.s))
-    rmt = rmt.filter_cols(consent_samples_set.contains(rmt.s))
-    rmt = rmt.filter_rows(hl.agg.count() > 0)
-    vds = hl.vds.VariantDataset(rmt, vmt)
+    vds = hl.vds.filter_samples(vds, consent_samples_list, keep=True)
 
     # Simplified approach following v4 pattern
     vmt = vds.variant_data
@@ -271,40 +264,34 @@ def process_gnomad_dataset(
     logger.info("Splitting multiallelics in gnomAD sample withdrawal VDS...")
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
-    logger.info(
-        "Densifying VDS and calculating frequencies for consent withdrawal samples..."
-    )
-    mt = hl.vds.to_dense_mt(vds)
-
+    vmt = vds.variant_data
     logger.info("Computing sex adjusted genotypes...")
-    ab_expr = mt.AD[1] / mt.DP
+    ab_expr = vmt.AD[1] / vmt.DP
     ab_cutoff = 0.9  # Standard cutoff for high AB het annotation
-    gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
+    gt_expr = adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype)
 
-    mt = mt.select_entries(
+    vmt = vmt.select_entries(
         "AD",  # Preserve AD for hom_alt_depletion_fix
         "DP",
         "GQ",
         "_het_non_ref",  # Preserve _het_non_ref for hom_alt_depletion_fix
         GT=gt_expr,
-        adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
+        adj=get_adj_expr(gt_expr, vmt.GQ, vmt.DP, vmt.AD),
         _het_ab=ab_expr,
-        _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
+        _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
     )
 
-    # Apply hom alt depletion fix using v4 genome frequencies for 1% cutoff
-    gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
     gt_with_depletion = hom_alt_depletion_fix(
         gt_expr,
-        het_non_ref_expr=mt._het_non_ref,
-        af_expr=v4_freq_ht[mt.row_key].freq[0].AF,  # Use v4 genome frequencies
-        ab_expr=mt.AD[1] / mt.DP,
-        use_v3_1_correction=False,  # Use standard correction for v4+
+        het_non_ref_expr=vmt._het_non_ref,
+        af_expr=v4_freq_ht[vmt.row_key].freq[0].AF,  # Use v4 genome frequencies
+        ab_expr=vmt.AD[1] / vmt.DP,
+        use_v3_1_correction=True,
     )
-    mt = mt.annotate_entries(GT=gt_with_depletion)
+    vmt = vmt.annotate_entries(GT=gt_with_depletion)
 
     # Checkpoint after expensive MT operations to avoid recomputation
-    mt = mt.checkpoint(new_temp_file("consent_samples_mt", "mt"))
+    vmt = vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
 
     # Use existing gnomAD group membership table and filter to consent samples
     logger.info(
@@ -313,28 +300,43 @@ def process_gnomad_dataset(
     group_membership_ht = gnomad_group_membership(test=test).ht()
 
     # Filter group membership to only the consent samples we're processing
-    consent_sample_ids = set(mt.s.collect())
+    consent_sample_ids = set(vmt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
     )
-
+    vmt = vds.variant_data
     # Annotate MatrixTable with group membership for annotate_freq to use
-    mt = mt.annotate_cols(
-        group_membership=group_membership_ht[mt.col_key].group_membership,
+    vmt = vmt.annotate_cols(
+        group_membership=group_membership_ht[vmt.col_key].group_membership,
         fixed_homalt_model=hl.bool(
             False
         ),  # Add fixed_homalt_model for high_ab_het function
     )
-    mt = mt.annotate_rows(hists_fields=mt_hists_fields(mt))
+    vmt = vmt.annotate_rows(hists_fields=mt_hists_fields(vmt))
 
-    # Calculate frequencies across all strata except downsampling (as requested)
-    consent_freq_ht = annotate_freq(
-        mt,
-        sex_expr=mt.sex_karyotype,
-        gen_anc_expr=mt.pop,
-        downsamplings=[],  # Exclude downsampling for consent sample frequencies
-        annotate_mt=False,
-    )
+    # Calculate AC and hom alt counts per group membership for consent samples
+    logger.info("Calculating AC and hom alt counts per group membership...")
+
+    # Load consent ANs from resource
+    logger.info("Loading consent ANs from resource...")
+    consent_ans_ht = consent_ans.ht()
+
+    # Annotate each variant with AC, hom alt counts, and ANs per group membership
+    consent_freq_ht = vmt.annotate_rows(
+        freq=hl.agg.group_by(
+            vmt.group_membership,
+            hl.struct(
+                AC=hl.agg.sum(vmt.GT.n_alt_alleles()),
+                homozygote_count=hl.agg.sum(vmt.GT.is_hom_var()),
+                AN=consent_ans_ht[vmt.row_key].AN,
+                AF=hl.if_else(
+                    hl.agg.sum(vmt.GT.n_alt_alleles()) > 0,
+                    hl.agg.sum(vmt.GT.n_alt_alleles()) / consent_ans_ht[vmt.row_key].AN,
+                    0.0,
+                ),
+            ),
+        )
+    ).rows()
 
     # Checkpoint expensive frequency calculation since it will be used for merging
     consent_freq_ht = consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
@@ -387,11 +389,11 @@ def process_gnomad_dataset(
     )
 
     # Calculate age histograms using adjusted genotypes and quality filter
-    mt_adj = mt.filter_entries(mt.adj)  # Filter to high-quality calls only
-    mt_with_age_hists = mt_adj.annotate_rows(
-        age_hists=age_hists_expr(mt_adj.GT, mt_adj.age, mt_adj.sex_karyotype)
+    vmt_adj = vmt.filter_entries(vmt.adj)  # Filter to high-quality calls only
+    vmt_with_age_hists = vmt_adj.annotate_rows(
+        age_hists=age_hists_expr(vmt_adj.GT, vmt_adj.age, vmt_adj.sex_karyotype)
     )
-    consent_age_hist_ht = mt_with_age_hists.rows().select("age_hists")
+    consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
 
     v4_age_hist_ht = get_age_hist_ht(test=test, data_set="gnomad").ht()
 
@@ -987,7 +989,6 @@ def main(args):
         ),
     )
     hl.default_reference("GRCh38")
-    hl._set_flags(use_ssa_logs="1")
 
     try:
         logger.info("Running generate_frequency.py...")
