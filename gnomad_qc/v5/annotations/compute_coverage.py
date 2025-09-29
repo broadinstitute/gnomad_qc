@@ -10,7 +10,10 @@ from gnomad.resources.grch38.gnomad import (
     CURRENT_GENOME_COVERAGE_RELEASE as v4_COVERAGE_RELEASE,
 )
 from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS
-from gnomad.resources.grch38.reference_data import vep_context
+from gnomad.resources.grch38.reference_data import (
+    telomeres_and_centromeres,
+    vep_context,
+)
 from gnomad.utils.annotations import (
     annotate_downsamplings,
     build_freq_stratification_list,
@@ -342,7 +345,6 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
     test = test_2_partitions or test_chr22_chrx_chry
@@ -392,6 +394,15 @@ def main(args):
 
             # Retain only 'locus' annotation from context Table.
             ref_ht = ref_ht.key_by("locus").select().distinct()
+
+            # The AoU dataset should have removed centromeres and telomeres, but
+            # this serves as an additional safeguard.
+            ref_ht = hl.filter_intervals(
+                ref_ht,
+                telomeres_and_centromeres.ht().interval.collect(),
+                keep=False,
+            )
+            ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
             vds = get_gnomad_v5_genomes_vds(
                 release_only=True,
