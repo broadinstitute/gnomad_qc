@@ -1,5 +1,7 @@
 """Script to convert required fields markdown to html. Note: run 'python field_md_to_html.py' after any edits to 'field_requirements.md' to keep 'field_requirements.html' in sync."""
 
+# noqa: E1133
+
 import os
 
 import markdown
@@ -27,7 +29,7 @@ color_map = {
 final_sections = []
 
 
-elements = soup.find_all(["p", "table", "h1", "h2"])  # pylint: disable=E1133
+elements = soup.find_all(["p", "table", "h1", "h2"])
 
 paragraphs_before_first_table = []
 paragraphs_before_second_table = []
