@@ -51,7 +51,7 @@ logger = logging.getLogger("coverage_and_an")
 logger.setLevel(logging.INFO)
 
 
-def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
+def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     """
     Get Table with downsampling groups for all samples.
 
@@ -64,7 +64,6 @@ def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
     but code will also generate downsamplings for all other groups.
 
     :param ht: Input Table.
-    :param gen_anc_ht: Genetic ancestry HT.
     :return: Table with downsampling groups.
     """
     logger.info(
