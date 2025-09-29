@@ -1,17 +1,14 @@
 """Script containing release related resources."""
 
 import logging
-from typing import Optional
 
-from gnomad.resources.grch38.gnomad import all_sites_an, coverage, public_release
+from gnomad.resources.grch38.gnomad import all_sites_an, coverage
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
     VersionedTableResource,
 )
-from gnomad.utils.file_utils import file_exists
 
-from gnomad_qc.v4.resources.release import FREQUENCY_README
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ALL_SITES_AN_RELEASES,
@@ -20,7 +17,6 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     GNOMAD_BUCKET,
-    RELEASES,
     WORKSPACE_BUCKET,
 )
 
