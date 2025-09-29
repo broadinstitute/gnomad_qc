@@ -31,7 +31,7 @@ from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsa
 # TODO: Switch from v4>v5 once v5 sample QC is complete
 from gnomad_qc.v5.resources.annotations import group_membership  # get_aou_downsampling
 from gnomad_qc.v5.resources.basics import (  # get_aou_vds
-    get_gnomad_v4_genomes_vds,
+    get_gnomad_v5_genomes_vds,
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
@@ -397,7 +397,7 @@ def main(args):
             # Retain only 'locus' annotation from context Table.
             ref_ht = ref_ht.key_by("locus").select().distinct()
 
-            vds = get_gnomad_v4_genomes_vds(
+            vds = get_gnomad_v5_genomes_vds(
                 release_only=True,
                 remove_hard_filtered_samples=True,
                 test=test,

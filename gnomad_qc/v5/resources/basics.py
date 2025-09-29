@@ -264,7 +264,7 @@ def get_aou_vds(
     return vds
 
 
-def get_gnomad_v4_genomes_vds(
+def get_gnomad_v5_genomes_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
@@ -283,7 +283,7 @@ def get_gnomad_v4_genomes_vds(
     filter_samples_ht: Optional[hl.Table] = None,
 ) -> hl.vds.VariantDataset:
     """
-    Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
+    Get gnomAD v5 genomes VariantDataset with desired filtering and metadata annotations.
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
