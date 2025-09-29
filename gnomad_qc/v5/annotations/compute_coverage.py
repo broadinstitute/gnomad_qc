@@ -38,9 +38,7 @@ from gnomad_qc.v5.resources.basics import (  # get_aou_vds
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta
-
-# from gnomad_qc.v5.resources.meta import meta
+from gnomad_qc.v5.resources.meta import project_meta  # meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
     release_coverage_path,
