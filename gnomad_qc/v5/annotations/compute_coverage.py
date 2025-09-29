@@ -47,8 +47,6 @@ from gnomad_qc.v5.resources.release import (
     release_coverage_tsv_path,
 )
 
-# from gnomad_qc.v5.resources.sample_qc import get_gen_anc_ht
-
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage_and_an")
 logger.setLevel(logging.INFO)
@@ -381,8 +379,8 @@ def main(args):
             ht = ht.filter(
                 (ht.project == "gnomad") & (ht.data_type == "genomes") & (ht.release)
             )
-            # ds_ht = get_downsampling_ht(ht, get_gen_anc_ht().ht())
-            ds_ht = get_downsampling_ht(ht, ht)
+            # ds_ht = get_downsampling_ht(ht)
+            ds_ht = get_downsampling_ht(ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
         if args.compute_all_cov_release_stats_ht:
