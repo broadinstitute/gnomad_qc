@@ -11,7 +11,7 @@ from gnomad.resources.resource_utils import (
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
 from gnomad_qc.v3.resources.constants import CURRENT_VERSION, VERSIONS
-from gnomad_qc.v3.resources.migration_warnings import show_v3_migration_warning
+from gnomad_qc.v3.resources.resource_utils import show_v3_migration_warning
 
 ########################################################################################
 # Note: Some of the resources in this file have been moved to gs://gnomad-archive,

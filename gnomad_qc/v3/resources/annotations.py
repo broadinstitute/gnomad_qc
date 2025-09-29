@@ -19,7 +19,7 @@ from gnomad_qc.v3.resources.constants import (
     RELEASES,
     VERSIONS,
 )
-from gnomad_qc.v3.resources.migration_warnings import show_v3_migration_warning
+from gnomad_qc.v3.resources.resource_utils import show_v3_migration_warning
 
 SUBSETS = SUBSETS["v3"]
 
