@@ -7,5 +7,6 @@
     "sort_order": ["subset", "gen_anc", "sex", "group"],
     "nhomalt_metric": "homozygote_count",
     "subsets": [""],
-    "variant_filter_field": ""
+    "variant_filter_field": "",
+    "check_mono_and_only_het" : true
 }

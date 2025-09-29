@@ -3,7 +3,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -11,13 +11,16 @@ from gnomad.sample_qc.relatedness import (
     compute_related_samples_to_drop,
     get_slope_int_relationship_expr,
 )
+from gnomad.utils.file_utils import check_file_exists_raise_error
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta
+from gnomad_qc.v5.resources.meta import consent_samples_to_drop, project_meta
 from gnomad_qc.v5.resources.sample_qc import (
+    finalized_outlier_filtering,
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
@@ -229,24 +232,76 @@ def finalize_relatedness_ht(
     return ht
 
 
-def compute_rank_ht(ht: hl.Table) -> hl.Table:
+def get_consent_samples_to_drop(overwrite: bool = False) -> hl.Table:
+    """
+    Create additional samples to drop for release HailExpression resource.
+
+    Additional samples to drop are genomes that are no longer consented to be in gnomAD (n = 897).
+
+    Function will create a Table resource if it does not already exist.
+
+    .. note ::
+
+        We are adding this function in this script (rather than earlier in the pipeline) due to the timing of confirmation
+        of the consent drop.
+
+    :param overwrite: Whether to overwrite the consent drop Table resource. Default is False.
+    :return: Table with consent drop samples.
+    """
+    if (
+        not check_file_exists_raise_error(
+            fname=consent_samples_to_drop.path,
+            error_if_not_exists=False,
+        )
+        or overwrite
+    ):
+        meta_ht = v4_meta(data_type="genomes").ht()
+        # RP-1061: 776 samples.
+        # RP-1411: 121 samples.
+        consent_drop_ht = (
+            meta_ht.filter(
+                (meta_ht.project_meta.research_project_key == "RP-1061")
+                | (meta_ht.project_meta.research_project_key == "RP-1411")
+            )
+            .select_globals()
+            .select()
+        )
+        consent_drop_ht.write(consent_samples_to_drop.path, overwrite=overwrite)
+
+    consent_drop_ht = hl.read_table(consent_samples_to_drop.path)
+    return consent_drop_ht
+
+
+def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
 
     Favor AoU samples, then v4 release samples, then genomes, then higher mean depth
     ('chr20_mean_dp' from gnomad and 'mean_coverage' from AoU).
 
+    If `filter_ht` is provided, rank based on filtering 'outlier_filtered' annotation
+    first.
+
     :param ht: Table to add rank to.
+    :param filter_ht: Optional Table with 'outlier_filtered' annotation to be used in
+        ranking.
     :return: Table containing sample ID and rank.
     """
     ht = ht.select(
         "mean_depth",
-        is_genome=ht.data_type == "genomes",
         in_aou=ht.project == "aou",
+        is_genome=ht.data_type == "genomes",
         in_v4_release=ht.release,
     )
     rank_order = []
     ht_select = ["rank"]
+    if filter_ht is not None:
+        ht = ht.annotate(
+            filtered=hl.coalesce(filter_ht[ht.key].outlier_filtered, False)
+        )
+        rank_order = [ht.filtered]
+        ht_select.append("filtered")
+
     rank_order.extend(
         [
             hl.desc(ht.in_aou),
@@ -264,6 +319,8 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
 def run_compute_related_samples_to_drop(
     ht: hl.Table,
     meta_ht: hl.Table,
+    release: bool = False,
+    filter_ht: Optional[hl.Table] = None,
 ) -> Tuple[hl.Table, hl.Table]:
     """
     Determine the minimal set of related samples to prune for genetic ancestry PCA.
@@ -271,28 +328,91 @@ def run_compute_related_samples_to_drop(
     Runs `compute_related_samples_to_drop` from gnomad_methods after computing the
     sample rankings using `compute_rank_ht`.
 
+    .. note ::
+        After some discussion, we have decided to force v4 retention (see slack thread: https://atgu.slack.com/archives/CRA2TKTV0/p1757336429532189)
+        and prioritize AoU samples in the ranking because this retains 1,608 more AoU samples.
+
     :param ht: Input relatedness Table.
     :param meta_ht: Metadata Table with 'project', 'data_type', 'release', and
         'mean_depth' annotations to be used in ranking and filtering of related
         individuals.
+    :param release: Whether to determine related samples to drop for the release based
+        on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
+        `filter_ht` must be supplied. Default is False.
+    :param filter_ht: Optional Table with outlier filtering of sample QC metrics to
+        use if `release` is True. Default is None.
     :return: Table with sample rank and a Table with related samples to drop for PCA.
     """
+    if release and filter_ht is None:
+        raise ValueError("'filter_ht' must be supplied when 'release' is True!")
+
     # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
     # pruning samples.
-    rank_ht = compute_rank_ht(meta_ht)
+    rank_ht = compute_rank_ht(meta_ht, filter_ht=filter_ht if release else None)
     rank_ht = rank_ht.checkpoint(new_temp_file("rank", extension="ht"))
+
+    filtered_samples = None
+    if release:
+        filtered_samples = rank_ht.aggregate(
+            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
+            _localize=False,
+        )
 
     second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
+
+    # Get set of 806,296 v4 release samples to keep. Since we force v4 retention and
+    # a set of samples consent changed between v4 and v5, we remove these samples here.
+    v4_release_ht = (
+        meta_ht.filter((meta_ht.project == "gnomad") & meta_ht.release)
+        .select_globals()
+        .select()
+    )
+    consent_drop_s = get_consent_samples_to_drop()
+    v4_release_ht = v4_release_ht.anti_join(consent_drop_s)
+    # This `aggregate` converts the sample set from Hail to Python,
+    # which is useful for the length check.
+    # Add the literal later to avoid an extra Hail -> Python conversion with
+    # `hl.eval(hl.len(v4_release_keep))`.
+    v4_release_keep = v4_release_ht.aggregate(hl.agg.collect_as_set(v4_release_ht.s))
+    if len(v4_release_keep) != 806296:
+        raise ValueError(
+            "Expected 806,296 v4 release samples to keep, but got {}.".format(
+                len(v4_release_keep)
+            )
+        )
 
     samples_to_drop_ht = compute_related_samples_to_drop(
         ht,
         rank_ht,
         second_degree_min_kin,
+        filtered_samples=filtered_samples,
+        # Force maximal independent set to keep v4 release samples minus consent
+        # drop samples.
+        keep_samples=hl.literal(v4_release_keep),
+        keep_samples_when_related=True,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
         second_degree_min_kin=second_degree_min_kin,
     )
+
+    if release:
+        # Add all unreleased v4 samples (including hard filtered samples) to samples to
+        # drop list since we force v4 retention. Add consent drop samples to samples to
+        # drop list since these were considered in the forced v4 retention.
+        project_meta_ht = project_meta.ht()
+        v4_unreleased_ht = (
+            project_meta_ht.filter(
+                (project_meta_ht.project == "gnomad") & ~project_meta_ht.release
+            )
+            .select_globals()
+            .select()
+        )
+        consent_drop_ht = get_consent_samples_to_drop()
+        samples_to_drop_ht = samples_to_drop_ht.select().union(
+            v4_unreleased_ht, consent_drop_ht
+        )
+        samples_to_drop_ht = samples_to_drop_ht.distinct()
 
     return rank_ht, samples_to_drop_ht
 
@@ -303,6 +423,7 @@ def main(args):
     overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
     second_degree_min_kin = args.second_degree_min_kin
+    release = args.release
 
     if args.print_cuking_command:
         print_cuking_command(
@@ -353,8 +474,9 @@ def main(args):
             logger.info("Converting cuKING outputs to Hail Table...")
             check_resource_existence(
                 output_step_resources={
-                    "relatedness_ht": relatedness(test=test, raw=True).path
-                }
+                    "relatedness_ht": [relatedness(test=test, raw=True).path]
+                },
+                overwrite=overwrite,
             )
             ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
@@ -364,8 +486,9 @@ def main(args):
             logger.info("Finalizing relatedness HT...")
             check_resource_existence(
                 output_step_resources={
-                    "final_relatedness_ht": relatedness(test=test).path
-                }
+                    "final_relatedness_ht": [relatedness(test=test).path]
+                },
+                overwrite=overwrite,
             )
             relatedness_args = {
                 "parent_child_max_y": args.parent_child_max_ibs0_over_ibs2,
@@ -392,20 +515,43 @@ def main(args):
             logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
                 output_step_resources={
-                    "sample_rankings_ht": sample_rankings(test=test).path,
-                    "related_samples_to_drop_ht": related_samples_to_drop(
-                        test=test
-                    ).path,
-                }
+                    "sample_rankings_ht": [
+                        sample_rankings(test=test, release=release).path
+                    ],
+                    "related_samples_to_drop_ht": [
+                        related_samples_to_drop(test=test, release=release).path
+                    ],
+                },
+                overwrite=overwrite,
             )
+            filter_ht = None
+            if release:
+                filter_ht_path = finalized_outlier_filtering(test=test).path
+                check_resource_existence(
+                    input_step_resources={
+                        "filter_ht": [filter_ht_path],
+                    }
+                )
+                filter_ht = hl.read_table(filter_ht_path)
+                filter_ht = filter_ht.select("outlier_filtered")
+
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 relatedness(test=test).ht(),
                 joint_meta.select_globals().semi_join(joint_qc_mt.cols()),
+                release=release,
+                filter_ht=filter_ht,
             )
-            rank_ht.write(sample_rankings(test=test).path, overwrite=overwrite)
-            drop_ht.write(related_samples_to_drop(test=test).path, overwrite=overwrite)
+            rank_ht.write(
+                sample_rankings(test=test, release=release).path, overwrite=overwrite
+            )
+            drop_ht.write(
+                related_samples_to_drop(test=test, release=release).path,
+                overwrite=overwrite,
+            )
             # Export the related samples to drop Table to a TSV file for SV team.
-            drop_ht.export(related_samples_to_drop(test=test).path[:-3] + ".tsv")
+            drop_ht.export(
+                related_samples_to_drop(test=test, release=release).path[:-3] + ".tsv"
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -549,6 +695,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     drop_related_samples.add_argument(
         "--compute-related-samples-to-drop",
         help="Determine the minimal set of related samples to prune for ancestry PCA.",
+        action="store_true",
+    )
+    drop_related_samples.add_argument(
+        "--release",
+        help=(
+            "Whether to determine related samples to drop for the release based on "
+            "outlier filtering of sample QC metrics."
+        ),
         action="store_true",
     )
     return parser

@@ -193,36 +193,46 @@ def relatedness(test: bool = False, raw: bool = False) -> VersionedTableResource
     )
 
 
-def related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+def related_samples_to_drop(
+    test: bool = False, release: bool = False
+) -> VersionedTableResource:
     """
     Get the VersionedTableResource for samples to drop for genetic ancestry PCA.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release: Whether to determine related samples to drop for the release based
+        on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
+        Default is False.
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.{'release' if release else 'pca'}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
     )
 
 
-def sample_rankings(test: bool = False) -> VersionedTableResource:
+def sample_rankings(
+    test: bool = False, release: bool = False
+) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for sample rankings for genetic ancestry PCA.
+    Get the VersionedTableResource for sample rankings for genetic ancestry PCA or release.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release: Whether to return resource for ranking of all samples based on
+        outlier filtering of sample QC metrics. Used to determine related samples to
+        drop for the release.
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.{'release' if release else 'pca'}.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -285,6 +295,7 @@ def genetic_ancestry_pca_scores(
     include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
+    projection: bool = False,
 ) -> VersionedTableResource:
     """
     Get the genetic ancestry PCA scores VersionedTableResource.
@@ -293,6 +304,7 @@ def genetic_ancestry_pca_scores(
         that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :param projection: Whether the scores ht includes projection scores instead of just original scores.
     :return: Genetic ancestry PCA scores.
     """
     return VersionedTableResource(
@@ -301,7 +313,7 @@ def genetic_ancestry_pca_scores(
             version: TableResource(
                 _get_genetic_ancestry_pca_ht_path(
                     "scores", version, include_unreleasable_samples, test, data_type
-                )
+                ).replace(".ht", ".projection.ht" if projection else ".ht")
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -359,6 +371,7 @@ def get_gen_anc_ht(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "joint",
+    projection_only: bool = False,
 ):
     """
     Get the TableResource of samples' inferred genetic ancestry group for the indicated gnomAD version.
@@ -366,10 +379,11 @@ def get_gen_anc_ht(
     :param version: Version of gen anc group TableResource to return.
     :param test: Whether to use the test version of the genetic ancestry TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :param projection_only: Whether the inference results consist of just the results for the projected samples. When set to False, probability scores will not be included as they cannot be obtained for all samples.
     :return: TableResource of sample gen anc groups.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc{'_projection_only' if projection_only else ''}.ht"
     )
 
 
@@ -399,3 +413,149 @@ def per_grp_min_rf_probs_json_path(version: str = CURRENT_SAMPLE_QC_VERSION):
     :return: Path to per genetic ancestry group minimum RF probabilities JSON.
     """
     return f"{get_sample_qc_root(version, data_type='joint')}/genetic_ancestry_inference/gnomad.joint.v{version}.gen_anc_min_probs.json"
+
+
+######################################################################
+# Outlier detection resources
+######################################################################
+
+
+def get_outlier_detection_sample_qc(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get modified sample QC Table for sample outlier detection.
+
+    This table has the following modifications:
+        - Remove hard filtered samples
+        - Add project prefix to sample collisions
+        - Add 'r_snp_indel' metric
+        - Sample 1% of the dataset if `test` is True
+
+    :param test: Whether to use the test version of the sample QC TableResource.
+    :return: Modified sample QC Table.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.v{version}.outlier_detection_sample_qc.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def stratified_filtering(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.stratified_filtering.gen_anc_stratified.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def regressed_filtering(
+    test: bool = False,
+    include_unreleasable_samples: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for regression genetic ancestry-based metrics filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :param include_unreleasable_samples: Whether to get resource that included
+        unreleasable samples in regression.
+    :return: VersionedTableResource.
+    """
+    postfix = ".include_unreleasable_samples" if include_unreleasable_samples else ""
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.regressed_filtering.gen_anc_pc_regressed{postfix}.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def nearest_neighbors(
+    test: bool = False,
+    approximation: bool = False,
+    include_unreleasable_samples: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :param approximation: Whether to get resource that is approximate nearest
+        neighbors.
+    :param include_unreleasable_samples: Whether to get resource that included
+        unreleasable samples in nearest neighbors determination.
+    :return: VersionedTableResource.
+    """
+    postfix = ""
+    if approximation:
+        postfix += ".approximation"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.nearest_neighbors{postfix}.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def nearest_neighbors_filtering(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.nearest_neighbors_filtering.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def finalized_outlier_filtering(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for the finalized outlier filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.final_outlier_filtering.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )

@@ -7,8 +7,8 @@ import hail as hl
 from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
+    grpmax_expr,
     merge_freq_arrays,
-    pop_max_expr,
 )
 from gnomad.utils.release import make_freq_index_dict_from_meta
 
@@ -126,17 +126,17 @@ def main(args):
         ht.v2_joint.joint_freq,
         ht.joint_freq_meta,
         ht.locus,
-        pops_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
-        pop_label="pop",
+        gen_anc_groups_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
+        gen_anc_label="pop",
     )
 
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     logger.info("Computing grpmax...")
-    grpmax = pop_max_expr(
+    grpmax = grpmax_expr(
         ht.v2_joint.joint_freq,
         ht.joint_freq_meta,
-        pops_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
-        pop_label="pop",
+        gen_anc_groups_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
+        gen_anc_label="pop",
     )
 
     # Rename 'pop' to 'gen_anc' to fit other joint annotations.
@@ -147,7 +147,7 @@ def main(args):
         v2_joint=ht.v2_joint.annotate(
             joint_faf=faf,
             joint_fafmax=gen_anc_faf_max_expr(
-                faf, hl.literal(faf_meta), pop_label="pop"
+                faf, hl.literal(faf_meta), gen_anc_label="pop"
             ),
             joint_grpmax=grpmax,
         )
