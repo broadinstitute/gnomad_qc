@@ -27,7 +27,7 @@ color_map = {
 final_sections = []
 
 
-elements = soup.find_all(["p", "table", "h1", "h2"])
+elements = list(soup.find_all(["p", "table", "h1", "h2"]))
 
 paragraphs_before_first_table = []
 paragraphs_before_second_table = []
