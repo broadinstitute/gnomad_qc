@@ -231,9 +231,6 @@ def process_gnomad_dataset(
     consent_samples_ht = consent_samples_to_drop.ht()
     consent_samples_list = consent_samples_ht.s.collect()
 
-    # TODO: Revisit this if we calc AN in the coverage script for these samples. For now,
-    # we need to calculate AN using the ref data and the vds filter samples will remove
-    # all ref rows where there does not exist a variant row (v4.0 bug).
     logger.info(
         "Filtering VDS to consent withdrawal samples and preparing for frequency calculation..."
     )
@@ -319,25 +316,35 @@ def process_gnomad_dataset(
     )
     vmt = vmt.annotate_rows(hists_fields=mt_hists_fields(vmt))
 
-    # Calculate AC and hom alt counts per group membership for consent samples
-    logger.info("Calculating AC and hom alt counts per group membership...")
-
     # Load consent ANs from resource
     logger.info("Loading consent ANs from resource...")
     consent_ans_ht = get_consent_ans(test=test).ht()
 
+    # Calculate AC and hom alt counts per group membership for consent samples
+    logger.info("Calculating AC and hom alt counts per group membership...")
     # Annotate each variant with AC, hom alt counts, and ANs per group membership
+    # True single-pass aggregation: compute AC and hom counts together in one
+    # aggregation
     consent_freq_ht = vmt.annotate_rows(
         freq=hl.agg.group_by(
             vmt.group_membership,
-            hl.struct(
-                AC=hl.agg.sum(vmt.GT.n_alt_alleles()),
-                homozygote_count=hl.agg.sum(vmt.GT.is_hom_var()),
-                AN=consent_ans_ht[vmt.row_key].AN,
-                AF=hl.if_else(
-                    hl.agg.sum(vmt.GT.n_alt_alleles()) > 0,
-                    hl.agg.sum(vmt.GT.n_alt_alleles()) / consent_ans_ht[vmt.row_key].AN,
-                    0.0,
+            hl.bind(
+                lambda counts: hl.struct(
+                    AC=counts.AC,
+                    homozygote_count=counts.homozygote_count,
+                    AN=consent_ans_ht[vmt.row_key].AN,
+                    AF=hl.if_else(
+                        counts.AC > 0, counts.AC / consent_ans_ht[vmt.row_key].AN, 0.0
+                    ),
+                ),
+                hl.agg.fold(
+                    lambda running_totals, gt: hl.struct(
+                        AC=running_totals.AC + gt.n_alt_alleles(),
+                        homozygote_count=running_totals.homozygote_count
+                        + hl.int32(gt.is_hom_var()),
+                    ),
+                    hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0)),
+                    vmt.GT,
                 ),
             ),
         )
