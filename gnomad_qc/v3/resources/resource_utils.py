@@ -5,7 +5,7 @@ import logging
 from typing import Literal
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=2)
 def show_v3_migration_warning(target: Literal["annotations", "sample_qc"]) -> None:
     """
     Show GCS migration warning for v3 resources (only once per target per session).
