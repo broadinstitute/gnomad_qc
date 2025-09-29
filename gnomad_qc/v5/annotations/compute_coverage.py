@@ -484,6 +484,14 @@ def main(args):
                     raw=False,
                 )
             )
+            if test_chr22_chrx_chry:
+                chrom = ["chr22", "chrX", "chrY"]
+                gnomad_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                gnomad_ht = gnomad_ht._filter_partitions(range(2))
+
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
             ht = ht.naive_coalesce(n_partitions)
