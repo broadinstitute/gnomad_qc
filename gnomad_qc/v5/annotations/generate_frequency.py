@@ -8,7 +8,7 @@ to avoid densifying the full dataset.
 
 import argparse
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import (
@@ -41,11 +41,10 @@ from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.annotations import (
-    gnomad_group_membership,  # gnomAD-specific group membership
-)
-from gnomad_qc.v5.resources.annotations import get_age_hist_ht, get_freq_ht
-from gnomad_qc.v5.resources.annotations import (
-    group_membership as aou_group_membership,  # AoU-specific group membership
+    get_age_hist,
+    get_consent_ans,
+    get_freq,
+    get_group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
@@ -266,6 +265,11 @@ def process_gnomad_dataset(
 
     vmt = vds.variant_data
     logger.info("Computing sex adjusted genotypes...")
+
+    # Annotate VDS with v4 frequencies needed for hom alt depletion fix
+    vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
+
+    # Now compute all expressions from the same annotated MatrixTable
     ab_expr = vmt.AD[1] / vmt.DP
     ab_cutoff = 0.9  # Standard cutoff for high AB het annotation
     gt_expr = adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype)
@@ -281,10 +285,11 @@ def process_gnomad_dataset(
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
     )
 
+    # Apply hom alt depletion fix using the annotated GT and expressions from same VDS
     gt_with_depletion = hom_alt_depletion_fix(
-        gt_expr,
+        vmt.GT,  # Use the GT from the current MatrixTable
         het_non_ref_expr=vmt._het_non_ref,
-        af_expr=v4_freq_ht[vmt.row_key].freq[0].AF,  # Use v4 genome frequencies
+        af_expr=vmt.v4_af,
         ab_expr=vmt.AD[1] / vmt.DP,
         use_v3_1_correction=True,
     )
@@ -297,14 +302,14 @@ def process_gnomad_dataset(
     logger.info(
         "Loading gnomAD group membership table for consent sample frequencies..."
     )
-    group_membership_ht = gnomad_group_membership(test=test).ht()
+    group_membership_ht = get_group_membership(test=test)
 
     # Filter group membership to only the consent samples we're processing
     consent_sample_ids = set(vmt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
     )
-    vmt = vds.variant_data
+    # Use the processed MatrixTable that already has adj and other annotations
     # Annotate MatrixTable with group membership for annotate_freq to use
     vmt = vmt.annotate_cols(
         group_membership=group_membership_ht[vmt.col_key].group_membership,
@@ -319,7 +324,7 @@ def process_gnomad_dataset(
 
     # Load consent ANs from resource
     logger.info("Loading consent ANs from resource...")
-    consent_ans_ht = consent_ans.ht()
+    consent_ans_ht = get_consent_ans(test=test).ht()
 
     # Annotate each variant with AC, hom alt counts, and ANs per group membership
     consent_freq_ht = vmt.annotate_rows(
@@ -395,7 +400,7 @@ def process_gnomad_dataset(
     )
     consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
 
-    v4_age_hist_ht = get_age_hist_ht(test=test, data_set="gnomad").ht()
+    v4_age_hist_ht = get_age_hist(test=test, data_type="genomes").ht()
 
     updated_age_hist_ht = v4_age_hist_ht.annotate(
         age_hist_het=merge_histograms(
@@ -617,7 +622,7 @@ def _calculate_aou_variant_frequencies(
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = aou_group_membership(test=test).ht()
+    group_membership_ht = get_group_membership(subset="aou", test=test)
 
     # Filter group membership to only the AoU samples we're processing
     aou_sample_ids = set(aou_variant_mt.s.collect())
@@ -708,7 +713,7 @@ def _calculate_aou_reference_an(
     """
     # Use existing AoU group membership table and filter to reference samples
     logger.info("Loading AoU group membership table for reference AN calculation...")
-    group_membership_ht = aou_group_membership(test=test).ht()
+    group_membership_ht = get_group_membership(subset="aou", test=test)
 
     # Filter group membership to only the AoU samples we're processing
     aou_ref_sample_ids = set(aou_reference_mt.s.collect())
@@ -946,30 +951,30 @@ def merge_gnomad_and_aou_frequencies(
             aou_age_hist_hom=aou_age_hist_ht[gnomad_age_hist_ht.key].age_hist_hom,
         )
 
-        merged_age_hist_ht = joined_age_hist_ht.annotate(
-            age_hist_het=hl.if_else(
-                hl.is_defined(joined_age_hist_ht.aou_age_hist_het),
-                merge_histograms(
-                    [
-                        joined_age_hist_ht.age_hist_het,
-                        joined_age_hist_ht.aou_age_hist_het,
-                    ],
-                    operation="sum",
-                ),
-                joined_age_hist_ht.age_hist_het,
+    merged_age_hist_ht = joined_age_hist_ht.annotate(
+        age_hist_het=hl.if_else(
+            hl.is_defined(joined_age_hist_ht.aou_age_hist_het),
+            merge_histograms(
+                [
+                    joined_age_hist_ht.age_hist_het,
+                    joined_age_hist_ht.aou_age_hist_het,
+                ],
+                operation="sum",
             ),
-            age_hist_hom=hl.if_else(
-                hl.is_defined(joined_age_hist_ht.aou_age_hist_hom),
-                merge_histograms(
-                    [
-                        joined_age_hist_ht.age_hist_hom,
-                        joined_age_hist_ht.aou_age_hist_hom,
-                    ],
-                    operation="sum",
-                ),
-                joined_age_hist_ht.age_hist_hom,
+            joined_age_hist_ht.age_hist_het,
+        ),
+        age_hist_hom=hl.if_else(
+            hl.is_defined(joined_age_hist_ht.aou_age_hist_hom),
+            merge_histograms(
+                [
+                    joined_age_hist_ht.age_hist_hom,
+                    joined_age_hist_ht.aou_age_hist_hom,
+                ],
+                operation="sum",
             ),
-        )
+            joined_age_hist_ht.age_hist_hom,
+        ),
+    )
 
     return merged_freq_ht, merged_age_hist_ht.select("age_hist_het", "age_hist_hom")
 
@@ -995,8 +1000,10 @@ def main(args):
         if args.process_gnomad:
             logger.info("Processing gnomAD dataset...")
 
-            gnomad_freq = get_freq_ht(test=test, data_set="gnomad")
-            gnomad_age_hist = get_age_hist_ht(test=test, data_set="gnomad")
+            gnomad_freq = get_freq(test=test, data_type="genomes", subset="gnomad")
+            gnomad_age_hist = get_age_hist(
+                test=test, data_type="genomes", subset="gnomad"
+            )
 
             check_resource_existence(
                 output_step_resources={
@@ -1018,8 +1025,8 @@ def main(args):
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
 
-            aou_freq = get_freq_ht(test=test, data_set="aou")
-            aou_age_hist = get_age_hist_ht(test=test, data_set="aou")
+            aou_freq = get_freq(test=test, data_type="genomes", subset="aou")
+            aou_age_hist = get_age_hist(test=test, data_type="genomes", subset="aou")
 
             check_resource_existence(
                 output_step_resources={"process-aou": [aou_freq, aou_age_hist]},
@@ -1041,8 +1048,8 @@ def main(args):
                 "Merging frequency data and age histograms from both datasets..."
             )
 
-            merged_freq = get_freq_ht(test=test)
-            merged_age_hist = get_age_hist_ht(test=test)
+            merged_freq = get_freq(test=test, data_type="genomes")
+            merged_age_hist = get_age_hist(test=test, data_type="genomes")
 
             check_resource_existence(
                 output_step_resources={
@@ -1051,10 +1058,16 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            gnomad_freq_input = get_freq_ht(test=test, data_set="gnomad")
-            aou_freq_input = get_freq_ht(test=test, data_set="aou")
-            gnomad_age_hist_input = get_age_hist_ht(test=test, data_set="gnomad")
-            aou_age_hist_input = get_age_hist_ht(test=test, data_set="aou")
+            gnomad_freq_input = get_freq(
+                test=test, data_type="genomes", subset="gnomad"
+            )
+            aou_freq_input = get_freq(test=test, data_type="genomes", subset="aou")
+            gnomad_age_hist_input = get_age_hist(
+                test=test, data_type="genomes", subset="gnomad"
+            )
+            aou_age_hist_input = get_age_hist(
+                test=test, data_type="genomes", subset="aou"
+            )
 
             check_resource_existence(
                 input_step_resources={
@@ -1063,10 +1076,12 @@ def main(args):
                 }
             )
 
-            gnomad_freq_ht = get_freq_ht(test=test, data_set="gnomad").ht()
-            aou_freq_ht = get_freq_ht(test=test, data_set="aou").ht()
-            gnomad_age_hist_ht = get_age_hist_ht(test=test, data_set="gnomad").ht()
-            aou_age_hist_ht = get_age_hist_ht(test=test, data_set="aou").ht()
+            gnomad_freq_ht = get_freq(test=test, data_type="genomes", subset="gnomad")
+            aou_freq_ht = get_freq(test=test, data_type="genomes", subset="aou")
+            gnomad_age_hist_ht = get_age_hist(
+                test=test, data_type="genomes", subset="gnomad"
+            )
+            aou_age_hist_ht = get_age_hist(test=test, data_type="genomes", subset="aou")
 
             merged_freq_ht, merged_age_hist_ht = merge_gnomad_and_aou_frequencies(
                 gnomad_freq_ht,
