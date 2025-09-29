@@ -342,9 +342,6 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-    # TODO: Remove this?
-    # SSA Logs are easier to troubleshoot with.
-    hl._set_flags(use_ssa_logs="1")
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
