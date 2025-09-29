@@ -428,26 +428,26 @@ def main(args):
             logger.info(
                 "Computing coverage, all sites allele number, and quality histograms HT..."
             )
-            group_membership_ht_path = group_membership(test=test).path
+            aou_group_membership_ht_path = group_membership(test=test).path
             check_resource_existence(
                 output_step_resources={
-                    "group_membership_ht": group_membership_ht_path,
+                    "aou_group_membership_ht": aou_group_membership_ht_path,
                     "coverage_and_an_ht": cov_and_an_ht_path,
                 },
                 overwrite=overwrite,
             )
-            group_membership_ht = get_genomes_group_membership_ht(
+            aou_group_membership_ht = get_genomes_group_membership_ht(
                 meta_ht=hl.read_table(meta_ht_path),
                 ds_ht=hl.read_table(downsampling_ht_path),
             )
-            group_membership_ht = group_membership_ht.checkpoint(
-                group_membership_ht_path, overwrite=overwrite
+            aou_group_membership_ht = aou_group_membership_ht.checkpoint(
+                aou_group_membership_ht_path, overwrite=overwrite
             )
 
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
-                group_membership_ht=group_membership_ht,
+                group_membership_ht=aou_group_membership_ht,
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file("aou_cov_and_an", "ht")
