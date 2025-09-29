@@ -1,4 +1,5 @@
 # noqa: D100
+import functools
 import logging
 
 import hail as hl
@@ -19,6 +20,17 @@ from gnomad_qc.v3.resources.constants import CURRENT_VERSION, VERSIONS
 ########################################################################################
 
 
+@functools.lru_cache(maxsize=None)
+def _show_sample_qc_migration_warning():
+    """Show the sample QC GCS migration warning only once using caching."""
+    logging.warning(
+        "Most objects in 'gs://gnomad/sample_qc' were moved to either "
+        "'gs://gnomad-archive' or 'gs://gnomad-autoclass'. This function now returns "
+        "'gs://gnomad-autoclass/sample_qc' paths, if no resource is found there, "
+        "please check 'gs://gnomad-archive/sample_qc'."
+    )
+
+
 def get_sample_qc_root(version: str = CURRENT_VERSION, mt: bool = False) -> str:
     """
     Return path to sample QC root folder.
@@ -27,12 +39,7 @@ def get_sample_qc_root(version: str = CURRENT_VERSION, mt: bool = False) -> str:
     :param mt: Whether path is for a MatrixTable, default is False
     :return: Root to sample QC path
     """
-    logging.warning(
-        "Most objects in 'gs://gnomad/sample_qc' were moved to either "
-        "'gs://gnomad-archive' or 'gs://gnomad-autoclass'. This function now returns "
-        "'gs://gnomad-autoclass/sample_qc' paths, if no resource is found there, "
-        "please check 'gs://gnomad-archive/sample_qc'."
-    )
+    _show_sample_qc_migration_warning()
     return f"gs://gnomad-autoclass/sample_qc/{'mt' if mt else 'ht'}/genomes_v{version}"
 
 
