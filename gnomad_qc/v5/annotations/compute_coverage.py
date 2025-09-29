@@ -29,7 +29,7 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
-from gnomad_qc.v5.resources.annotations import get_downsampling, group_membership
+from gnomad_qc.v5.resources.annotations import group_membership  # get_aou_downsampling
 from gnomad_qc.v5.resources.basics import (  # get_aou_vds
     get_gnomad_v4_genomes_vds,
     get_logging_path,
@@ -364,6 +364,7 @@ def main(args):
             data_set="aou",
             environment="rwb",
         )
+        # TODO: Update this to use get_aou_downsampling once sample QC is complete.
         downsampling_ht_path = get_downsampling(test=test).path
         meta_ht_path = project_meta.path
 
