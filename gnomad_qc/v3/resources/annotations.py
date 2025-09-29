@@ -31,7 +31,7 @@ SUBSETS = SUBSETS["v3"]
 
 
 @functools.lru_cache(maxsize=None)
-def _show_migration_warning():
+def _show_annotations_migration_warning():
     """Show the GCS migration warning only once using caching."""
     logging.warning(
         "Most objects in 'gs://gnomad/annotations' were moved to either "
@@ -48,7 +48,7 @@ def _annotations_root(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: root path of the variant annotation files
     """
-    _show_migration_warning()
+    _show_annotations_migration_warning()
     return f"gs://gnomad-autoclass/annotations/hail-0.2/ht/genomes_v{version}"
 
 
