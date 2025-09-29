@@ -39,25 +39,20 @@ def _annotations_root(
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 
-def get_downsampling(test: bool = False, subset: str = "aou") -> VersionedTableResource:
+def get_aou_downsampling(test: bool = False) -> VersionedTableResource:
     """
     Get the downsampling annotation table.
 
-    .. note::
-        v5 downsamplings only applies to the AoU dataset.
+    v5 downsamplings only applies to the AoU dataset.
 
     :param test: Whether to use a tmp path for tests. Default is False.
-    :param subset: Subset to return downsampling Table for. Default is "aou".
     :return: Hail Table containing downsampling annotations.
     """
-    if subset != "aou":
-        raise ValueError("v5 downsamplings only applies to the AoU dataset.")
-
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.downsampling.aou.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
