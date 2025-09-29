@@ -364,7 +364,7 @@ def main(args):
             environment="rwb",
         )
         # TODO: Update this to use get_aou_downsampling once sample QC is complete.
-        downsampling_ht_path = get_downsampling(test=test).path
+        downsampling_ht_path = get_v4_downsampling(test=test).path
         meta_ht_path = project_meta.path
 
         if args.write_downsampling_ht:
