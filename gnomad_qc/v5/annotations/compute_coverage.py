@@ -51,7 +51,7 @@ logger = logging.getLogger("coverage_and_an")
 logger.setLevel(logging.INFO)
 
 
-def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
+def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     """
     Get Table with downsampling groups for all samples.
 
@@ -64,7 +64,6 @@ def get_downsampling_ht(ht: hl.Table, gen_anc_ht: hl.Table) -> hl.Table:
     but code will also generate downsamplings for all other groups.
 
     :param ht: Input Table.
-    :param gen_anc_ht: Genetic ancestry HT.
     :return: Table with downsampling groups.
     """
     logger.info(
@@ -343,9 +342,6 @@ def main(args):
     )
     hl.default_reference("GRCh38")
 
-    # TODO: Remove this?
-    # SSA Logs are easier to troubleshoot with.
-    hl._set_flags(use_ssa_logs="1")
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
