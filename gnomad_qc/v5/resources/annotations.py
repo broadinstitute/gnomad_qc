@@ -1,30 +1,44 @@
-"""v5 annotation resources (freq, age hists, group membership)."""
+"""Script containing annotation related resources."""
 
 from typing import Optional
 
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
-from .constants import ANNOTATION_VERSIONS, CURRENT_ANNOTATION_VERSION
+from gnomad_qc.v5.resources.basics import qc_temp_prefix
+from gnomad_qc.v5.resources.constants import (
+    ANNOTATION_VERSIONS,
+    CURRENT_ANNOTATION_VERSION,
+    GNOMAD_BUCKET,
+    WORKSPACE_BUCKET,
+)
 
 
 def _annotations_root(
     version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     data_type: str = "genomes",
+    data_set: str = "aou",
 ) -> str:
     """
-    Get root path to the v5 annotation files.
+    Get root path to the variant annotation files.
 
     :param version: Version of annotation path to return.
-    :param test: Whether to use a tmp path for testing instead of production.
-    :param data_type: Data type of annotation resource ("genomes" or "exomes").
-    :return: Root path of the annotation files.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
+    :param environment: Environment of annotation resource. Default is "rwb".
+    :return: Root path of the variant annotation files.
     """
-    return (
-        f"gs://gnomad-v5-test/annotations/{data_type}/v{version}"
-        if test
-        else f"gs://gnomad/v5/annotations/{data_type}/v{version}"
-    )
+    path_suffix = f"sample_qc/{data_type}/{data_set}"
+
+    if test:
+        environment = "rwb" if data_set == "aou" else "dataproc"
+        return (
+            f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
+        )
+
+    base_bucket = WORKSPACE_BUCKET if data_set == "aou" else GNOMAD_BUCKET
+    return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 
 def get_freq(
