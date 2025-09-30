@@ -199,7 +199,8 @@ def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
 
 
 def process_gnomad_dataset(
-    test: bool = False,
+    data_test: bool = False,
+    runtime_test: bool = False,
     overwrite: bool = False,
 ) -> Tuple[hl.Table, hl.Table]:
     """
@@ -213,7 +214,8 @@ def process_gnomad_dataset(
     5. Subtracting those frequencies from v4 frequency HT
     6. Computing FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient
 
-    :param test: Whether to run in test mode. If True, filters v4 vds to first 2 partitions.
+    :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
+    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 vds to first 2 partitions.
     :param overwrite: Whether to overwrite existing output files.
     :return: Tuple of (updated frequency HT with FAF/grpmax annotations, updated age histogram HT) for gnomAD dataset.
     """
@@ -221,11 +223,11 @@ def process_gnomad_dataset(
 
     v4_freq_ht = get_v4_freq(data_type="genomes").ht()
     vds = get_gnomad_v4_genomes_vds(
-        test=test,
+        test=runtime_test,
         remove_hard_filtered_samples=False,
         release_only=True,
         annotate_meta=True,
-        n_partitions=TEST_PARTITIONS if test else None,
+        filter_partitions=TEST_PARTITIONS if data_test or runtime_test else None,
     )
 
     consent_samples_ht = consent_samples_to_drop.ht()
@@ -989,7 +991,9 @@ def merge_gnomad_and_aou_frequencies(
 def main(args):
     """Generate v5 frequency data."""
     environment = args.environment
-    test = args.test
+    data_test = args.data_test
+    runtime_test = args.runtime_test
+    test = data_test or runtime_test
     overwrite = args.overwrite
 
     hl.init(
@@ -1020,7 +1024,7 @@ def main(args):
             )
 
             gnomad_freq_ht, gnomad_age_hist_ht = process_gnomad_dataset(
-                test=test, overwrite=overwrite
+                data_test=data_test, runtime_test=runtime_test, overwrite=overwrite
             )
 
             logger.info(f"Writing gnomAD frequency HT to {gnomad_freq.path}...")
@@ -1115,8 +1119,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
     parser.add_argument(
-        "--test",
-        help=f"Filter to the first {TEST_PARTITIONS} partitions for testing.",
+        "--data-test",
+        help=f"Filter to the first {TEST_PARTITIONS} partitions of full VDS for testing.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--runtime-test",
+        help="Load test dataset and filter to test partitions.",
         action="store_true",
     )
     parser.add_argument(
