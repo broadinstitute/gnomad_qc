@@ -38,7 +38,7 @@ from hail.utils import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
 from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.annotations import (
     get_age_hist,
@@ -220,8 +220,7 @@ def process_gnomad_dataset(
     logger.info("Processing gnomAD dataset for consent withdrawals...")
 
     v4_freq_ht = get_v4_freq(data_type="genomes").ht()
-    vds = get_gnomad_v4_vds(
-        data_type="genomes",
+    vds = get_gnomad_v4_genomes_vds(
         test=test,
         release_only=True,
         annotate_meta=True,
