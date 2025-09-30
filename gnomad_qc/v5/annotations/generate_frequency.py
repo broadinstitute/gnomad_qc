@@ -222,6 +222,7 @@ def process_gnomad_dataset(
     v4_freq_ht = get_v4_freq(data_type="genomes").ht()
     vds = get_gnomad_v4_genomes_vds(
         test=test,
+        remove_hard_filtered_samples=False,
         release_only=True,
         annotate_meta=True,
         n_partitions=TEST_PARTITIONS if test else None,
