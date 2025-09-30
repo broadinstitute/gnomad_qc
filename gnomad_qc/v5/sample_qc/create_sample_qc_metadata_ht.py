@@ -25,7 +25,7 @@ from gnomad_qc.v3.create_release.create_hgdp_tgp_subset import (
 )
 
 from gnomad_qc.v5.resources.meta import project_meta  ## meta
-from gnomad_qc.v4.resources.sample_qc import (
+from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     get_gen_anc_ht,
     get_sample_qc,
