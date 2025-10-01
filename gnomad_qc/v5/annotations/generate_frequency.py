@@ -336,8 +336,8 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
         freq=hl.range(hl.len(consent_freq_ht.AC)).map(
             lambda i: hl.struct(
                 AC=hl.int32(consent_freq_ht.AC[i]),
-                homozygote_count=consent_freq_ht.homozygote_count[i],
-                AN=hl.int32(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
+                homozygote_count=hl.int32(consent_freq_ht.homozygote_count[i]),
+                AN=hl.int(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
                 AF=hl.if_else(
                     consent_freq_ht.AC[i] > 0,
                     consent_freq_ht.AC[i]
