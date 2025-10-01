@@ -314,10 +314,12 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
     logger.info(
         "Calculating AC and hom alt counts per group membership using agg_by_strata..."
     )
+    logger.info("Using updated agg_by_strata implementation - version check")
     # Use efficient agg_by_strata approach with localize_entries
     consent_freq_ht = agg_by_strata(
         vmt.select_entries(
             "GT",
+            "adj",  # Required by agg_by_strata for quality filtering
             n_alt_alleles=vmt.GT.n_alt_alleles(),
             is_hom_var=vmt.GT.is_hom_var(),
         ),
