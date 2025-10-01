@@ -18,6 +18,7 @@ from gnomad.resources.grch38.gnomad import (
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
+    agg_by_strata,
     annotate_adj,
     annotate_freq,
     bi_allelic_site_inbreeding_expr,
@@ -310,37 +311,40 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
     # Load consent ANs
     # consent_ans_ht = get_consent_ans(test=test).ht()
 
-    logger.info("Calculating AC and hom alt counts per group membership...")
-    # Single-pass aggregation for AC and homozygote counts
-    consent_freq_ht = vmt.annotate_rows(
-        freq=hl.agg.group_by(
-            vmt.group_membership,
-            hl.bind(
-                lambda counts: hl.struct(
-                    AC=counts.AC,
-                    homozygote_count=counts.homozygote_count,
-                    AN=hl.int32(866 * 2),  # consent_ans_ht[vmt.row_key].AN,
-                    AF=hl.if_else(
-                        counts.AC > 0,
-                        counts.AC / (hl.int32(866 * 2)),
-                        0.0,  # consent_ans_ht[vmt.row_key].AN,
-                    ),
+    logger.info(
+        "Calculating AC and hom alt counts per group membership using agg_by_strata..."
+    )
+    # Use efficient agg_by_strata approach with localize_entries
+    consent_freq_ht = agg_by_strata(
+        vmt.select_entries(
+            "GT",
+            n_alt_alleles=vmt.GT.n_alt_alleles(),
+            is_hom_var=vmt.GT.is_hom_var(),
+        ),
+        {
+            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
+            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
+        },
+        group_membership_ht=group_membership_ht,
+    )
+
+    # Now combine with consent ANs to create proper frequency structs
+    # consent_ans_ht = get_consent_ans(test=test).ht()
+    consent_freq_ht = consent_freq_ht.annotate(
+        freq=hl.range(hl.len(consent_freq_ht.AC)).map(
+            lambda i: hl.struct(
+                AC=consent_freq_ht.AC[i],
+                homozygote_count=consent_freq_ht.homozygote_count[i],
+                AN=hl.int32(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
+                AF=hl.if_else(
+                    consent_freq_ht.AC[i] > 0,
+                    consent_freq_ht.AC[i]
+                    / hl.float64(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
+                    0.0,
                 ),
-                hl.agg.fold(
-                    hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0)),
-                    lambda running_totals: hl.struct(
-                        AC=running_totals.AC + vmt.GT.n_alt_alleles(),
-                        homozygote_count=running_totals.homozygote_count
-                        + hl.int32(vmt.GT.is_hom_var()),
-                    ),
-                    lambda left, right: hl.struct(
-                        AC=left.AC + right.AC,
-                        homozygote_count=left.homozygote_count + right.homozygote_count,
-                    ),
-                ),
-            ),
+            )
         )
-    ).rows()
+    )
 
     return consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
 
