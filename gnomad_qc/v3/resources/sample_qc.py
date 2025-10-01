@@ -11,6 +11,7 @@ from gnomad.resources.resource_utils import (
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
 from gnomad_qc.v3.resources.constants import CURRENT_VERSION, VERSIONS
+from gnomad_qc.v3.resources.resource_utils import show_v3_migration_warning
 
 ########################################################################################
 # Note: Some of the resources in this file have been moved to gs://gnomad-archive,
@@ -27,12 +28,7 @@ def get_sample_qc_root(version: str = CURRENT_VERSION, mt: bool = False) -> str:
     :param mt: Whether path is for a MatrixTable, default is False
     :return: Root to sample QC path
     """
-    logging.warning(
-        "Most objects in 'gs://gnomad/sample_qc' were moved to either "
-        "'gs://gnomad-archive' or 'gs://gnomad-autoclass'. This function now returns "
-        "'gs://gnomad-autoclass/sample_qc' paths, if no resource is found there, "
-        "please check 'gs://gnomad-archive/sample_qc'."
-    )
+    show_v3_migration_warning("sample_qc")
     return f"gs://gnomad-autoclass/sample_qc/{'mt' if mt else 'ht'}/genomes_v{version}"
 
 

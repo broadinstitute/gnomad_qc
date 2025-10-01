@@ -1,28 +1,4 @@
-"""
-Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata.
-
-NOTE:
-Use the util_functions.ipynb notebook with function restart_kernel_with_gnomad_packages
-to clone the gnomad_qc repository, update the gnomAD package, and restart the kernel. If
-this is not done, the gnomad_qc imports will fail below.
-"""
-
-import papermill as pm
-from IPython.display import Javascript, display
-
-# This block clones the gnomad repos so you can import gnomad_qc and the most recent
-# gnomad_methods commits. Change the branch parameters to your desired branch then
-# run in the v5 workspace notebook.
-pm.execute_notebook(  # noqa
-    "utils_restart_kernel_with_gnomad_packages.ipynb",
-    "utils_restart_notebook_output.ipynb",
-    parameters={
-        "GNOMAD_QC_BRANCH": "main",
-        "GNOMAD_METHODS_BRANCH": "main",
-    },
-)
-# Restart the kernel -- this needs to be run here, in the open notebook.
-display(Javascript("Jupyter.notebook.kernel.restart()"))  # noqa
+"""Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata."""
 
 import logging
 import os
@@ -134,6 +110,7 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                         "outlier_filters": "sample_filters.qc_metrics_filters",
                         "releasable": "project_meta.releasable",
                         "release": "release",
+                        "research_project_key": "project_meta.research_project_key",
                     },
                 }
             ],
@@ -214,16 +191,38 @@ def select_only_final_fields(
     Filter metadata inputs to include only relevant fields since not all inputs have all
     final fields.
 
+    .. note ::
+
+        There were 897 gnomAD samples that withdrew consent during v5 production.
+        Because of the timing of the confirmation of the consent change, the releasable
+        field is being reannotated after the original creation of the v5 metadata
+        The original metadata was used through generating the release relateds to drop
+        HT. However, this use was of no consequence to the outcome of sample QC modules
+        as the releasable field is only considered during the final `release` annotation
+        in sample QC metadata creation.
+
     :param ht: Input Hail Table with metadata.
     :param project: Project identifier (e.g., "gnomad", "aou").
     :param data_type: Data type ("genomes" or "exomes").
     :return: Filtered Hail Table containing only fields required for the final schema.
     """
     # gnomAD v4 genome metadata has some samples with age_alt, which is the mean age of
-    # the age_bin field. This creates a single age field.
+    # the age_bin field. This creates a single age field. Also, 897 samples were consented
+    # to be in gnomAD v4 but not v5, so we need to set their releasable field to False.
     if project == "gnomad" and data_type == "genomes":
         ht = ht.annotate(age=hl.if_else(hl.is_defined(ht.age), ht.age, ht.age_alt))
-
+        ht = ht.annotate(
+            releasable=hl.if_else(
+                hl.is_defined(ht.research_project_key),
+                hl.if_else(
+                    (ht.research_project_key == "RP-1061")
+                    | (ht.research_project_key == "RP-1411"),
+                    False,
+                    ht.releasable,
+                ),
+                ht.releasable,
+            )
+        )
     present_fields = {
         field for field in ht.row if field in FINAL_SCHEMA_FIELDS_AND_TYPES.keys()
     }
