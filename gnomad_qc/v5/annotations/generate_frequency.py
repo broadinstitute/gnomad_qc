@@ -350,8 +350,8 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
 
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
     consent_freq_ht = consent_freq_ht.annotate_globals(
-        freq_meta=group_membership_ht.freq_meta,
-        freq_meta_sample_count=group_membership_ht.freq_meta_sample_count,
+        freq_meta=group_membership_ht.index_globals().freq_meta,
+        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
     )
     logger.info(f"Consent frequency metadata: {hl.eval(consent_freq_ht.freq_meta)}")
 
@@ -722,8 +722,8 @@ def _calculate_aou_variant_frequencies(
 
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
     aou_variant_freq_ht = aou_variant_freq_ht.annotate_globals(
-        freq_meta=group_membership_ht.freq_meta,
-        freq_meta_sample_count=group_membership_ht.freq_meta_sample_count,
+        freq_meta=group_membership_ht.index_globals().freq_meta,
+        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
     )
     logger.info(
         f"AoU variant frequency metadata: {hl.eval(aou_variant_freq_ht.freq_meta)}"
@@ -827,8 +827,8 @@ def _calculate_aou_reference_an(
 
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
     aou_reference_an_ht = aou_reference_an_ht.annotate_globals(
-        freq_meta=group_membership_ht.freq_meta,
-        freq_meta_sample_count=group_membership_ht.freq_meta_sample_count,
+        freq_meta=group_membership_ht.index_globals().freq_meta,
+        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
     )
     logger.info(f"AoU reference AN metadata: {hl.eval(aou_reference_an_ht.freq_meta)}")
 
