@@ -292,7 +292,7 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
     logger.info("Loading group membership and calculating consent frequencies...")
 
     # Load and filter group membership
-    group_membership_ht = get_group_membership(test=test)
+    group_membership_ht = get_group_membership(test=test).ht()
     consent_sample_ids = set(vmt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
