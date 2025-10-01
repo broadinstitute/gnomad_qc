@@ -216,7 +216,7 @@ def _prepare_consent_vds(
         remove_hard_filtered_samples=False,
         release_only=True,
         annotate_meta=True,
-        filter_partitions=TEST_PARTITIONS if test else None,
+        filter_partitions=list(range(TEST_PARTITIONS)) if test else None,
     )
 
     consent_samples_ht = consent_samples_to_drop.ht()
