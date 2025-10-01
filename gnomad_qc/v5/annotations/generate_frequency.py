@@ -377,10 +377,8 @@ def _subtract_consent_frequencies(
 
     # Annotate globals from consent frequency table
     joined_freq_ht = joined_freq_ht.annotate_globals(
-        consent_freq_meta=consent_freq_ht.freq_meta,
-        consent_freq_meta_sample_count=hl.literal(
-            hl.eval(consent_freq_ht.freq_meta_sample_count)
-        ),
+        consent_freq_meta=consent_freq_ht.index_globals().freq_meta,
+        consent_freq_meta_sample_count=consent_freq_ht.index_globals().freq_meta_sample_count,
     )
 
     # Use merge_freq_arrays for proper frequency subtraction
