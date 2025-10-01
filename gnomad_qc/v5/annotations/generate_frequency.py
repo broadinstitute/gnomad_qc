@@ -198,47 +198,34 @@ def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     )
 
 
-def process_gnomad_dataset(
-    data_test: bool = False,
-    runtime_test: bool = False,
-    overwrite: bool = False,
-) -> Tuple[hl.Table, hl.Table]:
+def _prepare_consent_vds(
+    v4_freq_ht: hl.Table, test: bool = False, runtime_test: bool = False
+) -> hl.MatrixTable:
     """
-    Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
+    Load and prepare VDS for consent withdrawal sample processing.
 
-    This function performs frequency adjustment by:
-    1. Loading v4 frequency HT as the base
-    2. Loading v4 genome VDS with consent samples to drop
-    3. Filtering to consent withdrawal samples and release samples only
-    4. Calculating frequencies for consent withdrawal samples using v4 logic
-    5. Subtracting those frequencies from v4 frequency HT
-    6. Computing FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient
-
-    :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
-    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 vds to first 2 partitions.
-    :param overwrite: Whether to overwrite existing output files.
-    :return: Tuple of (updated frequency HT with FAF/grpmax annotations, updated age histogram HT) for gnomAD dataset.
+    :param v4_freq_ht: v4 frequency table for AF annotation.
+    :param test: Whether running in test mode.
+    :param runtime_test: Whether to use test VDS.
+    :return: Prepared MatrixTable with consent samples, split multiallelics, and annotations.
     """
-    logger.info("Processing gnomAD dataset for consent withdrawals...")
+    logger.info("Loading and preparing VDS for consent withdrawal samples...")
 
-    v4_freq_ht = get_v4_freq(data_type="genomes").ht()
     vds = get_gnomad_v4_genomes_vds(
         test=runtime_test,
         remove_hard_filtered_samples=False,
         release_only=True,
         annotate_meta=True,
-        filter_partitions=TEST_PARTITIONS if data_test or runtime_test else None,
+        filter_partitions=TEST_PARTITIONS if test else None,
     )
 
     consent_samples_ht = consent_samples_to_drop.ht()
     consent_samples_list = consent_samples_ht.s.collect()
 
-    logger.info(
-        "Filtering VDS to consent withdrawal samples and preparing for frequency calculation..."
-    )
+    logger.info("Filtering VDS to consent withdrawal samples...")
     vds = hl.vds.filter_samples(vds, consent_samples_list, keep=True)
 
-    # Simplified approach following v4 pattern
+    # Prepare variant data with metadata
     vmt = vds.variant_data
     vmt = vmt.select_cols(
         pop=vmt.meta.population_inference.pop,
@@ -250,7 +237,6 @@ def process_gnomad_dataset(
     )
 
     # Select required entries and annotate non_ref hets before split_multi
-    # (required for hom_alt_depletion_fix)
     logger.info("Selecting entries and annotating non_ref hets pre-split...")
     vmt = vmt.select_entries(
         "LA", "LAD", "DP", "GQ", "LGT", _het_non_ref=vmt.LGT.is_het_non_ref()
@@ -262,31 +248,29 @@ def process_gnomad_dataset(
     logger.info("Splitting multiallelics in gnomAD sample withdrawal VDS...")
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
+    # Annotate with v4 frequencies and apply quality adjustments
     vmt = vds.variant_data
-    logger.info("Computing sex adjusted genotypes...")
-
-    # Annotate VDS with v4 frequencies needed for hom alt depletion fix
     vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
 
-    # Now compute all expressions from the same annotated MatrixTable
+    logger.info("Computing sex adjusted genotypes and quality annotations...")
     ab_expr = vmt.AD[1] / vmt.DP
-    ab_cutoff = 0.9  # Standard cutoff for high AB het annotation
+    ab_cutoff = 0.9
     gt_expr = adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype)
 
     vmt = vmt.select_entries(
-        "AD",  # Preserve AD for hom_alt_depletion_fix
+        "AD",
         "DP",
         "GQ",
-        "_het_non_ref",  # Preserve _het_non_ref for hom_alt_depletion_fix
+        "_het_non_ref",
         GT=gt_expr,
         adj=get_adj_expr(gt_expr, vmt.GQ, vmt.DP, vmt.AD),
         _het_ab=ab_expr,
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
     )
 
-    # Apply hom alt depletion fix using the annotated GT and expressions from same VDS
+    logger.info("Applying v4 genomes hom alt depletion fix...")
     gt_with_depletion = hom_alt_depletion_fix(
-        vmt.GT,  # Use the GT from the current MatrixTable
+        vmt.GT,
         het_non_ref_expr=vmt._het_non_ref,
         af_expr=vmt.v4_af,
         ab_expr=vmt.AD[1] / vmt.DP,
@@ -294,39 +278,37 @@ def process_gnomad_dataset(
     )
     vmt = vmt.annotate_entries(GT=gt_with_depletion)
 
-    # Checkpoint after expensive MT operations to avoid recomputation
-    vmt = vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
+    return vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
 
-    # Use existing gnomAD group membership table and filter to consent samples
-    logger.info(
-        "Loading gnomAD group membership table for consent sample frequencies..."
-    )
+
+def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> hl.Table:
+    """
+    Calculate frequencies for consent withdrawal samples.
+
+    :param vmt: Prepared MatrixTable with consent samples.
+    :param test: Whether running in test mode.
+    :return: Frequency table for consent samples.
+    """
+    logger.info("Loading group membership and calculating consent frequencies...")
+
+    # Load and filter group membership
     group_membership_ht = get_group_membership(test=test)
-
-    # Filter group membership to only the consent samples we're processing
     consent_sample_ids = set(vmt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
     )
-    # Use the processed MatrixTable that already has adj and other annotations
-    # Annotate MatrixTable with group membership for annotate_freq to use
+
+    # Annotate MatrixTable with group membership
     vmt = vmt.annotate_cols(
         group_membership=group_membership_ht[vmt.col_key].group_membership,
-        fixed_homalt_model=hl.bool(
-            False
-        ),  # Add fixed_homalt_model for high_ab_het function
     )
     vmt = vmt.annotate_rows(hists_fields=mt_hists_fields(vmt))
 
-    # Load consent ANs from resource
-    logger.info("Loading consent ANs from resource...")
+    # Load consent ANs
     consent_ans_ht = get_consent_ans(test=test).ht()
 
-    # Calculate AC and hom alt counts per group membership for consent samples
     logger.info("Calculating AC and hom alt counts per group membership...")
-    # Annotate each variant with AC, hom alt counts, and ANs per group membership
-    # True single-pass aggregation: compute AC and hom counts together in one
-    # aggregation
+    # Single-pass aggregation for AC and homozygote counts
     consent_freq_ht = vmt.annotate_rows(
         freq=hl.agg.group_by(
             vmt.group_membership,
@@ -352,20 +334,27 @@ def process_gnomad_dataset(
         )
     ).rows()
 
-    # Checkpoint expensive frequency calculation since it will be used for merging
-    consent_freq_ht = consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
+    return consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
 
-    logger.info(
-        "Subtracting consent withdrawal sample frequencies from v4 frequency table..."
-    )
 
-    # First, join consent frequencies onto the v4 frequency table
+def _subtract_consent_frequencies(
+    v4_freq_ht: hl.Table, consent_freq_ht: hl.Table
+) -> hl.Table:
+    """
+    Subtract consent withdrawal frequencies from v4 frequency table.
+
+    :param v4_freq_ht: v4 frequency table.
+    :param consent_freq_ht: Consent withdrawal frequency table.
+    :return: Updated frequency table with consent frequencies subtracted.
+    """
+    logger.info("Subtracting consent withdrawal frequencies from v4 frequency table...")
+
+    # Join consent frequencies onto v4 frequency table
     joined_freq_ht = v4_freq_ht.annotate(
         consent_freq=consent_freq_ht[v4_freq_ht.key].freq
     )
 
-    # Annotate globals from consent frequency table (extract as literals to
-    # avoid source mismatch)
+    # Annotate globals from consent frequency table
     joined_freq_ht = joined_freq_ht.annotate_globals(
         consent_freq_meta=hl.literal(hl.eval(consent_freq_ht.freq_meta)),
         consent_freq_meta_sample_count=hl.literal(
@@ -373,7 +362,7 @@ def process_gnomad_dataset(
         ),
     )
 
-    # Using merge_freq_arrays for proper frequency subtraction (following v4 pattern)
+    # Use merge_freq_arrays for proper frequency subtraction
     updated_freq_expr, updated_freq_meta, updated_sample_counts = merge_freq_arrays(
         [joined_freq_ht.freq, joined_freq_ht.consent_freq],
         [joined_freq_ht.freq_meta, joined_freq_ht.consent_freq_meta],
@@ -389,26 +378,34 @@ def process_gnomad_dataset(
     updated_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
     updated_freq_ht = updated_freq_ht.annotate_globals(
         freq_meta=hl.literal(hl.eval(updated_freq_meta)),
-        freq_meta_sample_count=hl.literal(
-            hl.eval(updated_sample_counts["freq_meta_sample_count"])
-        ),
+        freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
 
-    # Checkpoint after merge_freq_arrays to materialize complex expressions
-    # before FAF calculations
-    updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
+    return updated_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
 
+
+def _calculate_and_subtract_age_histograms(
+    vmt: hl.MatrixTable, test: bool = False
+) -> hl.Table:
+    """
+    Calculate and subtract age histograms for consent withdrawal samples.
+
+    :param vmt: MatrixTable with consent samples.
+    :param test: Whether running in test mode.
+    :return: Updated age histogram table.
+    """
     logger.info(
         "Calculating and subtracting age histograms for consent withdrawal samples..."
     )
 
-    # Calculate age histograms using adjusted genotypes and quality filter
-    vmt_adj = vmt.filter_entries(vmt.adj)  # Filter to high-quality calls only
+    # Calculate age histograms using adjusted genotypes
+    vmt_adj = vmt.filter_entries(vmt.adj)
     vmt_with_age_hists = vmt_adj.annotate_rows(
         age_hists=age_hists_expr(vmt_adj.GT, vmt_adj.age, vmt_adj.sex_karyotype)
     )
     consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
 
+    # Load v4 age histograms and subtract consent histograms
     v4_age_hist_ht = get_age_hist(test=test, data_type="genomes").ht()
 
     updated_age_hist_ht = v4_age_hist_ht.annotate(
@@ -427,6 +424,47 @@ def process_gnomad_dataset(
             operation="diff",
         ),
     )
+
+    return updated_age_hist_ht
+
+
+def process_gnomad_dataset(
+    data_test: bool = False,
+    runtime_test: bool = False,
+    overwrite: bool = False,
+) -> Tuple[hl.Table, hl.Table]:
+    """
+    Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
+
+    This function performs frequency adjustment by:
+    1. Loading v4 frequency HT as the base
+    2. Loading v4 genome VDS with consent samples to drop
+    3. Filtering to consent withdrawal samples and release samples only
+    4. Calculating frequencies for consent withdrawal samples using v4 logic
+    5. Subtracting those frequencies from v4 frequency HT
+    6. Computing FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient
+
+    :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
+    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first 2 partitions.
+    :param overwrite: Whether to overwrite existing output files.
+    :return: Tuple of (updated frequency HT with FAF/grpmax annotations, updated age histogram HT) for gnomAD dataset.
+    """
+    test = runtime_test or data_test
+
+    logger.info("Processing gnomAD dataset for consent withdrawals...")
+    v4_freq_ht = get_v4_freq(data_type="genomes").ht()
+
+    # Prepare VDS with consent samples
+    vmt = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
+
+    # Calculate frequencies for consent samples
+    consent_freq_ht = _calculate_consent_frequencies(vmt, test=test)
+
+    # Subtract consent frequencies from v4 frequencies
+    updated_freq_ht = _subtract_consent_frequencies(v4_freq_ht, consent_freq_ht)
+
+    # Calculate and subtract age histograms
+    updated_age_hist_ht = _calculate_and_subtract_age_histograms(vmt, test=test)
 
     # Calculate FAF, grpmax, and other post-processing annotations
     updated_freq_ht = _calculate_faf_and_grpmax_annotations(updated_freq_ht, test=test)
@@ -1109,7 +1147,7 @@ def main(args):
             merged_age_hist_ht.write(merged_age_hist.path, overwrite=overwrite)
 
     finally:
-        hl.copy_log(get_logging_path("v5_frequency"))
+        hl.copy_log(get_logging_path("v5_frequency", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
