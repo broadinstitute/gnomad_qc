@@ -697,21 +697,20 @@ def _calculate_aou_variant_frequencies(
         hl.literal(aou_sample_ids).contains(group_membership_ht.s)
     )
 
-    # Annotate MatrixTable with group membership for annotate_freq to use
-    aou_variant_mt = aou_variant_mt.annotate_cols(
-        group_membership=group_membership_ht[aou_variant_mt.col_key].group_membership
-    )
-
-    return annotate_freq(
-        aou_variant_mt,
-        sex_expr=aou_variant_mt.sex_karyotype,
-        gen_anc_expr=aou_variant_mt.pop,
-        additional_strata_expr=[
-            {"data_set": "aou"},
-            {"data_set": "aou", "gen_anc": aou_variant_mt.pop},
-        ],
-        downsamplings=DOWNSAMPLINGS["v4"],
-        annotate_mt=False,
+    logger.info("Calculating AoU variant frequencies using efficient agg_by_strata...")
+    # Use efficient agg_by_strata approach for AoU variant data
+    return agg_by_strata(
+        aou_variant_mt.select_entries(
+            "GT",
+            "adj",  # Required by agg_by_strata for quality filtering
+            n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
+            is_hom_var=aou_variant_mt.GT.is_hom_var(),
+        ),
+        {
+            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
+            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
+        },
+        group_membership_ht=group_membership_ht,
     )
 
 
@@ -794,21 +793,18 @@ def _calculate_aou_reference_an(
         hl.literal(aou_ref_sample_ids).contains(group_membership_ht.s)
     )
 
-    # Annotate MatrixTable with group membership for annotate_freq to use
-    aou_reference_mt = aou_reference_mt.annotate_cols(
-        group_membership=group_membership_ht[aou_reference_mt.col_key].group_membership
-    )
-
-    return annotate_freq(
-        aou_reference_mt,
-        sex_expr=aou_reference_mt.sex_karyotype,
-        gen_anc_expr=aou_reference_mt.pop,
-        additional_strata_expr=[
-            {"data_set": "aou"},
-            {"data_set": "aou", "gen_anc": aou_reference_mt.pop},
-        ],
-        downsamplings=DOWNSAMPLINGS["v4"],
-        annotate_mt=False,
+    logger.info("Calculating AoU reference AN using efficient agg_by_strata...")
+    # Use efficient agg_by_strata approach for AoU reference AN calculation
+    return agg_by_strata(
+        aou_reference_mt.select_entries(
+            "GT",
+            "adj",  # Required by agg_by_strata for quality filtering
+            ploidy=aou_reference_mt.GT.ploidy,
+        ),
+        {
+            "AN": (lambda t: t.ploidy, hl.agg.sum),
+        },
+        group_membership_ht=group_membership_ht,
     )
 
 
