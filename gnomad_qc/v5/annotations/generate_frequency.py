@@ -669,7 +669,7 @@ def _calculate_aou_variant_frequencies(
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = get_group_membership(subset="aou", test=test)
+    group_membership_ht = get_group_membership(subset="aou", test=test).ht()
 
     # Filter group membership to only the AoU samples we're processing
     aou_sample_ids = set(aou_variant_mt.s.collect())
@@ -760,7 +760,7 @@ def _calculate_aou_reference_an(
     """
     # Use existing AoU group membership table and filter to reference samples
     logger.info("Loading AoU group membership table for reference AN calculation...")
-    group_membership_ht = get_group_membership(subset="aou", test=test)
+    group_membership_ht = get_group_membership(subset="aou", test=test).ht()
 
     # Filter group membership to only the AoU samples we're processing
     aou_ref_sample_ids = set(aou_reference_mt.s.collect())
