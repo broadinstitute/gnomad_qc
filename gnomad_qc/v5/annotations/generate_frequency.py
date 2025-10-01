@@ -327,12 +327,16 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
                     ),
                 ),
                 hl.agg.fold(
+                    hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0)),
                     lambda running_totals, gt: hl.struct(
                         AC=running_totals.AC + gt.n_alt_alleles(),
                         homozygote_count=running_totals.homozygote_count
                         + hl.int32(gt.is_hom_var()),
                     ),
-                    hl.struct(AC=hl.int64(0), homozygote_count=hl.int64(0)),
+                    lambda left, right: hl.struct(
+                        AC=left.AC + right.AC,
+                        homozygote_count=left.homozygote_count + right.homozygote_count,
+                    ),
                     vmt.GT,
                 ),
             ),
