@@ -316,7 +316,7 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
     vmt = vmt.annotate_rows(hists_fields=mt_hists_fields(vmt))
 
     # Load consent ANs
-    consent_ans_ht = get_consent_ans(test=test).ht()
+    # consent_ans_ht = get_consent_ans(test=test).ht()
 
     logger.info("Calculating AC and hom alt counts per group membership...")
     # Single-pass aggregation for AC and homozygote counts
@@ -327,9 +327,11 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
                 lambda counts: hl.struct(
                     AC=counts.AC,
                     homozygote_count=counts.homozygote_count,
-                    AN=consent_ans_ht[vmt.row_key].AN,
+                    AN=hl.int32(866 * 2),  # consent_ans_ht[vmt.row_key].AN,
                     AF=hl.if_else(
-                        counts.AC > 0, counts.AC / consent_ans_ht[vmt.row_key].AN, 0.0
+                        counts.AC > 0,
+                        counts.AC / (hl.int32(866 * 2)),
+                        0.0,  # consent_ans_ht[vmt.row_key].AN,
                     ),
                 ),
                 hl.agg.fold(
