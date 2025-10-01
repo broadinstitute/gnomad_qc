@@ -232,6 +232,17 @@ def _prepare_consent_vds(
         sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
         age=vmt.meta.project_meta.age,
     )
+    # Add fixed_homalt_model field based on GATK version (following v4 approach)
+    # Samples processed with GATK 4.1.4.1 or 4.1.8.0 have the fixed homalt model
+    fixed_homalt_versions = hl.set(["4.1.4.1", "4.1.8.0"])
+    vmt = vmt.annotate_cols(
+        fixed_homalt_model=hl.coalesce(
+            fixed_homalt_versions.contains(
+                vmt.meta.project_meta.get("gatk_version", "")
+            ),
+            hl.bool(False),  # Default to False if gatk_version is missing
+        )
+    )
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
@@ -633,6 +644,9 @@ def _prepare_aou_variant_data(
             sex_karyotype=aou_variant_mt.meta.sex_imputation.sex_karyotype,
             pop=aou_variant_mt.meta.population_inference.pop,
             age=aou_variant_mt.meta.project_meta.age,
+            fixed_homalt_model=hl.bool(
+                False
+            ),  # Required for potential high_ab_het usage
         )
     else:
         # Production mode expects direct metadata fields
@@ -640,6 +654,9 @@ def _prepare_aou_variant_data(
             sex_karyotype=aou_variant_mt.meta.sex_karyotype,
             pop=aou_variant_mt.meta.pop,
             age=aou_variant_mt.meta.age,
+            fixed_homalt_model=hl.bool(
+                False
+            ),  # Required for potential high_ab_het usage
         )
 
     # Rename LGT to GT and LAD to AD for compatibility with annotate_freq and
@@ -712,12 +729,18 @@ def _prepare_aou_reference_data(
         aou_reference_mt = aou_reference_mt.annotate_cols(
             sex_karyotype=aou_reference_mt.meta.sex_imputation.sex_karyotype,
             pop=aou_reference_mt.meta.population_inference.pop,
+            fixed_homalt_model=hl.bool(
+                False
+            ),  # Required for potential high_ab_het usage
         )
     else:
         # Production mode expects direct metadata fields
         aou_reference_mt = aou_reference_mt.annotate_cols(
             sex_karyotype=aou_reference_mt.meta.sex_karyotype,
             pop=aou_reference_mt.meta.pop,
+            fixed_homalt_model=hl.bool(
+                False
+            ),  # Required for potential high_ab_het usage
         )
 
     # Rename LGT to GT for compatibility with annotate_freq
