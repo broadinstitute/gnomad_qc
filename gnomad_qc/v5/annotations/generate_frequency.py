@@ -399,14 +399,14 @@ def _subtract_consent_frequencies(
     )
 
     # Apply changes - use hl.literal() to break source references from merge_freq_arrays
-    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
-    joined_freq_ht = joined_freq_ht.select_globals(
-        freq_meta=hl.literal(hl.eval(updated_freq_meta)),
-        freq_meta_sample_count=hl.literal(
+    joined_freq_ht = joined_freq_ht.annotate(joined_freq=updated_freq_expr)
+    joined_freq_ht = joined_freq_ht.annotate_globals(
+        joined_freq_meta=hl.literal(hl.eval(updated_freq_meta)),
+        joined_freq_meta_sample_count=hl.literal(
             hl.eval(updated_sample_counts["freq_meta_sample_count"])
         ),
     )
-
+    joined_freq_ht.show()
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
 
 
