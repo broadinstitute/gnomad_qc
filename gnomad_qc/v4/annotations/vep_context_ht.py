@@ -78,7 +78,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vep-version",
         help="Version of VEP the context Table is being annotated with.",
-        action="store_true",
         default="105",
         choices=["105", "115"],
     )
