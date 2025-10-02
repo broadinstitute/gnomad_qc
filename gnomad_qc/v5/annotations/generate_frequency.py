@@ -378,13 +378,10 @@ def _subtract_consent_frequencies(
         consent_freq=consent_freq_ht[v4_freq_ht.key].freq
     )
 
-    consent_freq_meta = consent_freq_ht.index_globals().consent_freq_meta
-    consent_freq_meta_sample_count = (
-        consent_freq_ht.index_globals().consent_freq_meta_sample_count
-    )
+    # Add consent globals first (following v4 pattern)
     joined_freq_ht = joined_freq_ht.annotate_globals(
-        consent_freq_meta=consent_freq_meta,
-        consent_freq_meta_sample_count=consent_freq_meta_sample_count,
+        consent_freq_meta=consent_freq_ht.index_globals().consent_freq_meta,
+        consent_freq_meta_sample_count=consent_freq_ht.index_globals().consent_freq_meta_sample_count,
     )
 
     logger.info("Subtracting consent frequencies from v4 frequency table...")
@@ -401,7 +398,10 @@ def _subtract_consent_frequencies(
         },
     )
 
-    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr).select_globals(
+    # Apply all changes in a single operation to avoid source mismatch
+    joined_freq_ht = joined_freq_ht.select(
+        *joined_freq_ht.row, freq=updated_freq_expr
+    ).select_globals(
         freq_meta=updated_freq_meta,
         freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
