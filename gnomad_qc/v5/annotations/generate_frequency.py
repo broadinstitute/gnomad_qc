@@ -351,8 +351,8 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
 
     group_membership_globals = group_membership_ht.index_globals()
     consent_freq_ht = consent_freq_ht.annotate_globals(
-        consent_freq_meta=group_membership_globals.consent_freq_meta,
-        consent_freq_meta_sample_count=group_membership_globals.consent_freq_meta_sample_count,
+        consent_freq_meta=group_membership_globals.freq_meta,
+        consent_freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
     logger.info(
         f"Consent frequency metadata: {hl.eval(consent_freq_ht.consent_freq_meta)}"
