@@ -407,7 +407,9 @@ def _subtract_consent_frequencies(
             hl.eval(updated_sample_counts["freq_meta_sample_count"])
         ),
     )
-    joined_freq_ht.show()
+    joined_freq_ht.filter(hl.is_defined(joined_freq_ht.consent_freq)).select(
+        "freq", "consent_freq", "joined_freq"
+    ).show()
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
 
 
