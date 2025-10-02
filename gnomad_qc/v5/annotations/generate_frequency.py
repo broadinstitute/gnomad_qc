@@ -398,12 +398,13 @@ def _subtract_consent_frequencies(
         },
     )
 
-    # Apply all changes in a single operation to avoid source mismatch
-    joined_freq_ht = joined_freq_ht.select(
-        *joined_freq_ht.row, freq=updated_freq_expr
-    ).select_globals(
-        freq_meta=updated_freq_meta,
-        freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
+    # Apply changes - use hl.literal() to break source references from merge_freq_arrays
+    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
+    joined_freq_ht = joined_freq_ht.select_globals(
+        freq_meta=hl.literal(hl.eval(updated_freq_meta)),
+        freq_meta_sample_count=hl.literal(
+            hl.eval(updated_sample_counts["freq_meta_sample_count"])
+        ),
     )
 
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
