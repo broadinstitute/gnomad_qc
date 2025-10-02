@@ -1,0 +1,16 @@
+gnomad_qc.v5.data_ingestion.federated_validity_checks
+=====================================================
+
+Script to perform validity checks on input federated data or final release files.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.data_ingestion.federated_validity_checks
+
+.. automodule:: gnomad_qc.v5.data_ingestion.federated_validity_checks
+    :exclude-members: get_script_argument_parser
