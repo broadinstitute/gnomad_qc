@@ -396,6 +396,7 @@ def _subtract_consent_frequencies(
                 joined_freq_ht.consent_freq_meta_sample_count,
             ]
         },
+        set_negatives_to_zero=True,
     )
 
     # Apply changes - use hl.literal() to break source references from merge_freq_arrays
