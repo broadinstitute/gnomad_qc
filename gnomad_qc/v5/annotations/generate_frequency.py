@@ -151,7 +151,6 @@ def generate_freq_ht(
         ds_gen_anc_counts=hl.eval(ds_ht.ds_pop_counts),
     )
     group_membership = group_membership_ht[mt.col_key].group_membership
-    group_membership_globals = group_membership_ht.index_globals()
 
     logger.info("Annotating frequencies and counting high AB het calls...")
     freq_ht = compute_freq_by_strata(
@@ -163,6 +162,7 @@ def generate_freq_ht(
     #  on strata doesn't work because hail looks for the annotation
     #  "non_ukb_downsamplings" regardless of the conditional value and throws an error
     #  if it doesn't exist.
+    group_membership_globals = group_membership_ht.index_globals()
     freq_ht = freq_ht.annotate_globals(**group_membership_globals)
 
     return freq_ht
@@ -347,11 +347,11 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
             )
         )
     )
-
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
+    group_membership_globals = group_membership_ht.index_globals()
     consent_freq_ht = consent_freq_ht.annotate_globals(
-        freq_meta=group_membership_ht.index_globals().freq_meta,
-        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
     logger.info(f"Consent frequency metadata: {hl.eval(consent_freq_ht.freq_meta)}")
 
@@ -376,9 +376,10 @@ def _subtract_consent_frequencies(
     )
 
     # Annotate globals from consent frequency table
+    consent_globals = consent_freq_ht.index_globals()
     joined_freq_ht = joined_freq_ht.annotate_globals(
-        consent_freq_meta=consent_freq_ht.index_globals().freq_meta,
-        consent_freq_meta_sample_count=consent_freq_ht.index_globals().freq_meta_sample_count,
+        consent_freq_meta=consent_globals.freq_meta,
+        consent_freq_meta_sample_count=consent_globals.freq_meta_sample_count,
     )
 
     # Use merge_freq_arrays for proper frequency subtraction
@@ -717,11 +718,11 @@ def _calculate_aou_variant_frequencies(
         },
         group_membership_ht=group_membership_ht,
     )
-
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
+    group_membership_globals = group_membership_ht.index_globals()
     aou_variant_freq_ht = aou_variant_freq_ht.annotate_globals(
-        freq_meta=group_membership_ht.index_globals().freq_meta,
-        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
     logger.info(
         f"AoU variant frequency metadata: {hl.eval(aou_variant_freq_ht.freq_meta)}"
@@ -822,11 +823,11 @@ def _calculate_aou_reference_an(
         },
         group_membership_ht=group_membership_ht,
     )
-
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
+    group_membership_globals = group_membership_ht.index_globals()
     aou_reference_an_ht = aou_reference_an_ht.annotate_globals(
-        freq_meta=group_membership_ht.index_globals().freq_meta,
-        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
     logger.info(f"AoU reference AN metadata: {hl.eval(aou_reference_an_ht.freq_meta)}")
 
