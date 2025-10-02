@@ -731,10 +731,6 @@ def _calculate_aou_variant_frequencies(
         freq_meta=group_membership_globals.freq_meta,
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
-    logger.info(
-        f"AoU variant frequency metadata: {hl.eval(aou_variant_freq_ht.freq_meta)}"
-    )
-
     return aou_variant_freq_ht
 
 
