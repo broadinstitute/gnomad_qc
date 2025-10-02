@@ -398,13 +398,13 @@ def _subtract_consent_frequencies(
         },
     )
 
-    updated_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
-    updated_freq_ht = updated_freq_ht.annotate_globals(
+    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
+    joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=updated_freq_meta,
         freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
 
-    return updated_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
+    return joined_freq_ht.checkpoint(new_temp_file("merged_freq", "ht"))
 
 
 def _calculate_and_subtract_age_histograms(
@@ -1045,30 +1045,30 @@ def merge_gnomad_and_aou_frequencies(
             aou_age_hist_hom=aou_age_hist_ht[gnomad_age_hist_ht.key].age_hist_hom,
         )
 
-    merged_age_hist_ht = joined_age_hist_ht.annotate(
-        age_hist_het=hl.if_else(
-            hl.is_defined(joined_age_hist_ht.aou_age_hist_het),
-            merge_histograms(
-                [
-                    joined_age_hist_ht.age_hist_het,
-                    joined_age_hist_ht.aou_age_hist_het,
-                ],
-                operation="sum",
+        merged_age_hist_ht = joined_age_hist_ht.annotate(
+            age_hist_het=hl.if_else(
+                hl.is_defined(joined_age_hist_ht.aou_age_hist_het),
+                merge_histograms(
+                    [
+                        joined_age_hist_ht.age_hist_het,
+                        joined_age_hist_ht.aou_age_hist_het,
+                    ],
+                    operation="sum",
+                ),
+                joined_age_hist_ht.age_hist_het,
             ),
-            joined_age_hist_ht.age_hist_het,
-        ),
-        age_hist_hom=hl.if_else(
-            hl.is_defined(joined_age_hist_ht.aou_age_hist_hom),
-            merge_histograms(
-                [
-                    joined_age_hist_ht.age_hist_hom,
-                    joined_age_hist_ht.aou_age_hist_hom,
-                ],
-                operation="sum",
+            age_hist_hom=hl.if_else(
+                hl.is_defined(joined_age_hist_ht.aou_age_hist_hom),
+                merge_histograms(
+                    [
+                        joined_age_hist_ht.age_hist_hom,
+                        joined_age_hist_ht.aou_age_hist_hom,
+                    ],
+                    operation="sum",
+                ),
+                joined_age_hist_ht.age_hist_hom,
             ),
-            joined_age_hist_ht.age_hist_hom,
-        ),
-    )
+        )
 
     return merged_freq_ht, merged_age_hist_ht.select("age_hist_het", "age_hist_hom")
 
