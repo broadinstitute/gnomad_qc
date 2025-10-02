@@ -348,10 +348,11 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
         )
     )
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
+
     group_membership_globals = group_membership_ht.index_globals()
     consent_freq_ht = consent_freq_ht.annotate_globals(
-        freq_meta=group_membership_globals.freq_meta,
-        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+        consent_freq_meta=group_membership_globals.freq_meta,
+        consent_freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
     logger.info(f"Consent frequency metadata: {hl.eval(consent_freq_ht.freq_meta)}")
 
@@ -377,11 +378,9 @@ def _subtract_consent_frequencies(
 
     # Annotate globals from consent frequency table
     consent_globals = consent_freq_ht.index_globals()
-    joined_freq_ht = joined_freq_ht.annotate_globals(
-        consent_freq_meta=consent_globals.freq_meta,
-        consent_freq_meta_sample_count=consent_globals.freq_meta_sample_count,
-    )
+    joined_freq_ht = joined_freq_ht.annotate_globals(**consent_globals)
 
+    logger.info("Subtracting consent frequencies from v4 frequency table...")
     # Use merge_freq_arrays for proper frequency subtraction
     updated_freq_expr, updated_freq_meta, updated_sample_counts = merge_freq_arrays(
         [joined_freq_ht.freq, joined_freq_ht.consent_freq],
