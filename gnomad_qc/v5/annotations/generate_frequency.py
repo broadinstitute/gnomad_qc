@@ -262,11 +262,11 @@ def _prepare_consent_vds(
     # option to adjust ploidy after adj is included for consistency with v3.1, where we
     # added the adj annotation before adjusting for sex ploidy.
     logger.info("Computing sex adjusted genotypes and quality annotations...")
-    ab_expr = vmt.AD[1] / vmt.DP
-    ab_cutoff = 0.9
     vmt = vmt.annotate_entries(
         adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD),
     )
+    ab_cutoff = 0.9
+    ab_expr = vmt.AD[1] / vmt.DP
     vmt = vmt.select_entries(
         "AD",
         "DP",
