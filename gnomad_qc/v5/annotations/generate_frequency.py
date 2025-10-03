@@ -11,22 +11,15 @@ import logging
 from typing import Tuple
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import (
-    DOWNSAMPLINGS,
-    GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX,
-)
+from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     agg_by_strata,
     annotate_adj,
-    annotate_freq,
     bi_allelic_site_inbreeding_expr,
-    build_freq_stratification_list,
-    compute_freq_by_strata,
     faf_expr,
     gen_anc_faf_max_expr,
-    generate_freq_group_membership_array,
     get_adj_expr,
     grpmax_expr,
     merge_freq_arrays,
@@ -40,7 +33,6 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
-from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.annotations import (
     get_consent_ans,
     get_freq,
@@ -96,75 +88,6 @@ def high_ab_het(
         & ~col.fixed_homalt_model
         & entry._high_ab_het_ref
     )
-
-
-def generate_freq_ht(
-    mt: hl.MatrixTable,
-    ds_ht: hl.Table,
-    meta_ht: hl.Table,
-) -> hl.Table:
-    """
-    Generate frequency Table.
-
-    Assumes all necessary annotations are present:
-        `mt` annotations:
-            - GT
-            - adj
-            - _high_ab_het_ref
-            - fixed_homalt_model
-            - fixed_homalt_model
-
-        `ds_ht` annotations:
-            - downsampling
-            - downsamplings
-            - ds_pop_counts
-
-        `meta_ht` annotations:
-            - pop
-            - sex_karyotype
-            - gatk_version
-            - age
-            - ukb_sample
-
-    :param mt: Input MatrixTable.
-    :param ds_ht: Table with downsampling annotations.
-    :param meta_ht: Table with sample metadata annotations.
-    :return: Hail Table with frequency annotations.
-    """
-    meta_ht = meta_ht.semi_join(mt.cols())
-    additional_strata_expr = [
-        {"gatk_version": meta_ht.gatk_version},
-        {"gatk_version": meta_ht.gatk_version, "pop": meta_ht.pop},
-    ]
-    logger.info("Building frequency stratification list...")
-    strata_expr = build_freq_stratification_list(
-        sex_expr=meta_ht.sex_karyotype,
-        gen_anc_expr=meta_ht.pop,
-        additional_strata_expr=additional_strata_expr,
-        downsampling_expr=ds_ht[meta_ht.key].downsampling,
-    )
-    group_membership_ht = generate_freq_group_membership_array(
-        meta_ht,
-        strata_expr,
-        downsamplings=hl.eval(ds_ht.downsamplings),
-        ds_gen_anc_counts=hl.eval(ds_ht.ds_pop_counts),
-    )
-    group_membership = group_membership_ht[mt.col_key].group_membership
-
-    logger.info("Annotating frequencies and counting high AB het calls...")
-    freq_ht = compute_freq_by_strata(
-        mt.annotate_cols(group_membership=group_membership),
-        entry_agg_funcs={"high_ab_hets_by_group": (high_ab_het, hl.agg.sum)},
-        select_fields=["hists_fields"],
-    )
-    # Note: To use "multi_way_zip_join" need globals to be the same but an if_else based
-    #  on strata doesn't work because hail looks for the annotation
-    #  "non_ukb_downsamplings" regardless of the conditional value and throws an error
-    #  if it doesn't exist.
-    group_membership_globals = group_membership_ht.index_globals()
-    freq_ht = freq_ht.annotate_globals(**group_membership_globals)
-
-    return freq_ht
 
 
 def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
@@ -388,7 +311,9 @@ def _subtract_consent_frequencies_and_histograms(
     logger.info("Calculating age histograms for consent withdrawal samples...")
     vmt_adj = vmt.filter_entries(vmt.adj)
     vmt_with_age_hists = vmt_adj.annotate_rows(
-        age_hists=age_hists_expr(vmt_adj.GT, vmt_adj.age, vmt_adj.sex_karyotype)
+        age_hists=age_hists_expr(
+            hl.call(vmt_adj.GT), vmt_adj.age, vmt_adj.sex_karyotype
+        )
     )
     consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
 
@@ -763,11 +688,11 @@ def _calculate_aou_variant_frequencies(
     aou_variant_mt: hl.MatrixTable, test: bool = False
 ) -> hl.Table:
     """
-    Calculate frequencies from AoU variant data (gives correct AC, hom but incorrect AN).
+    Calculate complete frequency struct for AoU variant data using imported AN values.
 
     :param aou_variant_mt: Prepared variant MatrixTable
     :param test: Whether to use test resources
-    :return: Frequency Table with AC and hom counts from variant data
+    :return: Frequency Table with complete freq struct including imported AN
     """
     # Use existing AoU group membership table and filter to variant samples
     logger.info(
@@ -780,6 +705,10 @@ def _calculate_aou_variant_frequencies(
     group_membership_ht = group_membership_ht.filter(
         hl.literal(aou_sample_ids).contains(group_membership_ht.s)
     )
+
+    # Load AN values from consent_ans (calculated by another script)
+    logger.info("Loading AN values from consent_ans...")
+    consent_ans_ht = get_consent_ans(test=test).ht()
 
     logger.info("Calculating AoU variant frequencies using efficient agg_by_strata...")
     # Use efficient agg_by_strata approach for AoU variant data
@@ -796,6 +725,27 @@ def _calculate_aou_variant_frequencies(
         },
         group_membership_ht=group_membership_ht,
     )
+
+    # Join with consent AN values and build complete freq struct
+    logger.info("Building complete frequency struct with imported AN values...")
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
+    )
+
+    # Build complete freq struct using AC from variant data and AN from consent_ans
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        freq=hl.map(
+            lambda freq_data, an_data: hl.struct(
+                AC=freq_data.AC,
+                AF=hl.if_else(an_data > 0, freq_data.AC / an_data, 0.0),
+                AN=an_data,
+                homozygote_count=freq_data.homozygote_count,
+            ),
+            aou_variant_freq_ht.freq,
+            aou_variant_freq_ht.consent_an,
+        )
+    ).drop("consent_an")
+
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
     group_membership_globals = group_membership_ht.index_globals()
     aou_variant_freq_ht = aou_variant_freq_ht.annotate_globals(
@@ -803,146 +753,6 @@ def _calculate_aou_variant_frequencies(
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
     return aou_variant_freq_ht
-
-
-def _prepare_aou_reference_data(
-    aou_vds_filtered: hl.vds.VariantDataset, test: bool = False
-) -> hl.MatrixTable:
-    """
-    Prepare AoU reference data for AN calculation.
-
-    :param aou_vds_filtered: Filtered AoU VDS
-    :param test: Whether this is a test run
-    :return: Prepared reference MatrixTable
-    """
-    aou_reference_mt = aou_vds_filtered.reference_data
-
-    if test:
-        # In test mode, adapt to the test VDS metadata structure
-        aou_reference_mt = aou_reference_mt.annotate_cols(
-            sex_karyotype=aou_reference_mt.meta.sex_imputation.sex_karyotype,
-            pop=aou_reference_mt.meta.population_inference.pop,
-            fixed_homalt_model=hl.bool(
-                False
-            ),  # Always False for genomes (v3-style correction applied to all)
-        )
-    else:
-        # Production mode expects direct metadata fields
-        aou_reference_mt = aou_reference_mt.annotate_cols(
-            sex_karyotype=aou_reference_mt.meta.sex_karyotype,
-            pop=aou_reference_mt.meta.pop,
-            fixed_homalt_model=hl.bool(
-                False
-            ),  # Always False for genomes (v3-style correction applied to all)
-        )
-
-    # Rename LGT to GT for compatibility with annotate_freq
-    # Reference data doesn't have LAD, GQ, DP, so create placeholders for annotate_adj
-    aou_reference_mt = aou_reference_mt.annotate_entries(
-        GT=aou_reference_mt.LGT,
-        AD=hl.missing(hl.tarray(hl.tint32)),  # Placeholder AD for annotate_adj
-        GQ=hl.missing(hl.tint32),  # Placeholder GQ for annotate_adj
-        DP=hl.missing(hl.tint32),  # Placeholder DP for annotate_adj
-    )
-
-    # Add adj annotation required by annotate_freq
-    aou_reference_mt = annotate_adj(aou_reference_mt)
-
-    # Checkpoint reference MT
-    aou_reference_mt = aou_reference_mt.checkpoint(
-        new_temp_file("aou_reference_mt", "mt")
-    )
-
-    # Reference data needs alleles field for annotate_freq - add dummy alleles
-    aou_reference_mt = aou_reference_mt.annotate_rows(
-        alleles=["A", "T"]
-    )  # Add dummy alleles
-    aou_reference_mt = aou_reference_mt.key_rows_by(
-        "locus", "alleles"
-    )  # Re-key with alleles
-
-    return aou_reference_mt
-
-
-def _calculate_aou_reference_an(
-    aou_reference_mt: hl.MatrixTable, test: bool = False
-) -> hl.Table:
-    """
-    Calculate correct AN values from AoU reference data (all sites).
-
-    :param aou_reference_mt: Prepared reference MatrixTable
-    :param test: Whether to use test resources
-    :return: Frequency Table with correct AN values from all sites
-    """
-    # Use existing AoU group membership table and filter to reference samples
-    logger.info("Loading AoU group membership table for reference AN calculation...")
-    group_membership_ht = get_group_membership(subset="aou", test=test).ht()
-
-    # Filter group membership to only the AoU samples we're processing
-    aou_ref_sample_ids = set(aou_reference_mt.s.collect())
-    group_membership_ht = group_membership_ht.filter(
-        hl.literal(aou_ref_sample_ids).contains(group_membership_ht.s)
-    )
-
-    logger.info("Calculating AoU reference AN using efficient agg_by_strata...")
-    # Use efficient agg_by_strata approach for AoU reference AN calculation
-    aou_reference_an_ht = agg_by_strata(
-        aou_reference_mt.select_entries(
-            "GT",
-            "adj",  # Required by agg_by_strata for quality filtering
-            ploidy=aou_reference_mt.GT.ploidy,
-        ),
-        {
-            "AN": (lambda t: t.ploidy, hl.agg.sum),
-        },
-        group_membership_ht=group_membership_ht,
-    )
-    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
-    group_membership_globals = group_membership_ht.index_globals()
-    aou_reference_an_ht = aou_reference_an_ht.annotate_globals(
-        freq_meta=group_membership_globals.freq_meta,
-        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
-    )
-    logger.info(f"AoU reference AN metadata: {hl.eval(aou_reference_an_ht.freq_meta)}")
-
-    return aou_reference_an_ht
-
-
-def _correct_aou_frequencies(
-    aou_freq_ht: hl.Table, aou_ref_freq_ht: hl.Table
-) -> hl.Table:
-    """
-    Correct AoU frequencies by combining AC from variant data with AN from reference data.
-
-    :param aou_freq_ht: Frequency table with AC/hom from variant data
-    :param aou_ref_freq_ht: Frequency table with AN from reference data
-    :return: Corrected frequency table with proper AF calculation
-    """
-    logger.info("Correcting AN values and recalculating allele frequencies...")
-    corrected_an_ht = aou_ref_freq_ht.select(
-        correct_freq=hl.map(
-            lambda idx_freq_tuple: idx_freq_tuple[1].annotate(
-                # Keep original AC and hom, but update AN from all-sites data
-                AN=aou_ref_freq_ht.freq[idx_freq_tuple[0]].AN,
-                # Recalculate AF with correct AN
-                AF=hl.if_else(
-                    aou_ref_freq_ht.freq[idx_freq_tuple[0]].AN > 0,
-                    hl.float64(idx_freq_tuple[1].AC)
-                    / hl.float64(aou_ref_freq_ht.freq[idx_freq_tuple[0]].AN),
-                    0.0,
-                ),
-            ),
-            hl.enumerate(aou_freq_ht[aou_ref_freq_ht.key].freq),
-        )
-    )
-
-    # Join corrected AN back to original frequency table
-    corrected_freq_ht = aou_freq_ht.annotate(
-        freq=corrected_an_ht[aou_freq_ht.key].correct_freq
-    )
-
-    # Checkpoint after frequency correction
-    return corrected_freq_ht.checkpoint(new_temp_file("aou_corrected_freq", "ht"))
 
 
 def _calculate_aou_age_histograms(
@@ -1010,9 +820,8 @@ def process_aou_dataset(
     Process All of Us dataset for frequency calculations and age histograms.
 
     This function efficiently processes the AoU VDS by:
-    1. Computing allele counts (AC) and homozygote counts from variant_data (sparse)
-    2. Computing allele numbers (AN) from reference_data (all sites including reference-only)
-    3. Combining these to get accurate allele frequencies with correct denominators
+    1. Computing complete frequency struct using imported AN from consent_ans
+    2. Age histograms are calculated within the frequency calculation
 
     :param test: Whether to run in test mode.
     :param overwrite: Whether to overwrite existing results.
@@ -1031,22 +840,10 @@ def process_aou_dataset(
     # Step 2: Filter related samples
     aou_vds_filtered = _filter_aou_related_samples(aou_vds, test=test)
 
-    # Step 3: Calculate frequencies using efficient variant_data + all-sites AN approach
-    logger.info(
-        "Calculating efficient AoU frequencies using variant_data + all-sites AN..."
-    )
-
-    # Step 3a: Calculate AC/hom from variant_data
+    # Step 3: Calculate complete frequencies using imported AN values
+    logger.info("Calculating AoU frequencies with imported AN values...")
     aou_variant_mt = _prepare_aou_variant_data(aou_vds_filtered, test=test)
     aou_freq_ht = _calculate_aou_variant_frequencies(aou_variant_mt, test=test)
-
-    # Step 3b: Calculate correct AN from reference_data (all sites)
-    logger.info("Computing correct allele numbers (AN) from all sites...")
-    aou_reference_mt = _prepare_aou_reference_data(aou_vds_filtered, test=test)
-    aou_ref_freq_ht = _calculate_aou_reference_an(aou_reference_mt, test=test)
-
-    # Step 3c: Correct frequencies by combining variant AC with reference AN
-    aou_freq_ht = _correct_aou_frequencies(aou_freq_ht, aou_ref_freq_ht)
 
     # Step 4: Calculate age histograms
     aou_age_hist_ht = _calculate_aou_age_histograms(aou_vds_filtered, test=test)
