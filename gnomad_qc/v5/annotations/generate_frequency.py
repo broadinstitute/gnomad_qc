@@ -312,9 +312,9 @@ def _subtract_consent_frequencies_and_histograms(
     vmt_adj = vmt.filter_entries(vmt.adj)
     vmt_with_age_hists = vmt_adj.annotate_rows(
         age_hists=age_hists_expr(
-            hl.unphased_diploid_gt_index_call(vmt_adj.GT),
+            vmt_adj.adj,
+            vmt_adj.GT,  # GT is already a call expression, no conversion needed
             vmt_adj.age,
-            vmt_adj.sex_karyotype,
         )
     )
     consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
@@ -473,7 +473,6 @@ def _calculate_faf_and_grpmax_annotations(
 def process_gnomad_dataset(
     data_test: bool = False,
     runtime_test: bool = False,
-    overwrite: bool = False,
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -489,7 +488,6 @@ def process_gnomad_dataset(
 
     :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
     :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first 2 partitions.
-    :param overwrite: Whether to overwrite existing output files.
     :return: Updated frequency HT with FAF/grpmax annotations and updated age histograms for gnomAD dataset.
     """
     test = runtime_test or data_test
