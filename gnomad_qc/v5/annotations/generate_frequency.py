@@ -272,7 +272,7 @@ def _prepare_consent_vds(
         "DP",
         "GQ",
         "_het_non_ref",
-        adj="adj",
+        "adj",
         GT=adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
         _het_ab=ab_expr,
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
