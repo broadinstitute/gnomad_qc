@@ -382,70 +382,8 @@ def _subtract_consent_frequencies_and_histograms(
         ),
     )
 
-    # Clean up temporary fields
-    joined_freq_ht = joined_freq_ht.drop("consent_freq", "consent_age_hists")
-
     joined_freq_ht.select("freq", "histograms").show()
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq_and_hists", "ht"))
-
-
-def process_gnomad_dataset(
-    data_test: bool = False,
-    runtime_test: bool = False,
-    overwrite: bool = False,
-) -> hl.Table:
-    """
-    Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
-
-    This function performs frequency adjustment by:
-    1. Loading v4 frequency HT (contains both frequencies and age histograms)
-    2. Loading consent withdrawal VDS
-    3. Filtering to sites present in BOTH consent VDS AND v4 frequency table
-    4. Calculating frequencies and age histograms for consent withdrawal samples
-    5. Subtracting both frequencies and age histograms from v4 frequency HT
-    6. Only overwriting fields that were actually updated in the final output
-    7. Computing FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient
-
-    :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
-    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first 2 partitions.
-    :param overwrite: Whether to overwrite existing output files.
-    :return: Updated frequency HT with FAF/grpmax annotations and updated age histograms for gnomAD dataset.
-    """
-    test = runtime_test or data_test
-
-    logger.info("Processing gnomAD dataset for consent withdrawals...")
-
-    # Load v4 frequency table (contains both frequencies and age histograms)
-    logger.info("Loading v4 frequency table...")
-    v4_freq_ht = get_v4_freq(data_type="genomes").ht()
-
-    # Prepare consent VDS (without filtering yet)
-    logger.info("Loading consent VDS...")
-    vmt = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
-
-    # Filter v4 frequency table to sites present in consent VDS
-    logger.info("Filtering v4 frequency table to sites present in consent VDS...")
-    consent_sites = vmt.rows().key_by("locus", "alleles").select().distinct()
-    v4_freq_ht_filtered = v4_freq_ht.semi_join(consent_sites)
-
-    # Calculate frequencies for consent samples (vmt already contains only
-    # relevant sites)
-    consent_freq_ht = _calculate_consent_frequencies(vmt, test=test)
-
-    # Subtract consent frequencies and age histograms from v4 frequency table
-    updated_freq_ht = _subtract_consent_frequencies_and_histograms(
-        v4_freq_ht_filtered, consent_freq_ht, vmt, test=test
-    )
-
-    # Calculate FAF, grpmax, and other post-processing annotations
-    updated_freq_ht = _calculate_faf_and_grpmax_annotations(updated_freq_ht, test=test)
-
-    # Only overwrite fields that were actually updated (merge back with
-    # original full table)
-    logger.info("Preparing final frequency table with only updated fields...")
-    final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
-
-    return final_freq_ht
 
 
 def _calculate_faf_and_grpmax_annotations(
@@ -530,6 +468,67 @@ def _calculate_faf_and_grpmax_annotations(
     )
 
     return updated_freq_ht
+
+
+def process_gnomad_dataset(
+    data_test: bool = False,
+    runtime_test: bool = False,
+    overwrite: bool = False,
+) -> hl.Table:
+    """
+    Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
+
+    This function performs frequency adjustment by:
+    1. Loading v4 frequency HT (contains both frequencies and age histograms)
+    2. Loading consent withdrawal VDS
+    3. Filtering to sites present in BOTH consent VDS AND v4 frequency table
+    4. Calculating frequencies and age histograms for consent withdrawal samples
+    5. Subtracting both frequencies and age histograms from v4 frequency HT
+    6. Only overwriting fields that were actually updated in the final output
+    7. Computing FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient
+
+    :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
+    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first 2 partitions.
+    :param overwrite: Whether to overwrite existing output files.
+    :return: Updated frequency HT with FAF/grpmax annotations and updated age histograms for gnomAD dataset.
+    """
+    test = runtime_test or data_test
+
+    logger.info("Processing gnomAD dataset for consent withdrawals...")
+
+    # Load v4 frequency table (contains both frequencies and age histograms)
+    logger.info("Loading v4 frequency table...")
+    v4_freq_ht = get_v4_freq(data_type="genomes").ht()
+
+    # Prepare consent VDS (without filtering yet)
+    logger.info("Loading consent VDS...")
+    vmt = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
+
+    # Calculate frequencies for consent samples (vmt already contains only
+    # relevant sites)
+    consent_freq_ht = _calculate_consent_frequencies(vmt, test=test)
+
+    # Filter v4 frequency table to sites present in consent VDS
+    logger.info("Filtering v4 frequency table to sites present in consent VDS...")
+    consent_sites = vmt.rows().key_by("locus", "alleles").select().distinct()
+    v4_freq_ht_filtered = v4_freq_ht.semi_join(consent_sites)
+
+    logger.info(
+        "Subtracting consent frequencies and age histograms from v4 frequency table..."
+    )
+    updated_freq_ht = _subtract_consent_frequencies_and_histograms(
+        v4_freq_ht_filtered, consent_freq_ht, vmt, test=test
+    )
+
+    # Calculate FAF, grpmax, and other post-processing annotations
+    updated_freq_ht = _calculate_faf_and_grpmax_annotations(updated_freq_ht, test=test)
+
+    # Only overwrite fields that were actually updated (merge back with
+    # original full table)
+    logger.info("Preparing final frequency table with only updated fields...")
+    final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
+
+    return final_freq_ht
 
 
 def _merge_updated_frequency_fields(
