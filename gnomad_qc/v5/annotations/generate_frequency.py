@@ -971,7 +971,7 @@ def main(args):
             )
 
             gnomad_freq_ht = process_gnomad_dataset(
-                data_test=data_test, runtime_test=runtime_test, overwrite=overwrite
+                data_test=data_test, runtime_test=runtime_test
             )
 
             logger.info(
