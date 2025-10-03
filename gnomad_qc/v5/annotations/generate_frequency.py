@@ -278,6 +278,7 @@ def _prepare_consent_vds(
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
     )
 
+    # We set use_v3_1_correction to True to mimic the v4 genomes approach.
     logger.info("Applying v4 genomes hom alt depletion fix...")
     gt_with_depletion = hom_alt_depletion_fix(
         vmt.GT,
