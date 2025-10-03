@@ -312,7 +312,9 @@ def _subtract_consent_frequencies_and_histograms(
     vmt_adj = vmt.filter_entries(vmt.adj)
     vmt_with_age_hists = vmt_adj.annotate_rows(
         age_hists=age_hists_expr(
-            hl.call(vmt_adj.GT), vmt_adj.age, vmt_adj.sex_karyotype
+            hl.unphased_diploid_gt_index_call(vmt_adj.GT),
+            vmt_adj.age,
+            vmt_adj.sex_karyotype,
         )
     )
     consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
