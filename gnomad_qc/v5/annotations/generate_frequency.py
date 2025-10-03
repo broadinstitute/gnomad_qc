@@ -256,18 +256,24 @@ def _prepare_consent_vds(
     vmt = vds.variant_data
     vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
 
+    # This follows the v3/v4 genomes workflow for adj and sex adjusted genotypes.
+    # The correct thing to do here is to adjust sex ploidy before determining the adj
+    # annotation because haploid GTs have different adj filtering criteria, but the
+    # option to adjust ploidy after adj is included for consistency with v3.1, where we
+    # added the adj annotation before adjusting for sex ploidy.
     logger.info("Computing sex adjusted genotypes and quality annotations...")
     ab_expr = vmt.AD[1] / vmt.DP
     ab_cutoff = 0.9
-    gt_expr = adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype)
-
+    vmt = vmt.annotate_entries(
+        adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD),
+    )
     vmt = vmt.select_entries(
         "AD",
         "DP",
         "GQ",
         "_het_non_ref",
-        GT=gt_expr,
-        adj=get_adj_expr(gt_expr, vmt.GQ, vmt.DP, vmt.AD),
+        adj="adj",
+        GT=adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
         _het_ab=ab_expr,
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
     )
@@ -281,6 +287,7 @@ def _prepare_consent_vds(
         use_v3_1_correction=True,
     )
     vmt = vmt.annotate_entries(GT=gt_with_depletion)
+    vmt.entries().show()
 
     return vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
 
