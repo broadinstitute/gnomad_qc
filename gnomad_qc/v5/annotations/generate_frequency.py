@@ -143,10 +143,9 @@ def _prepare_consent_vds(
     )
 
     consent_samples_ht = consent_samples_to_drop.ht()
-    consent_samples_list = consent_samples_ht.s.collect()
 
     logger.info("Filtering VDS to consent withdrawal samples...")
-    vds = hl.vds.filter_samples(vds, consent_samples_list, keep=True)
+    vds = hl.vds.filter_samples(vds, consent_samples_ht, keep=True)
 
     # Prepare variant data with metadata
     vmt = vds.variant_data
