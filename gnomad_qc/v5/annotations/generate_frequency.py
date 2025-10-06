@@ -166,11 +166,12 @@ def _prepare_consent_vds(
     vmt = vds.variant_data
     vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
 
-    # This follows the v3/v4 genomes workflow for adj and sex adjusted genotypes.
-    # The correct thing to do here is to adjust sex ploidy before determining the adj
-    # annotation because haploid GTs have different adj filtering criteria, but the
-    # option to adjust ploidy after adj is included for consistency with v3.1, where we
-    # added the adj annotation before adjusting for sex ploidy.
+    # This follows the v3/v4 genomes workflow for adj and sex adjusted genotypes which
+    # were added before the hom alt depletion fix.
+    # The correct order is to do the hom alt fix before adjusting sex ploidy and before
+    # determining the adj annotation because haploid GTs have different adj filtering
+    # criteria, but the option to adjust ploidy after adj is included for consistency
+    # with v3.1, where we added the adj annotation before adjusting for sex ploidy.
     logger.info("Computing sex adjusted genotypes and quality annotations...")
     vmt = vmt.annotate_entries(
         adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD),
@@ -254,12 +255,13 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
         freq=hl.range(hl.len(consent_freq_ht.AC)).map(
             lambda i: hl.struct(
                 AC=hl.int32(consent_freq_ht.AC[i]),
-                AF=hl.if_else(
-                    consent_freq_ht.AC[i] > 0,
-                    consent_freq_ht.AC[i]
-                    / hl.float32(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
-                    0.0,
-                ),
+                AF=hl.float64(consent_freq_ht.AC[i] / hl.float32(866 * 2)),
+                # hl.if_else(
+                #    consent_freq_ht.AC[i] > 0,
+                #    consent_freq_ht.AC[i]
+                #    / hl.float32(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
+                #    0.0,
+                # ),
                 AN=hl.int(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
                 homozygote_count=hl.int32(consent_freq_ht.homozygote_count[i]),
             )
