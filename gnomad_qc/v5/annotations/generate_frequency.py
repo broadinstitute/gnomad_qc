@@ -75,19 +75,11 @@ def high_ab_het(
         - adj
         - _high_ab_het_ref
 
-    Assumes the following annotations are present in `col` struct:
-        - fixed_homalt_model
-
     :param entry: Entry struct.
     :param col: Column struct.
     :return: 1 if high allele balance heterozygous call, else 0.
     """
-    return hl.int(
-        entry.GT.is_het_ref()
-        & entry.adj
-        & ~col.fixed_homalt_model
-        & entry._high_ab_het_ref
-    )
+    return hl.int(entry.GT.is_het_ref() & entry.adj & entry._high_ab_het_ref)
 
 
 def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
@@ -154,9 +146,6 @@ def _prepare_consent_vds(
         sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
         age=vmt.meta.project_meta.age,
     )
-    # For genomes, fixed_homalt_model is always False since we apply v3-style correction to all samples
-    # (following v3 and v4 genomes approach - no GATK version-based differentiation)
-    vmt = vmt.annotate_cols(fixed_homalt_model=hl.bool(False))
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
@@ -283,7 +272,7 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
         consent_freq_meta=group_membership_globals.freq_meta,
         consent_freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
-
+    # NOTE: For 10/6/2025 This is loading 56k partitions during testing, why?
     return consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
 
 
@@ -654,9 +643,6 @@ def _prepare_aou_variant_data(
             sex_karyotype=aou_variant_mt.meta.sex_imputation.sex_karyotype,
             pop=aou_variant_mt.meta.population_inference.pop,
             age=aou_variant_mt.meta.project_meta.age,
-            fixed_homalt_model=hl.bool(
-                False
-            ),  # Always False for genomes (v3-style correction applied to all)
         )
     else:
         # Production mode expects direct metadata fields
@@ -664,9 +650,6 @@ def _prepare_aou_variant_data(
             sex_karyotype=aou_variant_mt.meta.sex_karyotype,
             pop=aou_variant_mt.meta.pop,
             age=aou_variant_mt.meta.age,
-            fixed_homalt_model=hl.bool(
-                False
-            ),  # Always False for genomes (v3-style correction applied to all)
         )
 
     # Rename LGT to GT and LAD to AD for compatibility with annotate_freq and
