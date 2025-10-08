@@ -429,16 +429,17 @@ def process_gnomad_dataset(
     # relevant sites)
     consent_freq_ht = _calculate_consent_frequencies(vmt, test=test)
 
-    # Filter v4 frequency table to sites present in consent VDS
-    logger.info("Filtering v4 frequency table to sites present in consent VDS...")
-    consent_sites = vmt.rows().key_by("locus", "alleles").select().distinct()
-    v4_freq_ht_filtered = v4_freq_ht.semi_join(consent_sites)
+    if test:
+        # Filter v4 frequency table to sites present in consent VDS
+        logger.info("Filtering v4 frequency table to sites present in consent VDS...")
+        consent_sites = vmt.rows().key_by("locus", "alleles").select().distinct()
+        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_sites[v4_freq_ht.key]))
 
     logger.info(
         "Subtracting consent frequencies and age histograms from v4 frequency table..."
     )
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
-        v4_freq_ht_filtered, consent_freq_ht, vmt, test=test
+        v4_freq_ht, consent_freq_ht, vmt, test=test
     )
 
     # Calculate FAF, grpmax, and other post-processing annotations
@@ -446,9 +447,6 @@ def process_gnomad_dataset(
 
     # Only overwrite fields that were actually updated (merge back with
     # original full table)
-    logger.info("Preparing final frequency table with only updated fields...")
-    if test:
-        v4_freq_ht = v4_freq_ht.semi_join(consent_sites)
     final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
 
     return final_freq_ht
