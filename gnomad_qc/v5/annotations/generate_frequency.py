@@ -431,7 +431,9 @@ def process_gnomad_dataset(
         # Filter v4 frequency table to sites present in consent VDS
         logger.info("Filtering v4 frequency table to sites present in consent VDS...")
         v4_freq_ht = v4_freq_ht.filter(hl.is_defined(vmt.rows()[v4_freq_ht.key]))
-        v4_freq_ht = v4_freq_ht.checkpoint(new_temp_file("test_v4_freq_ht", "ht"))
+        v4_freq_ht = v4_freq_ht.naive_coalesce(TEST_PARTITIONS).checkpoint(
+            new_temp_file("test_v4_freq_ht", "ht")
+        )
 
     logger.info(
         "Subtracting consent frequencies and age histograms from v4 frequency table..."
