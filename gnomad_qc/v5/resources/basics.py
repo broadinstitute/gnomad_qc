@@ -290,7 +290,8 @@ def get_gnomad_v5_genomes_vds(
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
         filters (only relevant after sample QC).
     :param release_only: Whether to filter the VDS to only samples available for
-        release (can only be used if metadata is present).
+        v5 release (distinct from v4 release due to samples to drop for consent reasons).
+        Requires that v5 sample metadata has been computed.
     :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in
         'meta' column.
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
@@ -357,6 +358,7 @@ def get_gnomad_v5_genomes_vds(
             vds = hl.vds.VariantDataset(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
+        # TODO: Update to using v5 sample meta HT to filter to release samples.
         if release_only:
             vds = hl.vds.filter_samples(
                 vds,
