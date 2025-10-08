@@ -80,33 +80,6 @@ def get_freq(
     return TableResource(ht_path)
 
 
-def get_age_hist(
-    version: str = CURRENT_ANNOTATION_VERSION,
-    data_type: str = "genomes",
-    test: bool = False,
-    subset: Optional[str] = None,
-) -> TableResource:
-    """
-    Get the age histogram Table aligned with frequency groups.
-
-    :param version: Version of annotation path to return.
-    :param data_type: Data type of annotation resource ("genomes" or "exomes").
-    :param test: Whether to use a tmp path for testing.
-    :param subset: Optional subset ("gnomad", "aou") for separate age histogram tables.
-    :return: Hail Table containing age histograms.
-    """
-    ht_name = f"gnomad.{data_type}.v{version}.age_hist"
-
-    if subset:
-        ht_name += f".{subset}"
-
-    if test:
-        ht_name += ".test"
-
-    ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
-    return TableResource(ht_path)
-
-
 def get_consent_ans(
     version: str = CURRENT_ANNOTATION_VERSION,
     data_type: str = "genomes",

@@ -24,7 +24,6 @@ from gnomad.utils.annotations import (
     grpmax_expr,
     merge_freq_arrays,
     merge_histograms,
-    qual_hist_expr,
 )
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from hail.utils import new_temp_file
@@ -58,59 +57,6 @@ TMP_DIR_DAYS = 4  # Number of days for temp directory retention
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
-
-
-def high_ab_het(
-    entry: hl.StructExpression, col: hl.StructExpression
-) -> hl.Int32Expression:
-    """
-    Determine if a call is considered a high allele balance heterozygous call.
-
-    High allele balance heterozygous calls were introduced in certain GATK versions.
-    Track how many calls appear at each site to correct them to homozygous
-    alternate calls downstream in frequency calculations and histograms.
-
-    Assumes the following annotations are present in `entry` struct:
-        - GT
-        - adj
-        - _high_ab_het_ref
-
-    :param entry: Entry struct.
-    :param col: Column struct.
-    :return: 1 if high allele balance heterozygous call, else 0.
-    """
-    return hl.int(entry.GT.is_het_ref() & entry.adj & entry._high_ab_het_ref)
-
-
-def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
-    """
-    Annotate quality metrics histograms and age histograms onto MatrixTable.
-
-    :param mt: Input MatrixTable.
-    :return: Struct with quality metrics histograms and age histograms.
-    """
-    logger.info(
-        "Computing quality metrics histograms and age histograms for each variant..."
-    )
-    high_ab_gt_expr = hl.if_else(high_ab_het(mt, mt) == 1, hl.call(1, 1), mt.GT)
-
-    return hl.struct(
-        **qual_hist_expr(
-            gt_expr=mt.GT,
-            gq_expr=mt.GQ,
-            dp_expr=mt.DP,
-            adj_expr=mt.adj,
-            ab_expr=mt._het_ab,
-            split_adj_and_raw=True,
-        ),
-        high_ab_het_adjusted_ab_hists=qual_hist_expr(
-            gt_expr=high_ab_gt_expr,
-            adj_expr=mt.adj,
-            ab_expr=mt._het_ab,
-        ),
-        age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
-        high_ab_het_adjusted_age_hists=age_hists_expr(mt.adj, high_ab_gt_expr, mt.age),
-    )
 
 
 def _prepare_consent_vds(
@@ -185,8 +131,6 @@ def _prepare_consent_vds(
         "_het_non_ref",
         "adj",
         GT=adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
-        _het_ab=ab_expr,
-        _high_ab_het_ref=(ab_expr > ab_cutoff) & ~vmt._het_non_ref,
     )
 
     # We set use_v3_1_correction to True to mimic the v4 genomes approach.
@@ -225,7 +169,6 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
     vmt = vmt.annotate_cols(
         group_membership=group_membership_ht[vmt.col_key].group_membership,
     )
-    vmt = vmt.annotate_rows(hists_fields=mt_hists_fields(vmt))
 
     # Load consent ANs
     # consent_ans_ht = get_consent_ans(test=test).ht()
@@ -270,11 +213,10 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
         consent_freq_meta=group_membership_globals.freq_meta,
         consent_freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
-    # NOTE: For 10/6/2025 This is loading 56k partitions during testing, why?
     return consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
 
 
-def _subtract_consent_frequencies_and_histograms(
+def _subtract_consent_frequencies_and_age_histograms(
     v4_freq_ht: hl.Table,
     consent_freq_ht: hl.Table,
     vmt: hl.MatrixTable,
@@ -373,7 +315,7 @@ def _subtract_consent_frequencies_and_histograms(
 
 
 def _calculate_faf_and_grpmax_annotations(
-    updated_freq_ht: hl.Table, test: bool = False
+    updated_freq_ht: hl.Table,
 ) -> hl.Table:
     """
     Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.
@@ -382,13 +324,8 @@ def _calculate_faf_and_grpmax_annotations(
     to frequency tables after the core frequency calculations are complete.
 
     :param updated_freq_ht: Frequency table after consent withdrawal subtraction
-    :param test: Whether this is a test run (skips FAF/grpmax in test mode)
     :return: Updated frequency table with FAF/grpmax annotations
     """
-    if test:
-        logger.info("Skipping FAF/grpmax calculations in test mode...")
-        return updated_freq_ht
-
     logger.info("Computing FAF, grpmax, gen_anc_faf_max, and InbreedingCoeff...")
 
     # Change 'gen_anc' keys to 'pop' for faf computation
@@ -500,16 +437,18 @@ def process_gnomad_dataset(
     logger.info(
         "Subtracting consent frequencies and age histograms from v4 frequency table..."
     )
-    updated_freq_ht = _subtract_consent_frequencies_and_histograms(
+    updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
         v4_freq_ht_filtered, consent_freq_ht, vmt, test=test
     )
 
     # Calculate FAF, grpmax, and other post-processing annotations
-    updated_freq_ht = _calculate_faf_and_grpmax_annotations(updated_freq_ht, test=test)
+    updated_freq_ht = _calculate_faf_and_grpmax_annotations(updated_freq_ht)
 
     # Only overwrite fields that were actually updated (merge back with
     # original full table)
     logger.info("Preparing final frequency table with only updated fields...")
+    if test:
+        v4_freq_ht = v4_freq_ht.semi_join(consent_sites)
     final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
 
     return final_freq_ht
