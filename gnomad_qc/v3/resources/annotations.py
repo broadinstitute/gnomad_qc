@@ -19,6 +19,7 @@ from gnomad_qc.v3.resources.constants import (
     RELEASES,
     VERSIONS,
 )
+from gnomad_qc.v3.resources.resource_utils import show_v3_migration_warning
 
 SUBSETS = SUBSETS["v3"]
 
@@ -36,12 +37,7 @@ def _annotations_root(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: root path of the variant annotation files
     """
-    logging.warning(
-        "Most objects in 'gs://gnomad/annotations' were moved to either "
-        "'gs://gnomad-archive' or 'gs://gnomad-autoclass'. This function now returns "
-        "'gs://gnomad-autoclass/annotations' paths, if no resource is found there, "
-        "please check 'gs://gnomad-archive/annotations'."
-    )
+    show_v3_migration_warning("annotations")
     return f"gs://gnomad-autoclass/annotations/hail-0.2/ht/genomes_v{version}"
 
 
