@@ -1,0 +1,16 @@
+gnomad_qc.v4.create_release.create_false_dup_liftover
+=====================================================
+
+Script to create custom liftover file for three false dup genes CBS, KCNE1, and CRYAA.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.create_false_dup_liftover
+
+.. automodule:: gnomad_qc.v4.create_release.create_false_dup_liftover
+    :exclude-members: get_script_argument_parser
