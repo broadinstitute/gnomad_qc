@@ -25,6 +25,7 @@ from gnomad_qc.v5.resources.constants import (
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
     low_quality_samples,
+    project_meta,
     samples_to_exclude,
 )
 
