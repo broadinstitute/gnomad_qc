@@ -143,7 +143,6 @@ def _prepare_consent_vds(
         use_v3_1_correction=True,
     )
     vmt = vmt.annotate_entries(GT=gt_with_depletion)
-    vmt.entries().show()
 
     return vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
 
@@ -310,7 +309,6 @@ def _subtract_consent_frequencies_and_age_histograms(
         ),
     )
 
-    joined_freq_ht.select("freq", "histograms").show()
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq_and_hists", "ht"))
 
 
@@ -432,8 +430,8 @@ def process_gnomad_dataset(
     if test:
         # Filter v4 frequency table to sites present in consent VDS
         logger.info("Filtering v4 frequency table to sites present in consent VDS...")
-        consent_sites = vmt.rows().key_by("locus", "alleles").select().distinct()
-        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_sites[v4_freq_ht.key]))
+        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(vmt[v4_freq_ht.key]))
+        v4_freq_ht = v4_freq_ht.checkpoint(new_temp_file("test_v4_freq_ht", "ht"))
 
     logger.info(
         "Subtracting consent frequencies and age histograms from v4 frequency table..."
