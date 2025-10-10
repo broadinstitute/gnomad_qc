@@ -3,6 +3,7 @@
 import argparse
 import logging
 
+import hail as hl
 from gnomad.utils.annotations import (
     build_freq_stratification_list,
     generate_freq_group_membership_array,
