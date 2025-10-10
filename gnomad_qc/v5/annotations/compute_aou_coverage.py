@@ -50,7 +50,7 @@ from gnomad_qc.v5.resources.release import (
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("coverage_and_an")
+logger = logging.getLogger("aou_coverage_and_an")
 logger.setLevel(logging.INFO)
 
 
