@@ -59,18 +59,40 @@ def get_aou_downsampling(test: bool = False) -> VersionedTableResource:
     )
 
 
-def group_membership(test: bool = False) -> VersionedTableResource:
+def group_membership(
+    test: bool = False,
+    data_set: str = "aou",
+) -> VersionedTableResource:
     """
     Get the group membership Table for coverage, AN, quality histograms, and frequency calculations.
 
     :param test: Whether to use a tmp path for tests. Default is False.
+    :param data_set: Data set of annotation resource. Default is "aou".
     :return: Hail Table containing group membership annotations.
     """
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.group_membership.ht"
+                f"{_annotations_root(version, test=test, data_set=data_set)}/gnomad.genomes.v{version}.group_membership.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+def qual_hist(test: bool = False) -> VersionedTableResource:
+    """
+    Get the quality histogram annotation table.
+
+    :param test: Whether to use a tmp path for tests. Default is False.
+    :return: Hail Table containing quality histogram annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.qual_hists.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
