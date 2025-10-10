@@ -68,8 +68,10 @@ def main(args):
                 test=args.test, data_set="gnomad"
             ).path
             check_resource_existence(
-                input_step_resources={"meta_ht": meta_ht_path},
-                output_step_resources={"group_membership_ht": group_membership_ht_path},
+                input_step_resources={"meta_ht": [meta_ht_path]},
+                output_step_resources={
+                    "group_membership_ht": [group_membership_ht_path]
+                },
                 overwrite=overwrite,
             )
 
