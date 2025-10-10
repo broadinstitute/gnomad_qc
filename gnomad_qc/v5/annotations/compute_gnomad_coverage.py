@@ -66,7 +66,9 @@ def main(args):
         if args.write_group_membership_ht:
             logger.info("Writing group membership HT...")
             meta_ht_path = meta(data_type="genomes").path
-            group_membership_ht_path = group_membership(data_set="gnomad").path
+            group_membership_ht_path = group_membership(
+                test=args.test, data_set="gnomad"
+            ).path
             check_resource_existence(
                 input_step_resources={"meta_ht": meta_ht_path},
                 output_step_resources={"group_membership_ht": group_membership_ht_path},
@@ -86,6 +88,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
+    )
+    parser.add_argument(
+        "--data-set",
+        help="Data set to compute coverage for.",
+        type=str,
+        choices=["aou", "gnomad"],
+        default="aou",
     )
     parser.add_argument(
         "--test-2-partitions",
@@ -109,9 +118,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=5000,
     )
-    parser.add_argument(
+    group_membership_args = parser.add_argument_group(
+        "Get group membership HT.",
+    )
+    group_membership_args.add_argument(
         "--write-group-membership-ht",
         help="Write group membership HT.",
+        action="store_true",
+    )
+    group_membership_args.add_argument(
+        "--test",
+        help="Write test group membership HT to test path.",
         action="store_true",
     )
     parser.add_argument(
