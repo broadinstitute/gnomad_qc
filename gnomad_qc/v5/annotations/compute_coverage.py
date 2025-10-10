@@ -453,7 +453,7 @@ def main(args):
             )
             ht.write(group_membership_ht_path, overwrite=overwrite)
 
-        if args.write_downsampling_ht:
+        if args.write_aou_downsampling_ht:
             check_resource_existence(
                 output_step_resources={"downsampling_ht": downsampling_ht_path},
                 overwrite=overwrite,
@@ -712,8 +712,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Write test gnomAD genomes group membership HT to test path.",
         action="store_true",
     )
+
     parser.add_argument(
-        "--write-downsampling-ht",
+        "--write-aou-downsampling-ht",
         help="Write v5 downsampling HT.",
         action="store_true",
     )
