@@ -32,10 +32,8 @@ def get_group_membership_ht(meta_ht: hl.Table) -> hl.Table:
     # NOTE: Not using v5 project meta because this script will be run in Dataproc.
     ht = meta_ht.filter(
         meta_ht.release
-        & (
-            (meta_ht.project_meta.research_project_key != "RP-1061")
-            & (meta_ht.project_meta.research_project_key != "RP-1411")
-        )
+        & (meta_ht.project_meta.research_project_key != "RP-1061")
+        & (meta_ht.project_meta.research_project_key != "RP-1411")
     )
     return generate_freq_group_membership_array(
         ht,
