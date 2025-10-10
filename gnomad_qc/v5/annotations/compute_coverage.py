@@ -401,10 +401,16 @@ def join_aou_and_gnomad_qual_hists_ht(
 
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
-    hl.init(
-        log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    if args.environment == "rwb":
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
+    else:
+        hl.init(
+            log="compute_coverage.log",
+            tmp_dir="gs://gnomad-tmp-4day",
+        )
     hl.default_reference("GRCh38")
 
     test_2_partitions = args.test_2_partitions
@@ -655,12 +661,18 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("compute_coverage", environment="rwb"))
+        hl.copy_log(get_logging_path("compute_coverage", environment=args.environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
+    )
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
