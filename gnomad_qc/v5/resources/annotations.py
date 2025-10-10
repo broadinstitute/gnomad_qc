@@ -81,9 +81,9 @@ def group_membership(
     )
 
 
-def qual_hist(test: bool = False) -> VersionedTableResource:
+def qual_hists(test: bool = False) -> VersionedTableResource:
     """
-    Get the quality histogram annotation table.
+    Get the quality histograms annotation table.
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :return: Hail Table containing quality histogram annotations.
