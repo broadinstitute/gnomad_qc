@@ -358,7 +358,6 @@ def get_gnomad_v5_genomes_vds(
             vds = hl.vds.VariantDataset(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
-        # TODO: Update to using v5 sample meta HT to filter to release samples.
         if release_only:
             vds = hl.vds.filter_samples(
                 vds,
