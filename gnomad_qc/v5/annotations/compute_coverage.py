@@ -759,6 +759,7 @@ if __name__ == "__main__":
     if args.project == "gnomad" and args.environment != "dataproc":
         parser.error("--project gnomad requires --environment dataproc")
 
+    # Add extra check to make sure gnomAD steps are run in Dataproc.
     gnomad_args = [arg for arg in vars(args) if "gnomad" in arg.lower()]
     if any(
         getattr(args, arg)
