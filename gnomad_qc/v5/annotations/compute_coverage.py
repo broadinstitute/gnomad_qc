@@ -35,10 +35,12 @@ from gnomad_qc.v4.resources.meta import meta as v4_meta
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
 from gnomad_qc.v5.resources.annotations import (  # get_aou_downsampling
+    coverage_and_an_path,
     group_membership,
     qual_hists,
 )
-from gnomad_qc.v5.resources.basics import (  # get_aou_vds
+from gnomad_qc.v5.resources.basics import (
+    get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
 )
@@ -418,44 +420,24 @@ def main(args):
     test = test_2_partitions or test_chr22_chrx_chry
     overwrite = args.overwrite
     n_partitions = args.n_partitions
+    project = args.project
+    environment = args.environment
 
     try:
-        # Retrieve raw coverage table path here because it is used in most of the
+        # Retrieve raw coverage table path here because it is used in all of the
         # script's run options.
-        cov_and_an_ht_path = release_coverage_path(
-            public=False,
+        cov_and_an_ht_path = coverage_and_an_path(
             test=test,
-            raw=True,
-            coverage_type="coverage",
-            data_set="aou",
-            environment="rwb",
+            data_set=project,
+            environment=environment,
         )
         # TODO: Update this to use get_aou_downsampling once sample QC is complete.
         downsampling_ht_path = get_v4_downsampling(test=test).path
         meta_ht_path = project_meta.path
 
-        if args.write_gnomad_group_membership_ht:
-            logger.info("Writing group membership HT...")
-            v4_meta_ht_path = v4_meta(data_type="genomes").path
-            group_membership_ht_path = group_membership(
-                test=args.test, data_set="gnomad"
-            ).path
-            check_resource_existence(
-                input_step_resources={"v4_meta_ht": [v4_meta_ht_path]},
-                output_step_resources={
-                    "gnomad_group_membership_ht": [group_membership_ht_path]
-                },
-                overwrite=overwrite,
-            )
-
-            ht = get_group_membership_ht(
-                hl.read_table(v4_meta_ht_path), project="gnomad"
-            )
-            ht.write(group_membership_ht_path, overwrite=overwrite)
-
         if args.write_aou_downsampling_ht:
             check_resource_existence(
-                output_step_resources={"downsampling_ht": downsampling_ht_path},
+                output_step_resources={"downsampling_ht": [downsampling_ht_path]},
                 overwrite=overwrite,
             )
             # TODO: Update this for v5 once sample QC is complete.
@@ -467,7 +449,42 @@ def main(args):
             ds_ht = get_downsampling_ht(ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
+        if args.write_group_membership_ht:
+            group_membership_ht_path = group_membership(
+                test=test, data_set=project
+            ).path
+            check_resource_existence(
+                output_step_resources={
+                    "group_membership_ht": [group_membership_ht_path]
+                },
+                overwrite=overwrite,
+            )
+
+            if project == "gnomad":
+                logger.info("Writing gnomAD group membership HT...")
+                v4_meta_ht_path = v4_meta(data_type="genomes").path
+                group_membership_ht = get_group_membership_ht(
+                    hl.read_table(v4_meta_ht_path), project="gnomad"
+                )
+                group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
+            else:
+                logger.info("Writing AoU group membership HT...")
+                group_membership_ht = get_group_membership_ht(
+                    meta_ht=hl.read_table(meta_ht_path),
+                    project=project,
+                    ds_ht=hl.read_table(downsampling_ht_path),
+                )
+                group_membership_ht.write(
+                    group_membership_ht_path,
+                    overwrite=overwrite,
+                )
+
         if args.compute_all_cov_release_stats_ht:
+            logger.info(
+                "Computing coverage, all sites allele number, and quality histograms HT for %s...",
+                project,
+            )
+
             # Context Table is used because it contains every locus in the GRCh38
             # reference as opposed to a ref-blocked VDS reference dataset.
             ref_ht = vep_context.versions["105"].ht()
@@ -491,49 +508,42 @@ def main(args):
             )
             ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
-            vds = get_gnomad_v5_genomes_vds(
-                release_only=True,
-                remove_hard_filtered_samples=True,
-                test=test,
-                filter_partitions=range(2) if test_2_partitions else None,
-                annotate_meta=True,
-                chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
-            )
-            # vds = get_aou_vds(
-            #    release_only=True,
-            #    test=test,
-            #    filter_partitions=range(2) if test_2_partitions else None,
-            #    annotate_meta=True,
-            #    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
-            # )
+            if project == "aou":
+                vds = get_aou_vds(
+                    # release_only=True,
+                    test=test,
+                    filter_partitions=range(2) if test_2_partitions else None,
+                    # annotate_meta=True,
+                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
+                )
+            else:
 
-            logger.info(
-                "Computing coverage, all sites allele number, and quality histograms HT..."
-            )
-            aou_group_membership_ht_path = group_membership(test=test).path
+                vds = get_gnomad_v5_genomes_vds(
+                    release_only=True,
+                    remove_hard_filtered_samples=True,
+                    test=test,
+                    filter_partitions=range(2) if test_2_partitions else None,
+                    annotate_meta=True,
+                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
+                )
+
+            group_membership_ht_path = group_membership(
+                test=test, data_set=project
+            ).path
             check_resource_existence(
                 output_step_resources={
-                    "aou_group_membership_ht": aou_group_membership_ht_path,
-                    "coverage_and_an_ht": cov_and_an_ht_path,
+                    "group_membership_ht": [group_membership_ht_path],
+                    "coverage_and_an_ht": [cov_and_an_ht_path],
                 },
                 overwrite=overwrite,
             )
-            aou_group_membership_ht = get_group_membership_ht(
-                meta_ht=hl.read_table(meta_ht_path),
-                project="aou",
-                ds_ht=hl.read_table(downsampling_ht_path),
-            )
-            aou_group_membership_ht = aou_group_membership_ht.checkpoint(
-                aou_group_membership_ht_path, overwrite=overwrite
-            )
-
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
-                group_membership_ht=aou_group_membership_ht,
+                group_membership_ht=group_membership_ht,
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
-                new_temp_file("aou_cov_and_an", "ht")
+                new_temp_file(f"{project}_cov_and_an", "ht")
             )
             # Write out the intermediate HT.
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
@@ -543,9 +553,7 @@ def main(args):
             cov_ht_path = release_coverage_path(
                 public=False,
                 test=test,
-                raw=False,
                 coverage_type="coverage",
-                data_set="joint",
             )
             cov_tsv_path = release_coverage_tsv_path(test=test)
             check_resource_existence(
@@ -561,10 +569,8 @@ def main(args):
             aou_ht = aou_ht.drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(
                 release_coverage_path(
-                    data_type="genomes",
                     release_version=v4_COVERAGE_RELEASE,
                     public=True,
-                    raw=False,
                 )
             )
             if test_chr22_chrx_chry:
@@ -585,16 +591,12 @@ def main(args):
             an_raw_ht_path = release_coverage_path(
                 public=False,
                 test=test,
-                raw=True,
                 coverage_type="allele_number",
-                data_set="joint",
             )
             an_ht_path = release_coverage_path(
                 public=False,
                 test=test,
-                raw=False,
                 coverage_type="allele_number",
-                data_set="joint",
             )
             an_tsv_path = release_all_sites_an_tsv_path(test=test)
             check_resource_existence(
@@ -611,10 +613,8 @@ def main(args):
             aou_ht = aou_ht.select("AN")
             gnomad_ht = hl.read_table(
                 release_coverage_path(
-                    data_type="genomes",
                     release_version=v4_AN_RELEASE,
                     public=True,
-                    raw=False,
                     coverage_type="allele_number",
                 )
             )
@@ -661,7 +661,7 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("compute_coverage", environment=args.environment))
+        hl.copy_log(get_logging_path("compute_coverage", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -707,17 +707,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=5000,
     )
 
-    gnomad_group_membership_args = parser.add_argument_group(
+    group_membership_args = parser.add_argument_group(
         "Get gnomAD genomes group membership HT.",
     )
-    gnomad_group_membership_args.add_argument(
-        "--write-gnomad-group-membership-ht",
-        help="Write gnomAD genomes group membership HT.",
+    group_membership_args.add_argument(
+        "--write-group-membership-ht",
+        help="Write group membership HT.",
         action="store_true",
     )
-    gnomad_group_membership_args.add_argument(
+    group_membership_args.add_argument(
         "--test",
-        help="Write test gnomAD genomes group membership HT to test path.",
+        help="Write test group membership HT to test path.",
         action="store_true",
     )
 
@@ -758,17 +758,5 @@ if __name__ == "__main__":
         parser.error("--project aou requires --environment rwb")
     if args.project == "gnomad" and args.environment != "dataproc":
         parser.error("--project gnomad requires --environment dataproc")
-
-    # Add extra check to make sure gnomAD steps are run in Dataproc.
-    gnomad_args = [arg for arg in vars(args) if "gnomad" in arg.lower()]
-    if any(
-        getattr(args, arg)
-        for arg in gnomad_args
-        if isinstance(getattr(args, arg), bool)
-    ):
-        if args.environment != "dataproc":
-            parser.error(
-                "Steps run on only gnomAD must be run in Dataproc (`--environment dataproc`)!"
-            )
 
     main(args)
