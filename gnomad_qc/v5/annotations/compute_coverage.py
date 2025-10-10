@@ -428,7 +428,7 @@ def main(args):
         downsampling_ht_path = get_v4_downsampling(test=test).path
         meta_ht_path = project_meta.path
 
-        if args.write_group_membership_ht:
+        if args.write_gnomad_group_membership_ht:
             logger.info("Writing group membership HT...")
             v4_meta_ht_path = v4_meta(data_type="genomes").path
             group_membership_ht_path = group_membership(
@@ -687,15 +687,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=5000,
     )
 
-    group_membership_args = parser.add_argument_group(
+    gnomad_group_membership_args = parser.add_argument_group(
         "Get gnomAD genomes group membership HT.",
     )
-    group_membership_args.add_argument(
-        "--write-group-membership-ht",
+    gnomad_group_membership_args.add_argument(
+        "--write-gnomad-group-membership-ht",
         help="Write gnomAD genomes group membership HT.",
         action="store_true",
     )
-    group_membership_args.add_argument(
+    gnomad_group_membership_args.add_argument(
         "--test",
         help="Write test gnomAD genomes group membership HT to test path.",
         action="store_true",
