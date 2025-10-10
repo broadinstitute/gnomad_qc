@@ -10,11 +10,8 @@ from gnomad.utils.annotations import (
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta
-from gnomad_qc.v5.resources.basics import (
-    get_gnomad_v5_genomes_vds,
-    get_logging_path,
-    group_membership,
-)
+from gnomad_qc.v5.resources.annotations import group_membership
+from gnomad_qc.v5.resources.basics import get_gnomad_v5_genomes_vds, get_logging_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("gnomad_coverage_and_an")
