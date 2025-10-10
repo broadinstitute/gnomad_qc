@@ -9,7 +9,7 @@ from gnomad.resources.grch38.gnomad import CURRENT_GENOME_AN_RELEASE as v4_AN_RE
 from gnomad.resources.grch38.gnomad import (
     CURRENT_GENOME_COVERAGE_RELEASE as v4_COVERAGE_RELEASE,
 )
-from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS
+from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, public_release
 from gnomad.resources.grch38.reference_data import (
     telomeres_and_centromeres,
     vep_context,
@@ -19,6 +19,7 @@ from gnomad.utils.annotations import (
     build_freq_stratification_list,
     generate_freq_group_membership_array,
     merge_array_expressions,
+    merge_histograms,
     qual_hist_expr,
 )
 from gnomad.utils.sparse_mt import (
@@ -32,7 +33,10 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
-from gnomad_qc.v5.resources.annotations import group_membership  # get_aou_downsampling
+from gnomad_qc.v5.resources.annotations import (  # get_aou_downsampling
+    group_membership,
+    qual_hists,
+)
 from gnomad_qc.v5.resources.basics import (  # get_aou_vds
     get_gnomad_v5_genomes_vds,
     get_logging_path,
@@ -283,6 +287,27 @@ def join_aou_and_gnomad_coverage_ht(
     return ht.select_globals()
 
 
+def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
+    """
+    Rename fields by adding project name prior to merging Tables.
+
+    Used for AN and qual hists merging but not coverage because
+    coverage does not have globals and also requires extra transformations
+    to transform v4 mean back into sum.
+
+    :param ht: Input HT.
+    :param project: Project name.
+    :return: Renamed HT.
+    """
+    rename_globals = {
+        f"strata_meta_{project}": ht.strata_meta,
+        f"strata_sample_count_{project}": ht.strata_sample_count,
+    }
+    ht = ht.rename_globals(rename_globals)
+    rename_dict = {f"{field_name}": f"{field_name}_{project}"}
+    return ht.rename(rename_dict)
+
+
 def join_aou_and_gnomad_an_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
@@ -294,26 +319,9 @@ def join_aou_and_gnomad_an_ht(
     :param gnomad_ht: gnomAD AN HT.
     :return: Joined HT.
     """
-
-    def _rename_fields(ht: hl.Table, project: str) -> hl.Table:
-        """
-        Rename fields by adding project name prior to merging Tables.
-
-        :param ht: Input HT.
-        :param project: Project name.
-        :return: Renamed HT.
-        """
-        rename_globals = {
-            f"strata_meta_{project}": ht.strata_meta,
-            f"strata_sample_count_{project}": ht.strata_sample_count,
-        }
-        ht = ht.select_globals(**rename_globals)
-        rename_dict = {"AN": f"AN_{project}"}
-        return ht.rename(rename_dict)
-
     # TODO: Add support for subtracting gnomAD v4 samples.
-    aou_ht = _rename_fields(aou_ht, "aou")
-    gnomad_ht = _rename_fields(gnomad_ht, "gnomad")
+    aou_ht = _rename_fields(aou_ht, "AN", "aou")
+    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
     ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.checkpoint(new_temp_file("aou_and_gnomad_join", "ht"))
 
@@ -334,6 +342,29 @@ def join_aou_and_gnomad_an_ht(
     ht = ht.annotate_globals(
         strata_meta=joint_strata_meta,
         strata_sample_count=count_arrays_dict["counts"],
+    )
+    return ht
+
+
+def join_aou_and_gnomad_qual_hists_ht(
+    aou_ht: hl.Table,
+    gnomad_ht: hl.Table,
+) -> hl.Table:
+    """
+    Join AoU and gnomAD qual hists HTs for release.
+
+    :param aou_ht: AoU qual hists HT.
+    :param gnomad_ht: gnomAD qual hists HT.
+    :return: Joined HT.
+    """
+    aou_ht = _rename_fields(aou_ht, "qual_hists", "aou")
+    gnomad_ht = _rename_fields(gnomad_ht, "qual_hists", "gnomad")
+    ht = aou_ht.join(gnomad_ht, "left")
+    ht = ht.annotate(
+        qual_hists=merge_histograms(
+            [ht.qual_hists_aou, ht.qual_hists_gnomad],
+            operation="sum",
+        ),
     )
     return ht
 
@@ -554,8 +585,23 @@ def main(args):
             ht.export(an_tsv_path)
 
         if args.merge_qual_hists:
-            # TODO: Implement this.
-            pass
+            qual_hists_path = qual_hists(test=test).path
+            check_resource_existence(
+                output_step_resources={"qual_hists_ht": qual_hists_path},
+                overwrite=overwrite,
+            )
+
+            logger.info("Merging qual hists HTs...")
+            aou_ht = hl.read_table(cov_and_an_ht_path).select("qual_hists")
+            gnomad_ht = public_release(data_type="genomes").select("histograms")
+
+            # Drop age hists because they are handled in the frequency script.
+            gnomad_ht = gnomad_ht.annotate(
+                qual_hists=gnomad_ht.histograms.drop("age_hists")
+            )
+
+            ht = join_aou_and_gnomad_qual_hists_ht(aou_ht, gnomad_ht)
+            ht.write(qual_hists_path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
