@@ -147,13 +147,15 @@ def _prepare_consent_vds(
     return vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
 
 
-def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> hl.Table:
+def _calculate_consent_frequencies_and_age_histograms(
+    vmt: hl.MatrixTable, test: bool = False
+) -> hl.Table:
     """
-    Calculate frequencies for consent withdrawal samples.
+    Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vmt: Prepared MatrixTable with consent samples.
     :param test: Whether running in test mode.
-    :return: Frequency table for consent samples.
+    :return: Table with freq and age_hists annotations for consent samples.
     """
     logger.info("Loading group membership and calculating consent frequencies...")
 
@@ -173,9 +175,19 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
     # consent_ans_ht = get_consent_ans(test=test).ht()
 
     logger.info(
-        "Calculating AC and hom alt counts per group membership using agg_by_strata..."
+        "Calculating AC, hom alt counts, and age histograms per group membership using agg_by_strata..."
     )
     logger.info("Using updated agg_by_strata implementation - version check")
+
+    # Calculate age histograms on the MatrixTable rows first
+    vmt = vmt.annotate_rows(
+        age_hists=age_hists_expr(
+            vmt.adj,
+            vmt.GT,
+            vmt.age,
+        )
+    )
+
     # Use efficient agg_by_strata approach with localize_entries
     consent_freq_ht = agg_by_strata(
         vmt.select_entries(
@@ -191,7 +203,7 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
         group_membership_ht=group_membership_ht,
     )
 
-    # Now combine with consent ANs to create proper frequency structs
+    # Now combine with consent ANs to create proper frequency structs and annotate age histograms
     # consent_ans_ht = get_consent_ans(test=test).ht()
     consent_freq_ht = consent_freq_ht.annotate(
         freq=hl.range(hl.len(consent_freq_ht.AC)).map(
@@ -203,30 +215,30 @@ def _calculate_consent_frequencies(vmt: hl.MatrixTable, test: bool = False) -> h
                 AN=hl.int(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
                 homozygote_count=hl.int32(consent_freq_ht.homozygote_count[i]),
             )
-        )
+        ),
+        age_hists=vmt.rows()[consent_freq_ht.key].age_hists,
     )
-    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
 
+    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
     group_membership_globals = group_membership_ht.index_globals()
     consent_freq_ht = consent_freq_ht.annotate_globals(
         consent_freq_meta=group_membership_globals.freq_meta,
         consent_freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
-    return consent_freq_ht.checkpoint(new_temp_file("consent_freq", "ht"))
+
+    return consent_freq_ht.checkpoint(new_temp_file("consent_freq_and_hists", "ht"))
 
 
 def _subtract_consent_frequencies_and_age_histograms(
     v4_freq_ht: hl.Table,
     consent_freq_ht: hl.Table,
-    vmt: hl.MatrixTable,
     test: bool = False,
 ) -> hl.Table:
     """
     Subtract consent withdrawal frequencies and age histograms from v4 frequency table.
 
     :param v4_freq_ht: v4 frequency table (contains both freq and histograms.age_hists).
-    :param consent_freq_ht: Consent withdrawal frequency table.
-    :param vmt: MatrixTable with consent samples for age histogram calculation.
+    :param consent_freq_ht: Consent withdrawal table with freq and age_hists annotations.
     :param test: Whether running in test mode.
     :return: Updated frequency table with consent frequencies and age histograms subtracted.
     """
@@ -234,22 +246,9 @@ def _subtract_consent_frequencies_and_age_histograms(
         "Subtracting consent withdrawal frequencies and age histograms from v4 frequency table..."
     )
 
-    # Calculate consent age histograms
-    logger.info("Calculating age histograms for consent withdrawal samples...")
-    vmt_adj = vmt.filter_entries(vmt.adj)
-    vmt_with_age_hists = vmt_adj.annotate_rows(
-        age_hists=age_hists_expr(
-            vmt_adj.adj,
-            vmt_adj.GT,  # GT is already a call expression, no conversion needed
-            vmt_adj.age,
-        )
-    )
-    consent_age_hist_ht = vmt_with_age_hists.rows().select("age_hists")
-
-    # Join all data together
     joined_freq_ht = v4_freq_ht.annotate(
         consent_freq=consent_freq_ht[v4_freq_ht.key].freq,
-        consent_age_hists=consent_age_hist_ht[v4_freq_ht.key].age_hists,
+        consent_age_hists=consent_freq_ht[v4_freq_ht.key].age_hists,
     )
 
     joined_freq_ht = joined_freq_ht.annotate_globals(
@@ -257,7 +256,6 @@ def _subtract_consent_frequencies_and_age_histograms(
         consent_freq_meta_sample_count=consent_freq_ht.index_globals().consent_freq_meta_sample_count,
     )
 
-    # Subtract consent frequencies
     logger.info("Subtracting consent frequencies...")
     updated_freq_expr, updated_freq_meta, updated_sample_counts = merge_freq_arrays(
         [joined_freq_ht.freq, joined_freq_ht.consent_freq],
@@ -274,7 +272,6 @@ def _subtract_consent_frequencies_and_age_histograms(
         # is occassionally more than site ANs in the freq HT
     )
 
-    # Subtract consent age histograms
     logger.info("Subtracting consent age histograms...")
     updated_age_hist_het = merge_histograms(
         [
@@ -405,12 +402,12 @@ def process_gnomad_dataset(
     4. Calculating frequencies and age histograms for consent withdrawal samples
     5. Subtracting both frequencies and age histograms from v4 frequency HT
     6. Only overwriting fields that were actually updated in the final output
-    7. Computing FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient
 
-    :param data_test: Whether to run in data test mode. If True, filters v4 vds to first 2 partitions.
+    :param data_test: Whether to run in data test mode. If True, filters full v4 vds to first 2 partitions.
     :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first 2 partitions.
-    :return: Updated frequency HT with FAF/grpmax annotations and updated age histograms for gnomAD dataset.
+    :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
+    # Test is used for formatting file paths
     test = runtime_test or data_test
 
     logger.info("Processing gnomAD dataset for consent withdrawals...")
@@ -423,9 +420,8 @@ def process_gnomad_dataset(
     logger.info("Loading consent VDS...")
     vmt = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
 
-    # Calculate frequencies for consent samples (vmt already contains only
-    # relevant sites)
-    consent_freq_ht = _calculate_consent_frequencies(vmt, test=test)
+    # Calculate frequencies and age histograms for consent samples
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vmt, test=test)
 
     if test:
         # Filter v4 frequency table to sites present in consent VDS
@@ -439,14 +435,12 @@ def process_gnomad_dataset(
         "Subtracting consent frequencies and age histograms from v4 frequency table..."
     )
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
-        v4_freq_ht, consent_freq_ht, vmt, test=test
+        v4_freq_ht, consent_freq_ht, test=test
     )
-
-    # Calculate FAF, grpmax, and other post-processing annotations
-    updated_freq_ht = _calculate_faf_and_grpmax_annotations(updated_freq_ht)
 
     # Only overwrite fields that were actually updated (merge back with
     # original full table)
+    # Note: FAF/grpmax annotations will be calculated on the final merged dataset
     final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
 
     return final_freq_ht
@@ -461,6 +455,9 @@ def _merge_updated_frequency_fields(
     For sites that exist in updated_freq_ht, use the updated values.
     For sites that don't exist in updated_freq_ht, keep original values.
 
+    Note: FAF/grpmax annotations are not calculated during consent withdrawal processing
+    and will be calculated later on the final merged dataset.
+
     :param original_freq_ht: Original v4 frequency table.
     :param updated_freq_ht: Updated frequency table with consent withdrawals subtracted.
     :return: Final frequency table with selective field updates.
@@ -468,6 +465,7 @@ def _merge_updated_frequency_fields(
     logger.info("Merging frequency tables with selective field updates...")
 
     # For sites in updated_freq_ht, use updated values; otherwise keep original
+    # Only updates fields that are present in updated_freq_ht (freq and histograms)
     final_freq_ht = original_freq_ht.annotate(
         **{
             field: hl.if_else(
@@ -501,114 +499,52 @@ def _merge_updated_frequency_fields(
     return final_freq_ht
 
 
-def _resolve_aou_sample_collisions(
-    aou_vds: hl.vds.VariantDataset, test: bool = False
-) -> hl.vds.VariantDataset:
-    """
-    Resolve sample ID collisions for AoU VDS by adding project prefixes.
-
-    :param aou_vds: AoU VariantDataset
-    :param test: Whether this is a test run
-    :return: VDS with resolved sample collisions
-    """
-    logger.info("Resolving sample ID collisions...")
-    sample_collisions = sample_id_collisions.ht()
-
-    aou_reference_mt = add_project_prefix_to_sample_collisions(
-        t=aou_vds.reference_data,
-        sample_collisions=sample_collisions,
-        project="aou",
-    )
-    aou_variant_mt = add_project_prefix_to_sample_collisions(
-        t=aou_vds.variant_data,
-        sample_collisions=sample_collisions,
-        project="aou",
-    )
-
-    return hl.vds.VariantDataset(
-        reference_data=aou_reference_mt, variant_data=aou_variant_mt
-    )
-
-
-def _filter_aou_related_samples(
-    aou_vds: hl.vds.VariantDataset, test: bool = False
-) -> hl.vds.VariantDataset:
-    """
-    Filter related samples from AoU VDS.
-
-    :param aou_vds: AoU VariantDataset
-    :param test: Whether this is a test run
-    :return: Filtered VDS with related samples removed
-    """
-    aou_meta_ht = project_meta.ht()
-    aou_relatedness_ht = related_samples_to_drop(test=test, release=True).ht()
-
-    aou_samples_to_remove = aou_meta_ht.annotate(
-        will_be_dropped=hl.is_defined(aou_relatedness_ht[aou_meta_ht.key])
-    )
-
-    aou_removed_sample_ids = aou_samples_to_remove.filter(
-        aou_samples_to_remove.will_be_dropped
-    ).s.collect()
-
-    logger.info(
-        f"Filtering {len(aou_removed_sample_ids)} related samples from AoU VDS..."
-    )
-    if len(aou_removed_sample_ids) == 0:
-        logger.info("No related samples found to remove")
-        return aou_vds
-    return hl.vds.filter_samples(aou_vds, aou_removed_sample_ids, keep=False)
-
-
 def _prepare_aou_variant_data(
-    aou_vds_filtered: hl.vds.VariantDataset, test: bool = False
+    aou_vmt: hl.MatrixTable, test: bool = False
 ) -> hl.MatrixTable:
     """
     Prepare AoU variant data for frequency calculation.
 
-    :param aou_vds_filtered: Filtered AoU VDS
+    :param aou_vmt_filtered: Filtered AoU MatrixTable
     :param test: Whether this is a test run
     :return: Prepared variant MatrixTable
     """
-    aou_variant_mt = aou_vds_filtered.variant_data
-
     if test:
         # In test mode, adapt to the test VDS metadata structure
-        aou_variant_mt = aou_variant_mt.annotate_cols(
-            sex_karyotype=aou_variant_mt.meta.sex_imputation.sex_karyotype,
-            pop=aou_variant_mt.meta.population_inference.pop,
-            age=aou_variant_mt.meta.project_meta.age,
+        aou_vmt = aou_vmt.annotate_cols(
+            sex_karyotype=aou_vmt.meta.sex_imputation.sex_karyotype,
+            pop=aou_vmt.meta.population_inference.pop,
+            age=aou_vmt.meta.project_meta.age,
         )
     else:
         # Production mode expects direct metadata fields
-        aou_variant_mt = aou_variant_mt.annotate_cols(
-            sex_karyotype=aou_variant_mt.meta.sex_karyotype,
-            pop=aou_variant_mt.meta.pop,
-            age=aou_variant_mt.meta.age,
+        aou_vmt = aou_vmt.annotate_cols(
+            sex_karyotype=aou_vmt.meta.sex_karyotype,
+            pop=aou_vmt.meta.pop,
+            age=aou_vmt.meta.age,
         )
-
+    # Todo: Need to split VDS
     # Rename LGT to GT and LAD to AD for compatibility with annotate_freq and
     # annotate_adj
-    aou_variant_mt = aou_variant_mt.annotate_entries(
-        GT=aou_variant_mt.LGT, AD=aou_variant_mt.LAD
-    )
+    # sparse split multi
+    aou_vmt = hl.experimental.sparse_split_multi(aou_vmt, filter_changed_loci=True)
 
     # Add adj annotation required by annotate_freq
-    aou_variant_mt = annotate_adj(aou_variant_mt)
+    aou_vmt = annotate_adj(aou_vmt)
 
     # Checkpoint after metadata annotation
-    return aou_variant_mt.checkpoint(new_temp_file("aou_variant_mt", "mt"))
+    return aou_vmt.checkpoint(new_temp_file("aou_vmt", "mt"))
 
 
-def _calculate_aou_variant_frequencies(
+def _calculate_aou_variant_frequencies_and_age_histograms(
     aou_variant_mt: hl.MatrixTable, test: bool = False
 ) -> hl.Table:
     """
-    Calculate complete frequency struct for AoU variant data using imported AN values.
+    Calculate frequencies and age histograms for AoU variant data.
 
     :param aou_variant_mt: Prepared variant MatrixTable
     :param test: Whether to use test resources
-    :return: Frequency Table with complete freq struct including imported AN
+    :return: Table with freq and age_hists annotations
     """
     # Use existing AoU group membership table and filter to variant samples
     logger.info(
@@ -616,6 +552,7 @@ def _calculate_aou_variant_frequencies(
     )
     group_membership_ht = get_group_membership(subset="aou", test=test).ht()
 
+    # TODO: May not need this
     # Filter group membership to only the AoU samples we're processing
     aou_sample_ids = set(aou_variant_mt.s.collect())
     group_membership_ht = group_membership_ht.filter(
@@ -626,7 +563,19 @@ def _calculate_aou_variant_frequencies(
     logger.info("Loading AN values from consent_ans...")
     consent_ans_ht = get_consent_ans(test=test).ht()
 
-    logger.info("Calculating AoU variant frequencies using efficient agg_by_strata...")
+    logger.info(
+        "Calculating AoU AC, hom alt counts, and age histograms using efficient agg_by_strata..."
+    )
+
+    # Calculate age histograms on the MatrixTable rows first
+    aou_variant_mt = aou_variant_mt.annotate_rows(
+        age_hists=age_hists_expr(
+            aou_variant_mt.adj,
+            aou_variant_mt.GT,
+            aou_variant_mt.age,
+        )
+    )
+
     # Use efficient agg_by_strata approach for AoU variant data
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
@@ -648,7 +597,8 @@ def _calculate_aou_variant_frequencies(
         consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
     )
 
-    # Build complete freq struct using AC from variant data and AN from consent_ans
+    # Build complete freq struct using AC from variant data and AN from
+    # consent_ans, and add age_hists
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         freq=hl.map(
             lambda freq_data, an_data: hl.struct(
@@ -659,7 +609,8 @@ def _calculate_aou_variant_frequencies(
             ),
             aou_variant_freq_ht.freq,
             aou_variant_freq_ht.consent_an,
-        )
+        ),
+        age_hists=aou_variant_mt.rows()[aou_variant_freq_ht.key].age_hists,
     ).drop("consent_an")
 
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
@@ -671,67 +622,10 @@ def _calculate_aou_variant_frequencies(
     return aou_variant_freq_ht
 
 
-def _calculate_aou_age_histograms(
-    aou_vds_filtered: hl.vds.VariantDataset, test: bool = False
-) -> hl.Table:
-    """
-    Calculate age histograms for AoU dataset.
-
-    :param aou_vds_filtered: Filtered AoU VDS with resolved collisions and related samples removed
-    :param test: Whether this is a test run (returns simplified histogram for compatibility)
-    :return: Age histogram Table with age_hist_het and age_hist_hom fields
-    """
-    logger.info("Computing age histograms for AoU dataset...")
-
-    if test:
-        logger.info("Creating minimal age histogram table for test mode...")
-        # Create a simple age histogram table that matches expected structure
-        return hl.Table.parallelize(
-            [
-                {
-                    "locus": hl.locus("chr22", 10000000),
-                    "alleles": ["A", "T"],
-                    "age_hist_het": [10, 15, 20, 25, 15, 5],  # Simple histogram bins
-                    "age_hist_hom": [5, 8, 10, 12, 8, 2],
-                }
-            ],
-            hl.tstruct(
-                locus=hl.tlocus("GRCh38"),
-                alleles=hl.tarray(hl.tstr),
-                age_hist_het=hl.tarray(hl.tint64),
-                age_hist_hom=hl.tarray(hl.tint64),
-            ),
-            key=["locus", "alleles"],
-        )
-    else:
-        # Production mode uses sparse VDS variant data directly
-        logger.info("Calculating age histograms using sparse VDS variant data...")
-        aou_variant_mt = aou_vds_filtered.variant_data
-
-        # Ensure proper field access and add adj filtering
-        aou_variant_mt = aou_variant_mt.annotate_entries(GT=aou_variant_mt.LGT)
-        aou_variant_mt = annotate_adj(aou_variant_mt)
-
-        # Filter to high-quality calls for age histogram calculation
-        aou_variant_mt = aou_variant_mt.filter_entries(aou_variant_mt.adj)
-
-    aou_age_hist_expr = age_hists_expr(
-        aou_variant_mt.GT,
-        aou_variant_mt.meta.age,
-        aou_variant_mt.meta.sex_karyotype,
-    )
-
-    logger.info("Aggregating age histograms across all variants...")
-    return aou_variant_mt.aggregate_rows(
-        age_hist_het=aou_age_hist_expr.age_hist_het,
-        age_hist_hom=aou_age_hist_expr.age_hist_hom,
-    )
-
-
 def process_aou_dataset(
     test: bool = False,
     overwrite: bool = False,
-) -> Tuple[hl.Table, hl.Table]:
+) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
 
@@ -741,30 +635,22 @@ def process_aou_dataset(
 
     :param test: Whether to run in test mode.
     :param overwrite: Whether to overwrite existing results.
-    :return: Tuple of (Frequency Table for AoU dataset, Age histogram Table for AoU dataset).
+    :return: Table with freq and age_hists annotations for AoU dataset.
     """
     logger.info("Processing All of Us dataset...")
 
-    # Load and validate AoU VDS
-    # Note: No need to check AoU VDS existence as it's a function call that
-    # will fail if missing
-    aou_vds = get_aou_vds(remove_hard_filtered_samples=True, test=test)
+    # Add release which will require renaming to this function to avoid any
+    # changes to the AoU VDS
+    aou_vmt = get_aou_vds(test=test).variant_data  # release=True
 
-    # Step 1: Resolve sample ID collisions
-    aou_vds = _resolve_aou_sample_collisions(aou_vds, test=test)
+    # Calculate frequencies and age histograms together
+    logger.info("Calculating AoU frequencies and age histograms...")
+    aou_variant_mt = _prepare_aou_variant_data(aou_vmt, test=test)
+    aou_freq_ht = _calculate_aou_variant_frequencies_and_age_histograms(
+        aou_variant_mt, test=test
+    )
 
-    # Step 2: Filter related samples
-    aou_vds_filtered = _filter_aou_related_samples(aou_vds, test=test)
-
-    # Step 3: Calculate complete frequencies using imported AN values
-    logger.info("Calculating AoU frequencies with imported AN values...")
-    aou_variant_mt = _prepare_aou_variant_data(aou_vds_filtered, test=test)
-    aou_freq_ht = _calculate_aou_variant_frequencies(aou_variant_mt, test=test)
-
-    # Step 4: Calculate age histograms
-    aou_age_hist_ht = _calculate_aou_age_histograms(aou_vds_filtered, test=test)
-
-    return aou_freq_ht, aou_age_hist_ht
+    return aou_freq_ht
 
 
 def merge_gnomad_and_aou_frequencies(
@@ -910,15 +796,16 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            aou_freq_ht, aou_age_hist_ht = process_aou_dataset(
-                test=test, overwrite=overwrite
-            )
+            aou_freq_ht = process_aou_dataset(test=test, overwrite=overwrite)
 
             logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
 
+            # Write age histograms separately if needed
             logger.info(f"Writing AoU age histogram HT to {aou_age_hist.path}...")
-            aou_age_hist_ht.write(aou_age_hist.path, overwrite=overwrite)
+            aou_freq_ht.select("age_hists").write(
+                aou_age_hist.path, overwrite=overwrite
+            )
 
         if args.merge_datasets:
             logger.info(
@@ -952,14 +839,16 @@ def main(args):
 
             gnomad_freq_ht = get_freq(test=test, data_type="genomes", subset="gnomad")
             aou_freq_ht = get_freq(test=test, data_type="genomes", subset="aou")
-            # Extract age histograms from gnomAD frequency table for merging
+            # Extract age histograms from frequency tables for merging
             gnomad_age_hist_ht = gnomad_freq_ht.ht().select(
                 age_hist_het=gnomad_freq_ht.ht().histograms.age_hists.age_hist_het,
                 age_hist_hom=gnomad_freq_ht.ht().histograms.age_hists.age_hist_hom,
             )
-            aou_age_hist_ht = get_freq(
-                test=test, data_type="genomes", subset="aou"
-            )  # Placeholder for AoU age hist
+            # Extract age histograms from AoU frequency table
+            aou_age_hist_ht = aou_freq_ht.ht().select(
+                age_hist_het=aou_freq_ht.ht().age_hists.age_hist_het,
+                age_hist_hom=aou_freq_ht.ht().age_hists.age_hist_hom,
+            )
 
             merged_freq_ht, merged_age_hist_ht = merge_gnomad_and_aou_frequencies(
                 gnomad_freq_ht,
@@ -968,6 +857,13 @@ def main(args):
                 aou_age_hist_ht,
                 test=test,
             )
+
+            # Calculate FAF, grpmax, and other post-processing annotations on merged
+            # dataset
+            logger.info(
+                "Calculating FAF, grpmax, and other annotations on merged dataset..."
+            )
+            merged_freq_ht = _calculate_faf_and_grpmax_annotations(merged_freq_ht)
 
             logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
