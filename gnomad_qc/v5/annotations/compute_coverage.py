@@ -353,6 +353,12 @@ def join_aou_and_gnomad_qual_hists_ht(
     """
     Join AoU and gnomAD qual hists HTs for release.
 
+    .. note::
+        We did not compute qual hists for the gnomAD v4 genomes release
+        (https://github.com/broadinstitute/gnomad_qc/blob/e65bdbb5768113c0129199a875d845da245690e2/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1139).
+        This means we will not also not recompute hists on the gnomAD v4 genomes for v5,
+        which also means we will not subtract values from the samples to drop for consent reasons.
+
     :param aou_ht: AoU qual hists HT.
     :param gnomad_ht: gnomAD qual hists HT.
     :return: Joined HT.
