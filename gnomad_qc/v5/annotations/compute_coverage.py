@@ -1,4 +1,4 @@
-"""Script to compute coverage, allele number, and quality histogram on gnomAD v5 genomes (AoU v8 + gnomAD v4)."""
+"""Script to compute coverage, allele number, and quality histograms on gnomAD v5 genomes (AoU v8 + gnomAD v4)."""
 
 import argparse
 import logging
