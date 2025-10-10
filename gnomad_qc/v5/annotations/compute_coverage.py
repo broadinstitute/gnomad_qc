@@ -672,6 +672,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment where script will run.",
         default="rwb",
         type=str,
+        choices=["rwb", "dataproc"],
     )
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
@@ -745,5 +746,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    gnomad_args = [arg for arg in vars(args) if "gnomad" in arg.lower()]
+    if any(
+        getattr(args, arg)
+        for arg in gnomad_args
+        if isinstance(getattr(args, arg), bool)
+    ):
+        if args.environment != "dataproc":
+            parser.error(
+                "Arguments with 'gnomad' in the name require --environment dataproc"
+            )
 
     main(args)
