@@ -675,6 +675,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         choices=["rwb", "dataproc"],
     )
     parser.add_argument(
+        "--project",
+        help="Project name.",
+        default="aou",
+        type=str,
+        choices=["aou", "gnomad"],
+    )
+    parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
     parser.add_argument(
@@ -746,6 +753,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    if args.project == "aou" and args.environment != "rwb":
+        parser.error("--project aou requires --environment rwb")
+    if args.project == "gnomad" and args.environment != "dataproc":
+        parser.error("--project gnomad requires --environment dataproc")
 
     gnomad_args = [arg for arg in vars(args) if "gnomad" in arg.lower()]
     if any(
