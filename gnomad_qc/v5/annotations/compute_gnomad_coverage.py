@@ -9,7 +9,7 @@ from gnomad.utils.annotations import (
 )
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.resource.meta import meta
+from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v5.resources.basics import (
     get_gnomad_v5_genomes_vds,
     get_logging_path,
