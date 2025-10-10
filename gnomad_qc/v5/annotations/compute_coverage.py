@@ -755,7 +755,7 @@ if __name__ == "__main__":
     ):
         if args.environment != "dataproc":
             parser.error(
-                "Arguments with 'gnomad' in the name require --environment dataproc"
+                "Steps run on only gnomAD must be run in Dataproc (`--environment dataproc`)!"
             )
 
     main(args)
