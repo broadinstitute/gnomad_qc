@@ -31,6 +31,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
+from gnomad_qc.v4.resources.meta import meta as v4_meta
 
 # TODO: Switch from v4>v5 once v5 sample QC is complete
 from gnomad_qc.v5.resources.annotations import (  # get_aou_downsampling
@@ -78,35 +79,60 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def get_genomes_group_membership_ht(meta_ht: hl.Table, ds_ht: hl.Table) -> hl.Table:
+def get_group_membership_ht(
+    meta_ht: hl.Table, project: str, ds_ht: Optional[hl.Table] = None
+) -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
 
     :param meta_ht: Meta HT.
-    :param ds_ht: Downsampling HT.
+    :param project: Project name.
+    :param ds_ht: Optional downsampling HT. Only used for AoU.
     :return: Group membership HT.
     """
-    # TODO: remove this for v5.
-    meta_ht = meta_ht.filter(meta_ht.release)
+    if project == "aou":
+        ht = generate_freq_group_membership_array(
+            meta_ht,
+            build_freq_stratification_list(
+                sex_expr=meta_ht.sex_karyotype,
+                gen_anc_expr=meta_ht.gen_anc,
+                downsampling_expr=ds_ht[meta_ht.key].downsampling,
+            ),
+            downsamplings=hl.eval(ds_ht.downsamplings),
+            ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
+        )
 
-    ht = generate_freq_group_membership_array(
-        meta_ht,
-        build_freq_stratification_list(
-            sex_expr=meta_ht.sex_karyotype,
-            gen_anc_expr=meta_ht.gen_anc,
-            downsampling_expr=ds_ht[meta_ht.key].downsampling,
-        ),
-        downsamplings=hl.eval(ds_ht.downsamplings),
-        ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
-    )
+        ht = ht.annotate_globals(
+            freq_meta=ht.freq_meta.map(
+                lambda d: hl.dict(
+                    d.items().map(
+                        lambda x: hl.if_else(x[0] == "pop", ("gen_anc", x[1]), x)
+                    )
+                )
+            ),
+        )
 
-    ht = ht.annotate_globals(
-        freq_meta=ht.freq_meta.map(
-            lambda d: hl.dict(
-                d.items().map(lambda x: hl.if_else(x[0] == "pop", ("gen_anc", x[1]), x))
+    elif project == "gnomad":
+        # Filter to v4 release samples and drop consent drop samples.
+        # NOTE: Not using v5 project meta here because this part will be run in
+        # Dataproc.
+        ht = meta_ht.filter(
+            meta_ht.release
+            & (
+                hl.is_missing(meta_ht.project_meta.research_project_key)
+                | (
+                    (meta_ht.project_meta.research_project_key != "RP-1061")
+                    & (meta_ht.project_meta.research_project_key != "RP-1411")
+                )
             )
-        ),
-    )
+        )
+        ht = generate_freq_group_membership_array(
+            ht,
+            build_freq_stratification_list(
+                sex_expr=ht.sex_imputation.sex_karyotype,
+                gen_anc_expr=ht.population_inference.pop,
+            ),
+        )
 
     return ht
 
@@ -388,7 +414,7 @@ def main(args):
     n_partitions = args.n_partitions
 
     try:
-        # Retrieve raw coverage table path here because it is used in all of the
+        # Retrieve raw coverage table path here because it is used in most of the
         # script's run options.
         cov_and_an_ht_path = release_coverage_path(
             public=False,
@@ -401,6 +427,25 @@ def main(args):
         # TODO: Update this to use get_aou_downsampling once sample QC is complete.
         downsampling_ht_path = get_v4_downsampling(test=test).path
         meta_ht_path = project_meta.path
+
+        if args.write_group_membership_ht:
+            logger.info("Writing group membership HT...")
+            v4_meta_ht_path = v4_meta(data_type="genomes").path
+            group_membership_ht_path = group_membership(
+                test=args.test, data_set="gnomad"
+            ).path
+            check_resource_existence(
+                input_step_resources={"v4_meta_ht": [meta_ht_path]},
+                output_step_resources={
+                    "gnomad_group_membership_ht": [group_membership_ht_path]
+                },
+                overwrite=overwrite,
+            )
+
+            ht = get_group_membership_ht(
+                hl.read_table(v4_meta_ht_path), project="gnomad"
+            )
+            ht.write(group_membership_ht_path, overwrite=overwrite)
 
         if args.write_downsampling_ht:
             check_resource_existence(
@@ -467,8 +512,9 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
-            aou_group_membership_ht = get_genomes_group_membership_ht(
+            aou_group_membership_ht = get_group_membership_ht(
                 meta_ht=hl.read_table(meta_ht_path),
+                project="aou",
                 ds_ht=hl.read_table(downsampling_ht_path),
             )
             aou_group_membership_ht = aou_group_membership_ht.checkpoint(
@@ -639,6 +685,20 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to use for the output Table.",
         type=int,
         default=5000,
+    )
+
+    group_membership_args = parser.add_argument_group(
+        "Get gnomAD genomes group membership HT.",
+    )
+    group_membership_args.add_argument(
+        "--write-group-membership-ht",
+        help="Write gnomAD genomes group membership HT.",
+        action="store_true",
+    )
+    group_membership_args.add_argument(
+        "--test",
+        help="Write test gnomAD genomes group membership HT to test path.",
+        action="store_true",
     )
     parser.add_argument(
         "--write-downsampling-ht",
