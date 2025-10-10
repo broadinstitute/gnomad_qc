@@ -97,3 +97,42 @@ def qual_hists(test: bool = False) -> VersionedTableResource:
             for version in ANNOTATION_VERSIONS
         },
     )
+
+
+def coverage_and_an_path(
+    test: bool = False,
+    data_set: str = "aou",
+    environment: str = "rwb",
+) -> VersionedTableResource:
+    """
+    Fetch filepath for all sites coverage or allele number Table.
+
+    .. note ::
+
+        If `data_set` is 'gnomAD', the returned table only contains coverage and AN for consent drop samples.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_set: Dataset identifier. Must be one of "aou" or "gnomad". Default is "aou".
+    :param environment: Environment to use. Default is "rwb". Must be "rwb" for AoU and "dataproc" for gnomAD.
+    :return: Coverage and allele number Hail Table.
+    """
+    assert data_set in ["aou", "gnomad"], "data_set must be either 'aou' or 'gnomad'"
+
+    if data_set == "aou":
+        if environment != "rwb":
+            raise ValueError("AoU coverage and allele number must be run in rwb!")
+    else:
+        if environment != "dataproc":
+            raise ValueError(
+                "gnomAD coverage and allele number must be run in dataproc!"
+            )
+
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, data_set=data_set)}/{'aou' if data_set == 'aou' else 'gnomad'}.genomes.v{version}.coverage_and_an.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
