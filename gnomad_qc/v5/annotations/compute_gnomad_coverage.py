@@ -49,7 +49,7 @@ def get_group_membership_ht(meta_ht: hl.Table) -> hl.Table:
 def main(args):
     """Compute coverage, allele number, and quality histograms on gnomAD v5 genomes (gnomAD v4 minus consent drop samples)."""
     hl.init(
-        log="/compute_gnomad_coverage.log",
+        log="compute_gnomad_coverage.log",
         tmp_dir="gs://gnomad-tmp-4day",
     )
     hl.default_reference("GRCh38")
