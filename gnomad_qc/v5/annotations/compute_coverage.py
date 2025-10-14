@@ -252,33 +252,45 @@ def compute_all_release_stats_per_ref_site(
 def join_aou_and_gnomad_coverage_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
+    gnomad_release_ht: hl.Table,
     coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
     v4_count: int = 76215,
+    consent_drop_count: int = 866,
 ) -> hl.Table:
     """
     Join AoU and gnomAD coverage HTs for release.
 
     :param aou_ht: AoU coverage HT.
-    :param gnomad_ht: gnomAD coverage HT.
+    :param gnomad_ht: gnomAD coverage HT (contains coverage for consent drop samples only).
+    :param gnomad_release_ht: gnomAD v4 genomes coverage release HT.
     :param coverage_over_x_bins: List of boundaries for computing samples over X.
         Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
     :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
+    :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is 866.
     :return: Joined HT.
     """
     # TODO: Add support for subtracting gnomAD v4 samples.
     aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
     logger.info("Total number of AoU v8 release samples: %s", aou_count)
 
-    def _rename_cov_annotations(ht: hl.Table, project: str) -> hl.Table:
+    def _rename_cov_annotations(
+        ht: hl.Table, project: str, is_v4_release: bool
+    ) -> hl.Table:
         """
         Rename coverage annotations prior to merging Tables.
 
         :param ht: Input HT.
         :param project: Project name.
+        :param is_v4_release: Whether the HT is from the gnomAD v4 genomes release.
         :return: Renamed HT.
         """
         # Transform mean back into sum.
-        sample_count = v4_count if project == "gnomad" else aou_count
+        if is_v4_release:
+            sample_count = v4_count
+        elif project == "aou":
+            sample_count = aou_count
+        else:
+            sample_count = consent_drop_count
         ht = ht.transmute(sum=ht.mean * sample_count)
 
         # Rename annotations to include project.
@@ -289,25 +301,80 @@ def join_aou_and_gnomad_coverage_ht(
             # Revert v4 genomes fraction over X bins to sample count over X bins.
             ht = ht.transmute(
                 **{
-                    f"over_{x}_{project}": ht[f"over_{x}_{project}"] * v4_count
+                    f"over_{x}_{project}": ht[f"over_{x}_{project}"] * sample_count
                     for x in coverage_over_x_bins
                 }
             )
         return ht
 
-    aou_ht = _rename_cov_annotations(aou_ht, "aou")
-    gnomad_ht = _rename_cov_annotations(gnomad_ht, "gnomad")
+    aou_ht = _rename_cov_annotations(aou_ht, "aou", is_v4_release=False)
+    gnomad_ht = _rename_cov_annotations(gnomad_ht, "gnomad", is_v4_release=False)
+    gnomad_release_ht = _rename_cov_annotations(
+        gnomad_release_ht, "gnomad_release", is_v4_release=True
+    )
 
-    total_count = aou_count + v4_count
+    def _merge_coverage_fields(
+        project_1: str, project_2: str, sample_count: int, merge_gnomad: bool
+    ) -> hl.expr.DictExpression:
+        """
+        Merge coverage fields from two Tables.
+
+        .. note::
+            If `merge_gnomad` is True, function subtracts sum of the consent drop samples from sum of the release samples.
+
+        :param project_1: First project name.
+        :param project_2: Second project name.
+        :param sample_count: Total sample count.
+        :param merge_gnomad: Whether to merge fields from gnomAD release and consent drop samples.
+        :return: Merged fields.
+        """
+        if merge_gnomad:
+            merged_fields = {
+                "mean_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"])
+                / sample_count,
+            }
+            merged_fields.update(
+                {
+                    f"over_{x}_gnomad": (
+                        ht[f"over_{x}_{project_1}"] - ht[f"over_{x}_{project_2}"]
+                    )
+                    / sample_count
+                    for x in coverage_over_x_bins
+                }
+            )
+        else:
+            merged_fields = {
+                "mean": (ht[f"sum_{project_1}"] + ht[f"sum_{project_2}"])
+                / sample_count,
+            }
+            merged_fields.update(
+                {
+                    f"over_{x}": (
+                        ht[f"over_{x}_{project_1}"] + ht[f"over_{x}_{project_2}"]
+                    )
+                    / sample_count
+                    for x in coverage_over_x_bins
+                }
+            )
+        return merged_fields
+
+    # TODO: how do I update median_approx
+    gnomad_v5_count = v4_count - consent_drop_count
+    logger.info("Total number of gnomAD v5 release genomes: %s", gnomad_v5_count)
+    gnomad_ht = gnomad_ht.join(gnomad_release_ht, "left")
+    merged_fields = _merge_coverage_fields(
+        project_1="gnomad",
+        project_2="gnomad_release",
+        sample_count=gnomad_v5_count,
+        merge_gnomad=True,
+    )
+    gnomad_ht = gnomad_ht.transmute(**merged_fields)
+
+    v5_count = aou_count + gnomad_v5_count
+    logger.info("Total number of AoU + gnomAD v5 release genomes: %s", v5_count)
     ht = aou_ht.join(gnomad_ht, "left")
-    merged_fields = {
-        "mean": (ht.sum_aou + ht.sum_gnomad) / total_count,
-    }
-    merged_fields.update(
-        {
-            f"over_{x}": (ht[f"over_{x}_aou"] + ht[f"over_{x}_gnomad"]) / total_count
-            for x in coverage_over_x_bins
-        }
+    merged_fields = _merge_coverage_fields(
+        project_1="aou", project_2="gnomad", sample_count=v5_count, merge_gnomad=False
     )
     ht = ht.transmute(**merged_fields)
     return ht.select_globals()
