@@ -688,7 +688,9 @@ def main(args):
             logger.info("Exporting coverage HT and TSV...")
             aou_ht = hl.read_table(cov_and_an_ht_path)
             aou_ht = aou_ht.drop("AN", "qual_hists")
-            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad"))
+            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad")).drop(
+                "AN", "qual_hists"
+            )
             gnomad_release_ht = hl.read_table(
                 release_coverage_path(
                     release_version=v4_COVERAGE_RELEASE,
@@ -733,7 +735,10 @@ def main(args):
             logger.info("Exporting AN HT and TSV...")
             aou_ht = hl.read_table(cov_and_an_ht_path)
             aou_ht = aou_ht.select("AN")
-            gnomad_ht = hl.read_table(
+            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad")).select(
+                "AN"
+            )
+            gnomad_release_ht = hl.read_table(
                 release_coverage_path(
                     release_version=v4_AN_RELEASE,
                     public=True,
@@ -748,7 +753,7 @@ def main(args):
             elif test_2_partitions:
                 gnomad_ht = gnomad_ht._filter_partitions(range(2))
 
-            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
+            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht, gnomad_release_ht)
             ht = ht.checkpoint(an_raw_ht_path, overwrite=overwrite)
             ht = ht.select("AN")
             ht = ht.select_globals(
