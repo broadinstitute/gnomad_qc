@@ -423,7 +423,6 @@ def join_aou_and_gnomad_an_ht(
     :param gnomad_release_ht: gnomAD v4 genomes release AN HT.
     :return: Joined HT.
     """
-    # TODO: Add support for subtracting gnomAD v4 samples.
     aou_ht = _rename_fields(aou_ht, "AN", "aou")
     gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
     gnomad_release_ht = _rename_fields(gnomad_release_ht, "AN", "gnomad_release")
@@ -431,7 +430,9 @@ def join_aou_and_gnomad_an_ht(
     def _merge_an_fields(
         ht: hl.Table, project_1: str, project_2: str, operation: str
     ) -> Tuple[
-        hl.expr.ArrayExpression, hl.expr.ArrayExpression, hl.expr.ArrayExpression
+        hl.expr.ArrayExpression,
+        hl.expr.ArrayExpression,
+        hl.expr.DictExpression,
     ]:
         """
         Merge AN fields from two projects.
@@ -443,7 +444,7 @@ def join_aou_and_gnomad_an_ht(
         :return: Joined AN, strata meta, and count arrays.
         """
         joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
-            arrays=[f"ht.AN_{project_1}", f"ht.AN_{project_2}"],
+            arrays=[ht[f"AN_{project_1}"], ht[f"AN_{project_2}"]],
             meta=[
                 ht.index_globals()[f"strata_meta_{project_1}"],
                 ht.index_globals()[f"strata_meta_{project_2}"],
