@@ -372,6 +372,7 @@ def join_aou_and_gnomad_coverage_ht(
         operation="subtract",
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
+    gnomad_ht = gnomad_ht.checkpoint(new_temp_file("gnomad_coverage_ht", "ht"))
 
     logger.info("Merging AoU and gnomAD v5 coverage HTs...")
     v5_count = aou_count + gnomad_v5_count
@@ -472,6 +473,7 @@ def join_aou_and_gnomad_an_ht(
         strata_meta_gnomad=joint_strata_meta,
         strata_sample_count_gnomad=count_arrays_dict,
     )
+    gnomad_ht = gnomad_ht.checkpoint(new_temp_file("gnomad_an_ht", "ht"))
 
     logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
