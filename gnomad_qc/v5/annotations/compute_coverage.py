@@ -269,7 +269,6 @@ def join_aou_and_gnomad_coverage_ht(
     :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is 866.
     :return: Joined HT.
     """
-    # TODO: Add support for subtracting gnomAD v4 samples.
     aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
     logger.info("Total number of AoU v8 release samples: %s", aou_count)
 
