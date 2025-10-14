@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import CURRENT_GENOME_AN_RELEASE as v4_AN_RELEASE
@@ -412,32 +412,76 @@ def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
 def join_aou_and_gnomad_an_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
+    gnomad_release_ht: hl.Table,
 ) -> hl.Table:
     """
     Join AoU and gnomAD AN HTs for release.
 
     :param aou_ht: AoU AN HT.
-    :param gnomad_ht: gnomAD AN HT.
+    :param gnomad_ht: gnomAD AN HT (contains AN for consent drop samples only).
+    :param gnomad_release_ht: gnomAD v4 genomes release AN HT.
     :return: Joined HT.
     """
     # TODO: Add support for subtracting gnomAD v4 samples.
     aou_ht = _rename_fields(aou_ht, "AN", "aou")
     gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
+    gnomad_release_ht = _rename_fields(gnomad_release_ht, "AN", "gnomad_release")
+
+    def _merge_an_fields(
+        ht: hl.Table, project_1: str, project_2: str, operation: str
+    ) -> Tuple[
+        hl.expr.ArrayExpression, hl.expr.ArrayExpression, hl.expr.ArrayExpression
+    ]:
+        """
+        Merge AN fields from two projects.
+
+        :param ht: Input HT. Must have annotations from both projects.
+        :param project_1: First project name.
+        :param project_2: Second project name.
+        :param operation: Operation to perform on the AN fields. Must be "sum" or "subtract".
+        :return: Joined AN, strata meta, and count arrays.
+        """
+        joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
+            arrays=[f"ht.AN_{project_1}", f"ht.AN_{project_2}"],
+            meta=[
+                ht.index_globals()[f"strata_meta_{project_1}"],
+                ht.index_globals()[f"strata_meta_{project_2}"],
+            ],
+            count_arrays={
+                "counts": [
+                    ht.index_globals()[f"strata_sample_count_{project_1}"],
+                    ht.index_globals()[f"strata_sample_count_{project_2}"],
+                ],
+            },
+            operation=operation,
+        )
+        return joint_an, joint_strata_meta, count_arrays_dict
+
+    logger.info(
+        "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
+    )
+    gnomad_ht = gnomad_ht.join(gnomad_release_ht, "left")
+    joint_an, joint_strata_meta, count_arrays_dict = _merge_an_fields(
+        ht=gnomad_ht,
+        project_1="gnomad",
+        project_2="gnomad_release",
+        operation="subtract",
+    )
+    gnomad_ht = gnomad_ht.annotate(AN_gnomad=joint_an)
+    gnomad_ht = gnomad_ht.annotate_globals(
+        strata_meta_gnomad=joint_strata_meta,
+        strata_sample_count_gnomad=count_arrays_dict,
+    )
+
+    logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.checkpoint(new_temp_file("aou_and_gnomad_join", "ht"))
 
-    joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
-        arrays=[ht.AN_aou, ht.AN_gnomad],
-        meta=[
-            ht.index_globals().strata_meta_aou,
-            ht.index_globals().strata_meta_gnomad,
-        ],
-        count_arrays={
-            "counts": [
-                ht.index_globals().strata_sample_count_aou,
-                ht.index_globals().strata_sample_count_gnomad,
-            ],
-        },
+    joint_an, joint_strata_meta, count_arrays_dict = _merge_an_fields(
+        ht=ht,
+        project_1="aou",
+        project_2="gnomad",
+        operation="sum",
     )
     ht = ht.annotate(AN=joint_an)
     ht = ht.annotate_globals(
