@@ -22,9 +22,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
-from gnomad_qc.v5.resources.genetic_ancestry import (
-    get_gen_anc_ht,
-)
+
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     get_gen_anc_ht,
