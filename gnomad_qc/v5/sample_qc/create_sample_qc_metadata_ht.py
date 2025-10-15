@@ -291,7 +291,7 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table, outli
     # Annotate metadata Table with relatedness inference and filters.
     meta_ht = meta_ht.annotate(
         relatedness_inference=hl.struct(
-            release_relatedness_inference=relatedness_filters_ht.release_relatedness_filters,
+            release_relatedness_inference=relatedness_filters_ht[meta_ht.key].release_relatedness_filters,
             relationships=relatedness_inference_ht[meta_ht.key].relationships,
         )
     )
