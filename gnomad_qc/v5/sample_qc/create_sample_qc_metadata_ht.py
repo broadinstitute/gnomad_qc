@@ -583,6 +583,8 @@ def main(args):
 
         # ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
 
+        meta_ht.write(f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc.ht")
+
         logger.info("Total sample count: %s", ht.count())
 
         # TODO: Add just count genomes
@@ -599,13 +601,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
+        help="Overwrite output files.",
         action="store_true",
     )
-    parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to."
-    )
-
     return parser
 
 
@@ -613,8 +611,4 @@ if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
 
-    if args.slack_channel:
-        with slack_notifications(slack_token, args.slack_channel):
-            main(args)
-    else:
-        main(args)
+    main(args)
