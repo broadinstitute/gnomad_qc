@@ -555,24 +555,15 @@ def main(args):
         )
 
         logger.info("\n\nAnnotating high_quality field and releasable field.")
-        # Excluding samples in the ELGH2 project from the high_quality and release
-        # samples because we identified that they do not have the full set of 'AS'
-        # annotations in 'gvcf_info' so we need to exclude them from variant QC and release.
-        hq_expr = (
-            ~ht.sample_filters.hard_filtered
-            & ~ht.sample_filters.outlier_filtered
-            & ~ht.sample_filters.elgh2_project
-        )
-
-        ht = ht.annotate(
-            high_quality=hq_expr,
-            release=(
-                ht.project_meta.releasable
-                & hq_expr
-                & ~ht.sample_filters.release_relatedness_filters.related
-                & ~ht.sample_filters.control
-            ),
-        )
+        #ht = ht.annotate(
+        #    high_quality=hq_expr,
+        #    release=(
+        #        ht.project_meta.releasable
+        #        & hq_expr
+        #        & ~ht.sample_filters.release_relatedness_filters.related
+        #        & ~ht.sample_filters.control
+        #    ),
+        #)
 
         # Add relatedness inference and filters to the metadata Table.
         meta_ht = add_relatedness_inference(
