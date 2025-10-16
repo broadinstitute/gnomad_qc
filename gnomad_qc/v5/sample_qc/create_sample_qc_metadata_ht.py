@@ -106,11 +106,10 @@ def prepare_meta_with_hard_filters(
     # Obtain AoU hard filters and set hard_filter to sample_qc_metrics if any hard filters were applied.
     aou_hard_filters_ht = aou_hard_filters_ht.annotate(
         hard_filters=hl.if_else(
-            hl.len(aou_hard_filters_ht.sample_qc_metric_hard_filters) > 0,
+            hl.is_defined(aou_hard_filters_ht.sample_qc_metric_hard_filters)
+            & (hl.len(aou_hard_filters_ht.sample_qc_metric_hard_filters) > 0),
             {"sample_qc_metrics"},
-            hl.empty_set(
-                aou_hard_filters_ht.sample_qc_metric_hard_filters.dtype.element_type
-            ),
+            hl.empty_set(hl.tstr),
         )
     )
 
@@ -125,10 +124,13 @@ def prepare_meta_with_hard_filters(
 
     # Add AoU hard filter to the meta Table.
     meta_ht = meta_ht.annotate(
-        hard_filters=hl.if_else(
-            meta_ht.project == "gnomad",
-            meta_ht.hard_filters,
-            aou_hard_filters_ht[meta_ht.key].hard_filters,
+        hard_filters=hl.or_else(
+            hl.if_else(
+                meta_ht.project == "gnomad",
+                meta_ht.hard_filters,
+                aou_hard_filters_ht[meta_ht.key].hard_filters,
+            ),
+            hl.empty_set(hl.tstr),
         )
     )
 
@@ -233,10 +235,13 @@ def add_sample_filter_annotations(
     """
     # Add outlier filters based on project
     meta_ht = meta_ht.annotate(
-        outlier_filters=hl.if_else(
-            meta_ht.project_meta.project == "gnomad",
-            meta_ht.outlier_filters,
-            outlier_filters_ht[meta_ht.key].qc_metrics_filters,
+        outlier_filters=hl.or_else(
+            hl.if_else(
+                meta_ht.project_meta.project == "gnomad",
+                meta_ht.outlier_filters,
+                outlier_filters_ht[meta_ht.key].qc_metrics_filters,
+            ),
+            hl.empty_set(hl.tstr),
         )
     )
 
@@ -265,7 +270,9 @@ def add_sample_filter_annotations(
     return meta_ht
 
 
-def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table, outlier_filters_ht: hl.Table) -> hl.Table:
+def add_relatedness_inference(
+    meta_ht: hl.Table, relatedness_ht: hl.Table, outlier_filters_ht: hl.Table
+) -> hl.Table:
     """
     Add relationship inference and filters to metadata Table.
 
@@ -290,19 +297,21 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table, outli
 
     # Annotate metadata Table with relatedness inference and filters.
     meta_ht = meta_ht.annotate(
-        release_relatedness_filters=relatedness_filters_ht[meta_ht.key].release_relatedness_filters
+        release_relatedness_filters=relatedness_filters_ht[
+            meta_ht.key
+        ].release_relatedness_filters
     )
     meta_ht = meta_ht.annotate(
         relationships=relatedness_inference_ht[meta_ht.key].relationships
     )
 
     meta_ht = meta_ht.annotate(
-    relatedness_inference=hl.struct(
-        release_relatedness_filters=meta_ht.release_relatedness_filters,
-        relationships=meta_ht.relationships,
+        relatedness_inference=hl.struct(
+            release_relatedness_filters=meta_ht.release_relatedness_filters,
+            relationships=meta_ht.relationships,
+        )
     )
-    )
-    meta_ht = meta_ht.drop('release_relatedness_filters', 'relationships')
+    meta_ht = meta_ht.drop("release_relatedness_filters", "relationships")
 
     return meta_ht
 
@@ -564,7 +573,7 @@ def main(args):
         )
 
         logger.info("\n\nAnnotating high_quality field and releasable field.")
-        #ht = ht.annotate(
+        # ht = ht.annotate(
         #    high_quality=hq_expr,
         #    release=(
         #        ht.project_meta.releasable
@@ -572,11 +581,13 @@ def main(args):
         #        & ~ht.sample_filters.release_relatedness_filters.related
         #        & ~ht.sample_filters.control
         #    ),
-        #)
+        # )
 
         # Add relatedness inference and filters to the metadata Table.
         meta_ht = add_relatedness_inference(
-            meta_ht=meta_ht, relatedness_ht=relatedness().ht(), outlier_filters_ht=finalized_outlier_filtering().ht()
+            meta_ht=meta_ht,
+            relatedness_ht=relatedness().ht(),
+            outlier_filters_ht=finalized_outlier_filtering().ht(),
         )
 
         # ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
@@ -587,7 +598,8 @@ def main(args):
 
         # TODO: Add just count genomes
         logger.info(
-            "Release sample count: %s", ht.aggregate(hl.agg.count_where(ht.release))
+            "Release sample count: %s",
+            meta_ht.aggregate(hl.agg.count_where(meta_ht.release)),
         )
     finally:
         logger.info("Copying hail log to logging bucket...")
