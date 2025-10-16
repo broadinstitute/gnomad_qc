@@ -592,7 +592,9 @@ def main(args):
 
         # ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
 
-        meta_ht.write(f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc.ht")
+        meta_ht.write(
+            f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc.ht", overwrite=args.overwrite
+        )
 
         logger.info("Total sample count: %s", ht.count())
 
