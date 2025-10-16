@@ -104,21 +104,24 @@ def prepare_meta_with_hard_filters(
     samples_to_exclude = hl.literal(exclusion_ht.s.collect())
 
     # Obtain AoU hard filters and set hard_filter to sample_qc_metrics if any hard filters were applied.
-    aou_hard_filters_ht = aou_hard_filters_ht.annotate(
+    aou_ht = meta_ht.filter(meta_ht.project == "aou").select()
+
+    aou_ht = aou_ht.annotate(hard_filters=aou_hard_filters_ht[aou_ht.key])
+
+    aou_ht = aou_ht.annotate(
         hard_filters=hl.if_else(
-            hl.is_defined(aou_hard_filters_ht.sample_qc_metric_hard_filters)
-            & (hl.len(aou_hard_filters_ht.sample_qc_metric_hard_filters) > 0),
+            hl.is_defined(aou_ht.hard_filters) & (hl.len(aou_ht.hard_filters) > 0),
             {"sample_qc_metrics"},
             hl.empty_set(hl.tstr),
         )
     )
 
     # Add sample exclusion to hard filters if sample is in exclusion list.
-    aou_hard_filters_ht = aou_hard_filters_ht.annotate(
+    aou_ht = aou_ht.annotate(
         hard_filters=hl.if_else(
-            samples_to_exclude.contains(aou_hard_filters_ht.s),
-            aou_hard_filters_ht.hard_filters.union({"sample_exclusion"}),
-            aou_hard_filters_ht.hard_filters,
+            samples_to_exclude.contains(aout_ht.s),
+            aou_ht.hard_filters.union({"sample_exclusion"}),
+            aou_ht.hard_filters,
         )
     )
 
@@ -128,7 +131,7 @@ def prepare_meta_with_hard_filters(
             hl.if_else(
                 meta_ht.project == "gnomad",
                 meta_ht.hard_filters,
-                aou_hard_filters_ht[meta_ht.key].hard_filters,
+                aou_ht[meta_ht.key].hard_filters,
             ),
             hl.empty_set(hl.tstr),
         )
@@ -593,7 +596,8 @@ def main(args):
         # ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
 
         meta_ht.write(
-            f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc.ht", overwrite=args.overwrite
+            f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc_meta.ht",
+            overwrite=args.overwrite,
         )
 
         logger.info("Total sample count: %s", ht.count())
