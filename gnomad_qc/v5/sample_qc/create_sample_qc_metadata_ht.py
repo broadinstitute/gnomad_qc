@@ -119,7 +119,7 @@ def prepare_meta_with_hard_filters(
     # Add sample exclusion to hard filters if sample is in exclusion list.
     aou_ht = aou_ht.annotate(
         hard_filters=hl.if_else(
-            samples_to_exclude.contains(aout_ht.s),
+            samples_to_exclude.contains(aou_ht.s),
             aou_ht.hard_filters.union({"sample_exclusion"}),
             aou_ht.hard_filters,
         )
