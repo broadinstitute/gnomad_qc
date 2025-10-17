@@ -21,7 +21,7 @@ from gnomad_qc.v5.resources.basics import (
     get_samples_to_exclude,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
+from gnomad_qc.v5.resources.meta import meta, project_meta, sample_id_collisions
 
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
