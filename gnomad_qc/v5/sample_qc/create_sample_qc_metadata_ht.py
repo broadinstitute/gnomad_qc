@@ -601,14 +601,8 @@ def main(args):
             ),
         )
 
-        # ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
-
-        meta_ht.write(
-            f"gs://{WORKSPACE_BUCKET}/tmp/4_day/sample_qc_meta.ht",
-            overwrite=args.overwrite,
-        )
-
-        # meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
+        meta_ht = meta_ht.filter(meta_ht.project_meta.data_type == "genomes")
+        meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
 
         logger.info("Total sample count: %s", meta_ht.count())
 
