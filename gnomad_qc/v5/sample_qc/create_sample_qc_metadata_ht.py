@@ -600,7 +600,9 @@ def main(args):
             overwrite=args.overwrite,
         )
 
-        logger.info("Total sample count: %s", ht.count())
+        # meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
+
+        logger.info("Total sample count: %s", meta_ht.count())
 
         # TODO: Add just count genomes
         logger.info(
