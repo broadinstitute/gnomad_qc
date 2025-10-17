@@ -217,7 +217,7 @@ def annotate_genetic_ancestry(
         .or_missing()
     )
 
-    meta_ht = meta_ht.annotate(
+    meta_ht = meta_ht.transmute(
         genetic_ancestry_inference=meta_ht.genetic_ancestry_inference.annotate(
             gen_anc=meta_ht.gen_anc
         )
@@ -268,7 +268,7 @@ def add_sample_filter_annotations(
     meta_ht = meta_ht.annotate(
         high_quality=~meta_ht.sample_filters.hard_filtered
         & ~meta_ht.sample_filters.outlier_filtered
-    )
+    ).drop("hard_filtered")
 
     return meta_ht
 
@@ -575,22 +575,30 @@ def main(args):
             meta_ht=meta_ht, outlier_filters_ht=finalized_outlier_filtering().ht()
         )
 
-        logger.info("\n\nAnnotating high_quality field and releasable field.")
-        # ht = ht.annotate(
-        #    high_quality=hq_expr,
-        #    release=(
-        #        ht.project_meta.releasable
-        #        & hq_expr
-        #        & ~ht.sample_filters.release_relatedness_filters.related
-        #        & ~ht.sample_filters.control
-        #    ),
-        # )
-
         # Add relatedness inference and filters to the metadata Table.
         meta_ht = add_relatedness_inference(
             meta_ht=meta_ht,
             relatedness_ht=relatedness().ht(),
             outlier_filters_ht=finalized_outlier_filtering().ht(),
+        )
+
+        logger.info("\n\nAnnotating release field...")
+        meta_ht = meta_ht.annotate(
+            project_meta=meta_ht.project_meta.annotate(
+                releasable=hl.if_else(
+                    meta_ht.project_meta.project == "aou",
+                    True,
+                    meta_ht.project_meta.releasable,
+                )
+            )
+        )
+
+        meta_ht = meta_ht.annotate(
+            release=(
+                meta_ht.project_meta.releasable
+                & meta_ht.high_quality
+                & ~meta_ht.relatedness_inference.release_relatedness_filters.related
+            ),
         )
 
         # ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
