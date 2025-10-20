@@ -249,6 +249,81 @@ def compute_all_release_stats_per_ref_site(
     return ht.annotate(qual_hists=ht.qual_hists[0])
 
 
+def _rename_cov_annotations(ht: hl.Table, project: str, sample_count: int) -> hl.Table:
+    """
+    Rename coverage annotations prior to merging Tables.
+
+    :param ht: Input HT.
+    :param project: Project name.
+    :param sample_count: Number of samples in HT.
+    :return: Renamed HT.
+    """
+    # Transform mean back into sum.
+    ht = ht.transmute(sum=ht.mean * sample_count)
+
+    # Rename annotations to include project.
+    row_fields = list(ht.row_value)
+    rename_dict = {f: f"{f}_{project}" for f in row_fields}
+    ht = ht.rename(rename_dict)
+    if project == "gnomad":
+        # Revert v4 genomes fraction over X bins to sample count over X bins.
+        ht = ht.transmute(
+            **{
+                f"over_{x}_{project}": ht[f"over_{x}_{project}"] * sample_count
+                for x in coverage_over_x_bins
+            }
+        )
+    return ht
+
+
+def _merge_coverage_fields(
+    ht: hl.Table,
+    project_1: str,
+    project_2: str,
+    sample_count: int,
+    operation: str,
+) -> hl.expr.DictExpression:
+    """
+    Merge coverage fields from two Tables.
+
+    .. note::
+        If `merge_gnomad` is True, function subtracts sum of the consent drop samples from sum of the release samples.
+
+    :param ht: Input HT. Must have annotations from both projects.
+    :param project_1: First project name.
+    :param project_2: Second project name.
+    :param sample_count: Total sample count.
+    :param operation: Operation to perform on the coverage fields. Must be "sum" or "subtract".
+    :return: Merged fields.
+    """
+    if operation == "subtract":
+        merged_fields = {
+            "mean_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"])
+            / sample_count,
+        }
+        merged_fields.update(
+            {
+                f"over_{x}_gnomad": (
+                    ht[f"over_{x}_{project_1}"] - ht[f"over_{x}_{project_2}"]
+                )
+                / sample_count
+                for x in coverage_over_x_bins
+            }
+        )
+    else:
+        merged_fields = {
+            "mean": (ht[f"sum_{project_1}"] + ht[f"sum_{project_2}"]) / sample_count,
+        }
+        merged_fields.update(
+            {
+                f"over_{x}": (ht[f"over_{x}_{project_1}"] + ht[f"over_{x}_{project_2}"])
+                / sample_count
+                for x in coverage_over_x_bins
+            }
+        )
+    return merged_fields
+
+
 def join_aou_and_gnomad_coverage_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
@@ -272,89 +347,11 @@ def join_aou_and_gnomad_coverage_ht(
     aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
     logger.info("Total number of AoU v8 release samples: %s", aou_count)
 
-    def _rename_cov_annotations(
-        ht: hl.Table, project: str, sample_count: int
-    ) -> hl.Table:
-        """
-        Rename coverage annotations prior to merging Tables.
-
-        :param ht: Input HT.
-        :param project: Project name.
-        :param sample_count: Number of samples in HT.
-        :return: Renamed HT.
-        """
-        # Transform mean back into sum.
-        ht = ht.transmute(sum=ht.mean * sample_count)
-
-        # Rename annotations to include project.
-        row_fields = list(ht.row_value)
-        rename_dict = {f: f"{f}_{project}" for f in row_fields}
-        ht = ht.rename(rename_dict)
-        if project == "gnomad":
-            # Revert v4 genomes fraction over X bins to sample count over X bins.
-            ht = ht.transmute(
-                **{
-                    f"over_{x}_{project}": ht[f"over_{x}_{project}"] * sample_count
-                    for x in coverage_over_x_bins
-                }
-            )
-        return ht
-
     aou_ht = _rename_cov_annotations(aou_ht, "aou", aou_count)
     gnomad_ht = _rename_cov_annotations(gnomad_ht, "gnomad", consent_drop_count)
     gnomad_release_ht = _rename_cov_annotations(
         gnomad_release_ht, "gnomad_release", v4_count
     )
-
-    def _merge_coverage_fields(
-        ht: hl.Table,
-        project_1: str,
-        project_2: str,
-        sample_count: int,
-        operation: str,
-    ) -> hl.expr.DictExpression:
-        """
-        Merge coverage fields from two Tables.
-
-        .. note::
-            If `merge_gnomad` is True, function subtracts sum of the consent drop samples from sum of the release samples.
-
-        :param ht: Input HT. Must have annotations from both projects.
-        :param project_1: First project name.
-        :param project_2: Second project name.
-        :param sample_count: Total sample count.
-        :param operation: Operation to perform on the coverage fields. Must be "sum" or "subtract".
-        :return: Merged fields.
-        """
-        if operation == "subtract":
-            merged_fields = {
-                "mean_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"])
-                / sample_count,
-            }
-            merged_fields.update(
-                {
-                    f"over_{x}_gnomad": (
-                        ht[f"over_{x}_{project_1}"] - ht[f"over_{x}_{project_2}"]
-                    )
-                    / sample_count
-                    for x in coverage_over_x_bins
-                }
-            )
-        else:
-            merged_fields = {
-                "mean": (ht[f"sum_{project_1}"] + ht[f"sum_{project_2}"])
-                / sample_count,
-            }
-            merged_fields.update(
-                {
-                    f"over_{x}": (
-                        ht[f"over_{x}_{project_1}"] + ht[f"over_{x}_{project_2}"]
-                    )
-                    / sample_count
-                    for x in coverage_over_x_bins
-                }
-            )
-        return merged_fields
 
     # TODO: how do I update median_approx
     logger.info(
