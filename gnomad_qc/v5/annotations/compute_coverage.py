@@ -193,6 +193,7 @@ def compute_all_release_stats_per_ref_site(
     # produce both adj and raw histograms.
 
     vmt = vds.variant_data
+    vmt = vmt.annotate_cols(sex_karyotype=vmt[sex_karyotype_field])
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     # TODO: Add adj annotation and sex ploidy adjustment here for AoU.
@@ -211,7 +212,7 @@ def compute_all_release_stats_per_ref_site(
         group_membership_ht=group_membership_ht,
         entry_keep_fields=["GQ", "DP"],
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
-        sex_karyotype_field=sex_karyotype_field,
+        sex_karyotype_field="sex_karyotype",
     )
 
     # This expression aggregates the DP counter in reverse order of the cov_bins and
