@@ -754,10 +754,14 @@ def main(args):
             gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
 
             if test_chr22_chrx_chry:
+                aou_ht = hl.filter_intervals(
+                    aou_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
                 gnomad_ht = hl.filter_intervals(
                     gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
                 )
             elif test_2_partitions:
+                aou_ht = aou_ht._filter_partitions(range(2))
                 gnomad_ht = gnomad_ht._filter_partitions(range(2))
 
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht, gnomad_release_ht)
