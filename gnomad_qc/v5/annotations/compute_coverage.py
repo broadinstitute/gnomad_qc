@@ -290,6 +290,7 @@ def _merge_coverage_fields(
     project_2: str,
     sample_count: int,
     operation: str,
+    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
 ) -> hl.expr.DictExpression:
     """
     Merge coverage fields from two Tables.
@@ -303,6 +304,8 @@ def _merge_coverage_fields(
     :param project_2: Second project name.
     :param sample_count: Total sample count.
     :param operation: Operation to perform on the coverage fields. Must be "sum" or "subtract".
+    :param coverage_over_x_bins: List of boundaries for computing samples over X.
+        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
     :return: Merged fields.
     """
     if operation == "subtract":
@@ -441,58 +444,58 @@ def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
     return ht.rename(rename_dict)
 
 
-def join_aou_and_gnomad_an_ht(
-    aou_ht: hl.Table,
+def _merge_an_fields(
+    ht: hl.Table, project_1: str, project_2: str, operation: str
+) -> Tuple[
+    hl.expr.ArrayExpression,
+    hl.expr.ArrayExpression,
+    hl.expr.DictExpression,
+]:
+    """
+    Merge AN fields from two projects.
+
+    :param ht: Input HT. Must have annotations from both projects.
+    :param project_1: First project name.
+    :param project_2: Second project name.
+    :param operation: Operation to perform on the AN fields. Must be "sum" or "subtract".
+    :return: Joined AN, strata meta, and count arrays.
+    """
+    joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
+        arrays=[ht[f"AN_{project_1}"], ht[f"AN_{project_2}"]],
+        meta=[
+            ht.index_globals()[f"strata_meta_{project_1}"],
+            ht.index_globals()[f"strata_meta_{project_2}"],
+        ],
+        count_arrays={
+            "counts": [
+                ht.index_globals()[f"strata_sample_count_{project_1}"],
+                ht.index_globals()[f"strata_sample_count_{project_2}"],
+            ],
+        },
+        operation=operation,
+    )
+    return joint_an, joint_strata_meta, count_arrays_dict
+
+
+def merge_gnomad_an_hts(
     gnomad_ht: hl.Table,
     gnomad_release_ht: hl.Table,
-) -> hl.Table:
+    overwrite: bool = False,
+) -> None:
     """
-    Join AoU and gnomAD AN HTs for release.
+    Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes AN HT.
 
-    :param aou_ht: AoU AN HT.
     :param gnomad_ht: gnomAD AN HT (contains AN for consent drop samples only).
     :param gnomad_release_ht: gnomAD v4 genomes release AN HT.
-    :return: Joined HT.
+    :param overwrite: Whether to overwrite existing gnomAD v5 genomes AN HT. Default is False.
+    :return: None; writes gnomAD v5 genomes AN HT to temp bucket.
     """
-    aou_ht = _rename_fields(aou_ht, "AN", "aou")
-    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
-    gnomad_release_ht = _rename_fields(gnomad_release_ht, "AN", "gnomad_release")
-
-    def _merge_an_fields(
-        ht: hl.Table, project_1: str, project_2: str, operation: str
-    ) -> Tuple[
-        hl.expr.ArrayExpression,
-        hl.expr.ArrayExpression,
-        hl.expr.DictExpression,
-    ]:
-        """
-        Merge AN fields from two projects.
-
-        :param ht: Input HT. Must have annotations from both projects.
-        :param project_1: First project name.
-        :param project_2: Second project name.
-        :param operation: Operation to perform on the AN fields. Must be "sum" or "subtract".
-        :return: Joined AN, strata meta, and count arrays.
-        """
-        joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
-            arrays=[ht[f"AN_{project_1}"], ht[f"AN_{project_2}"]],
-            meta=[
-                ht.index_globals()[f"strata_meta_{project_1}"],
-                ht.index_globals()[f"strata_meta_{project_2}"],
-            ],
-            count_arrays={
-                "counts": [
-                    ht.index_globals()[f"strata_sample_count_{project_1}"],
-                    ht.index_globals()[f"strata_sample_count_{project_2}"],
-                ],
-            },
-            operation=operation,
-        )
-        return joint_an, joint_strata_meta, count_arrays_dict
-
     logger.info(
         "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
     )
+    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
+    gnomad_release_ht = _rename_fields(gnomad_release_ht, "AN", "gnomad_release")
+
     gnomad_ht = gnomad_ht.join(gnomad_release_ht, "left")
     joint_an, joint_strata_meta, count_arrays_dict = _merge_an_fields(
         ht=gnomad_ht,
@@ -505,7 +508,23 @@ def join_aou_and_gnomad_an_ht(
         strata_meta_gnomad=joint_strata_meta,
         strata_sample_count_gnomad=count_arrays_dict,
     )
-    gnomad_ht = gnomad_ht.checkpoint(new_temp_file("gnomad_an_ht", "ht"))
+    gnomad_ht = gnomad_ht.select("AN_gnomad")
+    gnomad_ht.write(f"{qc_temp_prefix}/gnomad_v5_genomes_an.ht", overwrite=overwrite)
+
+
+def join_aou_and_gnomad_an_ht(
+    aou_ht: hl.Table,
+    gnomad_ht: hl.Table,
+) -> hl.Table:
+    """
+    Join AoU and gnomAD AN HTs for release.
+
+    :param aou_ht: AoU AN HT.
+    :param gnomad_ht: gnomAD v5 genomes AN HT.
+    :return: Joined HT.
+    """
+    aou_ht = _rename_fields(aou_ht, "AN", "aou")
+    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
 
     logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
@@ -729,6 +748,31 @@ def main(args):
 
             merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
 
+        if args.merge_gnomad_an:
+            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad")).select(
+                "AN"
+            )
+            gnomad_release_ht = hl.read_table(
+                release_coverage_path(
+                    release_version=v4_AN_RELEASE,
+                    public=True,
+                    coverage_type="allele_number",
+                )
+            )
+
+            if test_chr22_chrx_chry:
+                gnomad_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+                gnomad_release_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                gnomad_ht = gnomad_ht._filter_partitions(range(2))
+                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
+
+            merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
+
         if args.export_coverage_release_files:
             cov_ht_path = release_coverage_path(
                 public=False,
@@ -782,7 +826,11 @@ def main(args):
                 coverage_type="allele_number",
             )
             an_tsv_path = release_all_sites_an_tsv_path(test=test)
+            gnomad_an_ht_path = f"{qc_temp_prefix}/gnomad_v5_genomes_an.ht"
             check_resource_existence(
+                input_step_resources={
+                    "gnomad_an_ht": gnomad_an_ht_path,
+                },
                 output_step_resources={
                     "an_raw_ht": an_raw_ht_path,
                     "an_release_ht": an_ht_path,
@@ -794,24 +842,20 @@ def main(args):
             logger.info("Exporting AN HT and TSV...")
             aou_ht = hl.read_table(cov_and_an_ht_path)
             aou_ht = aou_ht.select("AN")
-            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad")).select(
-                "AN"
-            )
-            gnomad_release_ht = hl.read_table(
-                release_coverage_path(
-                    release_version=v4_AN_RELEASE,
-                    public=True,
-                    coverage_type="allele_number",
-                )
-            )
+            gnomad_ht = hl.read_table(gnomad_an_ht_path)
+
             if test_chr22_chrx_chry:
+                aou_ht = hl.filter_intervals(
+                    aou_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
                 gnomad_ht = hl.filter_intervals(
                     gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
                 )
             elif test_2_partitions:
+                aou_ht = aou_ht._filter_partitions(range(2))
                 gnomad_ht = gnomad_ht._filter_partitions(range(2))
 
-            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht, gnomad_release_ht)
+            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(an_raw_ht_path, overwrite=overwrite)
             ht = ht.select("AN")
             ht = ht.select_globals(
@@ -821,7 +865,6 @@ def main(args):
             ht = ht.naive_coalesce(n_partitions)
             ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
 
-            # Only export the adj AN for all release samples.
             ht = ht.transmute(AN=ht.AN[0])
             ht.export(an_tsv_path)
 
