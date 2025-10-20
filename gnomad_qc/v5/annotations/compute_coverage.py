@@ -144,6 +144,7 @@ def compute_all_release_stats_per_ref_site(
     vds: hl.vds.VariantDataset,
     ref_ht: hl.Table,
     sex_karyotype_field: str,
+    project: str,
     coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
     interval_ht: Optional[hl.Table] = None,
     group_membership_ht: Optional[hl.Table] = None,
@@ -159,6 +160,7 @@ def compute_all_release_stats_per_ref_site(
     :param vds: Input VDS.
     :param ref_ht: Reference HT.
     :param sex_karyotype_field: Field name for sex karyotype.
+    :param project: Project name.
     :param coverage_over_x_bins: List of boundaries for computing samples over X depth.
     :param interval_ht: Interval HT.
     :param group_membership_ht: Group membership HT.
@@ -181,16 +183,21 @@ def compute_all_release_stats_per_ref_site(
 
     entry_agg_funcs = {
         "AN": get_allele_number_agg_func("LGT"),
-        "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
         "coverage_stats": get_coverage_agg_func(dp_field="DP", max_cov_bin=max_cov_bin),
     }
+    entry_agg_group_membership = None
+    # Only compute qual hists for AoU.
+    if project == "aou":
+        entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
+
+        # Below we use just the raw group for qual hist computations because qual hists
+        # has its own built-in adj filtering when adj is passed as an argument and will
+        # produce both adj and raw histograms.
+        entry_agg_group_membership = {"qual_hists": [{"group": "raw"}]}
 
     logger.info(
-        "Computing coverage, allele number, and qual hists per reference site..."
+        "Computing coverage, allele number, and optionally qual hists per reference site..."
     )
-    # Below we use just the raw group for qual hist computations because qual hists
-    # has its own built-in adj filtering when adj is passed as an argument and will
-    # produce both adj and raw histograms.
 
     vmt = vds.variant_data
     vmt = vmt.annotate_cols(sex_karyotype=vmt[sex_karyotype_field])
@@ -211,7 +218,7 @@ def compute_all_release_stats_per_ref_site(
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
         entry_keep_fields=["GQ", "DP"],
-        entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
+        entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field="sex_karyotype",
     )
 
@@ -712,6 +719,7 @@ def main(args):
                 vds,
                 ref_ht,
                 sex_karyotype_field=sex_karyotype_field,
+                project=project,
                 group_membership_ht=group_membership_ht,
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
