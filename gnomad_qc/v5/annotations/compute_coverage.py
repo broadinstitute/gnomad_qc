@@ -43,6 +43,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
+    qc_temp_prefix,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import project_meta  # meta
@@ -249,13 +250,20 @@ def compute_all_release_stats_per_ref_site(
     return ht.annotate(qual_hists=ht.qual_hists[0])
 
 
-def _rename_cov_annotations(ht: hl.Table, project: str, sample_count: int) -> hl.Table:
+def _rename_cov_annotations(
+    ht: hl.Table,
+    project: str,
+    sample_count: int,
+    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+) -> hl.Table:
     """
     Rename coverage annotations prior to merging Tables.
 
     :param ht: Input HT.
     :param project: Project name.
     :param sample_count: Number of samples in HT.
+    :param coverage_over_x_bins: List of boundaries for computing samples over X.
+        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
     :return: Renamed HT.
     """
     # Transform mean back into sum.
@@ -287,7 +295,8 @@ def _merge_coverage_fields(
     Merge coverage fields from two Tables.
 
     .. note::
-        If `merge_gnomad` is True, function subtracts sum of the consent drop samples from sum of the release samples.
+        - If `merge_gnomad` is True, function subtracts sum of the consent drop samples from sum of the release samples.
+        - Function does not merge `median_approx` fields.
 
     :param ht: Input HT. Must have annotations from both projects.
     :param project_1: First project name.
@@ -324,41 +333,38 @@ def _merge_coverage_fields(
     return merged_fields
 
 
-def join_aou_and_gnomad_coverage_ht(
-    aou_ht: hl.Table,
+def merge_gnomad_coverage_hts(
     gnomad_ht: hl.Table,
     gnomad_release_ht: hl.Table,
     coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
     v4_count: int = 76215,
     consent_drop_count: int = 866,
-) -> hl.Table:
+    overwrite: bool = False,
+) -> None:
     """
-    Join AoU and gnomAD coverage HTs for release.
+    Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes coverage HT.
 
-    :param aou_ht: AoU coverage HT.
     :param gnomad_ht: gnomAD coverage HT (contains coverage for consent drop samples only).
     :param gnomad_release_ht: gnomAD v4 genomes coverage release HT.
     :param coverage_over_x_bins: List of boundaries for computing samples over X.
         Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
     :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
     :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is 866.
-    :return: Joined HT.
+    :param overwrite: Whether to overwrite existing gnomAD v5 genomes coverage HT. Default is False.
+    :return: None; writes gnomAD v5 genomes coverage HT to temp bucket.
     """
-    aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
-    logger.info("Total number of AoU v8 release samples: %s", aou_count)
-
-    aou_ht = _rename_cov_annotations(aou_ht, "aou", aou_count)
-    gnomad_ht = _rename_cov_annotations(gnomad_ht, "gnomad", consent_drop_count)
-    gnomad_release_ht = _rename_cov_annotations(
-        gnomad_release_ht, "gnomad_release", v4_count
-    )
-
-    # TODO: how do I update median_approx
     logger.info(
         "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
     )
+    gnomad_ht = _rename_cov_annotations(
+        gnomad_ht, "gnomad", consent_drop_count, coverage_over_x_bins
+    )
+    gnomad_release_ht = _rename_cov_annotations(
+        gnomad_release_ht, "gnomad_release", v4_count, coverage_over_x_bins
+    )
     gnomad_v5_count = v4_count - consent_drop_count
     logger.info("Total number of gnomAD v5 release genomes: %s", gnomad_v5_count)
+
     gnomad_ht = gnomad_ht.join(gnomad_release_ht, "left")
     merged_fields = _merge_coverage_fields(
         ht=gnomad_ht,
@@ -368,9 +374,38 @@ def join_aou_and_gnomad_coverage_ht(
         operation="subtract",
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
-    gnomad_ht = gnomad_ht.checkpoint(new_temp_file("gnomad_coverage_ht", "ht"))
+
+    # Keep median_approx from v4 release.
+    gnomad_ht = gnomad_ht.transmute(
+        median_approx=gnomad_ht.median_approx_gnomad_release
+    )
+    gnomad_ht = gnomad_ht.drop("median_approx_gnomad")
+    gnomad_ht.write(
+        f"{qc_temp_prefix}/gnomad_v5_genomes_coverage.ht", overwrite=overwrite
+    )
+
+
+def join_aou_and_gnomad_coverage_ht(
+    aou_ht: hl.Table,
+    gnomad_ht: hl.Table,
+    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    gnomad_v5_count: int = 76215 - 866,
+) -> hl.Table:
+    """
+    Join AoU and gnomAD coverage HTs for release.
+
+    :param aou_ht: AoU coverage HT.
+    :param gnomad_ht: gnomAD v5 genomes coverage HT.
+    :param coverage_over_x_bins: List of boundaries for computing samples over X.
+        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
+    :param gnomad_v5_count: Number of release gnomAD v5 genome samples. Default is 76215 - 866.
+    :return: Joined HT.
+    """
+    aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
+    logger.info("Total number of AoU v8 release samples: %s", aou_count)
 
     logger.info("Merging AoU and gnomAD v5 coverage HTs...")
+    aou_ht = _rename_cov_annotations(aou_ht, "aou", aou_count, coverage_over_x_bins)
     v5_count = aou_count + gnomad_v5_count
     logger.info("Total number of AoU + gnomAD v5 release genomes: %s", v5_count)
     ht = aou_ht.join(gnomad_ht, "left")
@@ -541,6 +576,10 @@ def main(args):
     project = args.project
     environment = args.environment
 
+    chrom = None
+    if test_chr22_chrx_chry:
+        chrom = ["chr22", "chrX", "chrY"]
+
     try:
         # Retrieve raw coverage table path here because it is used in all of the
         # script's run options.
@@ -607,7 +646,6 @@ def main(args):
             # reference as opposed to a ref-blocked VDS reference dataset.
             ref_ht = vep_context.versions["105"].ht()
             if test_chr22_chrx_chry:
-                chrom = ["chr22", "chrX", "chrY"]
                 ref_ht = hl.filter_intervals(
                     ref_ht, [hl.parse_locus_interval(c) for c in chrom]
                 )
@@ -667,6 +705,30 @@ def main(args):
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
+        if args.merge_gnomad_coverage:
+            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad")).drop(
+                "AN", "qual_hists"
+            )
+            gnomad_release_ht = hl.read_table(
+                release_coverage_path(
+                    release_version=v4_COVERAGE_RELEASE,
+                    public=True,
+                )
+            )
+
+            if test_chr22_chrx_chry:
+                gnomad_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+                gnomad_release_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                gnomad_ht = gnomad_ht._filter_partitions(range(2))
+                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
+
+            merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
+
         if args.export_coverage_release_files:
             cov_ht_path = release_coverage_path(
                 public=False,
@@ -674,7 +736,11 @@ def main(args):
                 coverage_type="coverage",
             )
             cov_tsv_path = release_coverage_tsv_path(test=test)
+            gnomad_coverage_ht_path = f"{qc_temp_prefix}/gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
+                input_step_resources={
+                    "gnomad_coverage_ht": gnomad_coverage_ht_path,
+                },
                 output_step_resources={
                     "cov_release_ht": cov_ht_path,
                     "cov_tsv": cov_tsv_path,
@@ -685,17 +751,9 @@ def main(args):
             logger.info("Exporting coverage HT and TSV...")
             aou_ht = hl.read_table(cov_and_an_ht_path)
             aou_ht = aou_ht.drop("AN", "qual_hists")
-            gnomad_ht = hl.read_table(coverage_and_an_path(data_set="gnomad")).drop(
-                "AN", "qual_hists"
-            )
-            gnomad_release_ht = hl.read_table(
-                release_coverage_path(
-                    release_version=v4_COVERAGE_RELEASE,
-                    public=True,
-                )
-            )
+            gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
+
             if test_chr22_chrx_chry:
-                chrom = ["chr22", "chrX", "chrY"]
                 gnomad_ht = hl.filter_intervals(
                     gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
                 )
@@ -743,7 +801,6 @@ def main(args):
                 )
             )
             if test_chr22_chrx_chry:
-                chrom = ["chr22", "chrX", "chrY"]
                 gnomad_ht = hl.filter_intervals(
                     gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
                 )
@@ -855,9 +912,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Compute the all sites coverage, allele number, and quality histogram HT.",
         action="store_true",
     )
-    parser.add_argument(
+    coverage_args = parser.add_argument_group(
+        "Compute coverage release stats HT.",
+    )
+    coverage_args.add_argument(
+        "--merge-gnomad-coverage",
+        help="Subtract consent drop samples from v4 release HT to create gnomAD v5 genomes coverage HT.",
+        action="store_true",
+    )
+    coverage_args.add_argument(
         "--export-coverage-release-files",
-        help="Exports joint AoU + gnomAD v4 coverage release HT and TSV file.",
+        help="Join and export AoU + gnomAD v4 coverage release HT and TSV file.",
         action="store_true",
     )
     parser.add_argument(
