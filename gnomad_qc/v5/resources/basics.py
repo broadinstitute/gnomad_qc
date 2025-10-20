@@ -353,6 +353,7 @@ def get_gnomad_v5_genomes_vds(
                 keep=False,
             )
         if annotate_meta:
+            # NOTE: Not using `project_meta` here to allow all gnomAD steps to be run in Dataproc.
             # Update release field to False for consent drop samples.
             meta_ht = meta_ht.annotate(
                 release=hl.if_else(
