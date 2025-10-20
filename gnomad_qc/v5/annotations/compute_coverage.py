@@ -916,6 +916,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Compute the all sites coverage, allele number, and quality histogram HT.",
         action="store_true",
     )
+
     coverage_args = parser.add_argument_group(
         "Compute coverage release stats HT.",
     )
@@ -929,11 +930,21 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Join and export AoU + gnomAD v4 coverage release HT and TSV file.",
         action="store_true",
     )
-    parser.add_argument(
+
+    an_args = parser.add_argument_group(
+        "Compute AN release stats HT.",
+    )
+    an_args.add_argument(
+        "--merge-gnomad-an",
+        help="Subtract consent drop samples from v4 release HT to create gnomAD v5 genomes AN HT.",
+        action="store_true",
+    )
+    an_args.add_argument(
         "--export-an-release-files",
         help="Exports joint AoU + gnomAD v4 AN release HT and TSV file.",
         action="store_true",
     )
+
     parser.add_argument(
         "--merge-qual-hists",
         help="Merge variant quality histograms from AoU v8 and gnomAD v4 genomes.",
