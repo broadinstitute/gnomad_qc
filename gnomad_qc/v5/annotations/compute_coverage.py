@@ -707,7 +707,6 @@ def main(args):
             ).path
             check_resource_existence(
                 output_step_resources={
-                    "group_membership_ht": [group_membership_ht_path],
                     "coverage_and_an_ht": [cov_and_an_ht_path],
                 },
                 overwrite=overwrite,
