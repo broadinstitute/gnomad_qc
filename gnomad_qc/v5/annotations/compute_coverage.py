@@ -879,6 +879,17 @@ def main(args):
             aou_ht = hl.read_table(cov_and_an_ht_path).select("qual_hists")
             gnomad_ht = public_release(data_type="genomes").select("histograms")
 
+            if test_chr22_chrx_chry:
+                aou_ht = hl.filter_intervals(
+                    aou_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+                gnomad_ht = hl.filter_intervals(
+                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                aou_ht = aou_ht._filter_partitions(range(2))
+                gnomad_ht = gnomad_ht._filter_partitions(range(2))
+
             # Drop age hists because they are handled in the frequency script.
             gnomad_ht = gnomad_ht.annotate(
                 qual_hists=gnomad_ht.histograms.drop("age_hists")
