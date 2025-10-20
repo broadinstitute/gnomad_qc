@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+from functools import reduce
 from typing import List, Optional, Tuple
 
 import hail as hl
@@ -200,7 +201,8 @@ def compute_all_release_stats_per_ref_site(
     )
 
     vmt = vds.variant_data
-    vmt = vmt.annotate_cols(sex_karyotype=vmt[sex_karyotype_field])
+    sex_expr = reduce(lambda x, field: x[field], sex_karyotype_field.split("."), vmt)
+    vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     # TODO: Add adj annotation and sex ploidy adjustment here for AoU.
@@ -662,7 +664,7 @@ def main(args):
 
         if args.compute_all_cov_release_stats_ht:
             logger.info(
-                "Computing coverage, all sites allele number, and quality histograms HT for %s...",
+                "Computing coverage, all sites allele number, and optionally quality histograms HT for %s...",
                 project,
             )
 
