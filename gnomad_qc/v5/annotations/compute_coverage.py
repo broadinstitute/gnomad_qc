@@ -257,8 +257,11 @@ def compute_all_release_stats_per_ref_site(
     cov_stats_expr = _cov_stats(ht.coverage_stats[0])
 
     ht = ht.transmute(**cov_stats_expr)
-    # `qual_hists` as returned by `compute_stats_per_ref_site` is an array of length 1 so we drop the array here.
-    return ht.annotate(qual_hists=ht.qual_hists[0])
+
+    if project == "aou":
+        # `qual_hists` as returned by `compute_stats_per_ref_site` is an array of length 1 so we drop the array here.
+        ht = ht.annotate(qual_hists=ht.qual_hists[0])
+    return ht
 
 
 def _rename_cov_annotations(
