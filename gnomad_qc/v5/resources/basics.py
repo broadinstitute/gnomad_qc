@@ -372,11 +372,6 @@ def get_gnomad_v5_genomes_vds(
                 vds,
                 meta_ht.filter(meta_ht.release),
             )
-            vds = hl.vds.filter_samples(
-                vds,
-                related_samples_to_drop().ht(),
-                keep=False,
-            )
 
     return vds
 
