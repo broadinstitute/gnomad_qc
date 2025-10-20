@@ -575,6 +575,8 @@ def join_aou_and_gnomad_qual_hists_ht(
 
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
+    project = args.project_name
+    environment = "rwb" if project == "aou" else "dataproc"
     if args.environment == "rwb":
         hl.init(
             log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
@@ -592,8 +594,6 @@ def main(args):
     test = test_2_partitions or test_chr22_chrx_chry
     overwrite = args.overwrite
     n_partitions = args.n_partitions
-    project = args.project_name
-    environment = args.environment
 
     chrom = None
     if test_chr22_chrx_chry:
@@ -907,15 +907,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--environment",
-        help="Environment where script will run.",
-        default="rwb",
-        type=str,
-        choices=["rwb", "dataproc"],
-    )
-    parser.add_argument(
         "--project-name",
-        help="Project name.",
+        help="Project name. Determines environment where script will run.",
         default="aou",
         type=str,
         choices=["aou", "gnomad"],
@@ -1011,10 +1004,4 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
-
-    if args.project_name == "aou" and args.environment != "rwb":
-        parser.error("--project aou requires --environment rwb")
-    if args.project_name == "gnomad" and args.environment != "dataproc":
-        parser.error("--project gnomad requires --environment dataproc")
-
     main(args)
