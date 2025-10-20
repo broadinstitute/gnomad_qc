@@ -577,7 +577,7 @@ def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
     environment = "rwb" if project == "aou" else "dataproc"
-    if args.environment == "rwb":
+    if environment == "rwb":
         hl.init(
             log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
             tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
