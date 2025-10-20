@@ -600,8 +600,6 @@ def main(args):
         chrom = ["chr22", "chrX", "chrY"]
 
     try:
-        # Retrieve raw coverage table path here because it is used in all of the
-        # script's run options.
         cov_and_an_ht_path = coverage_and_an_path(
             test=test,
             data_set=project,
@@ -610,6 +608,7 @@ def main(args):
         # TODO: Update this to use get_aou_downsampling once sample QC is complete.
         downsampling_ht_path = get_v4_downsampling(test=test).path
         meta_ht_path = project_meta.path
+        group_membership_ht_path = group_membership(test=test, data_set=project).path
 
         if args.write_aou_downsampling_ht:
             check_resource_existence(
@@ -626,9 +625,6 @@ def main(args):
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
         if args.write_group_membership_ht:
-            group_membership_ht_path = group_membership(
-                test=test, data_set=project
-            ).path
             check_resource_existence(
                 output_step_resources={
                     "group_membership_ht": [group_membership_ht_path]
@@ -702,15 +698,13 @@ def main(args):
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
 
-            group_membership_ht_path = group_membership(
-                test=test, data_set=project
-            ).path
             check_resource_existence(
                 output_step_resources={
                     "coverage_and_an_ht": [cov_and_an_ht_path],
                 },
                 overwrite=overwrite,
             )
+            group_membership_ht = hl.read_table(group_membership_ht_path)
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
