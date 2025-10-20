@@ -317,11 +317,11 @@ def get_gnomad_v5_genomes_vds(
     :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
-    import gnomad_qc.v3.resources.basics as v3_basics
-    from gnomad_qc.v4.resources.meta import meta
+    from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
+    from gnomad_qc.v4.resources.meta import meta as v4_meta
     from gnomad_qc.v5.resources.sample_qc import related_samples_to_drop
 
-    vds = v3_basics.get_gnomad_v3_vds(
+    vds = get_gnomad_v3_vds(
         split=split,
         # False because v3 hard filtered samples HT no longer exists.
         remove_hard_filtered_samples=False,
@@ -342,10 +342,10 @@ def get_gnomad_v5_genomes_vds(
     )
 
     if remove_hard_filtered_samples or annotate_meta or release_only:
+        meta_ht = v4_meta(data_type="genomes").ht()
         if remove_hard_filtered_samples:
-            hard_filtered_samples_ht = meta(data_type="genomes").ht()
-            hard_filtered_samples_ht = hard_filtered_samples_ht.filter(
-                hard_filtered_samples_ht.sample_filters.hard_filtered
+            hard_filtered_samples_ht = meta_ht.filter(
+                meta_ht.sample_filters.hard_filtered
             )
             vds = hl.vds.filter_samples(
                 vds,
@@ -353,7 +353,15 @@ def get_gnomad_v5_genomes_vds(
                 keep=False,
             )
         if annotate_meta:
-            meta_ht = project_meta.ht()
+            # Update release field to False for consent drop samples.
+            meta_ht = meta_ht.annotate(
+                release=hl.if_else(
+                    (meta_ht.project_meta.research_project_key == "RP-1061")
+                    | (meta_ht.project_meta.research_project_key == "RP-1411"),
+                    False,
+                    meta_ht.release,
+                )
+            )
             vd = vds.variant_data
             vds = hl.vds.VariantDataset(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
