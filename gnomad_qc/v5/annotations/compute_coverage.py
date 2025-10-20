@@ -592,7 +592,7 @@ def main(args):
     test = test_2_partitions or test_chr22_chrx_chry
     overwrite = args.overwrite
     n_partitions = args.n_partitions
-    project = args.project
+    project = args.project_name
     environment = args.environment
 
     chrom = None
@@ -914,7 +914,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         choices=["rwb", "dataproc"],
     )
     parser.add_argument(
-        "--project",
+        "--project-name",
         help="Project name.",
         default="aou",
         type=str,
@@ -1012,9 +1012,9 @@ if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
 
-    if args.project == "aou" and args.environment != "rwb":
+    if args.project_name == "aou" and args.environment != "rwb":
         parser.error("--project aou requires --environment rwb")
-    if args.project == "gnomad" and args.environment != "dataproc":
+    if args.project_name == "gnomad" and args.environment != "dataproc":
         parser.error("--project gnomad requires --environment dataproc")
 
     main(args)
