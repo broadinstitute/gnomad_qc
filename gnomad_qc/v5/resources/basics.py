@@ -25,7 +25,6 @@ from gnomad_qc.v5.resources.constants import (
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
     low_quality_samples,
-    project_meta,
     samples_to_exclude,
 )
 
@@ -342,7 +341,18 @@ def get_gnomad_v5_genomes_vds(
     )
 
     if remove_hard_filtered_samples or annotate_meta or release_only:
+        # NOTE: Not using `project_meta` here to allow all gnomAD steps to be run
+        # in Dataproc.
         meta_ht = v4_meta(data_type="genomes").ht()
+        # Update release field to False for consent drop samples.
+        meta_ht = meta_ht.annotate(
+            release=hl.if_else(
+                (meta_ht.project_meta.research_project_key == "RP-1061")
+                | (meta_ht.project_meta.research_project_key == "RP-1411"),
+                False,
+                meta_ht.release,
+            )
+        )
         if remove_hard_filtered_samples:
             hard_filtered_samples_ht = meta_ht.filter(
                 meta_ht.sample_filters.hard_filtered
@@ -353,16 +363,6 @@ def get_gnomad_v5_genomes_vds(
                 keep=False,
             )
         if annotate_meta:
-            # NOTE: Not using `project_meta` here to allow all gnomAD steps to be run in Dataproc.
-            # Update release field to False for consent drop samples.
-            meta_ht = meta_ht.annotate(
-                release=hl.if_else(
-                    (meta_ht.project_meta.research_project_key == "RP-1061")
-                    | (meta_ht.project_meta.research_project_key == "RP-1411"),
-                    False,
-                    meta_ht.release,
-                )
-            )
             vd = vds.variant_data
             vds = hl.vds.VariantDataset(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
