@@ -735,7 +735,7 @@ def main(args):
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
-            gnomad_ht = hl.read_table(cov_and_an_ht_path).drop("AN", "qual_hists")
+            gnomad_ht = hl.read_table(cov_and_an_ht_path).drop("AN")
             gnomad_release_ht = hl.read_table(
                 release_coverage_path(
                     release_version=v4_COVERAGE_RELEASE,
