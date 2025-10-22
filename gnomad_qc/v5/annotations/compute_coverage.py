@@ -921,7 +921,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
-    parser.add_argument(
+    test_group = parser.add_mutually_exclusive_group()
+    test_group.add_argument(
         "--test-2-partitions",
         help=(
             "Whether to run a test using only the first 2 partitions of the VDS test"
@@ -929,7 +930,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         action="store_true",
     )
-    parser.add_argument(
+    test_group.add_argument(
         "--test-chr22-chrx-chry",
         help=(
             "Whether to run a test using only the chr22, chrX, and chrY chromosomes of"
