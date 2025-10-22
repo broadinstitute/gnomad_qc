@@ -114,6 +114,7 @@ def get_logging_path(
 def get_aou_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -124,6 +125,7 @@ def get_aou_vds(
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
     split_reference_blocks: bool = True,
     remove_dead_alleles: bool = True,
+    annotate_meta: bool = False,
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
@@ -135,6 +137,8 @@ def get_aou_vds(
         rather than grab an already split VDS. Default is False.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
         filters (only relevant after hard filtering is complete). Default is True.
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present).
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
@@ -145,6 +149,7 @@ def get_aou_vds(
     :param filter_intervals: Optional argument to filter the VDS to specific intervals.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by `filter_intervals`. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
+    :param annotate_meta: Whether to annotate the VDS with the sample QC metadata. Default is False.
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
@@ -237,6 +242,21 @@ def get_aou_vds(
         )
 
     vmt = vds.variant_data
+
+    if release_only or annotate_meta:
+        # TODO: Update this to import v5 meta.
+        meta_ht = hl.read_table(
+            "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
+        )
+
+        if release_only:
+            logger.info("Filtering VDS to release samples only...")
+            filter_expr = meta_ht.release
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+        if annotate_meta:
+            logger.info("Annotating VDS variant_data with metadata...")
+            vmt = vmt.annotate_cols(meta=meta_ht[vds.variant_data.col_key])
 
     if filter_variant_ht is not None and split is False:
         raise ValueError(
