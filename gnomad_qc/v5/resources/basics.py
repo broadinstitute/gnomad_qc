@@ -267,6 +267,7 @@ def get_gnomad_v5_genomes_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
+    consent_drop_only: bool = False,
     annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -284,6 +285,8 @@ def get_gnomad_v5_genomes_vds(
     """
     Get gnomAD v5 genomes VariantDataset with desired filtering and metadata annotations.
 
+    Function will always filter to samples that are not consent drop samples.
+
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
@@ -291,6 +294,7 @@ def get_gnomad_v5_genomes_vds(
     :param release_only: Whether to filter the VDS to only samples available for
         v5 release (distinct from v4 release due to samples to drop for consent reasons).
         Requires that v5 sample metadata has been computed.
+    :param consent_drop_only: Whether to filter the VDS to only consent drop samples.
     :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in
         'meta' column.
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
@@ -340,24 +344,28 @@ def get_gnomad_v5_genomes_vds(
         filter_samples_ht=filter_samples_ht,
     )
 
-    if remove_hard_filtered_samples or annotate_meta or release_only:
-        # NOTE: Not using `project_meta` here to allow all gnomAD steps to be run
-        # in Dataproc.
-        meta_ht = v4_meta(data_type="genomes").ht()
-        # Update release field to False for consent drop samples.
-        meta_ht = meta_ht.annotate(
-            release=hl.if_else(
-                (meta_ht.project_meta.research_project_key == "RP-1061")
-                | (meta_ht.project_meta.research_project_key == "RP-1411"),
-                False,
-                meta_ht.release,
-            )
+    # NOTE: Not using `project_meta` here to allow all gnomAD steps to be run
+    # in Dataproc.
+    meta_ht = v4_meta(data_type="genomes").ht()
+    meta_ht = meta_ht.annotate(
+        consent_drop=hl.is_defined(meta_ht.project_meta.research_project_key)
+        & (
+            (meta_ht.project_meta.research_project_key == "RP-1061")
+            | (meta_ht.project_meta.research_project_key == "RP-1411")
         )
+    )
+
+    if (
+        remove_hard_filtered_samples
+        or annotate_meta
+        or release_only
+        or consent_drop_only
+    ):
         if remove_hard_filtered_samples:
             hard_filtered_samples_ht = meta_ht.filter(
-                meta_ht.sample_filters.hard_filtered
+                meta_ht.sample_filters.hard_filtered | meta_ht.consent_drop
             )
-            vds = hl.vds.filter_samples(
+            return hl.vds.filter_samples(
                 vds,
                 hard_filtered_samples_ht,
                 keep=False,
@@ -368,12 +376,23 @@ def get_gnomad_v5_genomes_vds(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
         if release_only:
-            vds = hl.vds.filter_samples(
+            # Update release field to False for consent drop samples.
+            meta_ht = meta_ht.annotate(
+                release=hl.if_else(
+                    meta_ht.consent_drop,
+                    False,
+                    meta_ht.release,
+                )
+            )
+            return hl.vds.filter_samples(
                 vds,
                 meta_ht.filter(meta_ht.release),
             )
 
-    return vds
+    return hl.vds.filter_samples(
+        vds,
+        meta_ht.filter(~meta_ht.consent_drop),
+    )
 
 
 aou_acaf_mt = MatrixTableResource(
