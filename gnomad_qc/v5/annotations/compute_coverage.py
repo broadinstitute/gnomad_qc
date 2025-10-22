@@ -702,8 +702,8 @@ def main(args):
             else:
                 sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
                 vds = get_gnomad_v5_genomes_vds(
-                    release_only=True,
-                    consent_drop_only=True,
+                    release=True,
+                    consent_drop=True,
                     test=test,
                     filter_partitions=range(2) if test_2_partitions else None,
                     annotate_meta=True,
