@@ -284,8 +284,6 @@ def get_gnomad_v5_genomes_vds(
     """
     Get gnomAD v5 genomes VariantDataset with desired filtering and metadata annotations.
 
-    Function will always filter to samples that are not consent drop samples.
-
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
     :param release_only: Whether to filter the VDS to only samples available for
@@ -376,10 +374,7 @@ def get_gnomad_v5_genomes_vds(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
 
-    return hl.vds.filter_samples(
-        vds,
-        meta_ht.filter(~meta_ht.consent_drop),
-    )
+    return vds
 
 
 aou_acaf_mt = MatrixTableResource(
