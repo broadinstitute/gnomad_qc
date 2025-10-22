@@ -317,12 +317,12 @@ def _merge_coverage_fields(
     :param project_1: First project name.
     :param project_2: Second project name.
     :param sample_count: Total sample count.
-    :param operation: Operation to perform on the coverage fields. Must be "sum" or "subtract".
+    :param operation: Operation to perform on the coverage fields. Must be "sum" or "diff".
     :param coverage_over_x_bins: List of boundaries for computing samples over X.
         Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
     :return: Merged fields.
     """
-    if operation == "subtract":
+    if operation == "diff":
         merged_fields = {
             "mean_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"])
             / sample_count,
@@ -388,7 +388,7 @@ def merge_gnomad_coverage_hts(
         project_1="gnomad",
         project_2="gnomad_release",
         sample_count=gnomad_v5_count,
-        operation="subtract",
+        operation="diff",
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
 
@@ -442,7 +442,7 @@ def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
     Rename fields by adding project name prior to merging Tables.
 
     Used for AN and qual hists merging but not coverage because
-    coverage does not have globals and also requires extra transformations
+    coverage does ot have globals and also requires extra transformations
     to transform v4 mean back into sum.
 
     :param ht: Input HT.
@@ -471,7 +471,7 @@ def _merge_an_fields(
     :param ht: Input HT. Must have annotations from both projects.
     :param project_1: First project name.
     :param project_2: Second project name.
-    :param operation: Operation to perform on the AN fields. Must be "sum" or "subtract".
+    :param operation: Operation to perform on the AN fields. Must be "sum" or "diff".
     :return: Joined AN, strata meta, and count arrays.
     """
     joint_an, joint_strata_meta, count_arrays_dict = merge_array_expressions(
@@ -515,7 +515,7 @@ def merge_gnomad_an_hts(
         ht=gnomad_ht,
         project_1="gnomad",
         project_2="gnomad_release",
-        operation="subtract",
+        operation="diff",
     )
     gnomad_ht = gnomad_ht.annotate(AN_gnomad=joint_an)
     gnomad_ht = gnomad_ht.annotate_globals(
