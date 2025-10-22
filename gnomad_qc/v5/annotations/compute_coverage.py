@@ -115,17 +115,14 @@ def get_group_membership_ht(
         )
 
     elif project == "gnomad":
-        # Filter to v4 release samples and drop consent drop samples.
+        # Filter to v4 consent drop samples.
         # NOTE: Not using v5 project meta here because this part will be run in
         # Dataproc.
         ht = meta_ht.filter(
-            meta_ht.release
-            & (
-                hl.is_missing(meta_ht.project_meta.research_project_key)
-                | (
-                    (meta_ht.project_meta.research_project_key != "RP-1061")
-                    & (meta_ht.project_meta.research_project_key != "RP-1411")
-                )
+            hl.is_defined(meta_ht.project_meta.research_project_key)
+            | (
+                (meta_ht.project_meta.research_project_key != "RP-1061")
+                & (meta_ht.project_meta.research_project_key != "RP-1411")
             )
         )
         ht = generate_freq_group_membership_array(
