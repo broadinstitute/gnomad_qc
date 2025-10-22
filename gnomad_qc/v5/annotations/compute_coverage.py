@@ -647,7 +647,7 @@ def main(args):
                 logger.info("Writing gnomAD group membership HT...")
                 v4_meta_ht_path = v4_meta(data_type="genomes").path
                 group_membership_ht = get_group_membership_ht(
-                    hl.read_table(v4_meta_ht_path), project="gnomad"
+                    hl.read_table(v4_meta_ht_path), project=project
                 )
                 group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
             else:
