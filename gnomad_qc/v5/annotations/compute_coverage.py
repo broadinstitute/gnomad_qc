@@ -604,7 +604,7 @@ def main(args):
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
-    test = test_2_partitions or test_chr22_chrx_chry
+    test = test_2_partitions or test_chr22_chrx_chry or args.test
     overwrite = args.overwrite
     n_partitions = args.n_partitions
 
@@ -621,9 +621,7 @@ def main(args):
         downsampling_ht_path = get_aou_downsampling(test=test).path
         # TODO: replace this with meta import once that is ready.
         meta_ht_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
-        group_membership_ht_path = group_membership(
-            test=args.test, data_set=project
-        ).path
+        group_membership_ht_path = group_membership(test=test, data_set=project).path
 
         if args.write_aou_downsampling_ht:
             check_resource_existence(
