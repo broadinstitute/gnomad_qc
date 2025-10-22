@@ -691,10 +691,10 @@ def main(args):
             sex_karyotype_field = "meta.sex_karyotype"
             if project == "aou":
                 vds = get_aou_vds(
-                    # release_only=True,
+                    release_only=True,
                     test=test,
                     filter_partitions=range(2) if test_2_partitions else None,
-                    # annotate_meta=True,
+                    annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
             else:
