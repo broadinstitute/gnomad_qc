@@ -921,6 +921,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
+    parser.add_argument(
+        "--n-partitions",
+        help="Number of partitions to use for the output Table.",
+        type=int,
+        default=5000,
+    )
+
     test_group = parser.add_mutually_exclusive_group()
     test_group.add_argument(
         "--test-2-partitions",
@@ -937,12 +944,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " the VDS test dataset."
         ),
         action="store_true",
-    )
-    parser.add_argument(
-        "--n-partitions",
-        help="Number of partitions to use for the output Table.",
-        type=int,
-        default=5000,
     )
 
     group_membership_args = parser.add_argument_group(
