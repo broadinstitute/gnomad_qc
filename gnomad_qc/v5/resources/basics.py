@@ -265,7 +265,6 @@ def get_aou_vds(
 
 def get_gnomad_v5_genomes_vds(
     split: bool = False,
-    remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     consent_drop_only: bool = False,
     annotate_meta: bool = False,
@@ -289,8 +288,6 @@ def get_gnomad_v5_genomes_vds(
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
-    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
-        filters (only relevant after sample QC).
     :param release_only: Whether to filter the VDS to only samples available for
         v5 release (distinct from v4 release due to samples to drop for consent reasons).
         Requires that v5 sample metadata has been computed.
@@ -322,7 +319,6 @@ def get_gnomad_v5_genomes_vds(
     """
     from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
     from gnomad_qc.v4.resources.meta import meta as v4_meta
-    from gnomad_qc.v5.resources.sample_qc import related_samples_to_drop
 
     vds = get_gnomad_v3_vds(
         split=split,
@@ -355,21 +351,7 @@ def get_gnomad_v5_genomes_vds(
         )
     )
 
-    if (
-        remove_hard_filtered_samples
-        or annotate_meta
-        or release_only
-        or consent_drop_only
-    ):
-        if remove_hard_filtered_samples:
-            hard_filtered_samples_ht = meta_ht.filter(
-                meta_ht.sample_filters.hard_filtered | meta_ht.consent_drop
-            )
-            return hl.vds.filter_samples(
-                vds,
-                hard_filtered_samples_ht,
-                keep=False,
-            )
+    if release_only or consent_drop_only or annotate_meta:
         if release_only:
             # Update release field to False for consent drop samples.
             meta_ht = meta_ht.annotate(
