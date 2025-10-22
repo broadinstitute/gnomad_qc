@@ -120,9 +120,9 @@ def get_group_membership_ht(
         # Dataproc.
         ht = meta_ht.filter(
             hl.is_defined(meta_ht.project_meta.research_project_key)
-            | (
+            & (
                 (meta_ht.project_meta.research_project_key == "RP-1061")
-                & (meta_ht.project_meta.research_project_key == "RP-1411")
+                | (meta_ht.project_meta.research_project_key == "RP-1411")
             )
         )
         ht = generate_freq_group_membership_array(
