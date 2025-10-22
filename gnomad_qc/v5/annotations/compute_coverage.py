@@ -398,7 +398,7 @@ def merge_gnomad_coverage_hts(
     )
     gnomad_ht = gnomad_ht.drop("median_approx_gnomad")
     gnomad_ht.write(
-        f"{qc_temp_prefix}/gnomad_v5_genomes_coverage.ht", overwrite=overwrite
+        f"{(qc_temp_prefix())}/gnomad_v5_genomes_coverage.ht", overwrite=overwrite
     )
 
 
@@ -523,7 +523,7 @@ def merge_gnomad_an_hts(
         strata_sample_count_gnomad=count_arrays_dict,
     )
     gnomad_ht = gnomad_ht.select("AN_gnomad")
-    gnomad_ht.write(f"{qc_temp_prefix}/gnomad_v5_genomes_an.ht", overwrite=overwrite)
+    gnomad_ht.write(f"{qc_temp_prefix()}/gnomad_v5_genomes_an.ht", overwrite=overwrite)
 
 
 def join_aou_and_gnomad_an_ht(
@@ -786,7 +786,9 @@ def main(args):
                 coverage_type="coverage",
             )
             cov_tsv_path = release_coverage_tsv_path(test=test)
-            gnomad_coverage_ht_path = f"{qc_temp_prefix}/gnomad_v5_genomes_coverage.ht"
+            gnomad_coverage_ht_path = (
+                f"{qc_temp_prefix()}/gnomad_v5_genomes_coverage.ht"
+            )
             check_resource_existence(
                 input_step_resources={
                     "gnomad_coverage_ht": gnomad_coverage_ht_path,
@@ -832,7 +834,7 @@ def main(args):
                 coverage_type="allele_number",
             )
             an_tsv_path = release_all_sites_an_tsv_path(test=test)
-            gnomad_an_ht_path = f"{qc_temp_prefix}/gnomad_v5_genomes_an.ht"
+            gnomad_an_ht_path = f"{qc_temp_prefix()}/gnomad_v5_genomes_an.ht"
             check_resource_existence(
                 input_step_resources={
                     "gnomad_an_ht": gnomad_an_ht_path,
