@@ -97,7 +97,7 @@ def meta(
 
     :param version: Sample QC version.
     :param data_type: Data type ("exomes" or "genomes"). Default is "genomes".
-    :return: Sample QC meta VersionedTableResource.
+    :return: Sample QC meta TableResource.
     """
     # Check if the meta Table exists for specified version and data type combination.
     return TableResource(

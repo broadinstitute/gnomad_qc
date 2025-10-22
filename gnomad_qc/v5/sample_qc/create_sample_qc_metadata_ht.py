@@ -86,11 +86,11 @@ def prepare_meta_with_hard_filters(
     aou_hard_filters_ht: hl.Table,
 ) -> hl.Table:
     """
-    Add hard filter annotations to the metadata Table
+    Add hard-filter annotations to the metadata Table.
 
     :param meta_ht: Table with metadata.
     :param samples_to_exclude: Table with samples to exclude.
-    :return: Annotated meta Table with hard filter fields
+    :return: Annotated meta Table with hard-filter fields.
     """
     # Build exclusion list.
     exclusion_ht = hl.Table.parallelize(
@@ -156,19 +156,19 @@ def annotate_genetic_ancestry(
         - For 'aou' project, uses AoU projected genetic ancestry.
 
     :param meta_ht: Table with metadata.
-    :param v4_meta_ht: Table with v4 genetic ancestry inference.
+    :param v4_meta_ht: gnomAD v4 metadata Table containing inferred genetic ancestry.
     :param aou_gen_anc_ht: Table with AoU projected genetic ancestry.
-    :return: Table with genetic ancestry inference annotated.
+    :return: Table annotated with genetic ancestry inference outputs.
     """
 
-    # Prefix collisions for``.
+    # Add "gnomad" prefix to gnomAD v4 meta Table.
     v4_meta_ht = add_project_prefix_to_sample_collisions(
         t=v4_meta_ht,
         sample_collisions=sample_id_collisions.ht(),
         project="gnomad",
     )
 
-    # Nest all row fields (except key) under gen`etic_ancestry_inference for AoU data.
+    # Nest all row fields (except key) under 'genetic_ancestry_inference' for AoU data.
     fields_to_nest = [f for f in aou_gen_anc_ht.row if f != "s"]
     aou_gen_anc_ht = aou_gen_anc_ht.transmute(
         genetic_ancestry_inference=hl.struct(
@@ -183,7 +183,7 @@ def annotate_genetic_ancestry(
         )
     )
 
-    # Rename 'pop' to 'gen_anc' while maintainf order of annotations.
+    # Rename 'pop' to 'gen_anc' while maintaining order of annotations.
     v4_meta_ht = v4_meta_ht.annotate(
         genetic_ancestry_inference=hl.struct(
             gen_anc=v4_meta_ht.genetic_ancestry_inference.pop,
@@ -279,9 +279,9 @@ def add_relatedness_inference(
     """
     Add relationship inference and filters to metadata Table.
 
-    :param meta_ht: Hail Table containing sample metadata, hard filter flag, and outlier filter flag.
+    :param meta_ht: Hail Table containing sample metadata, hard-filter flag, and outlier-filter flag.
     :param relatedness_ht: Table containing relatedness inference results.
-    :param outlier_filters_ht: Table containing outliter filters/
+    :param outlier_filters_ht: Table containing outlier-filter annotations.
     :return: Hail Table annotated with relatedness filter fields.
     """
 
@@ -424,7 +424,7 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
     :param ht: Sample QC filter Table to add relatedness filter annotations to.
     :param outlier_filter_ht: Table with 'outlier_filtered' annotation indicating if a
         sample was filtered during outlier detection on sample QC metrics.
-    :return: Table with related filters added and Table with relationship and gnomad v3
+    :return: Table with related filters added and Table with relationship and gnomad v4
         overlap information.
     """
     relatedness_inference_parameters = ht.index_globals()
@@ -447,7 +447,7 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
     # because it includes all samples that pass hard filters, which is what was used
     # in relatedness inference. rel_dict_ht only includes samples with relatedness info,
     # and we want to make sure all samples that went through relatedness inference have
-    # empty relationship dictionaries, and are False for v3 duplicate bools.
+    # empty relationship dictionaries, and are False for v4 and aou duplicate bools.
     ht = outlier_filter_ht.select()
     ht = ht.annotate(
         **{
@@ -506,9 +506,9 @@ def annotate_relatedness_filters(
     :param ht: Sample QC filter Table to add relatedness filter annotations to.
     :param relationship_ht: Table with relationships annotations.
     :param hard_filtered_expr: Boolean Expression indicating whether the sample was
-        hard filtered.
+        hard-filtered.
     :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
-        outlier filtered.
+        outlier-filtered.
     :return: Table with related filters added and Table with relationship and gnomad v3
         overlap information.
     """
@@ -570,7 +570,7 @@ def main(args):
             v4_meta_ht=v4_meta("4.0", "genomes").ht(),
             aou_gen_anc_ht=get_gen_anc_ht(projection_only=True).ht(),
         )
-        # Add sample filter annotations.
+        # Add sample outlier and filter annotations.
         meta_ht = add_sample_filter_annotations(
             meta_ht=meta_ht, outlier_filters_ht=finalized_outlier_filtering().ht()
         )
@@ -604,11 +604,11 @@ def main(args):
         meta_ht = meta_ht.filter(meta_ht.project_meta.data_type == "genomes")
         meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
 
-        logger.info("Total sample count: %s", meta_ht.count())
+        logger.info("Total genome sample count: %s", meta_ht.count())
 
         # TODO: Add just count genomes
         logger.info(
-            "Release sample count: %s",
+            "Total genome release sample count: %s",
             meta_ht.aggregate(hl.agg.count_where(meta_ht.release)),
         )
     finally:
