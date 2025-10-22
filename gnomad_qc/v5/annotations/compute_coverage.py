@@ -778,7 +778,7 @@ def main(args):
             aou_ht = aou_ht.drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
 
-            ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht, gnomad_release_ht)
+            ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
             ht = ht.naive_coalesce(n_partitions)
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
