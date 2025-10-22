@@ -704,7 +704,6 @@ def main(args):
                 vds = get_gnomad_v5_genomes_vds(
                     release=True,
                     consent_drop=True,
-                    test=test,
                     filter_partitions=range(2) if test_2_partitions else None,
                     annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
