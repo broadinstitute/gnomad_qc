@@ -742,17 +742,6 @@ def main(args):
                 )
             )
 
-            if test_chr22_chrx_chry:
-                gnomad_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-                gnomad_release_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-            elif test_2_partitions:
-                gnomad_ht = gnomad_ht._filter_partitions(range(2))
-                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
-
             merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
 
         if args.merge_gnomad_an:
@@ -764,17 +753,6 @@ def main(args):
                     coverage_type="allele_number",
                 )
             )
-
-            if test_chr22_chrx_chry:
-                gnomad_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-                gnomad_release_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-            elif test_2_partitions:
-                gnomad_ht = gnomad_ht._filter_partitions(range(2))
-                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
             merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
 
@@ -801,17 +779,6 @@ def main(args):
             aou_ht = hl.read_table(cov_and_an_ht_path)
             aou_ht = aou_ht.drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
-
-            if test_chr22_chrx_chry:
-                aou_ht = hl.filter_intervals(
-                    aou_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-                gnomad_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-            elif test_2_partitions:
-                aou_ht = aou_ht._filter_partitions(range(2))
-                gnomad_ht = gnomad_ht._filter_partitions(range(2))
 
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht, gnomad_release_ht)
             ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
@@ -849,17 +816,6 @@ def main(args):
             aou_ht = aou_ht.select("AN")
             gnomad_ht = hl.read_table(gnomad_an_ht_path)
 
-            if test_chr22_chrx_chry:
-                aou_ht = hl.filter_intervals(
-                    aou_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-                gnomad_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-            elif test_2_partitions:
-                aou_ht = aou_ht._filter_partitions(range(2))
-                gnomad_ht = gnomad_ht._filter_partitions(range(2))
-
             ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(an_raw_ht_path, overwrite=overwrite)
             ht = ht.select("AN")
@@ -883,17 +839,6 @@ def main(args):
             logger.info("Merging qual hists HTs...")
             aou_ht = hl.read_table(cov_and_an_ht_path).select("qual_hists")
             gnomad_ht = public_release(data_type="genomes").select("histograms")
-
-            if test_chr22_chrx_chry:
-                aou_ht = hl.filter_intervals(
-                    aou_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-                gnomad_ht = hl.filter_intervals(
-                    gnomad_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-            elif test_2_partitions:
-                aou_ht = aou_ht._filter_partitions(range(2))
-                gnomad_ht = gnomad_ht._filter_partitions(range(2))
 
             # Drop age hists because they are handled in the frequency script.
             gnomad_ht = gnomad_ht.annotate(
