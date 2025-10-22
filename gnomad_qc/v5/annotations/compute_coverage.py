@@ -715,13 +715,12 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
-            group_membership_ht = hl.read_table(group_membership_ht_path)
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
                 sex_karyotype_field=sex_karyotype_field,
                 project=project,
-                group_membership_ht=group_membership_ht,
+                group_membership_ht=hl.read_table(group_membership_ht_path),
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file(f"{project}_cov_and_an", "ht")
