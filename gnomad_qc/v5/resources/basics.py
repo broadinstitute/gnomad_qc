@@ -370,11 +370,6 @@ def get_gnomad_v5_genomes_vds(
                 hard_filtered_samples_ht,
                 keep=False,
             )
-        if annotate_meta:
-            vd = vds.variant_data
-            vds = hl.vds.VariantDataset(
-                vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
-            )
         if release_only:
             # Update release field to False for consent drop samples.
             meta_ht = meta_ht.annotate(
@@ -387,6 +382,16 @@ def get_gnomad_v5_genomes_vds(
             return hl.vds.filter_samples(
                 vds,
                 meta_ht.filter(meta_ht.release),
+            )
+        if consent_drop_only:
+            return hl.vds.filter_samples(
+                vds,
+                meta_ht.filter(meta_ht.consent_drop),
+            )
+        if annotate_meta:
+            vd = vds.variant_data
+            vds = hl.vds.VariantDataset(
+                vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
 
     return hl.vds.filter_samples(
