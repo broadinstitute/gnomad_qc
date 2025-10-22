@@ -45,7 +45,8 @@ from gnomad_qc.v5.resources.basics import (
     qc_temp_prefix,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta  # meta
+
+# from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
     release_coverage_path,
@@ -618,7 +619,8 @@ def main(args):
             environment=environment,
         ).path
         downsampling_ht_path = get_aou_downsampling(test=test).path
-        meta_ht_path = project_meta.path
+        # TODO: replace this with meta import once that is ready.
+        meta_ht_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
         group_membership_ht_path = group_membership(
             test=args.test, data_set=project
         ).path
@@ -628,12 +630,8 @@ def main(args):
                 output_step_resources={"downsampling_ht": [downsampling_ht_path]},
                 overwrite=overwrite,
             )
-            # TODO: Update this for v5 once sample QC is complete.
             ht = hl.read_table(meta_ht_path)
-            ht = ht.filter(
-                (ht.project == "gnomad") & (ht.data_type == "genomes") & (ht.release)
-            )
-            # ds_ht = get_downsampling_ht(ht)
+            ht = ht.filter((ht.project_meta.project == project) & (ht.release))
             ds_ht = get_downsampling_ht(ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
