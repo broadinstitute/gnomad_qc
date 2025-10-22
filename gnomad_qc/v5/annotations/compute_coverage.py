@@ -31,12 +31,10 @@ from gnomad.utils.sparse_mt import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v4.resources.annotations import get_downsampling as get_v4_downsampling
 from gnomad_qc.v4.resources.meta import meta as v4_meta
-
-# TODO: Switch from v4>v5 once v5 sample QC is complete
-from gnomad_qc.v5.resources.annotations import (  # get_aou_downsampling
+from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
+    get_aou_downsampling,
     group_membership,
     qual_hists,
 )
@@ -619,8 +617,7 @@ def main(args):
             data_set=project,
             environment=environment,
         ).path
-        # TODO: Update this to use get_aou_downsampling once sample QC is complete.
-        downsampling_ht_path = get_v4_downsampling(test=test).path
+        downsampling_ht_path = get_aou_downsampling(test=test).path
         meta_ht_path = project_meta.path
         group_membership_ht_path = group_membership(test=test, data_set=project).path
 
