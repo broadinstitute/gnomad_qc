@@ -359,12 +359,12 @@ def get_gnomad_v5_genomes_vds(
                     meta_ht.release,
                 )
             )
-            return hl.vds.filter_samples(
+            vds = hl.vds.filter_samples(
                 vds,
                 meta_ht.filter(meta_ht.release),
             )
         if consent_drop_only:
-            return hl.vds.filter_samples(
+            vds = hl.vds.filter_samples(
                 vds,
                 meta_ht.filter(meta_ht.consent_drop),
             )
