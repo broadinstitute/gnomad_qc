@@ -619,7 +619,9 @@ def main(args):
         ).path
         downsampling_ht_path = get_aou_downsampling(test=test).path
         meta_ht_path = project_meta.path
-        group_membership_ht_path = group_membership(test=test, data_set=project).path
+        group_membership_ht_path = group_membership(
+            test=args.test, data_set=project
+        ).path
 
         if args.write_aou_downsampling_ht:
             check_resource_existence(
