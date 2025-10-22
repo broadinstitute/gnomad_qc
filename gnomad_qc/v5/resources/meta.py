@@ -73,7 +73,7 @@ Samples are from the following projects:
 
 
 def _meta_root_path(
-    version: str = CURRENT_PROJECT_META_VERSION, data_type: str = "exomes"
+    version: str = CURRENT_PROJECT_META_VERSION, data_type: str = "genomes"
 ) -> str:
     """
     Retrieve the path to the root metadata directory.
@@ -88,20 +88,19 @@ def _meta_root_path(
 def meta(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     data_type: str = "genomes",
-) -> TableResource:
+) -> VersionedTableResource:
     """
     Get the v5 sample QC meta VersionedTableResource.
 
-    Function will check that metadata exists for the requested version and data
-    type and will throw an error if it doesn't exist.
-
     :param version: Sample QC version.
     :param data_type: Data type ("exomes" or "genomes"). Default is "genomes".
-    :return: Sample QC meta TableResource.
+    :return: Sample QC meta VersionedTableResource.
     """
-    # Check if the meta Table exists for specified version and data type combination.
-    return TableResource(
-        path=(
-            f"{_meta_root_path(version, data_type)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
-        )
+    return VersionedTableResource(
+        default_version=CURRENT_SAMPLE_QC_VERSION,
+        versions={
+            CURRENT_SAMPLE_QC_VERSION: TableResource(
+                path=f"{_meta_root_path(version, data_type)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
+            )
+        },
     )

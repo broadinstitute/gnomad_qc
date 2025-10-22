@@ -80,7 +80,7 @@ def restructure_meta_fields(meta_ht: hl.Table) -> hl.Table:
     return meta_ht
 
 
-def prepare_meta_with_hard_filters(
+def annotate_hard_filters(
     meta_ht: hl.Table,
     samples_to_exclude: hl.expr.SetExpression,
     aou_hard_filters_ht: hl.Table,
@@ -89,56 +89,37 @@ def prepare_meta_with_hard_filters(
     Add hard-filter annotations to the metadata Table.
 
     :param meta_ht: Table with metadata.
-    :param samples_to_exclude: Table with samples to exclude.
+    :param samples_to_exclude: Expression with samples to exclude.
     :return: Annotated meta Table with hard-filter fields.
     """
-    # Build exclusion list.
-    exclusion_ht = hl.Table.parallelize(
-        [{"s": x} for x in hl.eval(samples_to_exclude)]
-    ).key_by("s")
-
-    exclusion_ht = add_project_prefix_to_sample_collisions(
-        t=exclusion_ht, sample_collisions=sample_id_collisions.ht(), project="aou"
-    )
-
-    samples_to_exclude = hl.literal(exclusion_ht.s.collect())
-
     # Obtain AoU hard filters and set hard_filter to sample_qc_metrics if any hard filters were applied.
-    aou_ht = meta_ht.filter(meta_ht.project == "aou").select()
-
-    aou_ht = aou_ht.annotate(hard_filters=aou_hard_filters_ht[aou_ht.key])
-
-    aou_ht = aou_ht.annotate(
-        hard_filters=hl.if_else(
-            hl.is_defined(aou_ht.hard_filters) & (hl.len(aou_ht.hard_filters) > 0),
-            {"sample_qc_metrics"},
-            hl.empty_set(hl.tstr),
-        )
-    )
-
-    # Add sample exclusion to hard filters if sample is in exclusion list.
-    aou_ht = aou_ht.annotate(
-        hard_filters=hl.if_else(
-            samples_to_exclude.contains(aou_ht.s),
-            aou_ht.hard_filters.union({"sample_exclusion"}),
-            aou_ht.hard_filters,
-        )
-    )
-
-    # Add AoU hard filter to the meta Table.
+    # Note: Verified that none of these excluded sample IDs overlap with gnomAD sample IDs, so no need to call 'add_project_prefix_to_sample_collisions' function.
+    # Build hard-filters annotation by project.
+    is_excluded = samples_to_exclude.contains(meta_ht.s)
+    aou_qc_filters = aou_hard_filters_ht[meta_ht.s].sample_qc_metric_hard_filters
+    # define aou_qc_filters as "sample_qc_metrics"?
+    has_qc_filters = hl.is_defined(aou_qc_filters) & (hl.len(aou_qc_filters) > 0)
     meta_ht = meta_ht.annotate(
-        hard_filters=hl.or_else(
-            hl.if_else(
+        hard_filters=(
+            hl.case()
+            .when(
                 meta_ht.project == "gnomad",
-                meta_ht.hard_filters,
-                aou_ht[meta_ht.key].hard_filters,
-            ),
-            hl.empty_set(hl.tstr),
+                hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
+            )
+            .when(
+                meta_ht.project == "aou",
+                hl.empty_set(hl.tstr)
+                .union(
+                    hl.if_else(has_qc_filters, aou_qc_filters, hl.empty_set(hl.tstr))
+                )
+                .union(
+                    hl.if_else(
+                        is_excluded, hl.set(["sample_exclusion"]), hl.empty_set(hl.tstr)
+                    )
+                ),
+            )
+            .default(hl.empty_set(hl.tstr))
         )
-    )
-
-    meta_ht = meta_ht.annotate(
-        hard_filtered=hl.or_else(hl.len(meta_ht.hard_filters) > 0, False)
     )
 
     return meta_ht
@@ -217,6 +198,7 @@ def annotate_genetic_ancestry(
         .or_missing()
     )
 
+    # Nest 'gen_anc' under 'genetic_ancestry_inference'.
     meta_ht = meta_ht.transmute(
         genetic_ancestry_inference=meta_ht.genetic_ancestry_inference.annotate(
             gen_anc=meta_ht.gen_anc
@@ -268,7 +250,7 @@ def add_sample_filter_annotations(
     meta_ht = meta_ht.annotate(
         high_quality=~meta_ht.sample_filters.hard_filtered
         & ~meta_ht.sample_filters.outlier_filtered
-    ).drop("hard_filtered")
+    )
 
     return meta_ht
 
@@ -556,7 +538,7 @@ def main(args):
     )
 
     try:  # Add AoU hard filters to the meta Table.
-        meta_ht = prepare_meta_with_hard_filters(
+        meta_ht = annotate_hard_filters(
             meta_ht=project_meta.ht(),
             samples_to_exclude=get_samples_to_exclude(),
             aou_hard_filters_ht=hard_filtered_samples.ht(),
@@ -582,7 +564,8 @@ def main(args):
             outlier_filters_ht=finalized_outlier_filtering().ht(),
         )
 
-        logger.info("\n\nAnnotating release field...")
+        logger.info("Annotating release field...")
+        # NOTE: All AoU samples are consented for relase.
         meta_ht = meta_ht.annotate(
             project_meta=meta_ht.project_meta.annotate(
                 releasable=hl.if_else(
@@ -593,6 +576,8 @@ def main(args):
             )
         )
 
+        # Drop 'release' and re-annotate so that it will appear at the end.
+        meta_ht = meta_ht.drop("release")
         meta_ht = meta_ht.annotate(
             release=(
                 meta_ht.project_meta.releasable
