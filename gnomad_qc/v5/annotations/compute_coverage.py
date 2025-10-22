@@ -453,7 +453,7 @@ def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
         f"strata_meta_{project}": ht.strata_meta,
         f"strata_sample_count_{project}": ht.strata_sample_count,
     }
-    ht = ht.rename_globals(rename_globals)
+    ht = ht.rename(**rename_globals)
     rename_dict = {f"{field_name}": f"{field_name}_{project}"}
     return ht.rename(rename_dict)
 
