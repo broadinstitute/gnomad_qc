@@ -510,11 +510,11 @@ def merge_gnomad_an_hts(
     gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
     gnomad_release_ht = _rename_fields(gnomad_release_ht, "AN", "gnomad_release")
 
-    gnomad_ht = gnomad_ht.join(gnomad_release_ht, "left")
+    gnomad_ht = gnomad_ht.join(gnomad_release_ht, "right")
     joint_an, joint_strata_meta, count_arrays_dict = _merge_an_fields(
         ht=gnomad_ht,
-        project_1="gnomad",
-        project_2="gnomad_release",
+        project_1="gnomad_release",
+        project_2="gnomad",
         operation="diff",
     )
     gnomad_ht = gnomad_ht.annotate(AN_gnomad=joint_an)
