@@ -382,11 +382,11 @@ def merge_gnomad_coverage_hts(
     gnomad_v5_count = v4_count - consent_drop_count
     logger.info("Total number of gnomAD v5 release genomes: %s", gnomad_v5_count)
 
-    gnomad_ht = gnomad_ht.join(gnomad_release_ht, "left")
+    gnomad_ht = gnomad_ht.join(gnomad_release_ht, "right")
     merged_fields = _merge_coverage_fields(
         ht=gnomad_ht,
-        project_1="gnomad",
-        project_2="gnomad_release",
+        project_1="gnomad_release",
+        project_2="gnomad",
         sample_count=gnomad_v5_count,
         operation="diff",
     )
