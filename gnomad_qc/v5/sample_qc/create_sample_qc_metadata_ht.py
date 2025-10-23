@@ -425,8 +425,9 @@ def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     # in relatedness inference. rel_dict_ht only includes samples with relatedness info,
     # and we want to make sure all samples that went through relatedness inference have
     # empty relationship dictionaries, and are False for v4 and aou duplicate bools.
-    ht = meta_ht.select()
-    ht = ht.filter(~ht.sample_filters.hard_filtered)
+    ht = meta_ht.filter(~meta_ht.sample_filters.hard_filtered)
+    ht = ht.select()
+
     ht = ht.annotate(
         **{
             r: hl.bind(
