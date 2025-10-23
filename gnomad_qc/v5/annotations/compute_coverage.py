@@ -694,7 +694,7 @@ def main(args):
             )
             ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
-            sex_karyotype_field = "meta.sex_karyotype"
+            sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
             if project == "aou":
                 vds = get_aou_vds(
                     release_only=True,
@@ -703,7 +703,6 @@ def main(args):
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
             else:
-                sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
                 vds = get_gnomad_v5_genomes_vds(
                     release=True,
                     consent_drop=True,
