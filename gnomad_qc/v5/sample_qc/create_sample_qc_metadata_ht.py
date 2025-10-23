@@ -149,39 +149,22 @@ def annotate_genetic_ancestry(
         project="gnomad",
     )
 
-    # Nest all row fields (except key) under 'genetic_ancestry_inference' for AoU data.
-    fields_to_nest = [f for f in aou_gen_anc_ht.row if f != "s"]
-    aou_gen_anc_ht = aou_gen_anc_ht.transmute(
-        genetic_ancestry_inference=hl.struct(
-            **{f: aou_gen_anc_ht[f] for f in fields_to_nest}
-        )
-    )
-
-    # Drop unnecessary fields from v4 meta that are not in the AoU metadata.
-    v4_meta_ht = v4_meta_ht.transmute(
-        genetic_ancestry_inference=v4_meta_ht.population_inference.drop(
-            "prob_oth", "training_pop_all", "training_pop"
-        )
-    )
-
-    # Rename 'pop' to 'gen_anc' while maintaining order of annotations.
+    # Nest genetic ancestry inference fields under 'genetic_ancestry_inference' and drop unnecessary fields.
     v4_meta_ht = v4_meta_ht.annotate(
         genetic_ancestry_inference=hl.struct(
-            gen_anc=v4_meta_ht.genetic_ancestry_inference.pop,
+            gen_anc=v4_meta_ht.population_inference.pop,
             **{
                 k: v
-                for k, v in v4_meta_ht.genetic_ancestry_inference.items()
-                if k != "pop"
+                for k, v in v4_meta_ht.population_inference.items()
+                if k not in ["pop", "prob_oth", "training_pop_all", "training_pop"]
             },
         )
     )
 
-    # Align AoU fields with v4 field order.
-    v4_fields = [f for f in v4_meta_ht.genetic_ancestry_inference.dtype.fields]
+    # Align AoU fields with v4 fields.
+    fields_exprs = {f: aou_gen_anc_ht[f] for f in v4_fields}
     aou_gen_anc_ht = aou_gen_anc_ht.annotate(
-        genetic_ancestry_inference=hl.struct(
-            **{f: aou_gen_anc_ht["genetic_ancestry_inference"][f] for f in v4_fields}
-        )
+        genetic_ancestry_inference=hl.struct(**fields_exprs)
     )
 
     # Annotate genetic ancestry inference by project.
@@ -196,13 +179,6 @@ def annotate_genetic_ancestry(
             aou_gen_anc_ht[meta_ht.s].genetic_ancestry_inference,
         )
         .or_missing()
-    )
-
-    # Nest 'gen_anc' under 'genetic_ancestry_inference'.
-    meta_ht = meta_ht.transmute(
-        genetic_ancestry_inference=meta_ht.genetic_ancestry_inference.annotate(
-            gen_anc=meta_ht.gen_anc
-        )
     )
 
     return meta_ht
@@ -277,21 +253,13 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
 
     # Annotate metadata Table with relatedness inference and filters.
     meta_ht = meta_ht.annotate(
-        release_relatedness_filters=relatedness_filters_ht[
-            meta_ht.key
-        ].release_relatedness_filters
-    )
-    meta_ht = meta_ht.annotate(
-        relationships=relatedness_inference_ht[meta_ht.key].relationships
-    )
-
-    meta_ht = meta_ht.annotate(
         relatedness_inference=hl.struct(
-            release_relatedness_filters=meta_ht.release_relatedness_filters,
-            relationships=meta_ht.relationships,
+            release_relatedness_filters=relatedness_filters_ht[
+                meta_ht.key
+            ].release_relatedness_filters,
+            relationships=relatedness_inference_ht[meta_ht.key].relationships,
         )
     )
-    meta_ht = meta_ht.drop("release_relatedness_filters", "relationships")
 
     return meta_ht
 
@@ -518,7 +486,6 @@ def annotate_relatedness_filters(
 def main(args):
     """Merge the output of all sample QC modules into a single Table."""
     hl.init(
-        spark_conf={"spark.memory.offHeap.enabled": "false"},
         log="/home/jupyter/workspaces/gnomadproduction/create_sample_meta.log",
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
