@@ -98,8 +98,8 @@ def get_group_membership_ht(
         ht = generate_freq_group_membership_array(
             meta_ht,
             build_freq_stratification_list(
-                sex_expr=meta_ht.sex_karyotype,
-                gen_anc_expr=meta_ht.gen_anc,
+                sex_expr=meta_ht.sex_imputation.sex_karyotype,
+                gen_anc_expr=meta_ht.genetic_ancestry_inference.gen_anc,
                 downsampling_expr=ds_ht[meta_ht.key].downsampling,
             ),
             downsamplings=hl.eval(ds_ht.downsamplings),
@@ -645,6 +645,7 @@ def main(args):
             if project == "gnomad":
                 logger.info("Writing gnomAD group membership HT...")
                 v4_meta_ht_path = v4_meta(data_type="genomes").path
+
                 group_membership_ht = get_group_membership_ht(
                     hl.read_table(v4_meta_ht_path), project=project
                 )
