@@ -248,12 +248,6 @@ def get_aou_vds(
         meta_ht = hl.read_table(
             "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
         )
-
-        if release_only:
-            logger.info("Filtering VDS to release samples only...")
-            filter_expr = meta_ht.release
-            vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
-
         if annotate_meta:
             logger.info("Annotating VDS variant_data with metadata...")
             vmt = vmt.annotate_cols(meta=meta_ht[vmt.col_key])
@@ -279,6 +273,11 @@ def get_aou_vds(
         vmt = vmt.checkpoint(new_temp_file("vds_loading.variant_data", "mt"))
 
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+    if release_only:
+        logger.info("Filtering VDS to release samples only...")
+        filter_expr = meta_ht.release
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
 
     return vds
 
