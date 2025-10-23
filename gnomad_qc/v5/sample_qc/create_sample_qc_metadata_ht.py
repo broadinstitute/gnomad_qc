@@ -13,6 +13,7 @@ from gnomad.sample_qc.relatedness import (
     UNRELATED,
 )
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES
 from gnomad_qc.v5.resources.basics import (
@@ -156,6 +157,7 @@ def annotate_genetic_ancestry(
     )
 
     # Align AoU fields with v4 fields.
+    v4_fields = [f for f in v4_meta_ht.genetic_ancestry_inference.dtype.fields]
     fields_exprs = {f: aou_gen_anc_ht[f] for f in v4_fields}
     aou_gen_anc_ht = aou_gen_anc_ht.annotate(
         genetic_ancestry_inference=hl.struct(**fields_exprs)
@@ -465,6 +467,13 @@ def main(args):
     )
 
     try:
+        check_resource_existence(
+            output_step_resources={
+                "sample_qc_meta": [meta().path],
+            },
+            overwrite=overwrite,
+        )
+
         # Restructure metadata fields.
         meta_ht = restructure_meta_fields(meta_ht=project_meta.ht())
 
