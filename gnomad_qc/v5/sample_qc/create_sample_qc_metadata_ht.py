@@ -91,7 +91,8 @@ def annotate_hard_filters(
     :return: Annotated meta Table with hard-filter fields.
     """
     # Add AoU hard filters hard filters and samples to exclude and build hard-filters annotation by project.
-    # Note: Verified that none of these excluded sample IDs overlap with gnomAD sample IDs, so no need to call 'add_project_prefix_to_sample_collisions' function.
+    # Note: Verified that none of these excluded sample IDs overlap with
+    # gnomAD sample IDs, so no need to call 'add_project_prefix_to_sample_collisions' function.
     is_excluded = samples_to_exclude.contains(meta_ht.s)
     aou_qc_filters = aou_hard_filters_ht[meta_ht.s].sample_qc_metric_hard_filters
     has_qc_filters = hl.is_defined(aou_qc_filters) & (hl.len(aou_qc_filters) > 0)
@@ -144,7 +145,8 @@ def annotate_genetic_ancestry(
         project="gnomad",
     )
 
-    # Nest genetic ancestry inference fields under 'genetic_ancestry_inference' and drop unnecessary fields.
+    # Nest genetic ancestry inference fields under
+    # 'genetic_ancestry_inference' and drop unnecessary fields.
     v4_meta_ht = v4_meta_ht.annotate(
         genetic_ancestry_inference=hl.struct(
             gen_anc=v4_meta_ht.population_inference.pop,
@@ -202,7 +204,8 @@ def add_sample_filter_annotations(
         )
     )
 
-    # Create sample_filters struct containing information on outlier filters and hard filters.
+    # Create sample_filters struct containing information on outlier filters
+    # and hard filters.
     meta_ht = meta_ht.transmute(
         sample_filters=hl.struct(
             outlier_filters=meta_ht.outlier_filters,
