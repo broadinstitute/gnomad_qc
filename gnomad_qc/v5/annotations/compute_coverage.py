@@ -702,6 +702,11 @@ def main(args):
                     annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
+                # NOTE: AoU v8 VDS does not have DP annotation, so adding here using
+                # sum(LAD).
+                vmt = vds.variant_data
+                vmt = vmt.annotate_entries(DP=hl.fold(lambda x, y: x + y, 0, vmt.LAD))
+                vds = hl.vds.VariantDataset(vds.reference_data, vmt)
             else:
                 vds = get_gnomad_v5_genomes_vds(
                     release=True,
