@@ -499,7 +499,6 @@ def main(args):
         meta_ht = add_relatedness_inference(
             meta_ht=meta_ht,
             relatedness_ht=relatedness().ht(),
-            outlier_filters_ht=finalized_outlier_filtering().ht(),
         )
 
         logger.info("Annotating release field...")
