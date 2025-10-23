@@ -653,14 +653,17 @@ def main(args):
         # TODO: replace this with meta import once that is ready.
         meta_ht_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
         group_membership_ht_path = group_membership(test=test, data_set=project).path
+        meta_ht = hl.read_table(meta_ht_path)
 
         if args.write_aou_downsampling_ht:
             check_resource_existence(
                 output_step_resources={"downsampling_ht": [downsampling_ht_path]},
                 overwrite=overwrite,
             )
-            ht = hl.read_table(meta_ht_path)
-            ht = ht.filter((ht.project_meta.project == project) & (ht.release))
+
+            ht = meta_ht.filter(
+                (meta_ht.project_meta.project == project) & (meta_ht.release)
+            )
             ds_ht = get_downsampling_ht(ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
@@ -682,7 +685,6 @@ def main(args):
                 group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
             else:
                 logger.info("Writing AoU group membership HT...")
-                meta_ht = hl.read_table(meta_ht_path)
                 meta_ht = meta_ht.filter(
                     (meta_ht.project_meta.project == project) & (meta_ht.release)
                 )
@@ -737,6 +739,13 @@ def main(args):
                 vmt = vds.variant_data
                 vmt = vmt.annotate_entries(DP=hl.fold(lambda x, y: x + y, 0, vmt.LAD))
                 vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+                if test:
+                    meta_ht = meta_ht.filter(
+                        (meta_ht.project_meta.project == project) & (meta_ht.release)
+                    ).select()
+                    meta_ht = meta_ht.sample(1)
+                    vds = hl.vds.filter_samples(vds, meta_ht)
             else:
                 vds = get_gnomad_v5_genomes_vds(
                     release=True,
