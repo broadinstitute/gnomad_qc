@@ -256,7 +256,7 @@ def get_aou_vds(
 
         if annotate_meta:
             logger.info("Annotating VDS variant_data with metadata...")
-            vmt = vmt.annotate_cols(meta=meta_ht[vmt.variant_data.col_key])
+            vmt = vmt.annotate_cols(meta=meta_ht[vmt.col_key])
 
     if filter_variant_ht is not None and split is False:
         raise ValueError(
