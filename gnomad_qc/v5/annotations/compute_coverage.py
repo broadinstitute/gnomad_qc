@@ -77,7 +77,9 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
         "Determining downsampling groups for AoU...",
     )
     downsamplings = DOWNSAMPLINGS["v5"]
-    ht = annotate_downsamplings(ht, downsamplings, ht.gen_anc)
+    ht = annotate_downsamplings(
+        ht, downsamplings, ht.genetic_ancestry_inference.gen_anc
+    )
     return ht
 
 
