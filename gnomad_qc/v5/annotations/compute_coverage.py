@@ -652,8 +652,12 @@ def main(args):
                 group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
             else:
                 logger.info("Writing AoU group membership HT...")
+                meta_ht = hl.read_table(meta_ht_path)
+                meta_ht = meta_ht.filter(
+                    (meta_ht.project_meta.project == project) & (meta_ht.release)
+                )
                 group_membership_ht = get_group_membership_ht(
-                    meta_ht=hl.read_table(meta_ht_path),
+                    meta_ht=meta_ht,
                     project=project,
                     ds_ht=hl.read_table(downsampling_ht_path),
                 )
