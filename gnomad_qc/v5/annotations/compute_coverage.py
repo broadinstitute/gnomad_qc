@@ -141,6 +141,36 @@ def get_group_membership_ht(
     return ht
 
 
+def validate_vds(vds: hl.vds.VariantDataset) -> None:
+    """
+    Validate VDS before densify.
+
+    Code is taken from https://github.com/hail-is/hail/blob/858f3ab30c2bcc46d6e57fdbfe408284b4b3de53/hail/python/hail/vds/variant_dataset.py#L271
+    at suggestion from Chris Vittal.
+
+    :param vds: Input VDS.
+    :return: None; raises ValueError if VDS is not valid.
+    """
+    rd = vds.reference_data
+    vd = vds.variant_data
+
+    ref_cols = rd.col_key.collect()
+    var_cols = vd.col_key.collect()
+
+    if len(ref_cols) != len(var_cols):
+        raise ValueError(
+            f"mismatch in number of columns: reference data has {ref_cols} columns, variant data has {var_cols} columns"
+        )
+
+    if ref_cols != var_cols:
+        first_mismatch = 0
+        while ref_cols[first_mismatch] == var_cols[first_mismatch]:
+            first_mismatch += 1
+        raise ValueError(
+            f"mismatch in columns keys: ref={ref_cols[first_mismatch]}, var={var_cols[first_mismatch]} at position {first_mismatch}"
+        )
+
+
 def compute_all_release_stats_per_ref_site(
     vds: hl.vds.VariantDataset,
     ref_ht: hl.Table,
@@ -716,6 +746,7 @@ def main(args):
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
 
+            validate_vds(vds)
             check_resource_existence(
                 output_step_resources={
                     "coverage_and_an_ht": [cov_and_an_ht_path],
