@@ -76,8 +76,7 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     logger.info(
         "Determining downsampling groups for AoU...",
     )
-    # TODO: Update to v5 downsamplings when that exists.
-    downsamplings = DOWNSAMPLINGS["v3"]
+    downsamplings = DOWNSAMPLINGS["v5"]
     ht = annotate_downsamplings(ht, downsamplings, ht.gen_anc)
     return ht
 
