@@ -256,21 +256,19 @@ def add_sample_filter_annotations(
 
 
 def add_relatedness_inference(
-    meta_ht: hl.Table, relatedness_ht: hl.Table, outlier_filters_ht: hl.Table
+    meta_ht: hl.Table, relatedness_ht: hl.Table, meta_ht: hl.Table
 ) -> hl.Table:
     """
     Add relationship inference and filters to metadata Table.
 
     :param meta_ht: Hail Table containing sample metadata, hard-filter flag, and outlier-filter flag.
     :param relatedness_ht: Table containing relatedness inference results.
-    :param outlier_filters_ht: Table containing outlier-filter annotations.
+    :param meta_ht: Metadata table that includes outlier-filter annotations.
     :return: Hail Table annotated with relatedness filter fields.
     """
 
     # Obtain relationships from relatedness inference Table.
-    relatedness_inference_ht = annotate_relationships(
-        relatedness_ht, outlier_filters_ht
-    )
+    relatedness_inference_ht = annotate_relationships(relatedness_ht, meta_ht)
 
     # Obtain relatedness filters.
     relatedness_filters_ht = annotate_relatedness_filters(
@@ -390,7 +388,7 @@ def get_relationship_filter_expr(
     )
 
 
-def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Table:
+def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     """
     Get relatedness relationship annotations for the combined meta Table.
 
@@ -404,7 +402,7 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
         - gnomad_v3_release_duplicate: Sample is in the gnomAD v3.1 release.
 
     :param ht: Sample QC filter Table to add relatedness filter annotations to.
-    :param outlier_filter_ht: Table with 'outlier_filtered' annotation indicating if a
+    :param meta_ht: Table with 'outlier_filtered' annotation nested under 'sample_filters' indicating if a
         sample was filtered during outlier detection on sample QC metrics.
     :return: Table with related filters added and Table with relationship and gnomad v4
         overlap information.
@@ -419,18 +417,19 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
     filter_expr = {
         "": True,
         "_high_quality": (
-            ~outlier_filter_ht[ht.i.s].outlier_filtered
-            & ~outlier_filter_ht[ht.j.s].outlier_filtered
+            ~meta_ht[ht.i.s].sample_filters.outlier_filtered
+            & ~meta_ht[ht.j.s].sample_filters.outlier_filtered
         ),
     }
     rel_dict_ht = get_relatedness_dict_ht(ht, filter_expr)
 
-    # Use the outlier HT samples as a base HT to annotate the relatedness info on
+    # Use the meta HT samples as a base HT to annotate the relatedness info on
     # because it includes all samples that pass hard filters, which is what was used
     # in relatedness inference. rel_dict_ht only includes samples with relatedness info,
     # and we want to make sure all samples that went through relatedness inference have
     # empty relationship dictionaries, and are False for v4 and aou duplicate bools.
-    ht = outlier_filter_ht.select()
+    ht = meta_ht.select()
+    ht = ht.filter(~ht.sample_filters.hard_filtered)
     ht = ht.annotate(
         **{
             r: hl.bind(
@@ -502,17 +501,6 @@ def annotate_relatedness_filters(
     }
     relationships = relationship_ht[ht.key]
     relatedness_filters_ht = ht.annotate(
-        relatedness_filters=hl.struct(
-            **{
-                rel: get_relationship_filter_expr(
-                    hard_filtered_expr,
-                    hl.is_defined(related_samples_to_drop(release=False).ht()[ht.key]),
-                    relationships.relationships,
-                    rel_val,
-                )
-                for rel, rel_val in rel_dict.items()
-            }
-        ),
         release_relatedness_filters=hl.struct(
             **{
                 rel: get_relationship_filter_expr(
