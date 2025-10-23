@@ -471,7 +471,7 @@ def main(args):
             output_step_resources={
                 "sample_qc_meta": [meta().path],
             },
-            overwrite=overwrite,
+            overwrite=args.overwrite,
         )
 
         # Restructure metadata fields.
