@@ -737,6 +737,12 @@ def main(args):
                     public=True,
                 )
             )
+            if test_chr22_chrx_chry:
+                gnomad_release_ht = hl.filter_intervals(
+                    gnomad_release_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
             merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
 
@@ -749,6 +755,13 @@ def main(args):
                     coverage_type="allele_number",
                 )
             )
+
+            if test_chr22_chrx_chry:
+                gnomad_release_ht = hl.filter_intervals(
+                    gnomad_release_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
+                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
             merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
 
