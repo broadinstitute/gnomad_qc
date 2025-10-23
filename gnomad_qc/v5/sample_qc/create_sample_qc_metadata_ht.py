@@ -255,15 +255,12 @@ def add_sample_filter_annotations(
     return meta_ht
 
 
-def add_relatedness_inference(
-    meta_ht: hl.Table, relatedness_ht: hl.Table, meta_ht: hl.Table
-) -> hl.Table:
+def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl.Table:
     """
     Add relationship inference and filters to metadata Table.
 
     :param meta_ht: Hail Table containing sample metadata, hard-filter flag, and outlier-filter flag.
     :param relatedness_ht: Table containing relatedness inference results.
-    :param meta_ht: Metadata table that includes outlier-filter annotations.
     :return: Hail Table annotated with relatedness filter fields.
     """
 
