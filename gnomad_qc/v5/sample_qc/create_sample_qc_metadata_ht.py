@@ -2,11 +2,9 @@
 
 import argparse
 import logging
-
 from typing import Dict
 
 import hail as hl
-
 from gnomad.sample_qc.relatedness import (
     DUPLICATE_OR_TWINS,
     PARENT_CHILD,
@@ -15,6 +13,8 @@ from gnomad.sample_qc.relatedness import (
     UNRELATED,
 )
 
+from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
@@ -22,7 +22,6 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import meta, project_meta, sample_id_collisions
-
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     get_gen_anc_ht,
@@ -30,8 +29,6 @@ from gnomad_qc.v5.resources.sample_qc import (
     related_samples_to_drop,
     relatedness,
 )
-from gnomad_qc.v4.resources.meta import meta as v4_meta
-from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sample_metadata")
@@ -92,22 +89,20 @@ def annotate_hard_filters(
     :param samples_to_exclude: Expression with samples to exclude.
     :return: Annotated meta Table with hard-filter fields.
     """
-    # Obtain AoU hard filters and set hard_filter to sample_qc_metrics if any hard filters were applied.
+    # Add AoU hard filters hard filters and samples to exclude and build hard-filters annotation by project.
     # Note: Verified that none of these excluded sample IDs overlap with gnomAD sample IDs, so no need to call 'add_project_prefix_to_sample_collisions' function.
-    # Build hard-filters annotation by project.
     is_excluded = samples_to_exclude.contains(meta_ht.s)
     aou_qc_filters = aou_hard_filters_ht[meta_ht.s].sample_qc_metric_hard_filters
-    # define aou_qc_filters as "sample_qc_metrics"?
     has_qc_filters = hl.is_defined(aou_qc_filters) & (hl.len(aou_qc_filters) > 0)
     meta_ht = meta_ht.annotate(
         hard_filters=(
             hl.case()
             .when(
-                meta_ht.project == "gnomad",
+                meta_ht.project_meta.project == "gnomad",
                 hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
             )
             .when(
-                meta_ht.project == "aou",
+                meta_ht.project_meta.project == "aou",
                 hl.empty_set(hl.tstr)
                 .union(
                     hl.if_else(has_qc_filters, aou_qc_filters, hl.empty_set(hl.tstr))
@@ -141,7 +136,6 @@ def annotate_genetic_ancestry(
     :param aou_gen_anc_ht: Table with AoU projected genetic ancestry.
     :return: Table annotated with genetic ancestry inference outputs.
     """
-
     # Add "gnomad" prefix to gnomAD v4 meta Table.
     v4_meta_ht = add_project_prefix_to_sample_collisions(
         t=v4_meta_ht,
@@ -194,7 +188,7 @@ def add_sample_filter_annotations(
     :param outlier_filters_ht: Table with outlier filters.
     :return: Table with sample filter annotations.
     """
-    # Add outlier filters based on project
+    # Add outlier filters based on project.
     meta_ht = meta_ht.annotate(
         outlier_filters=hl.or_else(
             hl.if_else(
@@ -239,7 +233,6 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
     :param relatedness_ht: Table containing relatedness inference results.
     :return: Hail Table annotated with relatedness filter fields.
     """
-
     # Obtain relationships from relatedness inference Table.
     relatedness_inference_ht = annotate_relationships(relatedness_ht, meta_ht)
 
@@ -357,20 +350,15 @@ def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     """
     Get relatedness relationship annotations for the combined meta Table.
 
-    Table has the following annotations:
-        - relationships: A dictionary of all relationships (except UNRELATED) the
+    Table gets the annotations 'relationships' and 'relationships_high_quality': dictionaries of all relationships (except UNRELATED) the
           sample has with other samples in the dataset. The key is the relationship
           and the value is a set of all samples with that relationship to the given
           sample.
-        - gnomad_v3_duplicate: Sample is in the gnomAD v3.1 sample set that passed hard
-          filtering.
-        - gnomad_v3_release_duplicate: Sample is in the gnomAD v3.1 release.
 
     :param ht: Sample QC filter Table to add relatedness filter annotations to.
     :param meta_ht: Table with 'outlier_filtered' annotation nested under 'sample_filters' indicating if a
         sample was filtered during outlier detection on sample QC metrics.
-    :return: Table with related filters added and Table with relationship and gnomad v4
-        overlap information.
+    :return: Table with relationships added.
     """
     relatedness_inference_parameters = ht.index_globals()
 
@@ -389,10 +377,10 @@ def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     rel_dict_ht = get_relatedness_dict_ht(ht, filter_expr)
 
     # Use the meta HT samples as a base HT to annotate the relatedness info on
-    # because it includes all samples that pass hard filters, which is what was used
+    # because it includes all samples and defiens those that pass hard filters, which is what was used
     # in relatedness inference. rel_dict_ht only includes samples with relatedness info,
     # and we want to make sure all samples that went through relatedness inference have
-    # empty relationship dictionaries, and are False for v4 and aou duplicate bools.
+    # empty relationship dictionaries.
     ht = meta_ht.filter(~meta_ht.sample_filters.hard_filtered)
     ht = ht.select()
 
@@ -421,22 +409,8 @@ def annotate_relatedness_filters(
     """
     Get relatedness filtering Table for the combined meta Table.
 
-    Add the following related filter boolean annotations to the input `ht` under a
-    `relatedness_filters` struct:
-
-        - related: Whether the sample was filtered for second-degree (or closer)
-          relatedness in the ancestry inference PCA.
-        - duplicate_or_twin: Whether the filtered sample has a duplicate or twin among
-          all samples that are not hard-filtered.
-        - parent_child: Whether the filtered sample has a parent or child among all
-          samples that are not hard-filtered.
-        - sibling: Whether the filtered sample has a sibling among all samples that are
-          not hard-filtered.
-        - Any sample in `ht` that is hard-filtered will have a missing value for these
-          annotations.
-
-    These related filter annotations are also provided for release filtered samples
-    added to the input `ht` under a `release_relatedness_filters` struct:
+     Add the following related filter boolean annotations to the input `ht` under a
+    `release_relatedness_filters` struct:
 
         - related: Whether the release filtered sample was filtered for
           second-degree (or closer) relatedness in the final release.
@@ -490,14 +464,16 @@ def main(args):
         tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
 
-    try:  # Add AoU hard filters to the meta Table.
+    try:
+        # Restructure metadata fields.
+        meta_ht = restructure_meta_fields(meta_ht=project_meta.ht())
+
+        # Add AoU hard filters to the meta Table.
         meta_ht = annotate_hard_filters(
-            meta_ht=project_meta.ht(),
+            meta_ht=meta_ht,
             samples_to_exclude=get_samples_to_exclude(),
             aou_hard_filters_ht=hard_filtered_samples.ht(),
         )
-        # Restructure metadata fields.
-        meta_ht = restructure_meta_fields(meta_ht=meta_ht)
 
         # Annotate genetic ancestry inference.
         meta_ht = annotate_genetic_ancestry(
