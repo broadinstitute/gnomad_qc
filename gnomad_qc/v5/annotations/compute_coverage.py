@@ -744,7 +744,7 @@ def main(args):
                     meta_ht = meta_ht.filter(
                         (meta_ht.project_meta.project == project) & (meta_ht.release)
                     ).select()
-                    meta_ht = meta_ht.sample(1)
+                    meta_ht = meta_ht.sample(0.01)
                     vds = hl.vds.filter_samples(vds, meta_ht)
             else:
                 vds = get_gnomad_v5_genomes_vds(
