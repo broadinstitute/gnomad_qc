@@ -483,7 +483,7 @@ def _rename_fields(
     Rename fields by adding project name prior to merging Tables.
 
     Used for AN and qual hists merging but not coverage because
-    coverage does ot have globals and also requires extra transformations
+    coverage does not have globals and also requires extra transformations
     to transform v4 mean back into sum.
 
     :param ht: Input HT.
