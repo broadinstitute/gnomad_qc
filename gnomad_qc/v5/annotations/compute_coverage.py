@@ -620,16 +620,33 @@ def join_aou_and_gnomad_qual_hists_ht(
     aou_ht = _rename_fields(aou_ht, "qual_hists", "aou", rename_globals=False)
     gnomad_ht = _rename_fields(gnomad_ht, "qual_hists", "gnomad", rename_globals=False)
     ht = aou_ht.join(gnomad_ht, "left")
-    ht = ht.annotate(
-        qual_hists=merge_histograms(
-            [ht.qual_hists_aou.qual_hists, ht.qual_hists_gnomad.qual_hists],
-            operation="sum",
-        ),
-        raw_qual_hists=merge_histograms(
-            [ht.qual_hists_aou.raw_qual_hists, ht.qual_hists_gnomad.raw_qual_hists],
-            operation="sum",
-        ),
-    )
+    qual_hists = [
+        "gq_hist_all",
+        "dp_hist_all",
+        "gq_hist_alt",
+        "dp_hist_alt",
+        "ab_hist_alt",
+    ]
+    hist_structs = {
+        "qual_hists": qual_hists,
+        "raw_qual_hists": qual_hists,
+    }
+    hists_expr = {
+        hist_struct: hl.struct(
+            **{
+                h: merge_histograms(
+                    [
+                        ht.qual_hists_aou[hist_struct][h],
+                        ht.qual_hists_gnomad[hist_struct][h],
+                    ],
+                    operation="sum",
+                )
+                for h in hists
+            }
+        )
+        for hist_struct, hists in hist_structs.items()
+    }
+    ht = ht.annotate(**hists_expr)
     return ht
 
 
