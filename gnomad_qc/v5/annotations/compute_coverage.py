@@ -826,11 +826,11 @@ def main(args):
             gnomad_coverage_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
                 input_step_resources={
-                    "gnomad_coverage_ht": gnomad_coverage_ht_path,
+                    "gnomad_coverage_ht": [gnomad_coverage_ht_path],
                 },
                 output_step_resources={
-                    "cov_release_ht": cov_ht_path,
-                    "cov_tsv": cov_tsv_path,
+                    "cov_release_ht": [cov_ht_path],
+                    "cov_tsv": [cov_tsv_path],
                 },
                 overwrite=overwrite,
             )
@@ -861,12 +861,12 @@ def main(args):
             gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
             check_resource_existence(
                 input_step_resources={
-                    "gnomad_an_ht": gnomad_an_ht_path,
+                    "gnomad_an_ht": [gnomad_an_ht_path],
                 },
                 output_step_resources={
-                    "an_raw_ht": an_raw_ht_path,
-                    "an_release_ht": an_ht_path,
-                    "an_release_tsv": an_tsv_path,
+                    "an_raw_ht": [an_raw_ht_path],
+                    "an_release_ht": [an_ht_path],
+                    "an_release_tsv": [an_tsv_path],
                 },
                 overwrite=overwrite,
             )
@@ -892,7 +892,7 @@ def main(args):
         if args.merge_qual_hists:
             qual_hists_path = qual_hists(test=test).path
             check_resource_existence(
-                output_step_resources={"qual_hists_ht": qual_hists_path},
+                output_step_resources={"qual_hists_ht": [qual_hists_path]},
                 overwrite=overwrite,
             )
 
