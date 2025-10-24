@@ -623,9 +623,6 @@ def join_aou_and_gnomad_qual_hists_ht(
     qual_hists = [
         "gq_hist_all",
         "dp_hist_all",
-        "gq_hist_alt",
-        "dp_hist_alt",
-        "ab_hist_alt",
     ]
     hist_structs = {
         "qual_hists": qual_hists,
