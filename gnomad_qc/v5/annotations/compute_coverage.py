@@ -420,7 +420,7 @@ def merge_gnomad_coverage_hts(
 
     # Keep median_approx from v4 release.
     gnomad_ht = gnomad_ht.transmute(
-        median_approx=gnomad_ht.median_approx_gnomad_release
+        median_approx_gnomad=gnomad_ht.median_approx_gnomad_release
     )
     gnomad_ht = gnomad_ht.drop("median_approx_gnomad")
 
