@@ -737,8 +737,11 @@ def main(args):
                 )
                 # NOTE: AoU v8 VDS does not have DP annotation, so using custom function
                 # to annotate adj.
+                # Also adding DP here to make sure `compute_stats_per_ref_site`
+                # doesn't throw an error.
                 vmt = vds.variant_data
                 vmt = annotate_adj(vmt)
+                vmt = vmt.annotate_entries(DP=hl.fold(lambda x, y: x + y, 0, vmt.LAD))
                 vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
                 if test:
