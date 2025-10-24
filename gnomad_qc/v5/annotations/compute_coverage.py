@@ -867,11 +867,6 @@ def main(args):
             ht.export(cov_tsv_path)
 
         if args.export_an_release_files:
-            an_raw_ht_path = release_coverage_path(
-                public=False,
-                test=test,
-                coverage_type="allele_number",
-            )
             an_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -897,7 +892,7 @@ def main(args):
             gnomad_ht = hl.read_table(gnomad_an_ht_path)
 
             ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
-            ht = ht.checkpoint(an_raw_ht_path, overwrite=overwrite)
+            ht = ht.checkpoint(new_temp_file("aou_and_gnomad_an_join", "ht"))
             ht = ht.select("AN")
             ht = ht.select_globals(
                 strata_meta=ht.strata_meta,
