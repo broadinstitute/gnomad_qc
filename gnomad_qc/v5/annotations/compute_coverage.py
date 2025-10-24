@@ -356,6 +356,8 @@ def _merge_coverage_fields(
     if operation == "diff":
         merged_fields = {
             "sum_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"]),
+            "total_DP_gnomad": ht[f"total_DP_{project_1}"]
+            - ht[f"total_DP_{project_2}"],
         }
         merged_fields.update(
             {
