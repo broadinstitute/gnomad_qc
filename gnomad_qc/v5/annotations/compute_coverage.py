@@ -355,15 +355,13 @@ def _merge_coverage_fields(
     """
     if operation == "diff":
         merged_fields = {
-            "mean_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"])
-            / sample_count,
+            "sum_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"]),
         }
         merged_fields.update(
             {
                 f"over_{x}_gnomad": (
                     ht[f"over_{x}_{project_1}"] - ht[f"over_{x}_{project_2}"]
                 )
-                / sample_count
                 for x in coverage_over_x_bins
             }
         )
