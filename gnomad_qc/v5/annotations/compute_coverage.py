@@ -588,7 +588,6 @@ def join_aou_and_gnomad_an_ht(
     :return: Joined HT.
     """
     aou_ht = _rename_fields(aou_ht, "AN", "aou", rename_globals=True)
-    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad", rename_globals=False)
 
     logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
