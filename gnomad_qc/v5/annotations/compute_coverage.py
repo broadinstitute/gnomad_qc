@@ -236,14 +236,7 @@ def compute_all_release_stats_per_ref_site(
     vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
-    # TODO: Add adj annotation and sex ploidy adjustment here for AoU.
-    # This is to avoid the issue we saw in v4 where multiallelic variants have
-    # different adj ANs because adj and sex ploidy adjustments were not included in AN calculation.
-    # For more details, see:
-    # https://github.com/broadinstitute/gnomad_qc/blob/23b962a08a054df48aa4a29fc8bdca298cb26b7a/gnomad_qc/v4/annotations/fix_freq_an.py#L583
-    # We should calculate AN correctly for AoU, but we should be consistent with v4
-    # for gnomAD samples that we need to remove from v5 (i.e., samples to drop
-    # for consent reasons).
+    # TODO: Save dense MT for gnomAD consent drop samples?
     ht = compute_stats_per_ref_site(
         vds,
         ref_ht,
