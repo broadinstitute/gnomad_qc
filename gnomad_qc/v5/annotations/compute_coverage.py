@@ -914,10 +914,12 @@ def main(args):
                 .select_globals()
             )
 
-            # Drop age hists because they are handled in the frequency script.
+            # Drop age hists because they are handled in the frequency script
+            # and re-key by locus.
             gnomad_ht = gnomad_ht.annotate(
                 qual_hists=gnomad_ht.histograms.drop("age_hists")
             )
+            gnomad_ht = gnomad_ht.key_by("locus")
 
             ht = join_aou_and_gnomad_qual_hists_ht(aou_ht, gnomad_ht)
             ht.write(qual_hists_path, overwrite=overwrite)
