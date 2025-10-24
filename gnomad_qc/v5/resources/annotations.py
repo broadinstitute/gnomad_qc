@@ -121,11 +121,6 @@ def coverage_and_an_path(
     if data_set == "aou":
         if environment != "rwb":
             raise ValueError("AoU coverage and allele number must be run in rwb!")
-    else:
-        if environment != "dataproc":
-            raise ValueError(
-                "gnomAD coverage and allele number must be run in dataproc!"
-            )
 
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
