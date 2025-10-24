@@ -214,10 +214,22 @@ def add_sample_filter_annotations(
     )
 
     # Add bool flags for each filter.
+    # Note: For 'gnomad' samples, determine 'outlier_filtered' using both 'release' and 'releasable' fields.
+    # We cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
+    # rescued in v4 and still retain populated 'outlier_filters'. Additionally, we must use 'releasable'
+    # to exclude the 866 samples withdrawn due to consent. Default 'release' and 'relesable' to False here
+    # as AoU samples are missing for these fields and only want to use 'outlier_filters' length for AoU samples.
     meta_ht = meta_ht.annotate(
         sample_filters=meta_ht.sample_filters.annotate(
             hard_filtered=hl.len(meta_ht.sample_filters.hard_filters) > 0,
-            outlier_filtered=hl.len(meta_ht.sample_filters.outlier_filters) > 0,
+            outlier_filtered=(
+                (hl.len(meta_ht.sample_filters.outlier_filters) > 0)
+                & ~(
+                    (meta_ht.project_meta.project == "gnomad")
+                    & hl.or_else(meta_ht.release, False)
+                    & hl.or_else(meta_ht.project_meta.releasable, False)
+                )
+            ),
         )
     )
 
