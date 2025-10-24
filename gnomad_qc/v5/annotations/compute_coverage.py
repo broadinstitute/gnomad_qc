@@ -909,6 +909,7 @@ def main(args):
             )
             gnomad_ht = (
                 public_release(data_type="genomes")
+                .ht()
                 .select("histograms")
                 .select_globals()
             )
