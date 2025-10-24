@@ -476,7 +476,9 @@ def join_aou_and_gnomad_coverage_ht(
     return ht.select_globals()
 
 
-def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
+def _rename_fields(
+    ht: hl.Table, field_name: str, project: str, rename_globals: bool
+) -> hl.Table:
     """
     Rename fields by adding project name prior to merging Tables.
 
@@ -486,9 +488,10 @@ def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
 
     :param ht: Input HT.
     :param project: Project name.
+    :param rename_globals: Whether to rename globals.
     :return: Renamed HT.
     """
-    if project == "aou":
+    if rename_globals:
         rename_globals = {
             f"strata_meta_{project}": ht.strata_meta,
             f"strata_sample_count_{project}": ht.strata_sample_count,
@@ -547,8 +550,10 @@ def merge_gnomad_an_hts(
     logger.info(
         "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
     )
-    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
-    gnomad_release_ht = _rename_fields(gnomad_release_ht, "AN", "gnomad_release")
+    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad", rename_globals=True)
+    gnomad_release_ht = _rename_fields(
+        gnomad_release_ht, "AN", "gnomad_release", rename_globals=True
+    )
 
     gnomad_ht = gnomad_ht.join(gnomad_release_ht, "right")
     joint_an, joint_strata_meta, count_arrays_dict = _merge_an_fields(
@@ -582,8 +587,8 @@ def join_aou_and_gnomad_an_ht(
     :param gnomad_ht: gnomAD v5 genomes AN HT.
     :return: Joined HT.
     """
-    aou_ht = _rename_fields(aou_ht, "AN", "aou")
-    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad")
+    aou_ht = _rename_fields(aou_ht, "AN", "aou", rename_globals=True)
+    gnomad_ht = _rename_fields(gnomad_ht, "AN", "gnomad", rename_globals=False)
 
     logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
@@ -620,8 +625,8 @@ def join_aou_and_gnomad_qual_hists_ht(
     :param gnomad_ht: gnomAD qual hists HT.
     :return: Joined HT.
     """
-    aou_ht = _rename_fields(aou_ht, "qual_hists", "aou")
-    gnomad_ht = _rename_fields(gnomad_ht, "qual_hists", "gnomad")
+    aou_ht = _rename_fields(aou_ht, "qual_hists", "aou", rename_globals=False)
+    gnomad_ht = _rename_fields(gnomad_ht, "qual_hists", "gnomad", rename_globals=False)
     ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.annotate(
         qual_hists=merge_histograms(
@@ -913,8 +918,14 @@ def main(args):
             )
 
             logger.info("Merging qual hists HTs...")
-            aou_ht = hl.read_table(cov_and_an_ht_path).select("qual_hists")
-            gnomad_ht = public_release(data_type="genomes").select("histograms")
+            aou_ht = (
+                hl.read_table(cov_and_an_ht_path).select("qual_hists").select_globals()
+            )
+            gnomad_ht = (
+                public_release(data_type="genomes")
+                .select("histograms")
+                .select_globals()
+            )
 
             # Drop age hists because they are handled in the frequency script.
             gnomad_ht = gnomad_ht.annotate(
