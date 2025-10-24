@@ -916,7 +916,7 @@ def main(args):
 
             # Drop age hists because they are handled in the frequency script
             # and re-key by locus.
-            gnomad_ht = gnomad_ht.annotate(
+            gnomad_ht = gnomad_ht.select(
                 qual_hists=gnomad_ht.histograms.drop("age_hists")
             )
             gnomad_ht = gnomad_ht.key_by("locus")
