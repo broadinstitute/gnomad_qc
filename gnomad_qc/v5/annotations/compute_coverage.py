@@ -488,11 +488,12 @@ def _rename_fields(ht: hl.Table, field_name: str, project: str) -> hl.Table:
     :param project: Project name.
     :return: Renamed HT.
     """
-    rename_globals = {
-        f"strata_meta_{project}": ht.strata_meta,
-        f"strata_sample_count_{project}": ht.strata_sample_count,
-    }
-    ht = ht.transmute_globals(**rename_globals)
+    if project == "aou":
+        rename_globals = {
+            f"strata_meta_{project}": ht.strata_meta,
+            f"strata_sample_count_{project}": ht.strata_sample_count,
+        }
+        ht = ht.transmute_globals(**rename_globals)
     rename_dict = {f"{field_name}": f"{field_name}_{project}"}
     return ht.rename(rename_dict)
 
@@ -560,6 +561,11 @@ def merge_gnomad_an_hts(
     gnomad_ht = gnomad_ht.annotate_globals(
         strata_meta_gnomad=joint_strata_meta,
         strata_sample_count_gnomad=count_arrays_dict,
+    )
+    gnomad_ht = gnomad_ht.drop(
+        "strata_meta_gnomad_release",
+        "strata_sample_count_gnomad_release",
+        "coverage_stats_meta_sample_count",
     )
     gnomad_ht = gnomad_ht.select("AN_gnomad")
     gnomad_ht.write(f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht", overwrite=overwrite)
