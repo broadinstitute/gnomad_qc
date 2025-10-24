@@ -21,7 +21,8 @@ def annotate_adj(
     """
     Annotate genotypes with adj criteria (assumes diploid).
 
-    Defaults are similar to gnomAD values, but GQ >= 20 changed to GQ >= 30 to make up for lack of DP filter.
+    Defaults are similar to gnomAD values, but GQ >= 20 changed to GQ >= 30 to make up for lack of DP filter
+    (raised GQ threshold to 30 to match DP 10 threshold in gnomAD defaults).
 
     :param mt: Input MatrixTable.
     :param adj_gq: Minimum GQ. Default is 30.
