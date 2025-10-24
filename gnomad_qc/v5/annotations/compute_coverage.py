@@ -318,7 +318,7 @@ def _rename_cov_annotations(
     row_fields = list(ht.row_value)
     rename_dict = {f: f"{f}_{project}" for f in row_fields}
     ht = ht.rename(rename_dict)
-    if project == "gnomad":
+    if project == "gnomad" or project == "gnomad_release":
         # Revert v4 genomes fraction over X bins to sample count over X bins.
         ht = ht.transmute(
             **{
