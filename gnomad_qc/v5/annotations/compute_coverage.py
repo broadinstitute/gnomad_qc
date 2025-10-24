@@ -354,6 +354,16 @@ def _merge_coverage_fields(
     :return: Merged fields.
     """
     if operation == "diff":
+        # Make sure over_x fields are float64s.
+        over_fields = {
+            f"over_{x}_{project_1}": (
+                hl.float64(ht[f"over_{x}_{project_1}"]) for x in coverage_over_x_bins
+            ),
+            f"over_{x}_{project_2}": (
+                hl.float64(ht[f"over_{x}_{project_2}"]) for x in coverage_over_x_bins
+            ),
+        }
+        ht = ht.transmute(**over_fields)
         merged_fields = {
             "sum_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"]),
             "total_DP_gnomad": ht[f"total_DP_{project_1}"]
