@@ -431,7 +431,8 @@ def merge_gnomad_coverage_hts(
     )
     gnomad_ht = gnomad_ht.drop("median_approx_gnomad")
 
-    # Make sure global field reflects v5 gnomAD genomes count.
+    # Drop unnecessary globals and add back v5 gnomAD genomes count.
+    gnomad_ht = gnomad_ht.select_globals()
     gnomad_ht = gnomad_ht.annotate_globals(
         coverage_stats_meta_sample_count=gnomad_v5_count,
     )
