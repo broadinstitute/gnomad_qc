@@ -322,7 +322,8 @@ def _rename_cov_annotations(
         # Revert v4 genomes fraction over X bins to sample count over X bins.
         ht = ht.transmute(
             **{
-                f"over_{x}_{project}": ht[f"over_{x}_{project}"] * sample_count
+                f"over_{x}_{project}": hl.float64(ht[f"over_{x}_{project}"])
+                * sample_count
                 for x in coverage_over_x_bins
             }
         )
@@ -423,17 +424,6 @@ def merge_gnomad_coverage_hts(
         operation="diff",
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
-    over_fields = {
-        **{
-            f"over_{x}_{project_1}": hl.float64(gnomad_ht[f"over_{x}_{project_1}"])
-            for x in coverage_over_x_bins
-        },
-        **{
-            f"over_{x}_{project_2}": hl.float64(gnomad_ht[f"over_{x}_{project_2}"])
-            for x in coverage_over_x_bins
-        },
-    }
-    gnomad_ht = gnomad_ht.transmute(**over_fields)
 
     # Keep median_approx from v4 release.
     gnomad_ht = gnomad_ht.transmute(
