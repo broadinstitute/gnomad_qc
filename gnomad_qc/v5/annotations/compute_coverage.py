@@ -32,6 +32,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_aou_downsampling,
@@ -734,10 +735,10 @@ def main(args):
                     annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
-                # NOTE: AoU v8 VDS does not have DP annotation, so adding here using
-                # sum(LAD).
+                # NOTE: AoU v8 VDS does not have DP annotation, so using custom function
+                # to annotate adj.
                 vmt = vds.variant_data
-                vmt = vmt.annotate_entries(DP=hl.fold(lambda x, y: x + y, 0, vmt.LAD))
+                vmt = annotate_adj(vmt)
                 vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
                 if test:
