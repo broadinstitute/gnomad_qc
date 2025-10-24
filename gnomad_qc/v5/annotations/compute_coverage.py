@@ -565,7 +565,7 @@ def merge_gnomad_an_hts(
     gnomad_ht = gnomad_ht.annotate(AN_gnomad=joint_an)
     gnomad_ht = gnomad_ht.annotate_globals(
         strata_meta_gnomad=joint_strata_meta,
-        strata_sample_count_gnomad=count_arrays_dict,
+        strata_sample_count_gnomad=count_arrays_dict["counts"],
     )
     gnomad_ht = gnomad_ht.drop(
         "strata_meta_gnomad_release",
