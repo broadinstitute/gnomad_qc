@@ -430,6 +430,11 @@ def merge_gnomad_coverage_hts(
         median_approx=gnomad_ht.median_approx_gnomad_release
     )
     gnomad_ht = gnomad_ht.drop("median_approx_gnomad")
+
+    # Make sure global field reflects v5 gnomAD genomes count.
+    gnomad_ht = gnomad_ht.annotate_globals(
+        coverage_stats_meta_sample_count=gnomad_v5_count,
+    )
     gnomad_ht.write(
         f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht", overwrite=overwrite
     )
