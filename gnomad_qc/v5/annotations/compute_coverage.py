@@ -879,7 +879,6 @@ def main(args):
                     "gnomad_an_ht": [gnomad_an_ht_path],
                 },
                 output_step_resources={
-                    "an_raw_ht": [an_raw_ht_path],
                     "an_release_ht": [an_ht_path],
                     "an_release_tsv": [an_tsv_path],
                 },
