@@ -652,6 +652,7 @@ def main(args):
         # TODO: replace this with meta import once that is ready.
         meta_ht_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
         group_membership_ht_path = group_membership(test=test, data_set=project).path
+        meta_ht = None
         if project == "aou":
             meta_ht = hl.read_table(meta_ht_path)
 
