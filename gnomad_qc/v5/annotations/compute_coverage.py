@@ -622,7 +622,11 @@ def join_aou_and_gnomad_qual_hists_ht(
     ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.annotate(
         qual_hists=merge_histograms(
-            [ht.qual_hists_aou, ht.qual_hists_gnomad],
+            [ht.qual_hists_aou.qual_hists, ht.qual_hists_gnomad.qual_hists],
+            operation="sum",
+        ),
+        raw_qual_hists=merge_histograms(
+            [ht.qual_hists_aou.raw_qual_hists, ht.qual_hists_gnomad.raw_qual_hists],
             operation="sum",
         ),
     )
