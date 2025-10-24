@@ -582,6 +582,7 @@ def join_aou_and_gnomad_an_ht(
     """
     aou_ht = _rename_fields(aou_ht, "AN", "aou", rename_globals=True)
 
+    # TODO: should we only merge the overall adj AN (like coverage)?
     logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.checkpoint(new_temp_file("aou_and_gnomad_join", "ht"))
