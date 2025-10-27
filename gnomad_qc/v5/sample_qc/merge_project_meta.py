@@ -153,11 +153,12 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
                     },
                 },
                 {
-                    "ht": pull_aou_age(),
+                    "ht": pull_aou_age_and_add_releasable(),
                     "file_format": "ht",
                     "field_mappings": {
                         "s": "research_id",
                         "age": "age",
+                        "releasable": "releasable",
                     },
                 },
             ],
@@ -165,11 +166,11 @@ def get_meta_config() -> Dict[str, Dict[str, hl.expr.Expression]]:
     }
 
 
-def pull_aou_age() -> hl.Table:
+def pull_aou_age_and_add_releasable() -> hl.Table:
     """
-    Pull age information from AoU metadata.
+    Pull age information from AoU metadata and add releasable field.
 
-    :return: Table with AoU age information.
+    :return: Table with AoU age information and releasable field.
     """
     query = f"""
     SELECT
@@ -178,8 +179,11 @@ def pull_aou_age() -> hl.Table:
     FROM  `{os.getenv('WORKSPACE_CDR')}.person` person
     """
     age_df = pd.read_gbq(query, dialect="standard", progress_bar_type="tqdm_notebook")
+    ht = hl.Table.from_pandas(age_df, key="research_id")
+    # AoU genomes are all releasable.
+    ht = ht.annotate(releasable=True)
 
-    return hl.Table.from_pandas(age_df, key="research_id")
+    return ht
 
 
 def select_only_final_fields(
@@ -223,9 +227,6 @@ def select_only_final_fields(
                 ht.releasable,
             )
         )
-    if project == "aou" and data_type == "genomes":
-        # AoU genomes are all releasable.
-        ht = ht.annotate(releasable=True)
 
     present_fields = {
         field for field in ht.row if field in FINAL_SCHEMA_FIELDS_AND_TYPES.keys()
