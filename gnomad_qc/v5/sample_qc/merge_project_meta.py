@@ -223,6 +223,10 @@ def select_only_final_fields(
                 ht.releasable,
             )
         )
+    if project == "aou" and data_type == "genomes":
+        # AoU genomes are all releasable.
+        ht = ht.annotate(releasable=True)
+
     present_fields = {
         field for field in ht.row if field in FINAL_SCHEMA_FIELDS_AND_TYPES.keys()
     }
