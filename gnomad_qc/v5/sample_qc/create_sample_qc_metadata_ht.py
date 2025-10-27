@@ -51,7 +51,8 @@ def restructure_meta_fields(meta_ht: hl.Table) -> hl.Table:
     :param meta_ht: Table with metadata.
     :return: Annotated Table with new structured fields.
     """
-    # Note: 'mean_dp' in gnomAD is derived from chr20_mean_dp, whereas for AoU is comes from mean_coverage.
+    # Note: 'mean_dp' in gnomAD is derived from chr20_mean_dp, whereas for AoU
+    # it comes from mean_coverage.
     meta_ht = meta_ht.transmute(
         project_meta=hl.struct(
             age=meta_ht.age,
@@ -88,7 +89,8 @@ def annotate_hard_filters(
     # Add AoU hard filters hard filters and samples to exclude.
     # Build hard-filters annotation by project.
     # Note: Verified that none of these excluded sample IDs overlap with
-    # gnomAD sample IDs, so no need to call 'add_project_prefix_to_sample_collisions' function.
+    # gnomAD sample IDs, so no need to call
+    # 'add_project_prefix_to_sample_collisions' function.
     is_excluded = samples_to_exclude.contains(meta_ht.s)
     aou_qc_filters = aou_hard_filters_ht[meta_ht.s].sample_qc_metric_hard_filters
     has_qc_filters = hl.is_defined(aou_qc_filters) & (hl.len(aou_qc_filters) > 0)
@@ -214,7 +216,8 @@ def add_sample_filter_annotations(
     # We cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
     # rescued in v4 and still retain populated 'outlier_filters'. Additionally, we must use 'releasable'
     # to exclude the 866 samples withdrawn due to consent. Default 'release' and 'relesable' to False here
-    # as AoU samples are missing for these fields and only want to use 'outlier_filters' length for AoU samples.
+    # as AoU samples are missing for these fields and only want to use
+    # 'outlier_filters' length for AoU samples.
     meta_ht = meta_ht.annotate(
         sample_filters=meta_ht.sample_filters.annotate(
             hard_filtered=hl.len(meta_ht.sample_filters.hard_filters) > 0,
