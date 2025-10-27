@@ -79,7 +79,7 @@ def _meta_root_path(
     Retrieve the path to the root metadata directory.
 
     :param version: gnomAD version.
-    :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".
+    :param data_type: Data type ("exomes" or "genomes"). Default is "genomes".
     :return: String representation of the path to the root metadata directory.
     """
     return f"gs://{WORKSPACE_BUCKET}/v{version}/metadata/{data_type}"

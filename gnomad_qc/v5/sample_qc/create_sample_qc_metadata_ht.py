@@ -86,7 +86,7 @@ def annotate_hard_filters(
     :param samples_to_exclude: Expression with samples to exclude.
     :return: Annotated meta Table with hard-filter fields.
     """
-    # Add AoU hard filters hard filters and samples to exclude.
+    # Add AoU hard filters and samples to exclude.
     # Build hard-filters annotation by project.
     # Note: Verified that none of these excluded sample IDs overlap with
     # gnomAD sample IDs, so no need to call
@@ -215,7 +215,7 @@ def add_sample_filter_annotations(
     # Note: For 'gnomad' samples, determine 'outlier_filtered' using both 'release' and 'releasable' fields.
     # We cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
     # rescued in v4 and still retain populated 'outlier_filters'. Additionally, we must use 'releasable'
-    # to exclude the 866 samples withdrawn due to consent. Default 'release' and 'relesable' to False here
+    # to exclude the 866 samples withdrawn due to consent. Default 'release' and 'releasable' to False here
     # as AoU samples are missing for these fields and only want to use
     # 'outlier_filters' length for AoU samples.
     meta_ht = meta_ht.annotate(
@@ -309,7 +309,7 @@ def annotate_relationships(relatedness_ht: hl.Table, meta_ht: hl.Table) -> hl.Ta
     }
     rel_dict_ht = get_relatedness_dict_ht(relatedness_ht, filter_expr)
 
-    # Generate duplciate samples lists.
+    # Generate duplicate samples lists.
     exome_dups = relatedness_ht.filter(
         relatedness_ht.released_gnomad_exomes_aou_duplicate
     )
