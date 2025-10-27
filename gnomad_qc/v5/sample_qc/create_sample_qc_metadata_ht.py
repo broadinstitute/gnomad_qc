@@ -10,12 +10,14 @@ from gnomad.sample_qc.relatedness import (
     PARENT_CHILD,
     SECOND_DEGREE_RELATIVES,
     SIBLINGS,
-    UNRELATED,
 )
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
-from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES
+from gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht import (
+    get_relatedness_dict_ht,
+    get_relationship_filter_expr,
+)
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
@@ -43,20 +45,13 @@ def restructure_meta_fields(meta_ht: hl.Table) -> hl.Table:
     .. note::
 
         Creates:
-        - `sex_imputation`: struct with sex karyotype and mean depth
         - `project_meta`: struct with project-level metadata
         - `metrics`: struct with sequencing and QC metrics
 
     :param meta_ht: Table with metadata.
     :return: Annotated Table with new structured fields.
     """
-    meta_ht = meta_ht.transmute(
-        sex_imputation=hl.struct(
-            sex_karyotype=meta_ht.sex_karyotype,
-            mean_dp=meta_ht.mean_depth,
-        )
-    )
-
+    # Note: 'mean_dp' in gnomAD is derived from chr20_mean_dp, whereas for AoU is comes from mean_coverage.
     meta_ht = meta_ht.transmute(
         project_meta=hl.struct(
             age=meta_ht.age,
@@ -71,7 +66,7 @@ def restructure_meta_fields(meta_ht: hl.Table) -> hl.Table:
             chimeras_rate=meta_ht.chimeras_rate,
             bases_over_20x_coverage=meta_ht.bases_over_20x_coverage,
             median_insert_size=meta_ht.median_insert_size,
-            callrate=meta_ht.callrate,
+            mean_dp=meta_ht.mean_depth,
         ),
     )
 
@@ -90,7 +85,8 @@ def annotate_hard_filters(
     :param samples_to_exclude: Expression with samples to exclude.
     :return: Annotated meta Table with hard-filter fields.
     """
-    # Add AoU hard filters hard filters and samples to exclude and build hard-filters annotation by project.
+    # Add AoU hard filters hard filters and samples to exclude.
+    # Build hard-filters annotation by project.
     # Note: Verified that none of these excluded sample IDs overlap with
     # gnomAD sample IDs, so no need to call 'add_project_prefix_to_sample_collisions' function.
     is_excluded = samples_to_exclude.contains(meta_ht.s)
@@ -268,102 +264,19 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
                 meta_ht.key
             ].release_relatedness_filters,
             relationships=relatedness_inference_ht[meta_ht.key].relationships,
+            released_gnomad_exomes_aou_duplicate=relatedness_inference_ht[
+                meta_ht.key
+            ].released_gnomad_exomes_aou_duplicate,
+            released_gnomad_genomes_duplicate=relatedness_inference_ht[
+                meta_ht.key
+            ].released_gnomad_genomes_duplicate,
         )
     )
 
     return meta_ht
 
 
-def get_relatedness_dict_ht(
-    ht: hl.Table,
-    filter_exprs: Dict[str, hl.expr.BooleanExpression] = None,
-) -> hl.Table:
-    """
-    Parse relatedness Table to get every relationship (except UNRELATED) per sample.
-
-    Return Table keyed by sample with all sample relationships in dictionary where the
-    key is the relationship and the value is a set of all samples with that
-    relationship to the given sample.
-
-    :param ht: Table with inferred relationship information. Keyed by sample pair (i, j).
-    :param filter_exprs: Optional dictionary of filter expressions to apply to `ht`
-        before creating the 'relationships' annotations. Keyed by the postfix to add to
-        'relationships' as the annotation label, and with boolean expressions as the
-        values. By default, no additional filtering is applied, and a single
-        'relationships' annotation is created.
-    :return: Table keyed by sample (s) with all relationships annotated as a dict.
-    """
-    if filter_exprs is None:
-        filter_exprs = {"": True}
-
-    # Add annotations for the relationship of each item in filter_expr.
-    ht = ht.annotate(
-        **{
-            f"_relationship{label}": hl.or_missing(expr, ht.relationship)
-            for label, expr in filter_exprs.items()
-        }
-    )
-    relationship_labels = [f"_relationship{label}" for label in filter_exprs]
-
-    # Filter to only pairs that are related (second-degree or closer).
-    ht = ht.filter(ht.relationship != UNRELATED)
-
-    # Build a Table of relationships duplicating the info for each pair. Pair (i, j)
-    # will have two rows, one for (s: i.s, pair: j.s) and one for (s: j.s, pair: i.s).
-    ht = ht.select(*relationship_labels, s=ht.i.s, pair=ht.j.s).union(
-        ht.select(*relationship_labels, s=ht.j.s, pair=ht.i.s)
-    )
-
-    # Group the Table by the sample name (s) and aggregate to get a relationships
-    # dictionary per sample. The dictionary is built by grouping the relationship
-    # annotation (becomes the key) and collecting the set of all samples (value) with
-    # each relationship. Each item in filter_expr has its own annotation.
-    ht = ht.group_by(ht.s).aggregate(
-        **{
-            f"relationships{label}": hl.agg.filter(
-                hl.is_defined(ht[f"_relationship{label}"]),
-                hl.agg.group_by(
-                    ht[f"_relationship{label}"], hl.agg.collect_as_set(ht.pair)
-                ),
-            )
-            for label in filter_exprs
-        }
-    )
-
-    return ht
-
-
-def get_relationship_filter_expr(
-    hard_filtered_expr: hl.expr.BooleanExpression,
-    related_drop_expr: hl.expr.BooleanExpression,
-    relationship_set: hl.expr.SetExpression,
-    relationship: str,
-) -> hl.expr.builders.CaseBuilder:
-    """
-    Return case statement to populate relatedness filters in sample_filters struct.
-
-    :param hard_filtered_expr: Boolean for whether sample was hard filtered.
-    :param related_drop_expr: Boolean for whether sample was filtered due to
-        relatedness.
-    :param relationship_set: Set containing all possible relationship strings for
-        sample.
-    :param relationship: Relationship to check for. One of DUPLICATE_OR_TWINS,
-        PARENT_CHILD, SIBLINGS, or SECOND_DEGREE_RELATIVES.
-    :return: Case statement used to populate sample_filters related filter field.
-    """
-    return (
-        hl.case()
-        .when(hard_filtered_expr, hl.missing(hl.tbool))
-        .when(relationship == SECOND_DEGREE_RELATIVES, related_drop_expr)
-        .when(
-            hl.is_defined(relationship_set) & related_drop_expr,
-            relationship_set.contains(relationship),
-        )
-        .default(False)
-    )
-
-
-def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
+def annotate_relationships(relatedness_ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     """
     Get relatedness relationship annotations for the combined meta Table.
 
@@ -372,12 +285,12 @@ def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
           and the value is a set of all samples with that relationship to the given
           sample.
 
-    :param ht: Sample QC filter Table to add relatedness filter annotations to.
+    :param relatedness_ht: Table with relatedness information.
     :param meta_ht: Table with 'outlier_filtered' annotation nested under 'sample_filters' indicating if a
         sample was filtered during outlier detection on sample QC metrics.
     :return: Table with relationships added.
     """
-    relatedness_inference_parameters = ht.index_globals()
+    relatedness_inference_parameters = relatedness_ht.index_globals()
 
     logger.info("Aggregating sample relationship information...")
     # Filter to pairs passing hard filtering (all pairs in the
@@ -387,14 +300,38 @@ def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     filter_expr = {
         "": True,
         "_high_quality": (
-            ~meta_ht[ht.i.s].sample_filters.outlier_filtered
-            & ~meta_ht[ht.j.s].sample_filters.outlier_filtered
+            ~meta_ht[relatedness_ht.i.s].sample_filters.outlier_filtered
+            & ~meta_ht[relatedness_ht.j.s].sample_filters.outlier_filtered
         ),
     }
-    rel_dict_ht = get_relatedness_dict_ht(ht, filter_expr)
+    rel_dict_ht = get_relatedness_dict_ht(relatedness_ht, filter_expr)
+
+    # Generate duplciate samples lists.
+    exome_dups = relatedness_ht.filter(
+        relatedness_ht.released_gnomad_exomes_aou_duplicate
+    )
+    genome_dups = relatedness_ht.filter(
+        relatedness_ht.released_gnomad_genomes_duplicate
+    )
+
+    exome_dup_samples = hl.literal(
+        exome_dups.aggregate(
+            hl.agg.collect_as_set(exome_dups.i.s).union(
+                hl.agg.collect_as_set(exome_dups.j.s)
+            )
+        )
+    )
+
+    genome_dup_samples = hl.literal(
+        genome_dups.aggregate(
+            hl.agg.collect_as_set(genome_dups.i.s).union(
+                hl.agg.collect_as_set(genome_dups.j.s)
+            )
+        )
+    )
 
     # Use the meta HT samples as a base HT to annotate the relatedness info on
-    # because it includes all samples and defiens those that pass hard filters, which is what was used
+    # because it includes all samples and defines those that pass hard filters, which is what was used
     # in relatedness inference. rel_dict_ht only includes samples with relatedness info,
     # and we want to make sure all samples that went through relatedness inference have
     # empty relationship dictionaries.
@@ -412,6 +349,13 @@ def annotate_relationships(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
             for r in rel_dict_ht.row_value
         },
     )
+
+    # Annotate duplicate flags by membership
+    ht = ht.annotate(
+        released_gnomad_exomes_aou_duplicate=exome_dup_samples.contains(ht.s),
+        released_gnomad_genomes_duplicate=genome_dup_samples.contains(ht.s),
+    )
+
     ht = ht.select_globals(**relatedness_inference_parameters)
 
     return ht
@@ -517,17 +461,6 @@ def main(args):
         )
 
         logger.info("Annotating release field...")
-        # NOTE: All AoU samples are consented for relase.
-        meta_ht = meta_ht.annotate(
-            project_meta=meta_ht.project_meta.annotate(
-                releasable=hl.if_else(
-                    meta_ht.project_meta.project == "aou",
-                    True,
-                    meta_ht.project_meta.releasable,
-                )
-            )
-        )
-
         # Drop 'release' and re-annotate so that it will appear at the end.
         meta_ht = meta_ht.drop("release")
         meta_ht = meta_ht.annotate(
