@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.resources.variant_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc" href="../sample_qc/index.html" />
+    <link rel="prev" title="gnomad_qc.v4.resources.sample_qc" href="sample_qc.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">resources</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotations.html">annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="assessment.html">assessment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="basics.html">basics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="constants.html">constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="meta.html">meta</a></li>
+<li class="toctree-l4"><a class="reference internal" href="release.html">release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sample_qc.html">sample_qc</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.resources</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.resources.variant_qc</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/resources/variant_qc.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-resources-variant-qc">
+<h1>gnomad_qc.v4.resources.variant_qc<a class="headerlink" href="#gnomad-qc-v4-resources-variant-qc" title="Permalink to this heading"></a></h1>
+<p>Script containing variant QC related resources.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.VQSR_FEATURES" title="gnomad_qc.v4.resources.variant_qc.VQSR_FEATURES"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.VQSR_FEATURES</span></code></a></p></td>
+<td><p>List of features used in the VQSR model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.SYNDIP" title="gnomad_qc.v4.resources.variant_qc.SYNDIP"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.SYNDIP</span></code></a></p></td>
+<td><p>String representation for syndip truth sample.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.NA12878" title="gnomad_qc.v4.resources.variant_qc.NA12878"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.NA12878</span></code></a></p></td>
+<td><p>String representation for NA12878 truth sample.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.UKB_NA12878" title="gnomad_qc.v4.resources.variant_qc.UKB_NA12878"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.UKB_NA12878</span></code></a></p></td>
+<td><p>String representation for the UKB Regeneron generated NA12878 truth sample.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.TRUTH_SAMPLES" title="gnomad_qc.v4.resources.variant_qc.TRUTH_SAMPLES"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.TRUTH_SAMPLES</span></code></a></p></td>
+<td><p>Dictionary containing necessary information for truth samples</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_callset_truth_data" title="gnomad_qc.v4.resources.variant_qc.get_callset_truth_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_callset_truth_data</span></code></a>(...)</p></td>
+<td><p>Get resources for the truth sample data that is subset from the full callset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_score_bins" title="gnomad_qc.v4.resources.variant_qc.get_score_bins"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_score_bins</span></code></a>(...)</p></td>
+<td><p>Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_binned_concordance" title="gnomad_qc.v4.resources.variant_qc.get_binned_concordance"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_binned_concordance</span></code></a>(...)</p></td>
+<td><p>Return the path to a truth sample concordance Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_rf_run_path" title="gnomad_qc.v4.resources.variant_qc.get_rf_run_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_rf_run_path</span></code></a>([...])</p></td>
+<td><p>Return the path to the json file containing the RF runs list.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_rf_model_path" title="gnomad_qc.v4.resources.variant_qc.get_rf_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_rf_model_path</span></code></a>(...)</p></td>
+<td><p>Get the path to the RF model for a given run.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_rf_training" title="gnomad_qc.v4.resources.variant_qc.get_rf_training"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_rf_training</span></code></a>(...)</p></td>
+<td><p>Get the training data for a given run.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.get_variant_qc_result" title="gnomad_qc.v4.resources.variant_qc.get_variant_qc_result"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.get_variant_qc_result</span></code></a>(...)</p></td>
+<td><p>Get the results of variant QC filtering for a given run.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.variant_qc.final_filter" title="gnomad_qc.v4.resources.variant_qc.final_filter"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.variant_qc.final_filter</span></code></a>([...])</p></td>
+<td><p>Get finalized variant QC filtering Table.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.resources.variant_qc"></span><p>Script containing variant QC related resources.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.VQSR_FEATURES">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">VQSR_FEATURES</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'exomes':</span> <span class="pre">{'indel':</span> <span class="pre">['AS_QD',</span> <span class="pre">'AS_MQRankSum',</span> <span class="pre">'AS_ReadPosRankSum',</span> <span class="pre">'AS_FS'],</span> <span class="pre">'snv':</span> <span class="pre">['AS_QD',</span> <span class="pre">'AS_MQRankSum',</span> <span class="pre">'AS_ReadPosRankSum',</span> <span class="pre">'AS_FS',</span> <span class="pre">'AS_MQ']},</span> <span class="pre">'genomes':</span> <span class="pre">{'indel':</span> <span class="pre">['AS_QD',</span> <span class="pre">'AS_MQRankSum',</span> <span class="pre">'AS_ReadPosRankSum',</span> <span class="pre">'AS_FS',</span> <span class="pre">'AS_SOR'],</span> <span class="pre">'snv':</span> <span class="pre">['AS_QD',</span> <span class="pre">'AS_MQRankSum',</span> <span class="pre">'AS_ReadPosRankSum',</span> <span class="pre">'AS_FS',</span> <span class="pre">'AS_SOR',</span> <span class="pre">'AS_MQ']}}</span></em><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.VQSR_FEATURES" title="Permalink to this definition"></a></dt>
+<dd><p>List of features used in the VQSR model.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.SYNDIP">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">SYNDIP</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'CHMI_CHMI3_Nex1'</span></em><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.SYNDIP" title="Permalink to this definition"></a></dt>
+<dd><p>String representation for syndip truth sample.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.NA12878">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">NA12878</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'ASC-4Set-1573S_NA12878&#64;1075619236'</span></em><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.NA12878" title="Permalink to this definition"></a></dt>
+<dd><p>String representation for NA12878 truth sample.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.UKB_NA12878">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">UKB_NA12878</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Coriell_NA12878_NA12878'</span></em><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.UKB_NA12878" title="Permalink to this definition"></a></dt>
+<dd><p>String representation for the UKB Regeneron generated NA12878 truth sample.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.TRUTH_SAMPLES">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">TRUTH_SAMPLES</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'NA12878':</span> <span class="pre">{'hc_intervals':</span> <span class="pre">GnomadPublicTableResource(path=gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7_hc_regions.ht,import_args={'path':</span> <span class="pre">'gs://gcp-public-data--gnomad/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7.bed',</span> <span class="pre">'reference_genome':</span> <span class="pre">'GRCh38',</span> <span class="pre">'skip_invalid_intervals':</span> <span class="pre">True}),</span> <span class="pre">'s':</span> <span class="pre">'ASC-4Set-1573S_NA12878&#64;1075619236',</span> <span class="pre">'truth_mt':</span> <span class="pre">GnomadPublicMatrixTableResource(path=gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.mt,import_args={'path':</span> <span class="pre">'gs://gcp-public-data--gnomad/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',</span> <span class="pre">'force_bgz':</span> <span class="pre">True,</span> <span class="pre">'min_partitions':</span> <span class="pre">100,</span> <span class="pre">'reference_genome':</span> <span class="pre">'GRCh38'})},</span> <span class="pre">'UKB_NA12878':</span> <span class="pre">{'hc_intervals':</span> <span class="pre">GnomadPublicTableResource(path=gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7_hc_regions.ht,import_args={'path':</span> <span class="pre">'gs://gcp-public-data--gnomad/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7.bed',</span> <span class="pre">'reference_genome':</span> <span class="pre">'GRCh38',</span> <span class="pre">'skip_invalid_intervals':</span> <span class="pre">True}),</span> <span class="pre">'s':</span> <span class="pre">'Coriell_NA12878_NA12878',</span> <span class="pre">'truth_mt':</span> <span class="pre">GnomadPublicMatrixTableResource(path=gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.mt,import_args={'path':</span> <span class="pre">'gs://gcp-public-data--gnomad/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',</span> <span class="pre">'force_bgz':</span> <span class="pre">True,</span> <span class="pre">'min_partitions':</span> <span class="pre">100,</span> <span class="pre">'reference_genome':</span> <span class="pre">'GRCh38'})},</span> <span class="pre">'syndip':</span> <span class="pre">{'hc_intervals':</span> <span class="pre">VersionedTableResource(default_version=20180222,</span> <span class="pre">versions={&quot;20180222&quot;:</span> <span class="pre">GnomadPublicTableResource(path=gs://gnomad-public-requester-pays/resources/grch38/syndip/syndip_b38_20180222_hc_regions.ht,import_args={'path':</span> <span class="pre">'gs://gcp-public-data--gnomad/resources/grch38/syndip/syndip.b38_20180222.bed',</span> <span class="pre">'reference_genome':</span> <span class="pre">'GRCh38',</span> <span class="pre">'skip_invalid_intervals':</span> <span class="pre">True,</span> <span class="pre">'min_partitions':</span> <span class="pre">10})}),</span> <span class="pre">'s':</span> <span class="pre">'CHMI_CHMI3_Nex1',</span> <span class="pre">'truth_mt':</span> <span class="pre">VersionedMatrixTableResource(default_version=20180222,</span> <span class="pre">versions={&quot;20180222&quot;:</span> <span class="pre">GnomadPublicMatrixTableResource(path=gs://gnomad-public-requester-pays/resources/grch38/syndip/syndip.b38_20180222.mt,import_args={'path':</span> <span class="pre">'gs://gcp-public-data--gnomad/resources/grch38/syndip/full.38.20180222.vcf.gz',</span> <span class="pre">'force_bgz':</span> <span class="pre">True,</span> <span class="pre">'min_partitions':</span> <span class="pre">100,</span> <span class="pre">'reference_genome':</span> <span class="pre">'GRCh38'})})}}</span></em><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.TRUTH_SAMPLES" title="Permalink to this definition"></a></dt>
+<dd><p>Dictionary containing necessary information for truth samples</p>
+<p>Current truth samples available are syndip and NA12878. Available data for each are the
+following:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>s: Sample name in the callset</p></li>
+<li><p>truth_mt: Truth sample MatrixTable resource</p></li>
+<li><p>hc_intervals: High confidence interval Table resource in truth sample</p></li>
+</ul>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_callset_truth_data">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_callset_truth_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">truth_sample</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_callset_truth_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_callset_truth_data" title="Permalink to this definition"></a></dt>
+<dd><p>Get resources for the truth sample data that is subset from the full callset.</p>
+<p>If <cite>mt</cite> this will return the truth sample MatrixTable (subset from callset);
+otherwise it returns the merged truth sample Table that includes both the truth
+data and the data from the callset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>truth_sample</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of the truth sample.</p></li>
+<li><p><strong>mt</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether path is for a MatrixTable, default is True.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests.</p></li>
+<li><p><strong>truth_sample</strong> – </p></li>
+<li><p><strong>mt</strong> – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedMatrixTableResource</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to callset truth sample MT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_score_bins">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_score_bins</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregated</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_score_bins"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_score_bins" title="Permalink to this definition"></a></dt>
+<dd><p>Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>These Tables are only available for exomes data. Use the v3 resources for the
+genomes data.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – RF or VQSR model ID for which to return score data.</p></li>
+<li><p><strong>aggregated</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the aggregated data. If True, will return
+the path to Table grouped by bin that contains aggregated variant counts per
+bin.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests.</p></li>
+<li><p><strong>aggregated</strong> – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to desired hail Table</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_binned_concordance">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_binned_concordance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truth_sample</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_binned_concordance"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_binned_concordance" title="Permalink to this definition"></a></dt>
+<dd><p>Return the path to a truth sample concordance Table.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>These Tables are only available for exomes data. Use the v3 resources for the
+genomes data.</p>
+</div>
+<p>This Table contains concordance information (TP, FP, FN) between a truth sample
+within the callset and the sample’s truth data, grouped by bins of a metric (RF or
+VQSR scores).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – RF or VQSR model ID for which to return score data.</p></li>
+<li><p><strong>truth_sample</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Which truth sample concordance to analyze (e.g., “NA12878” or
+“syndip”).</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to binned truth data concordance Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_rf_run_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_rf_run_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_rf_run_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_rf_run_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return the path to the json file containing the RF runs list.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of RF path to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the test RF runs list.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to json file.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_rf_model_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_rf_model_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_rf_model_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_rf_model_path" title="Permalink to this definition"></a></dt>
+<dd><p>Get the path to the RF model for a given run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – RF run to load.</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of model path to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to the RF model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_rf_training">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_rf_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_rf_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_rf_training" title="Permalink to this definition"></a></dt>
+<dd><p>Get the training data for a given run.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – RF run to load.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource for RF training data.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.get_variant_qc_result">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">get_variant_qc_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#get_variant_qc_result"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.get_variant_qc_result" title="Permalink to this definition"></a></dt>
+<dd><p>Get the results of variant QC filtering for a given run.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>These Tables are only available for exomes data. Use the v3 resources for the
+genomes data.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Model ID of variant QC run to load. Must start with ‘rf_’,
+‘vqsr_’, or ‘if_’.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests.</p></li>
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the split or unsplit variant QC result.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource for variant QC results.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.variant_qc.final_filter">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.variant_qc.</span></span><span class="sig-name descname"><span class="pre">final_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_variants</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">only_filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/variant_qc.html#final_filter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.variant_qc.final_filter" title="Permalink to this definition"></a></dt>
+<dd><p>Get finalized variant QC filtering Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Whether to return ‘exomes’ or ‘genomes’ data. Default is exomes.</p></li>
+<li><p><strong>all_variants</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the Table with all variants. Default is
+False.</p></li>
+<li><p><strong>only_filters</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the Table with only the ‘filters’ field.
+Default is False.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for variant QC tests. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource for final variant QC data.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="sample_qc.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.resources.sample_qc" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../sample_qc/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
