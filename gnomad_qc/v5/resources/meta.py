@@ -72,9 +72,7 @@ Samples are from the following projects:
 """
 
 
-def _meta_root_path(
-    version: str = CURRENT_PROJECT_META_VERSION, data_type: str = "genomes"
-) -> str:
+def _meta_root_path(version: str = CURRENT_PROJECT_META_VERSION) -> str:
     """
     Retrieve the path to the root metadata directory.
 
@@ -82,7 +80,7 @@ def _meta_root_path(
     :param data_type: Data type ("exomes" or "genomes"). Default is "genomes".
     :return: String representation of the path to the root metadata directory.
     """
-    return f"gs://{WORKSPACE_BUCKET}/v{version}/metadata/{data_type}"
+    return f"gs://{WORKSPACE_BUCKET}/v{version}/metadata/genomes"
 
 
 def meta(
@@ -92,15 +90,34 @@ def meta(
     """
     Get the v5 sample QC meta VersionedTableResource.
 
+    .. note::
+        Exome data is not currently supported in this function.
+        The v4 sample QC meta uses a different structure, so this function
+        does not pull or duplicate that data. If exome data are needed, please
+        use the v4 resource directly.
+
     :param version: Sample QC version.
-    :param data_type: Data type ("exomes" or "genomes"). Default is "genomes".
+    :param data_type: Data type. Default is "genomes". If "exomes" is supplied, a warning will be raised
+                      suggesting the use of v4 sample QC metadata.
     :return: Sample QC meta VersionedTableResource.
     """
+    if data_type == "exomes":
+        raise ValueError(
+            "Exome sample QC metadata is not supported in v5. "
+            "The v4 sample QC meta has a different structure and should be "
+            "imported directly from the v4 resource using 'from gnomad_qc.v4.resources.meta import meta as v4_meta'."
+        )
+
+    if data_type != "genomes":
+        raise ValueError(
+            f"Unsupported data_type: {data_type}. Only 'genomes' is supported."
+        )
+
     return VersionedTableResource(
         default_version=CURRENT_SAMPLE_QC_VERSION,
         versions={
             CURRENT_SAMPLE_QC_VERSION: TableResource(
-                path=f"{_meta_root_path(version, data_type)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
+                path=f"{_meta_root_path(version)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
             )
         },
     )
