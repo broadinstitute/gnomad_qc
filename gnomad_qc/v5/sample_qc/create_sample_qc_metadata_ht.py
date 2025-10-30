@@ -69,7 +69,7 @@ def restructure_meta_fields(meta_ht: hl.Table) -> hl.Table:
             median_insert_size=meta_ht.median_insert_size,
             mean_dp=meta_ht.mean_depth,
         ),
-    )
+    ).drop( 'callrate', 'gen_anc', 'release')
 
     return meta_ht
 
