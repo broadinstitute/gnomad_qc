@@ -220,7 +220,6 @@ def add_sample_filter_annotations(
     # 'outlier_filters' length for AoU samples.
     meta_ht = meta_ht.annotate(
         sample_filters=meta_ht.sample_filters.annotate(
-            hard_filtered=hl.len(meta_ht.sample_filters.hard_filters) > 0,
             outlier_filtered=(
                 (hl.len(meta_ht.sample_filters.outlier_filters) > 0)
                 & ~(
@@ -229,6 +228,7 @@ def add_sample_filter_annotations(
                     & hl.or_else(meta_ht.project_meta.releasable, False)
                 )
             ),
+            hard_filtered=hl.len(meta_ht.sample_filters.hard_filters) > 0,
         )
     )
 
