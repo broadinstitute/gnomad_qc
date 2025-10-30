@@ -31,24 +31,19 @@ from hail.utils import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds
 from gnomad_qc.v5.resources.annotations import (
     get_consent_ans,
     get_freq,
-    get_group_membership,
+    group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_aou_vds,
+    get_gnomad_v5_genomes_vds,
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import (
-    consent_samples_to_drop,
-    project_meta,
-    sample_id_collisions,
-)
-from gnomad_qc.v5.resources.sample_qc import related_samples_to_drop
+from gnomad_qc.v5.resources.meta import consent_samples_to_drop, sample_id_collisions
 
 # Constants
 TEST_PARTITIONS = 2  # Number of partitions to use in test mode
@@ -72,10 +67,9 @@ def _prepare_consent_vds(
     """
     logger.info("Loading and preparing VDS for consent withdrawal samples...")
 
-    vds = get_gnomad_v4_genomes_vds(
+    vds = get_gnomad_v5_genomes_vds(
         test=runtime_test,
-        remove_hard_filtered_samples=False,
-        release_only=True,
+        release=True,
         annotate_meta=True,
         filter_partitions=list(range(TEST_PARTITIONS)) if test else None,
     )
@@ -160,7 +154,7 @@ def _calculate_consent_frequencies_and_age_histograms(
     logger.info("Loading group membership and calculating consent frequencies...")
 
     # Load and filter group membership
-    group_membership_ht = get_group_membership(test=test).ht()
+    group_membership_ht = group_membership(dataset="gnomad", test=test).ht()
     consent_sample_ids = set(vmt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
@@ -512,25 +506,22 @@ def _prepare_aou_variant_data(
     if test:
         # In test mode, adapt to the test VDS metadata structure
         aou_vmt = aou_vmt.annotate_cols(
-            sex_karyotype=aou_vmt.meta.sex_imputation.sex_karyotype,
-            pop=aou_vmt.meta.population_inference.pop,
+            sex_karyotype=aou_vmt.meta.sex_karyotype,
+            gen_anc=aou_vmt.meta.genetic_ancestry_inference.pop,
             age=aou_vmt.meta.project_meta.age,
         )
     else:
         # Production mode expects direct metadata fields
         aou_vmt = aou_vmt.annotate_cols(
             sex_karyotype=aou_vmt.meta.sex_karyotype,
-            pop=aou_vmt.meta.pop,
+            gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
             age=aou_vmt.meta.age,
         )
-    # Todo: Need to split VDS
-    # Rename LGT to GT and LAD to AD for compatibility with annotate_freq and
-    # annotate_adj
-    # sparse split multi
-    aou_vmt = hl.experimental.sparse_split_multi(aou_vmt, filter_changed_loci=True)
-
     # Add adj annotation required by annotate_freq
     aou_vmt = annotate_adj(aou_vmt)
+
+    # Rename LGT to GT and LAD to AD for compatibility with annotate_freq
+    aou_vmt = hl.experimental.sparse_split_multi(aou_vmt, filter_changed_loci=True)
 
     # Checkpoint after metadata annotation
     return aou_vmt.checkpoint(new_temp_file("aou_vmt", "mt"))
@@ -550,18 +541,7 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = get_group_membership(subset="aou", test=test).ht()
-
-    # TODO: May not need this
-    # Filter group membership to only the AoU samples we're processing
-    aou_sample_ids = set(aou_variant_mt.s.collect())
-    group_membership_ht = group_membership_ht.filter(
-        hl.literal(aou_sample_ids).contains(group_membership_ht.s)
-    )
-
-    # Load AN values from consent_ans (calculated by another script)
-    logger.info("Loading AN values from consent_ans...")
-    consent_ans_ht = get_consent_ans(test=test).ht()
+    group_membership_ht = group_membership(data_type="genomes", test=test).ht()
 
     logger.info(
         "Calculating AoU AC, hom alt counts, and age histograms using efficient agg_by_strata..."
@@ -591,14 +571,14 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
         group_membership_ht=group_membership_ht,
     )
 
-    # Join with consent AN values and build complete freq struct
-    logger.info("Building complete frequency struct with imported AN values...")
+    # Load AN values from consent_ans (calculated by another script)
+    logger.info("Loading AN values from consent_ans...")
+    consent_ans_ht = get_consent_ans(test=test).ht()
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
     )
 
-    # Build complete freq struct using AC from variant data and AN from
-    # consent_ans, and add age_hists
+    logger.info("Building complete frequency struct with imported AN values...")
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         freq=hl.map(
             lambda freq_data, an_data: hl.struct(
@@ -622,10 +602,7 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
     return aou_variant_freq_ht
 
 
-def process_aou_dataset(
-    test: bool = False,
-    overwrite: bool = False,
-) -> hl.Table:
+def process_aou_dataset(test: bool = False) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
 
@@ -634,14 +611,10 @@ def process_aou_dataset(
     2. Age histograms are calculated within the frequency calculation
 
     :param test: Whether to run in test mode.
-    :param overwrite: Whether to overwrite existing results.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     logger.info("Processing All of Us dataset...")
-
-    # Add release which will require renaming to this function to avoid any
-    # changes to the AoU VDS
-    aou_vmt = get_aou_vds(test=test).variant_data  # release=True
+    aou_vmt = get_aou_vds(release_only=True, test=test).variant_data
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
