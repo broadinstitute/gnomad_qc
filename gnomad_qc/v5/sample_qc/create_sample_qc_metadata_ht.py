@@ -464,8 +464,6 @@ def main(args):
         )
 
         logger.info("Annotating release field...")
-        # Drop 'release' and re-annotate so that it will appear at the end.
-        meta_ht = meta_ht.drop("release")
         meta_ht = meta_ht.annotate(
             release=(
                 meta_ht.project_meta.releasable
