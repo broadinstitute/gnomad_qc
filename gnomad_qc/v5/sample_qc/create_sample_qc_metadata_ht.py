@@ -69,7 +69,7 @@ def restructure_meta_fields(meta_ht: hl.Table) -> hl.Table:
             median_insert_size=meta_ht.median_insert_size,
             mean_dp=meta_ht.mean_depth,
         ),
-    ).drop("callrate", "gen_anc", "release")
+    ).drop("callrate", "gen_anc")
 
     return meta_ht
 
@@ -464,6 +464,8 @@ def main(args):
         )
 
         logger.info("Annotating release field...")
+        # Drop 'release' and re-annotate so that it will appear at the end.
+        meta_ht = meta_ht.drop("release")
         meta_ht = meta_ht.annotate(
             release=(
                 meta_ht.project_meta.releasable
@@ -477,7 +479,6 @@ def main(args):
 
         logger.info("Total genome sample count: %s", meta_ht.count())
 
-        # TODO: Add just count genomes
         logger.info(
             "Total genome release sample count: %s",
             meta_ht.aggregate(hl.agg.count_where(meta_ht.release)),
