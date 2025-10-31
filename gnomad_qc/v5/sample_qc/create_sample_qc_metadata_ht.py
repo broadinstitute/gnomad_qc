@@ -373,7 +373,7 @@ def annotate_relatedness_filters(
     """
     Get relatedness filtering Table for the combined meta Table.
 
-     Add the following related filter boolean annotations to the input `ht` under a
+    Add the following related filter boolean annotations to the input `ht` under a
     `release_relatedness_filters` struct:
 
         - related: Whether the release filtered sample was filtered for
