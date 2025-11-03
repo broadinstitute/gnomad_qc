@@ -14,6 +14,7 @@ from gnomad.sample_qc.relatedness import (
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_meta_updated
 from gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht import (
     get_relatedness_dict_ht,
     get_relationship_filter_expr,
@@ -180,6 +181,37 @@ def annotate_genetic_ancestry(
     return meta_ht
 
 
+def update_hgdp_tgp_outlier_annotation(ht: hl.Table) -> hl.Table:
+    """
+    Update `outlier_filters` in ht.sample_filters based on the annotations in hgdp_tgp_meta_updated.
+
+    .. note::
+    # Note: For 'gnomad' samples, we  cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
+    # rescued in v4 and still retain populated 'outlier_filters'. The 'hgdp_tgp_meta_updated' contains an updated 'outlier' bool. For samples
+    present in "hgdp_tgp_meta_updated", if the updated outlier annotation is True, outlier_filters will be populated with hgdp_tgp_outlier.
+    If the updated outlier annotation is False, the outlier_filters annotation will be updated to an empty set.
+
+    :param meta_ht: Table with metadata.
+    :return: Annotated Table with updated outlier_filters for the hgdp_tgp samples.
+    """
+    hg_ht = hgdp_tgp_meta_updated.ht()
+
+    ht = ht.annotate(
+        sample_filters=ht.sample_filters.annotate(
+            outlier_filters=hl.if_else(
+                hl.is_defined(hg_ht[ht.s]),
+                hl.if_else(
+                    hg_ht[ht.s].hgdp_tgp_meta.subcontinental_pca.outlier,
+                    ht.sample_filters.outlier_filters.union({"hgdp_tgp_outlier"}),
+                    hl.empty_set(hl.tstr),
+                ),
+                ht.sample_filters.outlier_filters,
+            )
+        )
+    )
+    return ht
+
+
 def add_sample_filter_annotations(
     meta_ht: hl.Table, outlier_filters_ht: hl.Table
 ) -> hl.Table:
@@ -212,22 +244,9 @@ def add_sample_filter_annotations(
     )
 
     # Add bool flags for each filter.
-    # Note: For 'gnomad' samples, determine 'outlier_filtered' using both 'release' and 'releasable' fields.
-    # We cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
-    # rescued in v4 and still retain populated 'outlier_filters'. Additionally, we must use 'releasable'
-    # to exclude the 866 samples withdrawn due to consent. Default 'release' and 'releasable' to False here
-    # as AoU samples are missing for these fields and only want to use
-    # 'outlier_filters' length for AoU samples.
     meta_ht = meta_ht.annotate(
         sample_filters=meta_ht.sample_filters.annotate(
-            outlier_filtered=(
-                (hl.len(meta_ht.sample_filters.outlier_filters) > 0)
-                & ~(
-                    (meta_ht.project_meta.project == "gnomad")
-                    & hl.or_else(meta_ht.release, False)
-                    & hl.or_else(meta_ht.project_meta.releasable, False)
-                )
-            ),
+            outlier_filtered=((hl.len(meta_ht.sample_filters.outlier_filters) > 0)),
             hard_filtered=hl.len(meta_ht.sample_filters.hard_filters) > 0,
         )
     )
@@ -452,6 +471,9 @@ def main(args):
             v4_meta_ht=v4_meta("4.0", "genomes").ht(),
             aou_gen_anc_ht=get_gen_anc_ht(projection_only=True).ht(),
         )
+
+        meta_ht = update_hgdp_tgp_outlier_annotation(meta_ht=meta_ht)
+
         # Add sample outlier and filter annotations.
         meta_ht = add_sample_filter_annotations(
             meta_ht=meta_ht, outlier_filters_ht=finalized_outlier_filtering().ht()
