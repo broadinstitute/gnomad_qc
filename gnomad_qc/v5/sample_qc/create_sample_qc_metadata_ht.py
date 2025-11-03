@@ -181,7 +181,7 @@ def annotate_genetic_ancestry(
     return meta_ht
 
 
-def update_hgdp_tgp_outlier_annotation(ht: hl.Table) -> hl.Table:
+def update_hgdp_tgp_outlier_annotation(meta_ht: hl.Table) -> hl.Table:
     """
     Update `outlier_filters` in ht.sample_filters based on the annotations in hgdp_tgp_meta_updated.
 
