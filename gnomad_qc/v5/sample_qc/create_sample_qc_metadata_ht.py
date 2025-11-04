@@ -196,16 +196,12 @@ def update_hgdp_tgp_outlier_annotation(
     # Filter to HGDP or TGP subset samples only in the v4 meta.
     subset_ht = v4_meta_ht.filter(v4_meta_ht.subsets.hgdp | v4_meta_ht.subsets.tgp)
 
-    # Key the subset table by sample_id to match hgdp_tgp_meta_updated.
-    subset_ht = subset_ht.key_by(subset_ht.project_meta.sample_id)
-
     # Annotate subset table with updated outlier info.
     subset_ht = subset_ht.annotate(
-        updated_outlier=hg_ht[subset_ht.key].hgdp_tgp_meta.subcontinental_pca.outlier
+        updated_outlier=hg_ht[
+            subset_ht.project_meta.sample_id
+        ].hgdp_tgp_meta.subcontinental_pca.outlier
     )
-
-    # Re-key by 's' for merging back with the main metadata table
-    subset_ht = subset_ht.key_by("s")
 
     # Annotate main metadata with the updated outlier filters
     meta_ht = meta_ht.annotate(
