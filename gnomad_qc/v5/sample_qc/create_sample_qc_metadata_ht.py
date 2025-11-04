@@ -502,6 +502,12 @@ def main(args):
             relatedness_ht=relatedness().ht(),
         )
 
+        # Move high_quality to the end of the Table.
+        meta_ht = meta_ht.select(
+            *[f for f in meta_ht.row if f not in ["s", "high_quality"]],
+            "high_quality",
+        )
+
         logger.info("Annotating release field...")
         # Drop 'release' and re-annotate so that it will appear at the end.
         meta_ht = meta_ht.drop("release")
