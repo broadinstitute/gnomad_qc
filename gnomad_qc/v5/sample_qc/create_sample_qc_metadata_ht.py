@@ -197,18 +197,17 @@ def update_hgdp_tgp_outlier_annotation(meta_ht: hl.Table) -> hl.Table:
     hg_ht = hgdp_tgp_meta_updated.ht()
 
     meta_ht = meta_ht.annotate(
-        meta_ht.annotate(
-            outlier_filters=hl.if_else(
-                hl.is_defined(hg_ht[meta_ht.s]),
-                hl.if_else(
-                    hg_ht[meta_ht.s].hgdp_tgp_meta.subcontinental_pca.outlier,
-                    meta_ht.outlier_filters.union({"hgdp_tgp_outlier"}),
-                    hl.empty_set(hl.tstr),
-                ),
-                meta_ht.outlier_filters,
-            )
+        outlier_filters=hl.if_else(
+            hl.is_defined(hg_ht[meta_ht.s]),
+            hl.if_else(
+                hg_ht[meta_ht.s].hgdp_tgp_meta.subcontinental_pca.outlier,
+                meta_ht.outlier_filters.union({"hgdp_tgp_outlier"}),
+                hl.empty_set(hl.tstr),
+            ),
+            meta_ht.outlier_filters,
         )
     )
+
     return meta_ht
 
 
