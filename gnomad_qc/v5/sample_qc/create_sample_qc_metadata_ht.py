@@ -137,13 +137,6 @@ def annotate_genetic_ancestry(
     :param aou_gen_anc_ht: Table with AoU projected genetic ancestry.
     :return: Table annotated with genetic ancestry inference outputs.
     """
-    # Add "gnomad" prefix to gnomAD v4 meta Table.
-    v4_meta_ht = add_project_prefix_to_sample_collisions(
-        t=v4_meta_ht,
-        sample_collisions=sample_id_collisions.ht(),
-        project="gnomad",
-    )
-
     # Nest genetic ancestry inference fields under
     # 'genetic_ancestry_inference' and drop unnecessary fields.
     v4_meta_ht = v4_meta_ht.annotate(
@@ -181,7 +174,9 @@ def annotate_genetic_ancestry(
     return meta_ht
 
 
-def update_hgdp_tgp_outlier_annotation(meta_ht: hl.Table) -> hl.Table:
+def update_hgdp_tgp_outlier_annotation(
+    meta_ht: hl.Table, v4_meta_ht: hl.Table
+) -> hl.Table:
     """
     Update `outlier_filters` in ht.sample_filters based on the annotations in hgdp_tgp_meta_updated.
 
@@ -192,15 +187,32 @@ def update_hgdp_tgp_outlier_annotation(meta_ht: hl.Table) -> hl.Table:
     If the updated outlier annotation is False, the outlier_filters annotation will be updated to an empty set.
 
     :param meta_ht: Table with metadata.
+    :param v4_meta_ht: Table with v4 metadata.
     :return: Annotated Table with updated outlier_filters for the hgdp_tgp samples.
     """
+    # Confirmed do not need to run sample collision function on hgdp_tgp_meta_updated.ht().
     hg_ht = hgdp_tgp_meta_updated.ht()
 
+    # Filter to HGDP or TGP subset samples only in the v4 meta.
+    subset_ht = v4_meta_ht.filter(v4_meta_ht.subsets.hgdp | v4_meta_ht.subsets.tgp)
+
+    # Key the subset table by sample_id to match hgdp_tgp_meta_updated.
+    subset_ht = subset_ht.key_by(subset_ht.project_meta.sample_id)
+
+    # Annotate subset table with updated outlier info.
+    subset_ht = subset_ht.annotate(
+        updated_outlier=hg_ht[subset_ht.key].hgdp_tgp_meta.subcontinental_pca.outlier
+    )
+
+    # Re-key by 's' for merging back with the main metadata table
+    subset_ht = subset_ht.key_by("s")
+
+    # Annotate main metadata with the updated outlier filters
     meta_ht = meta_ht.annotate(
         outlier_filters=hl.if_else(
-            hl.is_defined(hg_ht[meta_ht.s]),
+            hl.is_defined(subset_ht[meta_ht.s].updated_outlier),
             hl.if_else(
-                hg_ht[meta_ht.s].hgdp_tgp_meta.subcontinental_pca.outlier,
+                subset_ht[meta_ht.s].updated_outlier,
                 meta_ht.outlier_filters.union({"hgdp_tgp_outlier"}),
                 hl.empty_set(hl.tstr),
             ),
@@ -464,14 +476,24 @@ def main(args):
             aou_hard_filters_ht=hard_filtered_samples.ht(),
         )
 
+        # Add "gnomad" prefix to gnomAD v4 meta Table.
+        v4_meta_ht = v4_meta("4.0", "genomes").ht()
+        v4_meta_ht = add_project_prefix_to_sample_collisions(
+            t=v4_meta_ht,
+            sample_collisions=sample_id_collisions.ht(),
+            project="gnomad",
+        )
+
         # Annotate genetic ancestry inference.
         meta_ht = annotate_genetic_ancestry(
             meta_ht=meta_ht,
-            v4_meta_ht=v4_meta("4.0", "genomes").ht(),
+            v4_meta_ht=v4_meta_ht,
             aou_gen_anc_ht=get_gen_anc_ht(projection_only=True).ht(),
         )
 
-        meta_ht = update_hgdp_tgp_outlier_annotation(meta_ht=meta_ht)
+        meta_ht = update_hgdp_tgp_outlier_annotation(
+            meta_ht=meta_ht, v4_meta_ht=v4_meta_ht
+        )
 
         # Add sample outlier and filter annotations.
         meta_ht = add_sample_filter_annotations(
