@@ -181,16 +181,18 @@ def update_hgdp_tgp_outlier_annotation(
     Update `outlier_filters` in ht.sample_filters based on the annotations in hgdp_tgp_meta_updated.
 
     .. note::
-    # Note: For 'gnomad' samples, we  cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
+    # Note: For 'gnomad' samples, we cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
     # rescued in v4 and still retain populated 'outlier_filters'. The 'hgdp_tgp_meta_updated' contains an updated 'outlier' bool. For samples
-    present in "hgdp_tgp_meta_updated", if the updated outlier annotation is True, outlier_filters will be populated with hgdp_tgp_outlier.
-    If the updated outlier annotation is False, the outlier_filters annotation will be updated to an empty set.
+    present in "hgdp_tgp_meta_updated" and marked as either "hgdp" or "tgp" in the v4 meta subsets, if the updated outlier annotation is True,
+    outlier_filters will be populated with hgdp_tgp_outlier. If the updated outlier annotation is False, the outlier_filters annotation will be
+    updated to an empty set.
 
     :param meta_ht: Table with metadata.
     :param v4_meta_ht: Table with v4 metadata.
     :return: Annotated Table with updated outlier_filters for the hgdp_tgp samples.
     """
-    # Confirmed do not need to run sample collision function on hgdp_tgp_meta_updated.ht().
+    # Confirmed do not need to run sample collision function on
+    # hgdp_tgp_meta_updated.ht().
     hg_ht = hgdp_tgp_meta_updated.ht()
 
     # Filter to HGDP or TGP subset samples only in the v4 meta.
