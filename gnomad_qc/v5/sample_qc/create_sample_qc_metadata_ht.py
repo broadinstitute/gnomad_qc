@@ -181,7 +181,7 @@ def update_hgdp_tgp_outlier_annotation(
     Update `outlier_filters` in ht.sample_filters based on the annotations in hgdp_tgp_meta_updated.
 
     .. note::
-    
+
         For 'gnomad' samples, we cannot rely solely on the length of 'outlier_filters' because some v3-filtered samples were
         rescued in v4 and still retain populated 'outlier_filters'. The 'hgdp_tgp_meta_updated' contains an updated 'outlier' bool. For samples
     present in "hgdp_tgp_meta_updated" and marked as either "hgdp" or "tgp" in the v4 meta subsets, if the updated outlier annotation is True,
