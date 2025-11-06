@@ -678,7 +678,6 @@ def main(args):
         cov_and_an_ht_path = coverage_and_an_path(
             test=test,
             data_set=project,
-            environment=environment,
         ).path
         downsampling_ht_path = get_aou_downsampling(test=test).path
         # TODO: replace this with meta import once that is ready.
