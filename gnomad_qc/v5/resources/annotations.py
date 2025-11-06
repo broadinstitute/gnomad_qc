@@ -24,7 +24,7 @@ def _annotations_root(
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
-    :param environment: Environment of annotation resource. Default is "rwb".
+    :param data_set: Data set of annotation resource. Default is "aou".
     :return: Root path of the variant annotation files.
     """
     path_suffix = f"sample_qc/{data_type}/{data_set}"
