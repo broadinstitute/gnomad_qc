@@ -334,6 +334,7 @@ def get_gnomad_v5_genomes_vds(
     :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
+    # Import v3 basics and v4 meta here to avoid circular imports.
     from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
     from gnomad_qc.v4.resources.meta import meta as v4_meta
 
