@@ -99,7 +99,7 @@ def get_group_membership_ht(
         ht = generate_freq_group_membership_array(
             meta_ht,
             build_freq_stratification_list(
-                sex_expr=meta_ht.sex_imputation.sex_karyotype,
+                sex_expr=meta_ht.sex_karyotype,
                 gen_anc_expr=meta_ht.genetic_ancestry_inference.gen_anc,
                 downsampling_expr=ds_ht[meta_ht.key].downsampling,
             ),
@@ -759,8 +759,8 @@ def main(args):
             )
             ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
-            sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
             if project == "aou":
+                sex_karyotype_field = "meta.sex_karyotype"
                 vds = get_aou_vds(
                     release_only=True,
                     filter_partitions=range(2) if test_2_partitions else None,
@@ -783,6 +783,7 @@ def main(args):
                     meta_ht = meta_ht.sample(0.001)
                     vds = hl.vds.filter_samples(vds, meta_ht)
             else:
+                sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
                 vds = get_gnomad_v5_genomes_vds(
                     release=True,
                     consent_drop=True,
