@@ -90,7 +90,7 @@ def meta(
     Get the v5 sample QC meta VersionedTableResource.
 
     .. note::
-    
+
         Exome data is not currently supported in this function.
         The v4 sample QC meta uses a different structure, so this function
         does not pull or duplicate that data. If exome data are needed, please
