@@ -40,6 +40,7 @@ def _release_root(
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "exomes".
     :param extension: File extension of release file. Default is "ht".
+    :param environment: Environment to use. Default is "rwb". Must be "rwb" for AoU.
     :return: Root path of the release files.
     """
     path_suffix = f"release/{extension}/{data_type}"
