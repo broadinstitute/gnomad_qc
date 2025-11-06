@@ -116,7 +116,7 @@ def meta(
         default_version=CURRENT_SAMPLE_QC_VERSION,
         versions={
             CURRENT_SAMPLE_QC_VERSION: TableResource(
-                path=f"{_meta_root_path(version)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
+                path=f"{_meta_root_path(version)}/gnomad.genomes.v{version}.sample_qc_metadata.ht"
             )
         },
     )
