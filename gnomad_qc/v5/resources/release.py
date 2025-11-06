@@ -111,7 +111,7 @@ def release_coverage_tsv_path(
     :param environment: Environment to use. Default is "rwb".
     :return: Coverage TSV path.
     """
-    return f"{_release_root(release_version, test=test, extension='tsv', environment=environment)}/gnomad.genomes.v{release_version}.coverage.all.tsv.bgz"
+    return f"{_release_root(release_version, test=test, extension='tsv', environment=environment)}/gnomad.genomes.v{release_version}.coverage.tsv.bgz"
 
 
 def release_all_sites_an_tsv_path(
