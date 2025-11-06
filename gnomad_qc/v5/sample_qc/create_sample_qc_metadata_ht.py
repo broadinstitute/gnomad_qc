@@ -84,6 +84,7 @@ def annotate_hard_filters(
 
     :param meta_ht: Table with metadata.
     :param samples_to_exclude: Expression with samples to exclude.
+    :param aou_hard_filters_ht: Table with AoU hard filter information.
     :return: Annotated meta Table with hard-filter fields.
     """
     # Add AoU hard filters and samples to exclude.
