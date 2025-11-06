@@ -91,7 +91,7 @@ def get_group_membership_ht(
     Get genomes group membership HT for all sites allele number stratification.
 
     :param meta_ht: Meta HT.
-    :param project: Project name.
+    :param project: Project name. Must be "aou" or "gnomad". If "gnomad", function will filter meta HT to only consent drop samples.
     :param ds_ht: Optional downsampling HT. Only used for AoU.
     :return: Group membership HT.
     """
