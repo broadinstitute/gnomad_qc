@@ -113,7 +113,7 @@ def coverage_and_an_path(
 
     :param test: Whether to use a tmp path for testing. Default is False.
     :param data_set: Dataset identifier. Must be one of "aou" or "gnomad". Default is "aou".
-    :param environment: Environment to use. Default is "rwb". Must be "rwb" for AoU and "dataproc" for gnomAD.
+    :param environment: Environment to use. Default is "rwb". Must be "rwb" for AoU.
     :return: Coverage and allele number Hail Table.
     """
     assert data_set in ["aou", "gnomad"], "data_set must be either 'aou' or 'gnomad'"
