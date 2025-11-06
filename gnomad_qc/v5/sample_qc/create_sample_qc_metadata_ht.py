@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-from typing import Dict
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
