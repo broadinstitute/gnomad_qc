@@ -284,8 +284,8 @@ def get_aou_vds(
 
 def get_gnomad_v5_genomes_vds(
     split: bool = False,
-    release: bool = False,
-    consent_drop: bool = False,
+    release_only: bool = False,
+    consent_drop_only: bool = False,
     annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -305,10 +305,10 @@ def get_gnomad_v5_genomes_vds(
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
-    :param release: Whether to filter the VDS to only samples available for
+    :param release_only: Whether to filter the VDS to only samples available for
         v5 release (distinct from v4 release due to samples to drop for consent reasons).
         Requires that v5 sample metadata has been computed.
-    :param consent_drop: Whether to filter the VDS to only consent drop samples.
+    :param consent_drop_only: Whether to filter the VDS to only consent drop samples.
     :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in
         'meta' column.
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
@@ -368,10 +368,10 @@ def get_gnomad_v5_genomes_vds(
         )
     )
 
-    if release or consent_drop or annotate_meta:
+    if release_only or consent_drop_only or annotate_meta:
         filter_expr = True
-        if release:
-            if not consent_drop:
+        if release_only:
+            if not consent_drop_only:
                 meta_ht = meta_ht.annotate(
                     release=hl.if_else(
                         meta_ht.consent_drop,
@@ -381,7 +381,7 @@ def get_gnomad_v5_genomes_vds(
                 )
             filter_expr &= meta_ht.release
 
-        if consent_drop:
+        if consent_drop_only:
             filter_expr &= meta_ht.consent_drop
 
         if annotate_meta:
