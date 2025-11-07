@@ -524,15 +524,13 @@ def _merge_an_fields(
 def merge_gnomad_an_hts(
     gnomad_ht: hl.Table,
     gnomad_release_ht: hl.Table,
-    overwrite: bool = False,
-) -> None:
+) -> hl.Table:
     """
     Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes AN HT.
 
     :param gnomad_ht: gnomAD AN HT (contains AN for consent drop samples only).
     :param gnomad_release_ht: gnomAD v4 genomes release AN HT.
-    :param overwrite: Whether to overwrite existing gnomAD v5 genomes AN HT. Default is False.
-    :return: None; writes gnomAD v5 genomes AN HT to temp bucket.
+    :return: gnomAD v5 genomes AN HT.
     """
     logger.info(
         "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
@@ -560,7 +558,7 @@ def merge_gnomad_an_hts(
         "coverage_stats_meta_sample_count",
     )
     gnomad_ht = gnomad_ht.select("AN_gnomad")
-    gnomad_ht.write(f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht", overwrite=overwrite)
+    return gnomad_ht
 
 
 def join_aou_and_gnomad_an_ht(
@@ -844,6 +842,13 @@ def main(args):
                 raise ValueError(
                     "--merge-gnomad-an requires --project-name to be 'gnomad'."
                 )
+            merged_gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
+            check_resource_existence(
+                output_step_resources={
+                    "merged_gnomad_an_ht": [merged_gnomad_an_ht_path],
+                },
+                overwrite=overwrite,
+            )
 
             gnomad_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_release_ht = hl.read_table(
@@ -861,7 +866,8 @@ def main(args):
             elif test_2_partitions:
                 gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
-            merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
+            ht = merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht)
+            ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
 
         if args.export_coverage_release_files:
             cov_ht_path = release_coverage_path(
