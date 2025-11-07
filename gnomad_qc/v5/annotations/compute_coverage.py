@@ -770,7 +770,7 @@ def main(args):
                 # doesn't throw an error.
                 vmt = vds.variant_data
                 vmt = annotate_adj(vmt)
-                vmt = vmt.annotate_entries(DP=hl.fold(lambda x, y: x + y, 0, vmt.LAD))
+                vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
                 vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
                 if test:
