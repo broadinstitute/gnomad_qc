@@ -25,6 +25,7 @@ from gnomad_qc.v5.resources.constants import (
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
     low_quality_samples,
+    sample_id_collisions,
     samples_to_exclude,
 )
 
@@ -250,6 +251,12 @@ def get_aou_vds(
         )
         if annotate_meta:
             logger.info("Annotating VDS variant_data with metadata...")
+            sample_collisions = sample_id_collisions.ht()
+            vmt = add_project_prefix_to_sample_collisions(
+                t=vmt,
+                sample_collisions=sample_collisions,
+                project="aou",
+            )
             vmt = vmt.annotate_cols(meta=meta_ht[vmt.col_key])
 
     if filter_variant_ht is not None and split is False:
