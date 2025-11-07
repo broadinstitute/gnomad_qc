@@ -380,8 +380,7 @@ def merge_gnomad_coverage_hts(
     coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
     v4_count: int = 76215,
     consent_drop_count: int = 866,
-    overwrite: bool = False,
-) -> None:
+) -> hl.Table:
     """
     Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes coverage HT.
 
@@ -391,8 +390,7 @@ def merge_gnomad_coverage_hts(
         Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
     :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
     :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is 866.
-    :param overwrite: Whether to overwrite existing gnomAD v5 genomes coverage HT. Default is False.
-    :return: None; writes gnomAD v5 genomes coverage HT to temp bucket.
+    :return: gnomAD v5 genomes coverage HT.
     """
     logger.info(
         "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
@@ -427,9 +425,7 @@ def merge_gnomad_coverage_hts(
     gnomad_ht = gnomad_ht.annotate_globals(
         coverage_stats_meta_sample_count=gnomad_v5_count,
     )
-    gnomad_ht.write(
-        f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht", overwrite=overwrite
-    )
+    return gnomad_ht
 
 
 def join_aou_and_gnomad_coverage_ht(
@@ -831,7 +827,11 @@ def main(args):
             elif test_2_partitions:
                 gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
-            merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
+            ht = merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht)
+            ht.write(
+                f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht",
+                overwrite=overwrite,
+            )
 
         if args.merge_gnomad_an:
             if project != "gnomad":
