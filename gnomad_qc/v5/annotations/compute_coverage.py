@@ -732,6 +732,12 @@ def main(args):
                 "Computing coverage, all sites allele number, and optionally quality histograms HT for %s...",
                 project,
             )
+            check_resource_existence(
+                output_step_resources={
+                    "coverage_and_an_ht": [cov_and_an_ht_path],
+                },
+                overwrite=overwrite,
+            )
 
             # Context Table is used because it contains every locus in the GRCh38
             # reference as opposed to a ref-blocked VDS reference dataset.
@@ -789,12 +795,7 @@ def main(args):
                 )
 
             validate_vds(vds)
-            check_resource_existence(
-                output_step_resources={
-                    "coverage_and_an_ht": [cov_and_an_ht_path],
-                },
-                overwrite=overwrite,
-            )
+
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
