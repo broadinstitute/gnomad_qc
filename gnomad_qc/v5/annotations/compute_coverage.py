@@ -806,10 +806,6 @@ def main(args):
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
-            if project != "gnomad":
-                raise ValueError(
-                    "--merge-gnomad-coverage requires --project-name to be 'gnomad'."
-                )
             merged_gnomad_coverage_ht_path = (
                 f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht"
             )
@@ -838,10 +834,6 @@ def main(args):
             ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_an:
-            if project != "gnomad":
-                raise ValueError(
-                    "--merge-gnomad-an requires --project-name to be 'gnomad'."
-                )
             merged_gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
             check_resource_existence(
                 output_step_resources={
@@ -870,11 +862,6 @@ def main(args):
             ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
 
         if args.export_coverage_release_files:
-            if project != "aou":
-                raise ValueError(
-                    "--export-coverage-release-files requires --project-name to be 'aou'."
-                )
-
             cov_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -905,11 +892,6 @@ def main(args):
             ht.export(cov_tsv_path)
 
         if args.export_an_release_files:
-            if project != "aou":
-                raise ValueError(
-                    "--export-an-release-files requires --project-name to be 'aou'."
-                )
-
             an_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -947,11 +929,6 @@ def main(args):
             ht.export(an_tsv_path)
 
         if args.merge_qual_hists:
-            if project != "aou":
-                raise ValueError(
-                    "--merge-qual-hists requires --project-name to be 'aou'."
-                )
-
             qual_hists_path = qual_hists(test=test).path
             check_resource_existence(
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
@@ -1087,4 +1064,31 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    if args.write_aou_downsampling_ht and args.project_name != "aou":
+        raise ValueError(
+            "--write-aou-downsampling-ht requires --project-name to be 'aou'."
+        )
+
+    if args.merge_gnomad_coverage and args.project_name != "gnomad":
+        raise ValueError(
+            "--merge-gnomad-coverage requires --project-name to be 'gnomad'."
+        )
+
+    if args.merge_gnomad_an and args.project_name != "gnomad":
+        raise ValueError("--merge-gnomad-an requires --project-name to be 'gnomad'.")
+
+    if args.export_coverage_release_files and args.project_name != "aou":
+        raise ValueError(
+            "--export-coverage-release-files requires --project-name to be 'aou'."
+        )
+
+    if args.export_an_release_files and args.project_name != "aou":
+        raise ValueError(
+            "--export-an-release-files requires --project-name to be 'aou'."
+        )
+
+    if args.merge_qual_hists and args.project_name != "aou":
+        raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
+
     main(args)
