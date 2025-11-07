@@ -334,7 +334,6 @@ def _merge_coverage_fields(
     Merge coverage fields from two Tables.
 
     .. note::
-        - If `merge_gnomad` is True, function subtracts sum of the consent drop samples from sum of the release samples.
         - Function does not merge `median_approx` fields.
 
     :param ht: Input HT. Must have annotations from both projects.
