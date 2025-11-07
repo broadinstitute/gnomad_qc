@@ -418,7 +418,6 @@ def merge_gnomad_coverage_hts(
     gnomad_ht = gnomad_ht.transmute(
         median_approx_gnomad=gnomad_ht.median_approx_gnomad_release
     )
-    gnomad_ht = gnomad_ht.drop("median_approx_gnomad")
 
     # Drop unnecessary globals and add back v5 gnomAD genomes count.
     gnomad_ht = gnomad_ht.select_globals()
