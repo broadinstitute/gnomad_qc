@@ -294,6 +294,8 @@ def _rename_cov_annotations(
     """
     Rename coverage annotations prior to merging Tables.
 
+    Function transforms mean back into sum using `sample_count` argument.
+
     :param ht: Input HT.
     :param project: Project name.
     :param sample_count: Number of samples in HT.
