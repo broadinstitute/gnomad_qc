@@ -870,6 +870,11 @@ def main(args):
             ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
 
         if args.export_coverage_release_files:
+            if project != "aou":
+                raise ValueError(
+                    "--export-coverage-release-files requires --project-name to be 'aou'."
+                )
+
             cov_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -900,6 +905,11 @@ def main(args):
             ht.export(cov_tsv_path)
 
         if args.export_an_release_files:
+            if project != "aou":
+                raise ValueError(
+                    "--export-an-release-files requires --project-name to be 'aou'."
+                )
+
             an_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -937,6 +947,11 @@ def main(args):
             ht.export(an_tsv_path)
 
         if args.merge_qual_hists:
+            if project != "aou":
+                raise ValueError(
+                    "--merge-qual-hists requires --project-name to be 'aou'."
+                )
+
             qual_hists_path = qual_hists(test=test).path
             check_resource_existence(
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
