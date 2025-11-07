@@ -54,6 +54,10 @@ def get_adj_expr(
 
     Defaults are similar to gnomAD values, but GQ >= 20 changed to GQ >= 30 to make up for lack of DP filter.
 
+    .. note::
+
+        Assumes that the genotype expression is already adjusted for sex ploidy.
+
     :param gt_expr: Genotype expression.
     :param gq_expr: GQ expression.
     :param ad_expr: Allele depth expression.
