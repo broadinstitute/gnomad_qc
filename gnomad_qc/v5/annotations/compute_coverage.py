@@ -811,6 +811,11 @@ def main(args):
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
+            if project != "gnomad":
+                raise ValueError(
+                    "--merge-gnomad-coverage requires --project-name to be 'gnomad'."
+                )
+
             gnomad_ht = hl.read_table(cov_and_an_ht_path).drop("AN")
             gnomad_release_ht = hl.read_table(
                 release_coverage_path(
@@ -828,6 +833,11 @@ def main(args):
             merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht, overwrite=overwrite)
 
         if args.merge_gnomad_an:
+            if project != "gnomad":
+                raise ValueError(
+                    "--merge-gnomad-an requires --project-name to be 'gnomad'."
+                )
+
             gnomad_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_release_ht = hl.read_table(
                 release_coverage_path(
