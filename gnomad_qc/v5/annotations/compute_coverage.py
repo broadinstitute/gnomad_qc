@@ -812,6 +812,15 @@ def main(args):
                 raise ValueError(
                     "--merge-gnomad-coverage requires --project-name to be 'gnomad'."
                 )
+            merged_gnomad_coverage_ht_path = (
+                f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht"
+            )
+            check_resource_existence(
+                output_step_resources={
+                    "merged_gnomad_coverage_ht": [merged_gnomad_coverage_ht_path],
+                },
+                overwrite=overwrite,
+            )
 
             gnomad_ht = hl.read_table(cov_and_an_ht_path).drop("AN")
             gnomad_release_ht = hl.read_table(
@@ -828,10 +837,7 @@ def main(args):
                 gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
             ht = merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht)
-            ht.write(
-                f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht",
-                overwrite=overwrite,
-            )
+            ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_an:
             if project != "gnomad":
