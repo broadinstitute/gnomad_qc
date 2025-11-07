@@ -12,14 +12,15 @@ logger.setLevel(logging.INFO)
 
 # AoU-specific adj annotation utilities.
 # Adapted from https://github.com/broadinstitute/gatk/pull/8772/files.
-# TODO: Add haploid adj annotation.
+# After discussion, we decided to use GQ 30 threshold for both haploid and diploid genotypes.
+# See thread: https://atgu.slack.com/archives/CRA2TKTV0/p1762443074200349
 def annotate_adj(
     mt: hl.MatrixTable,
     adj_gq: int = 30,
     adj_ab: float = 0.2,
 ) -> hl.MatrixTable:
     """
-    Annotate genotypes with adj criteria (assumes diploid).
+    Annotate genotypes with adj criteria.
 
     Defaults are similar to gnomAD values, but GQ >= 20 changed to GQ >= 30 to make up for lack of DP filter
     (raised GQ threshold to 30 to match DP 10 threshold in gnomAD defaults).
