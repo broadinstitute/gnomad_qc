@@ -18,6 +18,7 @@ from gnomad.utils.annotations import (
     agg_by_strata,
     annotate_adj,
     bi_allelic_site_inbreeding_expr,
+    compute_freq_by_strata,
     faf_expr,
     gen_anc_faf_max_expr,
     get_adj_expr,
@@ -34,16 +35,15 @@ from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
 from gnomad_qc.v5.resources.annotations import (
     get_consent_ans,
     get_freq,
-    group_membership,
+    get_group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
-    add_project_prefix_to_sample_collisions,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import consent_samples_to_drop, sample_id_collisions
+from gnomad_qc.v5.resources.meta import consent_samples_to_drop
 
 # Constants
 TEST_PARTITIONS = 2  # Number of partitions to use in test mode
@@ -56,20 +56,20 @@ logger.setLevel(logging.INFO)
 
 def _prepare_consent_vds(
     v4_freq_ht: hl.Table, test: bool = False, runtime_test: bool = False
-) -> hl.MatrixTable:
+) -> hl.vds.VariantDataset:
     """
     Load and prepare VDS for consent withdrawal sample processing.
 
     :param v4_freq_ht: v4 frequency table for AF annotation.
     :param test: Whether running in test mode.
     :param runtime_test: Whether to use test VDS.
-    :return: Prepared MatrixTable with consent samples, split multiallelics, and annotations.
+    :return: Prepared VDS with consent samples, split multiallelics, and annotations.
     """
     logger.info("Loading and preparing VDS for consent withdrawal samples...")
 
     vds = get_gnomad_v5_genomes_vds(
         test=runtime_test,
-        release=True,
+        release_only=False,
         annotate_meta=True,
         filter_partitions=list(range(TEST_PARTITIONS)) if test else None,
     )
@@ -116,8 +116,6 @@ def _prepare_consent_vds(
     vmt = vmt.annotate_entries(
         adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD),
     )
-    ab_cutoff = 0.9
-    ab_expr = vmt.AD[1] / vmt.DP
     vmt = vmt.select_entries(
         "AD",
         "DP",
@@ -129,91 +127,64 @@ def _prepare_consent_vds(
 
     # We set use_v3_1_correction to True to mimic the v4 genomes approach.
     logger.info("Applying v4 genomes hom alt depletion fix...")
-    gt_with_depletion = hom_alt_depletion_fix(
-        vmt.GT,
-        het_non_ref_expr=vmt._het_non_ref,
-        af_expr=vmt.v4_af,
-        ab_expr=vmt.AD[1] / vmt.DP,
-        use_v3_1_correction=True,
+    vmt = vmt.annotate_entries(
+        GT=hom_alt_depletion_fix(
+            vmt.GT,
+            het_non_ref_expr=vmt._het_non_ref,
+            af_expr=vmt.v4_af,
+            ab_expr=vmt.AD[1] / vmt.DP,
+            use_v3_1_correction=True,
+        )
     )
-    vmt = vmt.annotate_entries(GT=gt_with_depletion)
 
-    return vmt.checkpoint(new_temp_file("consent_samples_vmt", "mt"))
+    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+    return vds.checkpoint(new_temp_file("consent_samples_vds_prepared", "vds"))
 
 
 def _calculate_consent_frequencies_and_age_histograms(
-    vmt: hl.MatrixTable, test: bool = False
+    vds: hl.vds.VariantDataset, test: bool = False
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
-    :param vmt: Prepared MatrixTable with consent samples.
+    :param vds: Prepared VDS with consent samples.
     :param test: Whether running in test mode.
     :return: Table with freq and age_hists annotations for consent samples.
     """
+    logger.info("Densifying VDS for frequency calculations...")
+
+    # Densify the VDS to MatrixTable
+    # The metadata (pop, sex_karyotype, age) was already extracted to column
+    # level in _prepare_consent_vds
+    mt = hl.vds.to_dense_mt(vds)
+
     logger.info("Loading group membership and calculating consent frequencies...")
 
     # Load and filter group membership
-    group_membership_ht = group_membership(dataset="gnomad", test=test).ht()
-    consent_sample_ids = set(vmt.s.collect())
+    group_membership_ht = get_group_membership(dataset="gnomad", test=test).ht()
+    consent_sample_ids = set(mt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
     )
 
     # Annotate MatrixTable with group membership
-    vmt = vmt.annotate_cols(
-        group_membership=group_membership_ht[vmt.col_key].group_membership,
+    mt = mt.annotate_cols(
+        group_membership=group_membership_ht[mt.col_key].group_membership,
     )
-
-    # Load consent ANs
-    # consent_ans_ht = get_consent_ans(test=test).ht()
 
     logger.info(
-        "Calculating AC, hom alt counts, and age histograms per group membership using agg_by_strata..."
+        "Calculating frequencies and age histograms using compute_freq_by_strata..."
     )
-    logger.info("Using updated agg_by_strata implementation - version check")
-
-    # Calculate age histograms on the MatrixTable rows first
-    vmt = vmt.annotate_rows(
-        age_hists=age_hists_expr(
-            vmt.adj,
-            vmt.GT,
-            vmt.age,
-        )
+    # TODO: Test this on Nov 10th!!!
+    # Use compute_freq_by_strata to calculate frequencies and age histograms
+    # This follows the v4 approach and automatically calculates AC, AN, AF, homozygote_count
+    # and includes age histograms when select_fields=["hists_fields"] is specified
+    consent_freq_ht = compute_freq_by_strata(
+        mt,
+        select_fields=["hists_fields"],
     )
 
-    # Use efficient agg_by_strata approach with localize_entries
-    consent_freq_ht = agg_by_strata(
-        vmt.select_entries(
-            "GT",
-            "adj",  # Required by agg_by_strata for quality filtering
-            n_alt_alleles=vmt.GT.n_alt_alleles(),
-            is_hom_var=vmt.GT.is_hom_var(),
-        ),
-        {
-            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
-            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
-        },
-        group_membership_ht=group_membership_ht,
-    )
-
-    # Now combine with consent ANs to create proper frequency structs and annotate age histograms
-    # consent_ans_ht = get_consent_ans(test=test).ht()
-    consent_freq_ht = consent_freq_ht.annotate(
-        freq=hl.range(hl.len(consent_freq_ht.AC)).map(
-            lambda i: hl.struct(
-                AC=hl.int32(consent_freq_ht.AC[i]),
-                AF=hl.float64(
-                    consent_freq_ht.AC[i] / hl.float32(866 * 2)
-                ),  # consent_ans_ht[consent_freq_ht.key].AN[i] or annotate AN on
-                AN=hl.int(866 * 2),  # consent_ans_ht[consent_freq_ht.key].AN[i],
-                homozygote_count=hl.int32(consent_freq_ht.homozygote_count[i]),
-            )
-        ),
-        age_hists=vmt.rows()[consent_freq_ht.key].age_hists,
-    )
-
-    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
+    # Annotate globals from group membership table
     group_membership_globals = group_membership_ht.index_globals()
     consent_freq_ht = consent_freq_ht.annotate_globals(
         consent_freq_meta=group_membership_globals.freq_meta,
@@ -412,15 +383,16 @@ def process_gnomad_dataset(
 
     # Prepare consent VDS (without filtering yet)
     logger.info("Loading consent VDS...")
-    vmt = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
+    vds = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
 
     # Calculate frequencies and age histograms for consent samples
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vmt, test=test)
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
 
     if test:
         # Filter v4 frequency table to sites present in consent VDS
         logger.info("Filtering v4 frequency table to sites present in consent VDS...")
-        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(vmt.rows()[v4_freq_ht.key]))
+        mt = hl.vds.to_dense_mt(vds)
+        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(mt.rows()[v4_freq_ht.key]))
         v4_freq_ht = v4_freq_ht.naive_coalesce(TEST_PARTITIONS).checkpoint(
             new_temp_file("test_v4_freq_ht", "ht")
         )
@@ -541,7 +513,7 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = group_membership(data_type="genomes", test=test).ht()
+    group_membership_ht = get_group_membership(data_type="genomes", test=test).ht()
 
     logger.info(
         "Calculating AoU AC, hom alt counts, and age histograms using efficient agg_by_strata..."
