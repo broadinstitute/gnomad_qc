@@ -82,9 +82,9 @@ def _prepare_consent_vds(
     # Prepare variant data with metadata
     vmt = vds.variant_data
     vmt = vmt.select_cols(
-        gen_anc=vmt.meta.genetic_ancestry_inference.gen_anc,
-        sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
-        age=vmt.meta.project_meta.age,
+        gen_anc=vmt.meta.gen_anc,
+        sex_karyotype=vmt.meta.sex_karyotype,
+        age=vmt.meta.age,
     )
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
