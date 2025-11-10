@@ -82,7 +82,7 @@ def _prepare_consent_vds(
     # Prepare variant data with metadata
     vmt = vds.variant_data
     vmt = vmt.select_cols(
-        pop=vmt.meta.population_inference.pop,
+        gen_anc=vmt.meta.genetic_ancestry_inference.gen_anc,
         sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
         age=vmt.meta.project_meta.age,
     )
