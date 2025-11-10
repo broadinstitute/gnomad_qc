@@ -161,7 +161,7 @@ def _calculate_consent_frequencies_and_age_histograms(
     logger.info("Loading group membership and calculating consent frequencies...")
 
     # Load and filter group membership
-    group_membership_ht = get_group_membership(subset="gnomad", test=test).ht()
+    group_membership_ht = get_group_membership(subset="gnomad").ht()
     consent_sample_ids = set(mt.s.collect())
     group_membership_ht = group_membership_ht.filter(
         hl.literal(consent_sample_ids).contains(group_membership_ht.s)
@@ -513,7 +513,7 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = get_group_membership(subset="aou", test=test).ht()
+    group_membership_ht = get_group_membership(subset="aou").ht()
 
     logger.info(
         "Calculating AoU AC, hom alt counts, and age histograms using efficient agg_by_strata..."
