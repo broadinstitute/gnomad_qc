@@ -243,20 +243,27 @@ def get_aou_vds(
         )
 
     vmt = vds.variant_data
+    rmt = vds.reference_data
 
     if release_only or annotate_meta:
         # TODO: Update this to import v5 meta.
         meta_ht = hl.read_table(
             "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
         )
+
+        logger.warning(
+            "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
+        )
+        sample_collisions = sample_id_collisions.ht()
+        vmt = add_project_prefix_to_sample_collisions(
+            t=vmt, sample_collisions=sample_collisions, project="aou"
+        )
+        rmt = add_project_prefix_to_sample_collisions(
+            t=rmt, sample_collisions=sample_collisions, project="aou"
+        )
+
         if annotate_meta:
             logger.info("Annotating VDS variant_data with metadata...")
-            sample_collisions = sample_id_collisions.ht()
-            vmt = add_project_prefix_to_sample_collisions(
-                t=vmt,
-                sample_collisions=sample_collisions,
-                project="aou",
-            )
             vmt = vmt.annotate_cols(meta=meta_ht[vmt.col_key])
 
     if filter_variant_ht is not None and split is False:
@@ -279,7 +286,7 @@ def get_aou_vds(
     if checkpoint_variant_data:
         vmt = vmt.checkpoint(new_temp_file("vds_loading.variant_data", "mt"))
 
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+    vds = hl.vds.VariantDataset(rmt, vmt)
 
     if release_only:
         logger.info("Filtering VDS to release samples only...")
