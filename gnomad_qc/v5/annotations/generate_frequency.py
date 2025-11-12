@@ -176,12 +176,18 @@ def _calculate_consent_frequencies_and_age_histograms(
         )
 
         # Create meta table from MatrixTable columns (only consent samples)
-        meta_ht = mt.cols().select(
-            gen_anc=mt.gen_anc,
-            sex_karyotype=mt.sex_karyotype,
+        # Note: mt.cols() returns a Table keyed by the column key (typically 's')
+        # Following the v4 pattern from compute_coverage.py:get_genomes_group_membership_ht
+        # We need to get the cols table first, then reference fields from it
+        cols_ht = mt.cols()
+        meta_ht = cols_ht.select(
+            gen_anc=cols_ht.gen_anc,
+            sex_karyotype=cols_ht.sex_karyotype,
         )
 
-        # Build frequency stratification list
+        # Build frequency stratification list using expressions from meta_ht
+        # Following the v4 pattern - build_freq_stratification_list takes expressions
+        # bound to meta_ht and returns a list of dictionaries
         logger.info("Building frequency stratification list...")
         strata_expr = build_freq_stratification_list(
             sex_expr=meta_ht.sex_karyotype,
@@ -189,6 +195,7 @@ def _calculate_consent_frequencies_and_age_histograms(
         )
 
         # Generate group membership array
+        # Both meta_ht and strata_expr expressions must reference the same table
         logger.info("Generating group membership array...")
         group_membership_ht = generate_freq_group_membership_array(
             meta_ht,
