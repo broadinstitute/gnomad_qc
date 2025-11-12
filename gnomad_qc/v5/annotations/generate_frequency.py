@@ -180,10 +180,21 @@ def _calculate_consent_frequencies_and_age_histograms(
         # Following the v4 pattern from compute_coverage.py:get_genomes_group_membership_ht
         # We need to get the cols table first, then reference fields from it
         cols_ht = mt.cols()
+        n_cols = cols_ht.count()
+        logger.info(f"MatrixTable has {n_cols} columns (samples)")
+
         meta_ht = cols_ht.select(
             gen_anc=cols_ht.gen_anc,
             sex_karyotype=cols_ht.sex_karyotype,
         )
+        n_meta_rows = meta_ht.count()
+        logger.info(f"meta_ht has {n_meta_rows} rows after select")
+
+        if n_meta_rows == 0:
+            raise ValueError(
+                "meta_ht is empty after select. Check that gen_anc and sex_karyotype "
+                "fields exist on MatrixTable columns."
+            )
 
         # Build frequency stratification list using expressions from meta_ht
         # Following the v4 pattern - build_freq_stratification_list takes expressions
@@ -202,10 +213,34 @@ def _calculate_consent_frequencies_and_age_histograms(
             strata_expr,
         )
 
+        # Verify group_membership_ht has rows
+        n_samples_in_group_membership = group_membership_ht.count()
+        logger.info(
+            f"Group membership table has {n_samples_in_group_membership} samples"
+        )
+        if n_samples_in_group_membership == 0:
+            raise ValueError(
+                "Generated group_membership_ht is empty. This likely means meta_ht "
+                "has no samples or all samples were filtered out."
+            )
+
     # Annotate MatrixTable with group membership
     mt = mt.annotate_cols(
         group_membership=group_membership_ht[mt.col_key].group_membership,
     )
+
+    # Verify group_membership was annotated correctly
+    n_samples_with_group_membership = mt.aggregate_cols(
+        hl.agg.count_where(hl.is_defined(mt.group_membership))
+    )
+    logger.info(
+        f"Annotated {n_samples_with_group_membership} samples with group_membership"
+    )
+    if n_samples_with_group_membership == 0:
+        raise ValueError(
+            "No samples have group_membership annotation. Check that group_membership_ht "
+            "keys match MatrixTable column keys."
+        )
 
     logger.info(
         "Calculating frequencies and age histograms using compute_freq_by_strata..."
