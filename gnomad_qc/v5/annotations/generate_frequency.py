@@ -18,9 +18,11 @@ from gnomad.utils.annotations import (
     agg_by_strata,
     annotate_adj,
     bi_allelic_site_inbreeding_expr,
+    build_freq_stratification_list,
     compute_freq_by_strata,
     faf_expr,
     gen_anc_faf_max_expr,
+    generate_freq_group_membership_array,
     get_adj_expr,
     grpmax_expr,
     merge_freq_arrays,
@@ -158,14 +160,40 @@ def _calculate_consent_frequencies_and_age_histograms(
     # level in _prepare_consent_vds
     mt = hl.vds.to_dense_mt(vds)
 
-    logger.info("Loading group membership and calculating consent frequencies...")
+    # Try to load group membership resource, fall back to generating from
+    # scratch for testing
+    try:
+        logger.info("Loading group membership resource...")
+        group_membership_ht = get_group_membership(subset="gnomad").ht()
+        consent_sample_ids = set(mt.s.collect())
+        group_membership_ht = group_membership_ht.filter(
+            hl.literal(consent_sample_ids).contains(group_membership_ht.s)
+        )
+        logger.info("Successfully loaded group membership resource")
+    except Exception:
+        logger.info(
+            "Group membership resource not found, generating from scratch for testing..."
+        )
 
-    # Load and filter group membership
-    group_membership_ht = get_group_membership(subset="gnomad").ht()
-    consent_sample_ids = set(mt.s.collect())
-    group_membership_ht = group_membership_ht.filter(
-        hl.literal(consent_sample_ids).contains(group_membership_ht.s)
-    )
+        # Create meta table from MatrixTable columns (only consent samples)
+        meta_ht = mt.cols().select(
+            gen_anc=mt.gen_anc,
+            sex_karyotype=mt.sex_karyotype,
+        )
+
+        # Build frequency stratification list
+        logger.info("Building frequency stratification list...")
+        strata_expr = build_freq_stratification_list(
+            sex_expr=meta_ht.sex_karyotype,
+            gen_anc_expr=meta_ht.gen_anc,
+        )
+
+        # Generate group membership array
+        logger.info("Generating group membership array...")
+        group_membership_ht = generate_freq_group_membership_array(
+            meta_ht,
+            strata_expr,
+        )
 
     # Annotate MatrixTable with group membership
     mt = mt.annotate_cols(
