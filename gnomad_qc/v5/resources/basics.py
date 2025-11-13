@@ -25,6 +25,7 @@ from gnomad_qc.v5.resources.constants import (
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
     low_quality_samples,
+    meta,
     sample_id_collisions,
     samples_to_exclude,
 )
@@ -246,10 +247,7 @@ def get_aou_vds(
     rmt = vds.reference_data
 
     if release_only or annotate_meta:
-        # TODO: Update this to import v5 meta.
-        meta_ht = hl.read_table(
-            "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/v5.0/metadata/genomes/gnomad.genomes.v5.0.sample_qc_metadata.ht"
-        )
+        meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
