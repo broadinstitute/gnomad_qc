@@ -245,7 +245,17 @@ def _calculate_consent_frequencies_and_age_histograms(
     logger.info(
         "Calculating frequencies and age histograms using compute_freq_by_strata..."
     )
-    # TODO: Test this on Nov 10th!!!
+
+    # Annotate hists_fields on MatrixTable rows before calling compute_freq_by_strata
+    # This is required when using select_fields=["hists_fields"]
+    # Following v4 pattern but simplified - we only need age_hists
+    logger.info("Annotating hists_fields on MatrixTable rows...")
+    mt = mt.annotate_rows(
+        hists_fields=hl.struct(
+            age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
+        )
+    )
+
     # Use compute_freq_by_strata to calculate frequencies and age histograms
     # This follows the v4 approach and automatically calculates AC, AN, AF, homozygote_count
     # and includes age histograms when select_fields=["hists_fields"] is specified
@@ -253,6 +263,11 @@ def _calculate_consent_frequencies_and_age_histograms(
         mt,
         select_fields=["hists_fields"],
     )
+
+    # Extract age_hists from hists_fields struct
+    consent_freq_ht = consent_freq_ht.annotate(
+        age_hists=consent_freq_ht.hists_fields.age_hists,
+    ).drop("hists_fields")
 
     # Annotate globals from group membership table
     group_membership_globals = group_membership_ht.index_globals()
