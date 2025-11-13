@@ -8,6 +8,7 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v5.resources.constants import (
     CURRENT_PROJECT_META_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
     WORKSPACE_BUCKET,
 )
 
@@ -69,3 +70,54 @@ Samples are from the following projects:
 - RP-1061: 776 samples.
 - RP-1411: 121 samples.
 """
+
+
+def _meta_root_path(version: str = CURRENT_PROJECT_META_VERSION) -> str:
+    """
+    Retrieve the path to the root metadata directory.
+
+    :param version: gnomAD version.
+    :return: String representation of the path to the root metadata directory.
+    """
+    return f"gs://{WORKSPACE_BUCKET}/v{version}/metadata/genomes"
+
+
+def meta(
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    data_type: str = "genomes",
+) -> VersionedTableResource:
+    """
+    Get the v5 sample QC meta VersionedTableResource.
+
+    .. note::
+
+        Exome data is not currently supported in this function.
+        The v4 sample QC meta uses a different structure, so this function
+        does not pull or duplicate that data. If exome data are needed, please
+        use the v4 resource directly.
+
+    :param version: Sample QC version.
+    :param data_type: Data type. Default is "genomes". If "exomes" is supplied, a warning will be raised
+                      suggesting the use of v4 sample QC metadata.
+    :return: Sample QC meta VersionedTableResource.
+    """
+    if data_type == "exomes":
+        raise ValueError(
+            "Exome sample QC metadata is not supported in v5. "
+            "The v4 sample QC meta has a different structure and should be "
+            "imported directly from the v4 resource using 'from gnomad_qc.v4.resources.meta import meta as v4_meta'."
+        )
+
+    if data_type != "genomes":
+        raise ValueError(
+            f"Unsupported data_type: {data_type}. Only 'genomes' is supported."
+        )
+
+    return VersionedTableResource(
+        default_version=CURRENT_SAMPLE_QC_VERSION,
+        versions={
+            CURRENT_SAMPLE_QC_VERSION: TableResource(
+                path=f"{_meta_root_path(version)}/gnomad.genomes.v{version}.sample_qc_metadata.ht"
+            )
+        },
+    )
