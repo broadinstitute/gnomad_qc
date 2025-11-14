@@ -17,7 +17,7 @@ def _annotations_root(
     version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     data_type: str = "genomes",
-    data_set: str = "aou",
+    subset: str = "aou",
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -29,15 +29,15 @@ def _annotations_root(
     :param environment: Environment of annotation resource. Default is "rwb".
     :return: Root path of the variant annotation files.
     """
-    path_suffix = f"sample_qc/{data_type}/{data_set}"
+    path_suffix = f"sample_qc/{data_type}/{subset}"
 
     if test:
-        environment = "rwb" if data_set == "aou" else "dataproc"
+        environment = "rwb" if subset == "aou" else "dataproc"
         return (
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    base_bucket = WORKSPACE_BUCKET if data_set == "aou" else GNOMAD_BUCKET
+    base_bucket = WORKSPACE_BUCKET if subset == "aou" else GNOMAD_BUCKET
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 
@@ -66,16 +66,18 @@ def get_freq(
             ht_name += ".test"
         # Subset-specific frequencies go in temp directory during processing
         if not finalized:
-            ht_path = f"{_annotations_root(version, test, data_type)}/temp/{ht_name}.ht"
+            ht_path = f"{_annotations_root(version, test, data_type, subset)}/temp/{ht_name}.ht"
         else:
-            ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
+            ht_path = (
+                f"{_annotations_root(version, test, data_type, subset)}/{ht_name}.ht"
+            )
     else:
         # Main merged frequency table
         if finalized:
             ht_name += ".final"
         if test:
             ht_name += ".test"
-        ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
+        ht_path = f"{_annotations_root(version, test, data_type, subset)}/{ht_name}.ht"
 
     return TableResource(ht_path)
 
