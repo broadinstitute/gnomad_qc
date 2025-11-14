@@ -1,2 +1,7 @@
 hail-*.log
 .DS_Store
+
+# Python cache files
+*.pyc
+*.pyo
+__pycache__/

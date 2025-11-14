@@ -25,7 +25,8 @@ from gnomad_qc.v5.resources.constants import (
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
     low_quality_samples,
-    project_meta,
+    meta,
+    sample_id_collisions,
     samples_to_exclude,
 )
 
@@ -115,6 +116,7 @@ def get_logging_path(
 def get_aou_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -125,6 +127,7 @@ def get_aou_vds(
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
     split_reference_blocks: bool = True,
     remove_dead_alleles: bool = True,
+    annotate_meta: bool = False,
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
@@ -136,6 +139,8 @@ def get_aou_vds(
         rather than grab an already split VDS. Default is False.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
         filters (only relevant after hard filtering is complete). Default is True.
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present).
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
@@ -146,6 +151,7 @@ def get_aou_vds(
     :param filter_intervals: Optional argument to filter the VDS to specific intervals.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by `filter_intervals`. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
+    :param annotate_meta: Whether to annotate the VDS with the sample QC metadata. Default is False.
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
@@ -238,6 +244,25 @@ def get_aou_vds(
         )
 
     vmt = vds.variant_data
+    rmt = vds.reference_data
+
+    if release_only or annotate_meta:
+        meta_ht = meta(data_type="genomes").ht()
+
+        logger.warning(
+            "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
+        )
+        sample_collisions = sample_id_collisions.ht()
+        vmt = add_project_prefix_to_sample_collisions(
+            t=vmt, sample_collisions=sample_collisions, project="aou"
+        )
+        rmt = add_project_prefix_to_sample_collisions(
+            t=rmt, sample_collisions=sample_collisions, project="aou"
+        )
+
+        if annotate_meta:
+            logger.info("Annotating VDS variant_data with metadata...")
+            vmt = vmt.annotate_cols(meta=meta_ht[vmt.col_key])
 
     if filter_variant_ht is not None and split is False:
         raise ValueError(
@@ -259,15 +284,20 @@ def get_aou_vds(
     if checkpoint_variant_data:
         vmt = vmt.checkpoint(new_temp_file("vds_loading.variant_data", "mt"))
 
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+    vds = hl.vds.VariantDataset(rmt, vmt)
+
+    if release_only:
+        logger.info("Filtering VDS to release samples only...")
+        filter_expr = meta_ht.release
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
 
     return vds
 
 
 def get_gnomad_v5_genomes_vds(
     split: bool = False,
-    remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
+    consent_drop_only: bool = False,
     annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
@@ -287,11 +317,10 @@ def get_gnomad_v5_genomes_vds(
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
-    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
-        filters (only relevant after sample QC).
     :param release_only: Whether to filter the VDS to only samples available for
         v5 release (distinct from v4 release due to samples to drop for consent reasons).
         Requires that v5 sample metadata has been computed.
+    :param consent_drop_only: Whether to filter the VDS to only consent drop samples.
     :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in
         'meta' column.
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
@@ -317,11 +346,11 @@ def get_gnomad_v5_genomes_vds(
     :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
-    import gnomad_qc.v3.resources.basics as v3_basics
-    from gnomad_qc.v4.resources.meta import meta
-    from gnomad_qc.v5.resources.sample_qc import related_samples_to_drop
+    # Import v3 basics and v4 meta here to avoid circular imports.
+    from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
+    from gnomad_qc.v4.resources.meta import meta as v4_meta
 
-    vds = v3_basics.get_gnomad_v3_vds(
+    vds = get_gnomad_v3_vds(
         split=split,
         # False because v3 hard filtered samples HT no longer exists.
         remove_hard_filtered_samples=False,
@@ -341,34 +370,39 @@ def get_gnomad_v5_genomes_vds(
         filter_samples_ht=filter_samples_ht,
     )
 
-    if remove_hard_filtered_samples or annotate_meta or release_only:
-        if remove_hard_filtered_samples:
-            hard_filtered_samples_ht = meta(data_type="genomes").ht()
-            hard_filtered_samples_ht = hard_filtered_samples_ht.filter(
-                hard_filtered_samples_ht.sample_filters.hard_filtered
-            )
-            vds = hl.vds.filter_samples(
-                vds,
-                hard_filtered_samples_ht,
-                keep=False,
-            )
+    # NOTE: Not using `project_meta` here to allow all gnomAD steps to be run
+    # in Dataproc.
+    meta_ht = v4_meta(data_type="genomes").ht()
+    meta_ht = meta_ht.annotate(
+        consent_drop=hl.is_defined(meta_ht.project_meta.research_project_key)
+        & (
+            (meta_ht.project_meta.research_project_key == "RP-1061")
+            | (meta_ht.project_meta.research_project_key == "RP-1411")
+        )
+    )
+
+    if release_only or consent_drop_only or annotate_meta:
+        filter_expr = True
+        if release_only:
+            if not consent_drop_only:
+                meta_ht = meta_ht.annotate(
+                    release=hl.if_else(
+                        meta_ht.consent_drop,
+                        False,
+                        meta_ht.release,
+                    )
+                )
+            filter_expr &= meta_ht.release
+
+        if consent_drop_only:
+            filter_expr &= meta_ht.consent_drop
+
         if annotate_meta:
-            meta_ht = project_meta.ht()
             vd = vds.variant_data
             vds = hl.vds.VariantDataset(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
-        # TODO: Update to using v5 sample meta HT to filter to release samples.
-        if release_only:
-            vds = hl.vds.filter_samples(
-                vds,
-                meta_ht.filter(meta_ht.release),
-            )
-            vds = hl.vds.filter_samples(
-                vds,
-                related_samples_to_drop().ht(),
-                keep=False,
-            )
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
 
     return vds
 
