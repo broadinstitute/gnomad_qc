@@ -641,11 +641,14 @@ def join_aou_and_gnomad_qual_hists_ht(
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
-    environment = "rwb" if project == "aou" else "dataproc"
-    if environment == "rwb":
+    environment = "batch" if project == "aou" else "dataproc"
+    if environment == "batch":
         hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+            backend="batch",
+            log="compute_coverage.log",
+            tmp_dir="gs://gnomad-tmp-4day",
+            gcs_requester_pays_configuration=args.gcp_billing_project,
+            regions=["us-central1"],
         )
     else:
         hl.init(
@@ -967,6 +970,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="aou",
         type=str,
         choices=["aou", "gnomad"],
+    )
+    parser.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        default="broad-mpg-gnomad",
+        help="Google Cloud billing project for reading requester pays buckets.",
     )
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
