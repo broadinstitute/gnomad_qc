@@ -65,17 +65,22 @@ def qc_temp_prefix(
     """
     Return path to temporary QC bucket.
 
+    .. note::
+
+        Function supports three environments becauseAoU QC started in RWB,
+        then moved to Batch in November 2025.
+
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment. One of 'rwb', 'batch', or 'dataproc'. Defaults to 'dataproc'.
     :return: Path to bucket with temporary QC data.
     """
     if environment == "rwb":
         env_bucket = f"{WORKSPACE_BUCKET}/tmp"
-    elif environment == "dataproc":
+    elif environment in ("batch", "dataproc"):
         env_bucket = GNOMAD_TMP_BUCKET
     else:
         raise ValueError(
-            f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
+            f"Environment {environment} not recognized. Choose 'rwb', 'batch', or 'dataproc'."
         )
 
     return f"gs://{env_bucket}/gnomad.genomes.v{version}.qc_data/"
