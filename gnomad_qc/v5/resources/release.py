@@ -30,7 +30,7 @@ def _release_root(
     test: bool = False,
     data_type: str = "genomes",
     extension: str = "ht",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Get root path to the release files.
@@ -38,9 +38,9 @@ def _release_root(
     :param version: Version of release path to return.
     :param test: Whether to use a tmp path for testing.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
-        Default is "exomes".
+        Default is "genomes".
     :param extension: File extension of release file. Default is "ht".
-    :param environment: Environment to use. Default is "rwb". Must be "rwb" for AoU.
+    :param environment: Environment to use. Default is "batch". Must be "rwb" or "batch" for AoU.
     :return: Root path of the release files.
     """
     path_suffix = f"release/{extension}/{data_type}"
