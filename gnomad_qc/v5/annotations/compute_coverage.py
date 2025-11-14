@@ -45,7 +45,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     qc_temp_prefix,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
@@ -646,14 +646,14 @@ def main(args):
         hl.init(
             backend="batch",
             log="compute_coverage.log",
-            tmp_dir="gs://gnomad-tmp-4day",
+            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/4_day",
             gcs_requester_pays_configuration=args.gcp_billing_project,
             regions=["us-central1"],
         )
     else:
         hl.init(
             log="compute_coverage.log",
-            tmp_dir="gs://gnomad-tmp-4day",
+            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/30_day",
         )
     hl.default_reference("GRCh38")
 
