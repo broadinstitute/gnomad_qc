@@ -72,14 +72,15 @@ def _prepare_consent_vds(
     vds = get_gnomad_v5_genomes_vds(
         test=runtime_test,
         release_only=False,
+        consent_drop_only=True,
         annotate_meta=True,
         filter_partitions=list(range(TEST_PARTITIONS)) if test else None,
     )
 
-    consent_samples_ht = consent_samples_to_drop.ht()
-
-    logger.info("Filtering VDS to consent withdrawal samples...")
-    vds = hl.vds.filter_samples(vds, consent_samples_ht, keep=True)
+    logger.info(
+        "VDS has been filtered to %s consent withdrawal samples...",
+        vds.variant_data.count_cols(),
+    )
 
     # Prepare variant data with metadata
     vmt = vds.variant_data
