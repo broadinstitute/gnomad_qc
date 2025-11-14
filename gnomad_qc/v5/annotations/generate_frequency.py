@@ -71,7 +71,7 @@ def _prepare_consent_vds(
 
     vds = get_gnomad_v5_genomes_vds(
         test=runtime_test,
-        release_only=False,
+        release_only=True,
         consent_drop_only=True,
         annotate_meta=True,
         filter_partitions=list(range(TEST_PARTITIONS)) if test else None,
@@ -84,11 +84,19 @@ def _prepare_consent_vds(
 
     # Prepare variant data with metadata
     vmt = vds.variant_data
-    vmt = vmt.select_cols(
-        gen_anc=vmt.meta.gen_anc,
-        sex_karyotype=vmt.meta.sex_karyotype,
-        age=vmt.meta.age,
-    )
+    vmt.describe()
+    if test:
+        vmt = vmt.select_cols(
+            gen_anc=vmt.meta.population_inference.pop,
+            sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
+            age=vmt.meta.project_meta.age,
+        )
+    else:
+        vmt = vmt.select_cols(
+            gen_anc=vmt.meta.gen_anc,
+            sex_karyotype=vmt.meta.sex_karyotype,
+            age=vmt.meta.age,
+        )
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
@@ -296,6 +304,8 @@ def _subtract_consent_frequencies_and_age_histograms(
     logger.info(
         "Subtracting consent withdrawal frequencies and age histograms from v4 frequency table..."
     )
+    if test:
+        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_freq_ht[v4_freq_ht.key]))
 
     joined_freq_ht = v4_freq_ht.annotate(
         consent_freq=consent_freq_ht[v4_freq_ht.key].freq,
@@ -318,9 +328,6 @@ def _subtract_consent_frequencies_and_age_histograms(
                 joined_freq_ht.consent_freq_meta_sample_count,
             ]
         },
-        set_negatives_to_zero=True,
-        # TODO: Remove this once we have the consent AN file, the AN place holder
-        # is occassionally more than site ANs in the freq HT
     )
 
     logger.info("Subtracting consent age histograms...")
@@ -474,18 +481,10 @@ def process_gnomad_dataset(
     # Calculate frequencies and age histograms for consent samples
     consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
 
-    if test:
-        # Filter v4 frequency table to sites present in consent VDS
-        logger.info("Filtering v4 frequency table to sites present in consent VDS...")
-        mt = hl.vds.to_dense_mt(vds)
-        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(mt.rows()[v4_freq_ht.key]))
-        v4_freq_ht = v4_freq_ht.naive_coalesce(TEST_PARTITIONS).checkpoint(
-            new_temp_file("test_v4_freq_ht", "ht")
-        )
-
     logger.info(
         "Subtracting consent frequencies and age histograms from v4 frequency table..."
     )
+
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
         v4_freq_ht, consent_freq_ht, test=test
     )
