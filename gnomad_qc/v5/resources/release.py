@@ -57,7 +57,7 @@ def release_coverage_path(
     public: bool = False,
     test: bool = False,
     coverage_type: str = "coverage",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch filepath for v5 (AoU + gnomAD v4 genomes) all sites coverage or allele number release Table.
@@ -67,7 +67,7 @@ def release_coverage_path(
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be "rwb" or "batch" for AoU.
     :return: File path for desired coverage Hail Table.
     """
     assert coverage_type in [
@@ -101,14 +101,14 @@ def release_coverage_path(
 def release_coverage_tsv_path(
     release_version: str = CURRENT_COVERAGE_RELEASE["genomes"],
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch path to coverage TSV file.
 
     :param release_version: Release version. Default is CURRENT_COVERAGE_RELEASE["genomes"].
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be "rwb" or "batch" for AoU.
     :return: Coverage TSV path.
     """
     return f"{_release_root(release_version, test=test, extension='tsv', environment=environment)}/gnomad.genomes.v{release_version}.coverage.tsv.bgz"
@@ -117,14 +117,14 @@ def release_coverage_tsv_path(
 def release_all_sites_an_tsv_path(
     release_version: str = None,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch path to all sites AN TSV file.
 
     :param release_version: Release version. Default is None.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be "rwb" or "batch" for AoU.
     :return: All sites AN TSV path.
     """
     release_version = (
@@ -138,7 +138,7 @@ def release_all_sites_an_tsv_path(
 def release_coverage(
     public: bool = False,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -146,7 +146,7 @@ def release_coverage(
     :param public: Determines whether release coverage Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be "rwb" or "batch" for AoU.
     :return: Coverage release Table.
     """
     return VersionedTableResource(
@@ -168,7 +168,7 @@ def release_coverage(
 def release_all_sites_an(
     public: bool = False,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for all sites allele number release Table.
@@ -176,7 +176,7 @@ def release_all_sites_an(
     :param public: Determines whether release allele number Table is read from public or
         private bucket. Default is private.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be "rwb" or "batch" for AoU.
     :return: All sites allele number release Table.
     """
     return VersionedTableResource(
