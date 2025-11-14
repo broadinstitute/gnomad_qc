@@ -16,6 +16,7 @@ def _annotations_root(
     test: bool = False,
     data_type: str = "genomes",
     data_set: str = "aou",
+    environment: str = "batch",
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -25,17 +26,17 @@ def _annotations_root(
         full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
     :param data_set: Data set of annotation resource. Default is "aou".
+    :param environment: Compute environment. One of 'rwb', 'batch', or 'dataproc'. Defaults to 'batch'.
     :return: Root path of the variant annotation files.
     """
     path_suffix = f"sample_qc/{data_type}/{data_set}"
 
     if test:
-        environment = "rwb" if data_set == "aou" else "dataproc"
         return (
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    base_bucket = WORKSPACE_BUCKET if data_set == "aou" else GNOMAD_BUCKET
+    base_bucket = WORKSPACE_BUCKET if environment == "rwb" else GNOMAD_BUCKET
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 

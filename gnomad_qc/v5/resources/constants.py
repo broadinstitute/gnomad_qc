@@ -16,6 +16,8 @@ CURRENT_ANNOTATION_VERSION = "5.0"
 WORKSPACE_BUCKET = "fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1"
 GNOMAD_BUCKET = "gnomad"
 GNOMAD_TMP_BUCKET = "gnomad-tmp"
+
+# TODO: Update these constants for Batch if necessary.
 AOU_BUCKET = "fc-aou-datasets-controlled/v8"
 AOU_WGS_BUCKET = f"{AOU_BUCKET}/wgs/short_read/snpindel"
 AOU_WGS_AUX_BUCKET = f"{AOU_WGS_BUCKET}/aux"
