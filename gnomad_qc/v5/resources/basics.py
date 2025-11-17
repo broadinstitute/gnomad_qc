@@ -131,6 +131,7 @@ def get_aou_vds(
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
+    add_project_prefix: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -155,6 +156,7 @@ def get_aou_vds(
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
+    :param add_project_prefix: Whether to add the project prefix to the sample IDs in the VDS. Default is False.
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
@@ -206,17 +208,6 @@ def get_aou_vds(
         keep=False,
     )
 
-    if filter_samples:
-        logger.info(
-            "Filtering to %s samples...",
-            (
-                len(filter_samples)
-                if isinstance(filter_samples, list)
-                else filter_samples.count()
-            ),
-        )
-        vds = hl.vds.filter_samples(vds, filter_samples)
-
     if naive_coalesce_partitions:
         vds = hl.vds.VariantDataset(
             vds.reference_data.naive_coalesce(naive_coalesce_partitions),
@@ -246,7 +237,7 @@ def get_aou_vds(
     vmt = vds.variant_data
     rmt = vds.reference_data
 
-    if release_only or annotate_meta:
+    if release_only or annotate_meta or add_project_prefix:
         meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
@@ -290,6 +281,17 @@ def get_aou_vds(
         logger.info("Filtering VDS to release samples only...")
         filter_expr = meta_ht.release
         vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if filter_samples:
+        logger.info(
+            "Filtering to %s samples...",
+            (
+                len(filter_samples)
+                if isinstance(filter_samples, list)
+                else filter_samples.count()
+            ),
+        )
+        vds = hl.vds.filter_samples(vds, filter_samples)
 
     return vds
 
