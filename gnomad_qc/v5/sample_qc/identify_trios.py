@@ -60,7 +60,6 @@ def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
         filter_ht[ht.i].outlier_filtered | filter_ht[ht.j].outlier_filtered,
         keep=False,
     )
-
     return ht
 
 
