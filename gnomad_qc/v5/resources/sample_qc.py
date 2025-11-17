@@ -617,3 +617,21 @@ def pedigree(
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for the number of mendel errors per trio.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource of number of mendel errors per trio.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.mendel_errors.samples.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
