@@ -78,7 +78,7 @@ def run_create_fake_pedigree(
 
 
 def run_mendel_errors(
-    vds: hl.VariantDataset,
+    vds: hl.vds.VariantDataset,
     ped: hl.Pedigree,
     fake_ped: hl.Pedigree,
     test: bool = False,
