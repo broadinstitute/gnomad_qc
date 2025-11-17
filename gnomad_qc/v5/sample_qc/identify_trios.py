@@ -81,7 +81,6 @@ def run_mendel_errors(
     vds: hl.vds.VariantDataset,
     ped: hl.Pedigree,
     fake_ped: hl.Pedigree,
-    test: bool = False,
 ) -> hl.Table:
     """
     Run Hail's `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.
@@ -89,8 +88,6 @@ def run_mendel_errors(
     :param vds: Input VariantDataset.
     :param ped: Inferred Pedigree.
     :param fake_ped: Fake Pedigree.
-    :param test: Whether to run on five partitions of the VDS for testing. Default is
-        False.
     :return: Table with Mendel errors on chr20.
     """
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
