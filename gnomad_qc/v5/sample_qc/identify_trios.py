@@ -315,8 +315,7 @@ def main(args):
             sex_ht = sex_ht.filter(
                 (sex_ht.project_meta.project == "aou") & sex_ht.release
             )
-            # `hl.Trio` requires a boolean column `is_female`.
-            sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
+            sex_ht = sex_ht.annotate(is_xx=sex_ht.sex_karyotype == "XX")
             ped = infer_families(rel_ht, sex_ht, hl.read_table(dup_ht_path))
             ped.write(raw_ped_path)
 
