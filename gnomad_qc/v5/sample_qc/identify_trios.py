@@ -255,13 +255,23 @@ def create_dense_trio_mt(
 
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
-    # TODO: Update to support Batch.
-    hl.init(
-        # log="/identify_trios.log",
-        # tmp_dir="gs://gnomad-tmp-4day",
-        log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    if args.rwb:
+        environment = "rwb"
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
+    else:
+        environment = "batch"
+        hl.init(
+            backend="batch",
+            log="/identify_trios.log",
+            tmp_dir="gs://gnomad-tmp-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+            # TODO: Add machine configurations for Batch.
+        )
     hl.default_reference("GRCh38")
 
     overwrite = args.overwrite
@@ -386,12 +396,22 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("identify_trios", environment=args.environment))
+        hl.copy_log(get_logging_path("identify_trios", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--rwb",
+        help="Run the script in RWB environment.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--batch",
+        help="Run the script in Batch environment.",
+        action="store_true",
+    )
     parser.add_argument(
         "--overwrite",
         help="Overwrite existing data.",
