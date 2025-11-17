@@ -14,6 +14,7 @@ from gnomad.sample_qc.relatedness import (
     get_duplicated_samples_ht,
     infer_families,
 )
+from gnomad.utils.vcf import SEXES
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -309,10 +310,11 @@ def main(args):
                 overwrite=overwrite,
             )
             sex_ht = meta().ht()
-            # Filter to AoU release genomes;
-            # all of these samples are XX or XY.
+
+            # Filter meta to AoU and XX/XY samples.
             sex_ht = sex_ht.filter(
-                (sex_ht.project_meta.project == "aou") & sex_ht.release
+                (sex_ht.project_meta.project == "aou")
+                & hl.literal(SEXES).contains(sex_ht.sex_karyotype)
             )
             sex_ht = sex_ht.annotate(is_xx=sex_ht.sex_karyotype == "XX")
 
