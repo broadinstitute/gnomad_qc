@@ -670,7 +670,7 @@ def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
     )
 
 
-def dense_trio_mt(
+def dense_trios(
     split: bool = False,
     test: bool = False,
 ) -> VersionedMatrixTableResource:
