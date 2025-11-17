@@ -7,13 +7,16 @@ import hail as hl
 from gnomad.sample_qc.relatedness import (
     get_duplicated_samples,
     get_duplicated_samples_ht,
+    infer_families,
 )
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
+    pedigree,
     relatedness,
     sample_rankings,
 )
@@ -62,10 +65,10 @@ def main(args):
         rel_ht = relatedness().ht()
         filter_ht = finalized_outlier_filtering().ht()
         rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
+        dup_ht_path = duplicates().path
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
-            dup_ht_path = duplicates().path
             check_resource_existence(
                 output_step_resources={"duplicates_ht": [dup_ht_path]},
                 overwrite=overwrite,
@@ -75,6 +78,24 @@ def main(args):
                 sample_rankings(release=True).ht(),
             )
             ht.write(dup_ht_path, overwrite=overwrite)
+
+        if args.infer_families:
+            logger.info("Inferring families...")
+            raw_ped_path = pedigree(finalized=False).path
+            check_resource_existence(
+                output_step_resources={"raw_pedigree": [raw_ped_path]},
+                overwrite=overwrite,
+            )
+            sex_ht = meta().ht()
+            # Filter to AoU release genomes;
+            # all of these samples are XX or XY.
+            sex_ht = sex_ht.filter(
+                (sex_ht.project_meta.project == "aou") & sex_ht.release
+            )
+            # `hl.Trio` requires a boolean column `is_female`.
+            sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
+            ped = infer_families(rel_ht, sex_ht, hl.read_table(dup_ht_path))
+            ped.write(raw_ped_path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
