@@ -63,7 +63,7 @@ def main(args):
         rel_ht = filter_relatedness_ht(rel_ht, finalized_outlier_filtering().ht())
 
         if args.identify_duplicates:
-            logger.info("Identifying duplicates...")
+            logger.info("Selecting best duplicate per duplicated sample set...")
             dup_ht_path = duplicates().path
             check_resource_existence(
                 output_step_resources={"duplicates_ht": [dup_ht_path]},
