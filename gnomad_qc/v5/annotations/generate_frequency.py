@@ -577,10 +577,10 @@ def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
 
 def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.MatrixTable:
     """
-    Prepare AoU variant data for frequency calculation.
+    Prepare AoU VDS for frequency calculations.
 
     :param aou_vds: AoU VariantDataset
-    :return: Prepared variant MatrixTable
+    :return: Prepared AoU VariantDataset
     """
     aou_vmt = aou_vds.variant_data
     # Use existing AoU group membership table and filter to variant samples
@@ -604,22 +604,27 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.MatrixTable:
     # Add adj annotation required by annotate_freq
     aou_vmt = annotate_adj_no_dp(aou_vmt)
 
+    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
+    group_membership_globals = group_membership_ht.index_globals()
+    aou_vmt = aou_vmt.annotate_globals(
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+    )
+
     # Rename LGT to GT and LAD to AD for compatibility with annotate_freq
-    aou_vmt = hl.experimental.sparse_split_multi(aou_vmt, filter_changed_loci=True)
+    aou_vds = hl.vds.split_multi(hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt))
 
-    # Checkpoint after metadata annotation
-    return aou_vmt.checkpoint(new_temp_file("aou_vmt", "mt"))
+    return aou_vds
 
 
-def _calculate_aou_variant_frequencies_and_age_histograms(
-    aou_variant_mt: hl.MatrixTable, test: bool = False, use_all_sites_ans: bool = False
+def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
+    aou_variant_mt: hl.MatrixTable, test: bool = False
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data.
 
     :param aou_variant_mt: Prepared variant MatrixTable
     :param test: Whether to use test resources
-    :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :return: Table with freq and age_hists annotations
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
@@ -627,61 +632,64 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
         hists_fields=mt_hists_fields(aou_variant_mt)
     )
     logger.info("Annotating frequencies and age histograms...")
-    if use_all_sites_ans:
-        logger.info("Using all sites ANs for frequency calculations...")
-        group_membership_ht = get_group_membership(subset="aou").ht()
-        # Use efficient agg_by_strata approach for AoU variant data
-        aou_variant_freq_ht = agg_by_strata(
-            aou_variant_mt.select_entries(
-                "GT",
-                "adj",  # Required by agg_by_strata for quality filtering
-                n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
-                is_hom_var=aou_variant_mt.GT.is_hom_var(),
-            ),
-            {
-                "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
-                "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
-            },
-            group_membership_ht=group_membership_ht,
-        )
 
-        # Load AN values from consent_ans (calculated by another script)
-        logger.info("Loading AN values from consent_ans...")
-        consent_ans_ht = get_consent_ans(test=test).ht()
-        aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-            consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
-        )
-
-        logger.info("Building complete frequency struct with imported AN values...")
-        aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-            freq=hl.map(
-                lambda freq_data, an_data: hl.struct(
-                    AC=freq_data.AC,
-                    AF=hl.if_else(an_data > 0, freq_data.AC / an_data, 0.0),
-                    AN=an_data,
-                    homozygote_count=freq_data.homozygote_count,
-                ),
-                aou_variant_freq_ht.freq,
-                aou_variant_freq_ht.consent_an,
-            ),
-            age_hists=aou_variant_mt.rows()[aou_variant_freq_ht.key].age_hists,
-        ).drop("consent_an")
-    else:  # calcualte freq and AN with densify
-        logger.info("Densifying AoU variant MatrixTable for frequency calculations...")
-        aou_variant_mt = hl.vds.to_dense_mt(aou_variant_mt)
-        aou_variant_freq_ht = compute_freq_by_strata(aou_variant_mt)
-
-    aou_variant_freq_ht = aou_variant_freq_ht.transmute(
-        **aou_variant_freq_ht.hists_fields
+    logger.info("Using all sites ANs for frequency calculations...")
+    group_membership_ht = get_group_membership(subset="aou").ht()
+    # Use efficient agg_by_strata approach for AoU variant data
+    aou_variant_freq_ht = agg_by_strata(
+        aou_variant_mt.select_entries(
+            "GT",
+            "adj",  # Required by agg_by_strata for quality filtering
+            n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
+            is_hom_var=aou_variant_mt.GT.is_hom_var(),
+        ),
+        {
+            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
+            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
+        },
+        group_membership_ht=group_membership_ht,
     )
 
-    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
-    group_membership_globals = group_membership_ht.index_globals()
-    aou_variant_freq_ht = aou_variant_freq_ht.annotate_globals(
-        freq_meta=group_membership_globals.freq_meta,
-        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+    # Load AN values from consent_ans (calculated by another script but used
+    # same group membership HT so same strata order)
+    logger.info("Loading AN values from consent_ans...")
+    consent_ans_ht = get_consent_ans(test=test).ht()
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
     )
+
+    logger.info("Building complete frequency struct with imported AN values...")
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        freq=hl.map(
+            lambda freq_data, an_data: hl.struct(
+                AC=freq_data.AC,
+                AF=hl.if_else(an_data > 0, freq_data.AC / an_data, 0.0),
+                AN=an_data,
+                homozygote_count=freq_data.homozygote_count,
+            ),
+            aou_variant_freq_ht.freq,
+            aou_variant_freq_ht.consent_an,
+        ),
+    ).drop("consent_an")
+
     return aou_variant_freq_ht
+
+
+def _calculate_aou_frequencies_and_hists_using_densify(
+    aou_vds: hl.vds.VariantDataset, test: bool = False
+) -> hl.Table:
+    """
+    Calculate frequencies and age histograms for AoU variant data using densify.
+
+    :param aou_vds: Prepared AoU VariantDataset
+    :param test: Whether to use test resources
+    :return: Table with freq and age_hists annotations
+    """
+    logger.info("Annotating quality metrics histograms and age histograms...")
+    aou_mt = hl.vds.to_dense_mt(aou_vds)
+    aou_mt = aou_mt.annotate_rows(hists_fields=mt_hists_fields(aou_mt))
+    aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hists_fields"])
+    return aou_freq_ht
 
 
 def process_aou_dataset(
@@ -700,13 +708,22 @@ def process_aou_dataset(
     """
     logger.info("Processing All of Us dataset...")
     aou_vds = get_aou_vds(release_only=True, test=test)
-    aou_variant_mt = _prepare_aou_vds(aou_vds)
+    aou_vds = _prepare_aou_vds(aou_vds)
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
-    aou_freq_ht = _calculate_aou_variant_frequencies_and_age_histograms(
-        aou_variant_mt, test=test, use_all_sites_ans=use_all_sites_ans
-    )
+    if use_all_sites_ans:
+        logger.info("Using all sites ANs for frequency calculations...")
+        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
+            aou_vds.variant_data, test=test
+        )
+    else:
+        logger.info("Using densify for frequency calculations...")
+        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
+            aou_vds, test=test
+        )
+
+    aou_freq_ht = aou_freq_ht.transmute(**aou_freq_ht.hists_fields)
 
     return aou_freq_ht
 
