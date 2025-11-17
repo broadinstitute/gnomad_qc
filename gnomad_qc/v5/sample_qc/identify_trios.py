@@ -18,7 +18,11 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
+from gnomad_qc.v5.resources.basics import (
+    WORKSPACE_BUCKET,
+    get_aou_vds,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -251,9 +255,12 @@ def create_dense_trio_mt(
 
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
+    # TODO: Update to support Batch.
     hl.init(
-        log="/identify_trios.log",
-        tmp_dir="gs://gnomad-tmp-4day",
+        # log="/identify_trios.log",
+        # tmp_dir="gs://gnomad-tmp-4day",
+        log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
+        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
     )
     hl.default_reference("GRCh38")
 
