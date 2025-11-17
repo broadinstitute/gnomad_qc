@@ -16,7 +16,6 @@ from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     agg_by_strata,
-    annotate_adj,
     bi_allelic_site_inbreeding_expr,
     build_freq_stratification_list,
     compute_freq_by_strata,
@@ -27,6 +26,7 @@ from gnomad.utils.annotations import (
     grpmax_expr,
     merge_freq_arrays,
     merge_histograms,
+    qual_hist_expr,
 )
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from hail.utils import new_temp_file
@@ -34,6 +34,7 @@ from hail.utils import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj as annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     get_consent_ans,
     get_freq,
@@ -550,32 +551,58 @@ def _merge_updated_frequency_fields(
     return final_freq_ht
 
 
-def _prepare_aou_variant_data(
-    aou_vmt: hl.MatrixTable, test: bool = False
-) -> hl.MatrixTable:
+def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
+    """
+    Annotate quality metrics histograms and age histograms onto MatrixTable.
+
+    :param mt: Input MatrixTable.
+    :return: Struct with quality metrics histograms and age histograms.
+    """
+    logger.info(
+        "Computing quality metrics histograms and age histograms for each variant..."
+    )
+
+    return hl.struct(
+        **qual_hist_expr(
+            gt_expr=mt.GT,
+            gq_expr=mt.GQ,
+            dp_expr=mt.DP,
+            adj_expr=mt.adj,
+            ab_expr=mt._het_ab,
+            split_adj_and_raw=True,
+        ),
+        age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
+    )
+
+
+def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.MatrixTable:
     """
     Prepare AoU variant data for frequency calculation.
 
-    :param aou_vmt_filtered: Filtered AoU MatrixTable
-    :param test: Whether this is a test run
+    :param aou_vds: AoU VariantDataset
     :return: Prepared variant MatrixTable
     """
-    if test:
-        # In test mode, adapt to the test VDS metadata structure
-        aou_vmt = aou_vmt.annotate_cols(
-            sex_karyotype=aou_vmt.meta.sex_karyotype,
-            gen_anc=aou_vmt.meta.genetic_ancestry_inference.pop,
-            age=aou_vmt.meta.project_meta.age,
-        )
-    else:
-        # Production mode expects direct metadata fields
-        aou_vmt = aou_vmt.annotate_cols(
-            sex_karyotype=aou_vmt.meta.sex_karyotype,
-            gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
-            age=aou_vmt.meta.age,
-        )
+    aou_vmt = aou_vds.variant_data
+    # Use existing AoU group membership table and filter to variant samples
+    logger.info(
+        "Loading AoU group membership table for variant frequency stratification..."
+    )
+    group_membership_ht = get_group_membership(subset="aou").ht()
+
+    # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
+    # to adjust it here
+    aou_vmt = aou_vmt.annotate_cols(
+        sex_karyotype=aou_vmt.meta.sex_karyotype,
+        gen_anc=aou_vmt.meta.gen_anc,
+        age=aou_vmt.meta.age,
+        group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
+    )
+    aou_vmt = aou_vmt.annotate_globals(
+        freq_meta=group_membership_ht.index_globals().freq_meta,
+        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
+    )
     # Add adj annotation required by annotate_freq
-    aou_vmt = annotate_adj(aou_vmt)
+    aou_vmt = annotate_adj_no_dp(aou_vmt)
 
     # Rename LGT to GT and LAD to AD for compatibility with annotate_freq
     aou_vmt = hl.experimental.sparse_split_multi(aou_vmt, filter_changed_loci=True)
@@ -585,70 +612,68 @@ def _prepare_aou_variant_data(
 
 
 def _calculate_aou_variant_frequencies_and_age_histograms(
-    aou_variant_mt: hl.MatrixTable, test: bool = False
+    aou_variant_mt: hl.MatrixTable, test: bool = False, use_all_sites_ans: bool = False
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data.
 
     :param aou_variant_mt: Prepared variant MatrixTable
     :param test: Whether to use test resources
+    :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :return: Table with freq and age_hists annotations
     """
-    # Use existing AoU group membership table and filter to variant samples
-    logger.info(
-        "Loading AoU group membership table for variant frequency stratification..."
-    )
-    group_membership_ht = get_group_membership(subset="aou").ht()
-
-    logger.info(
-        "Calculating AoU AC, hom alt counts, and age histograms using efficient agg_by_strata..."
-    )
-
-    # Calculate age histograms on the MatrixTable rows first
+    logger.info("Annotating quality metrics histograms and age histograms...")
     aou_variant_mt = aou_variant_mt.annotate_rows(
-        age_hists=age_hists_expr(
-            aou_variant_mt.adj,
-            aou_variant_mt.GT,
-            aou_variant_mt.age,
-        )
+        hists_fields=mt_hists_fields(aou_variant_mt)
     )
-
-    # Use efficient agg_by_strata approach for AoU variant data
-    aou_variant_freq_ht = agg_by_strata(
-        aou_variant_mt.select_entries(
-            "GT",
-            "adj",  # Required by agg_by_strata for quality filtering
-            n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
-            is_hom_var=aou_variant_mt.GT.is_hom_var(),
-        ),
-        {
-            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
-            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
-        },
-        group_membership_ht=group_membership_ht,
-    )
-
-    # Load AN values from consent_ans (calculated by another script)
-    logger.info("Loading AN values from consent_ans...")
-    consent_ans_ht = get_consent_ans(test=test).ht()
-    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-        consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
-    )
-
-    logger.info("Building complete frequency struct with imported AN values...")
-    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-        freq=hl.map(
-            lambda freq_data, an_data: hl.struct(
-                AC=freq_data.AC,
-                AF=hl.if_else(an_data > 0, freq_data.AC / an_data, 0.0),
-                AN=an_data,
-                homozygote_count=freq_data.homozygote_count,
+    logger.info("Annotating frequencies and age histograms...")
+    if use_all_sites_ans:
+        logger.info("Using all sites ANs for frequency calculations...")
+        group_membership_ht = get_group_membership(subset="aou").ht()
+        # Use efficient agg_by_strata approach for AoU variant data
+        aou_variant_freq_ht = agg_by_strata(
+            aou_variant_mt.select_entries(
+                "GT",
+                "adj",  # Required by agg_by_strata for quality filtering
+                n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
+                is_hom_var=aou_variant_mt.GT.is_hom_var(),
             ),
-            aou_variant_freq_ht.freq,
-            aou_variant_freq_ht.consent_an,
-        ),
-        age_hists=aou_variant_mt.rows()[aou_variant_freq_ht.key].age_hists,
-    ).drop("consent_an")
+            {
+                "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
+                "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
+            },
+            group_membership_ht=group_membership_ht,
+        )
+
+        # Load AN values from consent_ans (calculated by another script)
+        logger.info("Loading AN values from consent_ans...")
+        consent_ans_ht = get_consent_ans(test=test).ht()
+        aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+            consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
+        )
+
+        logger.info("Building complete frequency struct with imported AN values...")
+        aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+            freq=hl.map(
+                lambda freq_data, an_data: hl.struct(
+                    AC=freq_data.AC,
+                    AF=hl.if_else(an_data > 0, freq_data.AC / an_data, 0.0),
+                    AN=an_data,
+                    homozygote_count=freq_data.homozygote_count,
+                ),
+                aou_variant_freq_ht.freq,
+                aou_variant_freq_ht.consent_an,
+            ),
+            age_hists=aou_variant_mt.rows()[aou_variant_freq_ht.key].age_hists,
+        ).drop("consent_an")
+    else:  # calcualte freq and AN with densify
+        logger.info("Densifying AoU variant MatrixTable for frequency calculations...")
+        aou_variant_mt = hl.vds.to_dense_mt(aou_variant_mt)
+        aou_variant_freq_ht = compute_freq_by_strata(aou_variant_mt)
+
+    aou_variant_freq_ht = aou_variant_freq_ht.transmute(
+        **aou_variant_freq_ht.hists_fields
+    )
 
     # Create freq_meta from group membership table (agg_by_strata doesn't create this)
     group_membership_globals = group_membership_ht.index_globals()
@@ -659,7 +684,9 @@ def _calculate_aou_variant_frequencies_and_age_histograms(
     return aou_variant_freq_ht
 
 
-def process_aou_dataset(test: bool = False) -> hl.Table:
+def process_aou_dataset(
+    test: bool = False, use_all_sites_ans: bool = False
+) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
 
@@ -668,16 +695,17 @@ def process_aou_dataset(test: bool = False) -> hl.Table:
     2. Age histograms are calculated within the frequency calculation
 
     :param test: Whether to run in test mode.
+    :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     logger.info("Processing All of Us dataset...")
-    aou_vmt = get_aou_vds(release_only=True, test=test).variant_data
+    aou_vds = get_aou_vds(release_only=True, test=test)
+    aou_variant_mt = _prepare_aou_vds(aou_vds)
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
-    aou_variant_mt = _prepare_aou_variant_data(aou_vmt, test=test)
     aou_freq_ht = _calculate_aou_variant_frequencies_and_age_histograms(
-        aou_variant_mt, test=test
+        aou_variant_mt, test=test, use_all_sites_ans=use_all_sites_ans
     )
 
     return aou_freq_ht
@@ -778,6 +806,7 @@ def main(args):
     environment = args.environment
     data_test = args.data_test
     runtime_test = args.runtime_test
+    use_all_sites_ans = args.use_all_sites_ans
     test = data_test or runtime_test
     overwrite = args.overwrite
 
@@ -826,7 +855,9 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            aou_freq_ht = process_aou_dataset(test=test, overwrite=overwrite)
+            aou_freq_ht = process_aou_dataset(
+                test=test, use_all_sites_ans=use_all_sites_ans
+            )
 
             logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
@@ -929,6 +960,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--process-aou",
         help="Process All of Us dataset for frequency calculations.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--use-all-sites-ans",
+        help="Use all sites ANs in frequency calculations to avoid a densify.",
         action="store_true",
     )
     parser.add_argument(
