@@ -39,6 +39,37 @@ def _annotations_root(
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 
+######################################################################
+# Variant QC annotation resources
+######################################################################
+
+
+def get_trio_stats(
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.
+
+    :param test: Whether to use a temporary path for testing.
+    :return: AoU trio stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}."
+                "trio_stats.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+######################################################################
+# Frequency, coverage, and AN annotation resources
+######################################################################
+
+
 def get_aou_downsampling(test: bool = False) -> VersionedTableResource:
     """
     Get the downsampling annotation table.
