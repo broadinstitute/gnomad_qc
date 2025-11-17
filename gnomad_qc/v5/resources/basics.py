@@ -66,16 +66,16 @@ def qc_temp_prefix(
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
     :return: Path to bucket with temporary QC data.
     """
     if environment == "rwb":
         env_bucket = f"{WORKSPACE_BUCKET}/tmp"
-    elif environment == "dataproc":
+    elif environment in ("dataproc", "batch"):
         env_bucket = GNOMAD_TMP_BUCKET
     else:
         raise ValueError(
-            f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
+            f"Environment {environment} not recognized. Choose 'rwb', 'dataproc', or 'batch'."
         )
 
     return f"gs://{env_bucket}/gnomad.genomes.v{version}.qc_data/"
@@ -107,7 +107,7 @@ def get_logging_path(
 
     :param name: Name of log file.
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
     :return: Output log path.
     """
     return f"{qc_temp_prefix(version, environment)}{name}.log"
