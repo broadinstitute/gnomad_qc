@@ -55,7 +55,7 @@ def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
     )
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
-    # Remove all pairs with a QC-filtered sample
+    # Remove all pairs with a QC-filtered sample.
     ht = ht.filter(
         filter_ht[ht.i].outlier_filtered | filter_ht[ht.j].outlier_filtered,
         keep=False,
