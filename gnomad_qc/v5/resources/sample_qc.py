@@ -2,8 +2,10 @@
 
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
+    PedigreeResource,
     TableResource,
     VersionedMatrixTableResource,
+    VersionedPedigreeResource,
     VersionedTableResource,
 )
 
@@ -566,6 +568,7 @@ def finalized_outlier_filtering(
 ######################################################################
 
 
+# TODO: Add support for Batch for resources below.
 def duplicates() -> VersionedTableResource:
     """
     Get the VersionedTableResource for duplicated (or twin) samples.
@@ -577,6 +580,39 @@ def duplicates() -> VersionedTableResource:
         {
             version: TableResource(
                 f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.genomes.v{version}.duplicates.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def pedigree(
+    finalized: bool = True, fake: bool = False, test: bool = False
+) -> VersionedPedigreeResource:
+    """
+    Get the VersionedPedigreeResource for the trio pedigree including multiple trios per family.
+
+    :param finalized: Whether to return the finalized pedigree resource.
+    :param fake: Whether to return the fake pedigree resource.
+    :param test: Whether to use a tmp path for a test resource. This is only an option
+        for the finalized pedigree, which depends on `ped_mendel_errors`.
+    :return: VersionedPedigreeResource of trio pedigree including multiple trios per
+        family.
+    """
+    if finalized and fake:
+        raise ValueError("Only one of 'finalized' or 'fake' can be True!")
+    if test and not finalized:
+        raise ValueError(
+            "The test Pedigree is only available for the finalized Pedigree because it "
+            "depends on filtering using `ped_mendel_errors` which has a test option!"
+        )
+
+    return VersionedPedigreeResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: PedigreeResource(
+                f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
+                delimiter="\t",
             )
             for version in SAMPLE_QC_VERSIONS
         },
