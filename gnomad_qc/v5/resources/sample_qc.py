@@ -668,3 +668,27 @@ def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+def dense_trio_mt(
+    split: bool = False,
+    test: bool = False,
+) -> VersionedMatrixTableResource:
+    """
+    Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+
+    :param split: Whether to get the resource for the split trio MatrixTable.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource of dense trio MatrixTable.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test)}"
+                f"/relatedness/trios/gnomad.genomes.v{version}.trios.dense"
+                f"{'.split' if split else ''}.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
