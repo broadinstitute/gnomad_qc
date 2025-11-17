@@ -60,7 +60,8 @@ def main(args):
     try:
 
         rel_ht = relatedness().ht()
-        rel_ht = filter_relatedness_ht(rel_ht, finalized_outlier_filtering().ht())
+        filter_ht = finalized_outlier_filtering().ht()
+        rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
