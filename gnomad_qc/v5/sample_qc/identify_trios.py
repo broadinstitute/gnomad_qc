@@ -20,11 +20,10 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import (
     WORKSPACE_BUCKET,
-    add_project_prefix_to_sample_collisions,
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.meta import meta, sample_id_collisions
+from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
     duplicates,
@@ -242,7 +241,6 @@ def create_dense_trio_mt(
     )
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
-    # TODO: add project prefix.
     # Get the gnomAD VDS filtered to high quality releasable trios.
     # Using 'entries_to_keep' to keep all entries that are not `gvcf_info` because it
     # is likely not needed, and removal will reduce the size of the dense MatrixTable.
@@ -284,8 +282,6 @@ def main(args):
         rel_ht = relatedness().ht()
         filter_ht = finalized_outlier_filtering().ht()
         rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
-
-        sample_id_collisions_ht = sample_id_collisions.ht()
         dup_ht_path = duplicates().path
         raw_ped_path = pedigree(finalized=False).path
         fake_ped_path = pedigree(finalized=False, fake=True).path
@@ -321,10 +317,15 @@ def main(args):
             )
             sex_ht = sex_ht.annotate(is_xx=sex_ht.sex_karyotype == "XX")
 
-            # Add project prefix to relatedness Table to match the sample IDs in meta.
-            rel_ht = add_project_prefix_to_sample_collisions(
-                rel_ht, sample_id_collisions_ht, project="aou"
-            )
+            # Strip project prefix from meta HT to match IDs in relatedness HT.
+            renaming_expr = {
+                "s": hl.if_else(
+                    sex_ht.s.startswith("aou_"),
+                    sex_ht.s.replace("aou_", ""),
+                    sex_ht.s,
+                )
+            }
+            sex_ht = sex_ht.key_by(**renaming_expr)
             ped = infer_families(rel_ht, sex_ht, hl.read_table(dup_ht_path))
             ped.write(raw_ped_path)
 
@@ -335,10 +336,6 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            # Add project prefix to filter HT to match sample IDs in pedigree.
-            filter_ht = add_project_prefix_to_sample_collisions(
-                filter_ht, sample_id_collisions_ht, project="aou"
-            )
             fake_ped = run_create_fake_pedigree(
                 hl.Pedigree.read(raw_ped_path),
                 filter_ht,
@@ -352,17 +349,12 @@ def main(args):
                 output_step_resources={"mendel_err_ht": [mendel_err_ht_path]},
                 overwrite=overwrite,
             )
-            # Add project prefix to VDS to match sample IDs in pedigree.
             vds = get_aou_vds(
                 split=False,
                 remove_dead_alleles=False,
                 filter_partitions=range(5) if test else None,
                 chrom="chr20",
             )
-            vds = add_project_prefix_to_sample_collisions(
-                vds, sample_id_collisions_ht, project="aou"
-            )
-
             mendel_err_ht = run_mendel_errors(
                 vds,
                 hl.Pedigree.read(raw_ped_path),
