@@ -45,12 +45,8 @@ from gnomad_qc.v5.resources.basics import (
     get_gnomad_v5_genomes_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import consent_samples_to_drop
-
-# Constants
-TEST_PARTITIONS = 2  # Number of partitions to use in test mode
-TMP_DIR_DAYS = 4  # Number of days for temp directory retention
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("v5_frequency")
@@ -58,7 +54,10 @@ logger.setLevel(logging.INFO)
 
 
 def _prepare_consent_vds(
-    v4_freq_ht: hl.Table, test: bool = False, runtime_test: bool = False
+    v4_freq_ht: hl.Table,
+    test: bool = False,
+    runtime_test: bool = False,
+    test_partitions: int = 2,
 ) -> hl.vds.VariantDataset:
     """
     Load and prepare VDS for consent withdrawal sample processing.
@@ -66,6 +65,7 @@ def _prepare_consent_vds(
     :param v4_freq_ht: v4 frequency table for AF annotation.
     :param test: Whether running in test mode.
     :param runtime_test: Whether to use test VDS.
+    :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Prepared VDS with consent samples, split multiallelics, and annotations.
     """
     logger.info("Loading and preparing VDS for consent withdrawal samples...")
@@ -75,7 +75,7 @@ def _prepare_consent_vds(
         release_only=True,
         consent_drop_only=True,
         annotate_meta=True,
-        filter_partitions=list(range(TEST_PARTITIONS)) if test else None,
+        filter_partitions=list(range(test_partitions)) if test else None,
     )
 
     logger.info(
@@ -450,6 +450,7 @@ def _calculate_faf_and_grpmax_annotations(
 def process_gnomad_dataset(
     data_test: bool = False,
     runtime_test: bool = False,
+    test_partitions: int = 2,
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -462,8 +463,9 @@ def process_gnomad_dataset(
     5. Subtracting both frequencies and age histograms from v4 frequency HT
     6. Only overwriting fields that were actually updated in the final output
 
-    :param data_test: Whether to run in data test mode. If True, filters full v4 vds to first 2 partitions.
-    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first 2 partitions.
+    :param data_test: Whether to run in data test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
+    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first N partitions (N controlled by test_partitions).
+    :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     # Test is used for formatting file paths
@@ -477,7 +479,12 @@ def process_gnomad_dataset(
 
     # Prepare consent VDS (without filtering yet)
     logger.info("Loading consent VDS...")
-    vds = _prepare_consent_vds(v4_freq_ht, test=test, runtime_test=runtime_test)
+    vds = _prepare_consent_vds(
+        v4_freq_ht,
+        test=test,
+        runtime_test=runtime_test,
+        test_partitions=test_partitions,
+    )
 
     # Calculate frequencies and age histograms for consent samples
     consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
@@ -825,16 +832,27 @@ def main(args):
     runtime_test = args.runtime_test
     use_all_sites_ans = args.use_all_sites_ans
     test = data_test or runtime_test
+    test_partitions = args.test_partitions
+    tmp_dir_days = args.tmp_dir_days
     overwrite = args.overwrite
 
-    hl.init(
-        log=get_logging_path("v5_frequency_generation", environment=environment),
-        tmp_dir=(
-            f"gs://{WORKSPACE_BUCKET}/tmp/{TMP_DIR_DAYS}_day"
-            if environment == "rwb"
-            else "gs://gnomad-tmp-4day"
-        ),
-    )
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log=get_logging_path("v5_frequency_generation", environment="batch"),
+            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day",
+            gcs_requester_pays_configuration=args.gcp_billing_project,
+            regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            log=get_logging_path("v5_frequency_generation", environment=environment),
+            tmp_dir=(
+                f"gs://{WORKSPACE_BUCKET}/tmp/{tmp_dir_days}_day"
+                if environment == "rwb"
+                else f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day"
+            ),
+        )
     hl.default_reference("GRCh38")
 
     try:
@@ -850,7 +868,9 @@ def main(args):
             )
 
             gnomad_freq_ht = process_gnomad_dataset(
-                data_test=data_test, runtime_test=runtime_test
+                data_test=data_test,
+                runtime_test=runtime_test,
+                test_partitions=test_partitions,
             )
 
             logger.info(
@@ -961,7 +981,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--data-test",
-        help=f"Filter to the first {TEST_PARTITIONS} partitions of full VDS for testing.",
+        help="Filter to the first N partitions of full VDS for testing (N controlled by --test-partitions).",
         action="store_true",
     )
     parser.add_argument(
@@ -992,8 +1012,26 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment to run in.",
-        choices=["rwb", "dataproc"],
+        choices=["rwb", "batch", "dataproc"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        default="broad-mpg-gnomad",
+        help="Google Cloud billing project for reading requester pays buckets.",
+    )
+    parser.add_argument(
+        "--test-partitions",
+        type=int,
+        default=2,
+        help="Number of partitions to use in test mode. Default is 2.",
+    )
+    parser.add_argument(
+        "--tmp-dir-days",
+        type=int,
+        default=4,
+        help="Number of days for temp directory retention. Default is 4.",
     )
 
     return parser
