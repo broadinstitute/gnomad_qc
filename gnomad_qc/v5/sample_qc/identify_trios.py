@@ -4,10 +4,45 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.sample_qc.relatedness import (
+    get_duplicated_samples,
+    get_duplicated_samples_ht,
+)
+
+from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v5.resources.sample_qc import (
+    duplicates,
+    finalized_outlier_filtering,
+    relatedness,
+    sample_rankings,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("identify_trios")
 logger.setLevel(logging.INFO)
+
+
+def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
+    """
+    Filter relatedness Table to only include pairs of samples that are both AoU genomes and not QC-filtered.
+
+    :param ht: Relatedness Table.
+    :param filter_ht: Outlier filtering Table.
+    :return: Filtered relatedness Table.
+    """
+    ht = ht.filter(
+        ((ht.i.data_type == "genomes") & (ht.i.project == "aou"))
+        & ((ht.j.data_type == "genomes") & (ht.j.project == "aou"))
+    )
+    ht = ht.key_by(i=ht.i.s, j=ht.j.s)
+
+    # Remove all pairs with a QC-filtered sample
+    ht = ht.filter(
+        filter_ht[ht.i].outlier_filtered | filter_ht[ht.j].outlier_filtered,
+        keep=False,
+    )
+
+    return ht
 
 
 def main(args):
@@ -21,7 +56,19 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
 
-    pass
+    if args.identify_duplicates:
+        logger.info("Identifying duplicates...")
+        dup_ht_path = duplicates().path
+        check_resource_existence(
+            output_step_resources={"duplicates_ht": [dup_ht_path]},
+            overwrite=overwrite,
+        )
+        rel_ht = relatedness().ht()
+        ht = get_duplicated_samples_ht(
+            get_duplicated_samples(rel_ht),
+            sample_rankings(release=True).ht(),
+        )
+        ht.write(dup_ht_path, overwrite=overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
