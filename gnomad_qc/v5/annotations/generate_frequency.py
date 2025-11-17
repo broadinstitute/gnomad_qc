@@ -837,13 +837,25 @@ def main(args):
     overwrite = args.overwrite
 
     if environment == "batch":
-        hl.init(
-            backend="batch",
-            log=get_logging_path("v5_frequency_generation", environment="batch"),
-            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day",
-            gcs_requester_pays_configuration=args.gcp_billing_project,
-            regions=["us-central1"],
-        )
+        batch_kwargs = {
+            "backend": "batch",
+            "log": get_logging_path("v5_frequency_generation", environment="batch"),
+            "tmp_dir": f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day",
+            "gcs_requester_pays_configuration": args.gcp_billing_project,
+            "regions": ["us-central1"],
+        }
+        if args.app_name is not None:
+            batch_kwargs["app_name"] = args.app_name
+        if args.driver_cores is not None:
+            batch_kwargs["driver_cores"] = args.driver_cores
+        if args.driver_memory is not None:
+            batch_kwargs["driver_memory"] = args.driver_memory
+        if args.worker_cores is not None:
+            batch_kwargs["worker_cores"] = args.worker_cores
+        if args.worker_memory is not None:
+            batch_kwargs["worker_memory"] = args.worker_memory
+
+        hl.init(**batch_kwargs)
     else:
         hl.init(
             log=get_logging_path("v5_frequency_generation", environment=environment),
@@ -1032,6 +1044,36 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=4,
         help="Number of days for temp directory retention. Default is 4.",
+    )
+    parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend. Default is None.",
+    )
+    parser.add_argument(
+        "--driver-cores",
+        type=int,
+        default=None,
+        help="Number of cores for driver node in batch/QoB. Default is None.",
+    )
+    parser.add_argument(
+        "--worker-memory",
+        type=str,
+        default=None,
+        help="Memory type for worker nodes in batch/QoB (e.g., 'highmem'). Default is None.",
+    )
+    parser.add_argument(
+        "--worker-cores",
+        type=int,
+        default=None,
+        help="Number of cores for worker nodes in batch/QoB. Default is None.",
+    )
+    parser.add_argument(
+        "--driver-memory",
+        type=str,
+        default=None,
+        help="Memory type for driver node in batch/QoB (e.g., 'highmem'). Default is None.",
     )
 
     return parser
