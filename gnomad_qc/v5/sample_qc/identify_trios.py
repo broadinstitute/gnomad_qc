@@ -9,6 +9,7 @@ from typing import Dict, Optional, Tuple
 import hail as hl
 from gnomad.sample_qc.relatedness import (
     create_fake_pedigree,
+    filter_to_trios,
     get_duplicated_samples,
     get_duplicated_samples_ht,
     infer_families,
@@ -20,6 +21,7 @@ from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
+    dense_trios,
     duplicates,
     finalized_outlier_filtering,
     ped_filter_param_json_path,
@@ -208,6 +210,45 @@ def filter_ped(
     return hl.Pedigree([trio for trio in ped.trios if trio.s in trios]), cutoffs
 
 
+def create_dense_trio_mt(
+    fam_ht: hl.Table,
+    meta_ht: hl.Table,
+    test: bool = False,
+    naive_coalesce_partitions: Optional[int] = None,
+) -> hl.MatrixTable:
+    """
+    Create a dense MatrixTable for high quality trios.
+
+    :param fam_ht: Table with family information.
+    :param meta_ht: Table with metadata information.
+    :param test: Whether to filter to chr20 for testing. Default is False.
+    :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
+        to. Default is None.
+    :return: Dense MatrixTable with high quality trios.
+    """
+    # Filter the metadata table to only high quality AoU samples.
+    meta_ht = meta_ht.filter(
+        meta_ht.high_quality & (meta_ht.project_meta.project == "aou")
+    )
+    fam_ht = fam_ht.filter(
+        hl.is_defined(meta_ht[fam_ht.id])
+        & hl.is_defined(meta_ht[fam_ht.pat_id])
+        & hl.is_defined(meta_ht[fam_ht.mat_id])
+    )
+    meta_ht = filter_to_trios(meta_ht, fam_ht)
+
+    # Get the gnomAD VDS filtered to high quality releasable trios.
+    # Using 'entries_to_keep' to keep all entries that are not `gvcf_info` because it
+    # is likely not needed, and removal will reduce the size of the dense MatrixTable.
+    vds = get_aou_vds(
+        filter_samples=meta_ht,
+        chrom="chr20" if test else None,
+        entries_to_keep=["LA", "LGT", "LAD", "LPGT", "LPL", "DP", "GQ", "SB"],
+        naive_coalesce_partitions=naive_coalesce_partitions,
+    )
+    return hl.vds.to_dense_mt(vds)
+
+
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     hl.init(
@@ -231,6 +272,7 @@ def main(args):
         final_ped_path = pedigree(test=test).path
         filter_json_path = ped_filter_param_json_path(test=test)
         trios_path = trios(test=test).path
+        dense_trio_mt_path = dense_trios(test=test).path
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
@@ -320,6 +362,20 @@ def main(args):
             )
             with hl.hadoop_open(filter_json_path, "w") as d:
                 d.write(json.dumps(filters))
+
+        if args.create_dense_trio_mt:
+            logger.info("Creating dense trio MT...")
+            check_resource_existence(
+                output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
+                overwrite=overwrite,
+            )
+            dense_trio_mt = create_dense_trio_mt(
+                hl.Pedigree.read(final_ped_path),
+                meta().ht(),
+                test=test,
+                naive_coalesce_partitions=args.naive_coalesce_partitions,
+            )
+            dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
