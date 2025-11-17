@@ -12,11 +12,12 @@ from gnomad.sample_qc.relatedness import (
 )
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
+    ped_mendel_errors,
     pedigree,
     relatedness,
     sample_rankings,
@@ -76,6 +77,38 @@ def run_create_fake_pedigree(
     return fake_ped
 
 
+def run_mendel_errors(
+    vds: hl.VariantDataset,
+    ped: hl.Pedigree,
+    fake_ped: hl.Pedigree,
+    test: bool = False,
+) -> hl.Table:
+    """
+    Run Hail's `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.
+
+    :param vds: Input VariantDataset.
+    :param ped: Inferred Pedigree.
+    :param fake_ped: Fake Pedigree.
+    :param test: Whether to run on five partitions of the VDS for testing. Default is
+        False.
+    :return: Table with Mendel errors on chr20.
+    """
+    merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
+    ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
+
+    logger.info("Sub-setting VDS to %i samples...", len(ped_samples))
+    vds = hl.vds.filter_samples(vds, ped_samples)
+    vds.variant_data = vds.variant_data.select_entries("LA", "LGT")
+    mt = hl.vds.to_dense_mt(vds)
+
+    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+    logger.info("Running Mendel errors for %s trios.", len(merged_ped.trios))
+    mendel_err_ht, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
+
+    return mendel_err_ht
+
+
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     hl.init(
@@ -93,6 +126,8 @@ def main(args):
         filter_ht = finalized_outlier_filtering().ht()
         rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
         dup_ht_path = duplicates().path
+        raw_ped_path = pedigree(finalized=False).path
+        fake_ped_path = pedigree(finalized=False, fake=True).path
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
@@ -108,7 +143,6 @@ def main(args):
 
         if args.infer_families:
             logger.info("Inferring families...")
-            raw_ped_path = pedigree(finalized=False).path
             check_resource_existence(
                 output_step_resources={"raw_pedigree": [raw_ped_path]},
                 overwrite=overwrite,
@@ -126,7 +160,6 @@ def main(args):
 
         if args.create_fake_pedigree:
             logger.info("Creating fake Pedigree...")
-            fake_ped_path = pedigree(finalized=False, fake=True).path
             check_resource_existence(
                 output_step_resources={"fake_pedigree": [fake_ped_path]},
                 overwrite=overwrite,
@@ -135,6 +168,28 @@ def main(args):
                 ped, filter_ht, fake_fam_prop=args.fake_fam_prop
             )
             fake_ped.write(fake_ped_path)
+
+        if args.run_mendel_errors:
+            logger.info("Running Mendel errors on chr20...")
+            mendel_err_ht_path = ped_mendel_errors(test=test).path
+            check_resource_existence(
+                output_step_resources={"mendel_err_ht": [mendel_err_ht_path]},
+                overwrite=overwrite,
+            )
+            vds = get_aou_vds(
+                split=False,
+                remove_dead_alleles=False,
+                filter_partitions=range(5) if test else None,
+                chrom="chr20",
+            )
+
+            mendel_err_ht = run_mendel_errors(
+                vds,
+                hl.Pedigree.read(raw_ped_path),
+                hl.Pedigree.read(fake_ped_path),
+                test=test,
+            )
+            mendel_err_ht.write(mendel_err_ht_path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
