@@ -5,6 +5,7 @@ import logging
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
+    create_fake_pedigree,
     get_duplicated_samples,
     get_duplicated_samples_ht,
     infer_families,
@@ -47,6 +48,32 @@ def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
     )
 
     return ht
+
+
+def run_create_fake_pedigree(
+    ped: hl.Pedigree,
+    filter_ht: hl.Table,
+    fake_fam_prop: float = 0.1,
+) -> hl.Pedigree:
+    """
+    Generate a fake Pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.
+
+    :param ped: Pedigree to use for generating fake Pedigree.
+    :param filter_ht: Outlier filtering Table.
+    :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake
+        Pedigree. Default is 0.1.
+    :return: Fake Pedigree.
+    """
+    n_fake_trios = int(fake_fam_prop * len(ped.complete_trios()))
+    logger.info("Generating fake Pedigree with %i trios...", n_fake_trios)
+    fake_ped = create_fake_pedigree(
+        n=n_fake_trios,
+        sample_list=list(
+            filter_ht.filter(filter_ht.outlier_filtered, keep=False).s.collect()
+        ),
+        real_pedigree=ped,
+    )
+    return fake_ped
 
 
 def main(args):
@@ -95,7 +122,19 @@ def main(args):
             # `hl.Trio` requires a boolean column `is_female`.
             sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
             ped = infer_families(rel_ht, sex_ht, hl.read_table(dup_ht_path))
-            ped.write(raw_ped_path, overwrite=overwrite)
+            ped.write(raw_ped_path)
+
+        if args.create_fake_pedigree:
+            logger.info("Creating fake Pedigree...")
+            fake_ped_path = pedigree(finalized=False, fake=True).path
+            check_resource_existence(
+                output_step_resources={"fake_pedigree": [fake_ped_path]},
+                overwrite=overwrite,
+            )
+            fake_ped = run_create_fake_pedigree(
+                ped, filter_ht, fake_fam_prop=args.fake_fam_prop
+            )
+            fake_ped.write(fake_ped_path)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
