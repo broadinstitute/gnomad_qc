@@ -10,6 +10,7 @@ from gnomad.sample_qc.relatedness import (
 )
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
@@ -56,19 +57,27 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
 
-    if args.identify_duplicates:
-        logger.info("Identifying duplicates...")
-        dup_ht_path = duplicates().path
-        check_resource_existence(
-            output_step_resources={"duplicates_ht": [dup_ht_path]},
-            overwrite=overwrite,
-        )
+    try:
+
         rel_ht = relatedness().ht()
-        ht = get_duplicated_samples_ht(
-            get_duplicated_samples(rel_ht),
-            sample_rankings(release=True).ht(),
-        )
-        ht.write(dup_ht_path, overwrite=overwrite)
+        rel_ht = filter_relatedness_ht(rel_ht, finalized_outlier_filtering().ht())
+
+        if args.identify_duplicates:
+            logger.info("Identifying duplicates...")
+            dup_ht_path = duplicates().path
+            check_resource_existence(
+                output_step_resources={"duplicates_ht": [dup_ht_path]},
+                overwrite=overwrite,
+            )
+            ht = get_duplicated_samples_ht(
+                get_duplicated_samples(rel_ht),
+                sample_rankings(release=True).ht(),
+            )
+            ht.write(dup_ht_path, overwrite=overwrite)
+
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("identify_trios", environment=args.environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
