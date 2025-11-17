@@ -559,3 +559,25 @@ def finalized_outlier_filtering(
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+######################################################################
+# Trio identification resources
+######################################################################
+
+
+def duplicates() -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for duplicated (or twin) samples.
+
+    :return: VersionedTableResource of duplicate samples.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.genomes.v{version}.duplicates.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
