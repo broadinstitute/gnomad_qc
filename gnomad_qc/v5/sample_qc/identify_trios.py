@@ -184,7 +184,6 @@ def main(args):
                 vds,
                 hl.Pedigree.read(raw_ped_path),
                 hl.Pedigree.read(fake_ped_path),
-                test=test,
             )
             mendel_err_ht.write(mendel_err_ht_path, overwrite=overwrite)
 
