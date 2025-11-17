@@ -1,7 +1,10 @@
 """Script to identify trios from relatedness data and filter based on Mendel errors and de novos."""
 
 import argparse
+import json
 import logging
+from collections import defaultdict
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -10,17 +13,21 @@ from gnomad.sample_qc.relatedness import (
     get_duplicated_samples_ht,
     infer_families,
 )
+from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
+    ped_filter_param_json_path,
     ped_mendel_errors,
     pedigree,
     relatedness,
     sample_rankings,
+    trios,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -106,6 +113,101 @@ def run_mendel_errors(
     return mendel_err_ht
 
 
+def filter_ped(
+    ped: hl.Pedigree,
+    mendel_ht: hl.Table,
+    max_mendel_z: Optional[int] = 3,
+    max_de_novo_z: Optional[int] = 3,
+    max_mendel_n: Optional[int] = None,
+    max_de_novo_n: Optional[int] = None,
+) -> Tuple[hl.Pedigree, Dict[str, Dict[str, int]]]:
+    """
+    Filter a Pedigree based on Mendel errors and de novo metrics.
+
+    :param ped: Pedigree to filter.
+    :param mendel_ht: Table with Mendel errors.
+    :param max_mendel_z: Optional maximum z-score for Mendel error metrics. Default is 3.
+    :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.
+    :param max_mendel_n: Optional maximum Mendel error count. Default is None.
+    :param max_de_novo_n: Optional maximum de novo count. Default is None.
+    :return: Tuple of filtered Pedigree and dictionary of filtering parameters.
+    """
+    cutoffs = {
+        "mendel": (
+            max_mendel_z,
+            max_mendel_n,
+        ),
+        "de_novo": (
+            max_de_novo_z,
+            max_de_novo_n,
+        ),
+    }
+
+    # Check that only one of `max_mendel_z` or `max_mendel_n` and one of `max_de_novo_z`
+    # or `max_de_novo_n` are set. If both are set, favor using the max number over max
+    # std dev.
+    cutoffs_by_method = defaultdict(dict)
+    for m, (max_z, max_n) in cutoffs.items():
+        if max_n:
+            if max_z:
+                logger.warning(
+                    "Both `max_%s_z` and `max_%s_n` are set. Using `max_%s_n` of %d!",
+                    *(m,) * 3,
+                    max_n,
+                )
+            cutoffs_by_method["count"][m] = max_n
+        elif max_z:
+            cutoffs_by_method["stdev"][m] = max_z
+
+    # Filter Mendel errors Table to only errors in inferred families not from the
+    # fake Pedigree.
+    mendel_ht = mendel_ht.filter(mendel_ht.fam_id.startswith("fake"), keep=False)
+
+    # Aggregate Mendel errors Table by sample to get per sample mendel error and
+    # de novo counts.
+    mendel_by_s = mendel_ht.group_by(mendel_ht.s, mendel_ht.fam_id).aggregate(
+        n_mendel=hl.agg.count(),
+        # Code 2 is parents are hom ref, child is het.
+        n_de_novo=hl.agg.count_where(mendel_ht.mendel_code == 2),
+    )
+    mendel_by_s = mendel_by_s.checkpoint(new_temp_file("filter_ped", extension="ht"))
+
+    # Get aggregate stats (need mean and stdev) for each metric with std dev
+    # cutoffs set.
+    z_stats_expr = {}
+    for m in cutoffs_by_method["stdev"]:
+        stats_expr = hl.agg.stats(mendel_by_s[f"n_{m}"])
+        z_stats_expr[m] = stats_expr
+
+    z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
+    # Build filter expression to filter metrics by requested metrics and methods.
+    filter_expr = hl.literal(True)
+    cutoffs = {}
+    for m, max_z in cutoffs_by_method["stdev"].items():
+        cutoffs[m] = {"max_z": max_z}
+        log_expr = (
+            "Filtering %strios with more than %f %s errors (%i standard deviations "
+            "from the mean)"
+        )
+        max_n = z_stats[m].mean + max_z * z_stats[m].stdev
+        logger.info(log_expr, "", max_n, m, max_z)
+        filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+        cutoffs[m]["max_n"] = max_n
+
+    for m, max_n in cutoffs_by_method["count"].items():
+        log_expr = "Filtering %strios with more than %d %s errors."
+        logger.info(log_expr, "", max_n, m)
+        filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+        cutoffs[m] = {"max_n": max_n}
+
+    # Filter inferred Pedigree to only trios that pass filters defined by `filter_expr`.
+    trios = mendel_by_s.aggregate(
+        hl.agg.filter(filter_expr, hl.agg.collect(mendel_by_s.s))
+    )
+    logger.info("Found %i trios passing filters.", len(trios))
+    return hl.Pedigree([trio for trio in ped.trios if trio.s in trios]), cutoffs
+
+
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     hl.init(
@@ -125,6 +227,10 @@ def main(args):
         dup_ht_path = duplicates().path
         raw_ped_path = pedigree(finalized=False).path
         fake_ped_path = pedigree(finalized=False, fake=True).path
+        mendel_err_ht_path = ped_mendel_errors(test=test).path
+        final_ped_path = pedigree(test=test).path
+        filter_json_path = ped_filter_param_json_path(test=test)
+        trios_path = trios(test=test).path
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
@@ -168,7 +274,6 @@ def main(args):
 
         if args.run_mendel_errors:
             logger.info("Running Mendel errors on chr20...")
-            mendel_err_ht_path = ped_mendel_errors(test=test).path
             check_resource_existence(
                 output_step_resources={"mendel_err_ht": [mendel_err_ht_path]},
                 overwrite=overwrite,
@@ -186,6 +291,35 @@ def main(args):
                 hl.Pedigree.read(fake_ped_path),
             )
             mendel_err_ht.write(mendel_err_ht_path, overwrite=overwrite)
+
+        if args.finalize_ped:
+            logger.info("Finalizing Pedigree...")
+            check_resource_existence(
+                output_step_resources={
+                    "final_pedigree": [final_ped_path],
+                    "final_trios": [trios_path],
+                    "filter_json": [filter_json_path],
+                },
+                overwrite=overwrite,
+            )
+            ped, filters = filter_ped(
+                hl.Pedigree.read(raw_ped_path),
+                hl.read_table(mendel_err_ht_path),
+                max_mendel_z=args.max_mendel_z,
+                max_de_novo_z=args.max_de_novo_z,
+                max_mendel_n=args.max_mendel,
+                max_de_novo_n=args.max_de_novo,
+            )
+            ped.write(final_ped_path)
+            families_to_trios(ped, args.seed).write(trios_path)
+
+            # Pedigree has no globals like a HT so write the parameters to a JSON file.
+            logger.info(
+                "Writing finalized pedigree filter dictionary to %s...",
+                filter_json_path,
+            )
+            with hl.hadoop_open(filter_json_path, "w") as d:
+                d.write(json.dumps(filters))
 
     finally:
         logger.info("Copying hail log to logging bucket...")
