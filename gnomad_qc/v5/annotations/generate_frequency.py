@@ -215,7 +215,7 @@ def _calculate_consent_frequencies_and_age_histograms(
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
     consent_sample_ids = set(mt.s.collect())
-    group_membership_ht = group_membership(subset="gnomad").ht()
+    group_membership_ht = group_membership(data_set="gnomad").ht()
 
     logger.info(
         "Filtering group membership table to %s consent samples...",
@@ -562,7 +562,7 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.VariantDataset:
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = group_membership(subset="aou").ht()
+    group_membership_ht = group_membership(data_set="aou").ht()
     group_membership_globals = group_membership_ht.index_globals()
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here
@@ -609,7 +609,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         )
     )
     logger.info("Annotating frequencies with all sites ANs...")
-    group_membership_ht = group_membership(subset="aou").ht()
+    group_membership_ht = group_membership(data_set="aou").ht()
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
             "GT",
@@ -646,7 +646,18 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         ),
     ).drop("all_sites_an")
 
-    return aou_variant_freq_ht.select("freq", "qual_hists", "age_hists")
+    # Nest histograms to match gnomAD structure
+    aou_variant_freq_ht = aou_variant_freq_ht.select(
+        freq=aou_variant_freq_ht.freq,
+        histograms=hl.struct(
+            qual_hists=aou_variant_freq_ht.hists_fields.qual_hists,
+            # AoU doesn't distinguish raw vs adj, keep adj?
+            raw_qual_hists=aou_variant_freq_ht.hists_fields.qual_hists,
+            age_hists=aou_variant_freq_ht.hists_fields.age_hists,
+        ),
+    )
+
+    return aou_variant_freq_ht
 
 
 def _calculate_aou_frequencies_and_hists_using_densify(
@@ -667,6 +678,16 @@ def _calculate_aou_frequencies_and_hists_using_densify(
         hists_fields=mt_hists_fields(aou_mt, all_sites_ans_ht)
     )
     aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hists_fields"])
+
+    # Nest histograms to match gnomAD structure
+    aou_freq_ht = aou_freq_ht.transmute(
+        histograms=hl.struct(
+            qual_hists=aou_freq_ht.hists_fields.qual_hists,
+            raw_qual_hists=aou_freq_ht.hists_fields.qual_hists,  # AoU doesn't distinguish raw vs adj
+            age_hists=aou_freq_ht.hists_fields.age_hists,
+        )
+    )
+
     return aou_freq_ht
 
 
@@ -700,8 +721,6 @@ def process_aou_dataset(
         aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
             aou_vds, test=test
         )
-
-    aou_freq_ht = aou_freq_ht.transmute(**aou_freq_ht.hists_fields)
 
     return aou_freq_ht
 
@@ -752,16 +771,17 @@ def merge_gnomad_and_aou_frequencies(
     logger.info("Merging quality histograms and age histograms from both datasets...")
 
     # Join all histogram data from both datasets
+    # Both datasets now have the same structure: histograms.{qual_hists,
+    # raw_qual_hists, age_hists}
     joined_hist_ht = gnomad_freq_ht.annotate(
         aou_histograms=aou_freq_ht[gnomad_freq_ht.key].histograms,
-        aou_age_hists=aou_freq_ht[gnomad_freq_ht.key].age_hists,
     )
 
     # Merge age histograms
     merged_age_hist_het = merge_histograms(
         [
             joined_hist_ht.histograms.age_hists.age_hist_het,
-            joined_hist_ht.aou_age_hists.age_hist_het,
+            joined_hist_ht.aou_histograms.age_hists.age_hist_het,
         ],
         operation="sum",
     )
@@ -769,7 +789,7 @@ def merge_gnomad_and_aou_frequencies(
     merged_age_hist_hom = merge_histograms(
         [
             joined_hist_ht.histograms.age_hists.age_hist_hom,
-            joined_hist_ht.aou_age_hists.age_hist_hom,
+            joined_hist_ht.aou_histograms.age_hists.age_hist_hom,
         ],
         operation="sum",
     )
@@ -927,7 +947,7 @@ def main(args):
         if args.process_gnomad:
             logger.info("Processing gnomAD dataset...")
 
-            gnomad_freq = get_freq(test=test, data_type="genomes", subset="gnomad")
+            gnomad_freq = get_freq(test=test, data_type="genomes", data_set="gnomad")
 
             check_resource_existence(
                 output_step_resources={"process-gnomad": [gnomad_freq]},
@@ -948,7 +968,7 @@ def main(args):
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
 
-            aou_freq = get_freq(test=test, data_type="genomes", subset="aou")
+            aou_freq = get_freq(test=test, data_type="genomes", data_set="aou")
 
             check_resource_existence(
                 output_step_resources={"process-aou": [aou_freq]},
@@ -967,7 +987,7 @@ def main(args):
                 "Merging frequency data and age histograms from both datasets..."
             )
 
-            merged_freq = get_freq(test=test, data_type="genomes")
+            merged_freq = get_freq(test=test, data_type="genomes", data_set="merged")
             # Note: merged output will be a single frequency table with embedded age
             # histograms
 
@@ -976,8 +996,8 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            gnomad_freq_ht = get_freq(test=test, data_type="genomes", subset="gnomad")
-            aou_freq_ht = get_freq(test=test, data_type="genomes", subset="aou")
+            gnomad_freq_ht = get_freq(data_type="genomes", test=test, data_set="gnomad")
+            aou_freq_ht = get_freq(data_type="genomes", test=test, data_set="aou")
 
             check_resource_existence(
                 input_step_resources={
@@ -987,8 +1007,8 @@ def main(args):
             )
             # TODO: 11/18 Start Here
             merged_freq_ht = merge_gnomad_and_aou_frequencies(
-                gnomad_freq_ht,
-                aou_freq_ht,
+                gnomad_freq_ht.ht(),
+                aou_freq_ht.ht(),
             )
 
             # Calculate FAF, grpmax, and other post-processing annotations on merged

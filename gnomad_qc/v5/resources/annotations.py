@@ -132,7 +132,6 @@ def get_freq(
     data_type: str = "genomes",
     test: bool = False,
     data_set: str = "aou",
-    finalized: bool = True,
 ) -> TableResource:
     """
     Get the frequency annotation Table for v5.
@@ -144,7 +143,11 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing frequency annotations.
     """
-    assert data_set in ["aou", "gnomad"], "data_set must be either 'aou' or 'gnomad'"
+    assert data_set in [
+        "aou",
+        "gnomad",
+        "merged",
+    ], "data_set must be either 'aou', 'gnomad', or 'merged'"
     return TableResource(
         f"{_annotations_root(version, test, data_type, data_set)}/{data_set}.genomes.v{version}.frequencies.ht"
     )
