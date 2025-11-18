@@ -103,9 +103,12 @@ def main(args):
             check_resource_existence(
                 output_step_resources={"trio_stats_ht": trio_stats_ht_path}
             )
-            ht = run_generate_trio_stats(
-                vds, pedigree(test=test).pedigree(), pedigree(test=test).ht()
-            )
+            fam_ht = pedigree(test=test).ht()
+            if test:
+                # Filter to first 100 samples for testing in RWB
+                # because densify in RWB is slow.
+                fam_ht = fam_ht.head(100)
+            ht = run_generate_trio_stats(vds, pedigree(test=test).pedigree(), fam_ht)
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.generate_sibling_stats:
