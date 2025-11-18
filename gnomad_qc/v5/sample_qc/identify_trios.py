@@ -438,7 +438,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--test",
-        help="Run mendel errors on only five partitions of the MT.",
+        help="Run script on subset of dataset. Applies to Mendel errors and dense trio MT creation.",
         action="store_true",
     )
 
