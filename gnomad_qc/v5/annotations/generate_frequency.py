@@ -78,9 +78,8 @@ from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj as annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
-    get_consent_ans,
     get_freq,
-    get_group_membership,
+    group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
@@ -216,7 +215,7 @@ def _calculate_consent_frequencies_and_age_histograms(
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
     consent_sample_ids = set(mt.s.collect())
-    group_membership_ht = get_group_membership(subset="gnomad").ht()
+    group_membership_ht = group_membership(subset="gnomad").ht()
 
     logger.info(
         "Filtering group membership table to %s consent samples...",
@@ -563,7 +562,7 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.VariantDataset:
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = get_group_membership(subset="aou").ht()
+    group_membership_ht = group_membership(subset="aou").ht()
     group_membership_globals = group_membership_ht.index_globals()
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here
@@ -610,7 +609,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         )
     )
     logger.info("Annotating frequencies with all sites ANs...")
-    group_membership_ht = get_group_membership(subset="aou").ht()
+    group_membership_ht = group_membership(subset="aou").ht()
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
             "GT",
@@ -990,7 +989,6 @@ def main(args):
             merged_freq_ht = merge_gnomad_and_aou_frequencies(
                 gnomad_freq_ht,
                 aou_freq_ht,
-                test=test,
             )
 
             # Calculate FAF, grpmax, and other post-processing annotations on merged
