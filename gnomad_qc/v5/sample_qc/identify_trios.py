@@ -518,24 +518,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     finalize_ped_args.add_argument(
         "--max-mendel",
-        help=(
-            "Maximum number of raw Mendel errors for real trios. If specified and "
-            "--ukb-max-mendel is not, --max-mendel will be used for all samples. If "
-            "both --max-mendel and --ukb-max-mendel are specified, --max-mendel will "
-            "be used for non-UKB samples and --ukb-max-mendel will be used for UKB "
-            "samples."
-        ),
+        help=("Maximum number of raw Mendel errors for real trios."),
         type=int,
     )
     finalize_ped_args.add_argument(
         "--max-de-novo",
-        help=(
-            "Maximum number of raw de novo mutations for real trios. If specified and"
-            " --ukb-max-de-novo is not, --max-de-novo will be used for all samples. If"
-            " both --max-de-novo and --ukb-max-de-novo are specified, --max-de-novo"
-            " will be used for non-UKB samples and --ukb-max-de-novo will be used for"
-            " UKB samples."
-        ),
+        help=("Maximum number of raw de novo mutations for real trios."),
         type=int,
     )
     finalize_ped_args.add_argument(
