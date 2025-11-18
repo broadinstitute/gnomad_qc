@@ -249,6 +249,7 @@ def create_dense_trio_mt(
         chrom="chr20" if test else None,
         entries_to_keep=["LA", "LGT", "LAD", "LPGT", "LPL", "DP", "GQ", "SB"],
         naive_coalesce_partitions=naive_coalesce_partitions,
+        add_project_prefix=True,
     )
     return hl.vds.to_dense_mt(vds)
 
