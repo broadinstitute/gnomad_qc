@@ -246,14 +246,12 @@ def create_dense_trio_mt(
         # because densify in RWB is slow.
         meta_ht = meta_ht.head(100)
 
-    # Get the gnomAD VDS filtered to high quality releasable trios.
-    # Using 'entries_to_keep' to keep all entries that are not `gvcf_info` because it
-    # is likely not needed, and removal will reduce the size of the dense MatrixTable.
+    # v4 used `entries_to_keep` to filter non `gvcf_info` entries, but
+    # AoU VDS only has GQ, RGQ, PS, LGT, LAD, LA, FT entries.
     vds = get_aou_vds(
         filter_samples=meta_ht,
         filter_partitions=range(2) if test else None,
         chrom="chr20" if test else None,
-        entries_to_keep=["LA", "LGT", "LAD", "LPGT", "LPL", "DP", "GQ", "SB"],
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
     )
