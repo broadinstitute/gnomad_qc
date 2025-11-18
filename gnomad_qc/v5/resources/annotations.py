@@ -65,6 +65,24 @@ def get_trio_stats(
     )
 
 
+def get_sib_stats(test: bool = False) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 (AoU genomes only) sibling stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: AoU sibling stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.sib_stats.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Frequency, coverage, and AN annotation resources
 ######################################################################
