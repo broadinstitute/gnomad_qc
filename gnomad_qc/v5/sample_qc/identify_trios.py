@@ -241,6 +241,11 @@ def create_dense_trio_mt(
     )
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
+    if test:
+        # Filter to first 100 samples for testing in RWB
+        # because densify in RWB is slow.
+        meta_ht = meta_ht.head(100)
+
     # Get the gnomAD VDS filtered to high quality releasable trios.
     # Using 'entries_to_keep' to keep all entries that are not `gvcf_info` because it
     # is likely not needed, and removal will reduce the size of the dense MatrixTable.
