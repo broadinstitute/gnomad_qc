@@ -82,8 +82,8 @@ def main(args):
     test = args.test_n_partitions
 
     # NOTE: VDS will have 'aou_' prefix on sample IDs.
-    # TODO: Add high quality only filter.
     vds = get_aou_vds(
+        high_quality_only=True,
         filter_partitions=range(2) if test else None,
         annotate_meta=True,
     )
