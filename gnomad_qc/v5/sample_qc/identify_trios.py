@@ -406,7 +406,7 @@ def main(args):
                 overwrite=overwrite,
             )
             dense_trio_mt = create_dense_trio_mt(
-                hl.Pedigree.read(final_ped_path),
+                hl.import_fam(final_ped_path),
                 meta().ht(),
                 test=test,
                 naive_coalesce_partitions=args.naive_coalesce_partitions,
