@@ -395,6 +395,7 @@ def main(args):
 
         if args.create_dense_trio_mt:
             logger.info("Creating dense trio MT...")
+            logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")
             check_resource_existence(
                 output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
                 overwrite=overwrite,
