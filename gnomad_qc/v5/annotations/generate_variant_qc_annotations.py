@@ -5,11 +5,12 @@ import logging
 
 import hail as hl
 from gnomad.sample_qc.relatedness import filter_to_trios
-from gnomad.variant_qc.pipeline import generate_trio_stats
+from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
 from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
+from gnomad_qc.v5.sample_qc.identify_trios import filter_relatedness_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_variant_qc_annotations")
@@ -49,6 +50,24 @@ def run_generate_trio_stats(
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     # TODO: Check why this is False when we filter to bi-allelics above.
     return generate_trio_stats(mt, bi_allelic_only=False)
+
+
+def run_generate_sib_stats(
+    mt: hl.MatrixTable,
+    rel_ht: hl.Table,
+    filter_ht: hl.Table,
+) -> hl.Table:
+    """
+    Generate stats for the number of alternate alleles in common between sibling pairs.
+
+    :param mt: MatrixTable to generate sibling stats from.
+    :param rel_ht: Table containing relatedness info for pairs in `mt`.
+    :param filter_ht: Table containing outlier filtering info for samples in `mt`.
+    :return: Table containing sibling stats.
+    """
+    # Filter relatedness Table to non-filtered AoU genomes.
+    rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
+    return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
 
 
 def main(args):
