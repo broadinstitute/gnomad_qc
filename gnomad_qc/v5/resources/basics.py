@@ -116,6 +116,7 @@ def get_logging_path(
 def get_aou_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
+    high_quality_only: bool = False,
     release_only: bool = False,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
@@ -140,6 +141,7 @@ def get_aou_vds(
         rather than grab an already split VDS. Default is False.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
         filters (only relevant after hard filtering is complete). Default is True.
+    :param high_quality_only: Whether to filter the VDS to only high quality samples. Default is False.
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
@@ -239,7 +241,7 @@ def get_aou_vds(
     vmt = vds.variant_data
     rmt = vds.reference_data
 
-    if release_only or annotate_meta or add_project_prefix:
+    if release_only or high_quality_only or annotate_meta or add_project_prefix:
         meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
@@ -282,6 +284,11 @@ def get_aou_vds(
     if release_only:
         logger.info("Filtering VDS to release samples only...")
         filter_expr = meta_ht.release
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if high_quality_only:
+        logger.info("Filtering VDS to high quality samples only...")
+        filter_expr = meta_ht.high_quality
         vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
 
     if filter_samples:
