@@ -293,6 +293,11 @@ def get_aou_vds(
                 else filter_samples.count()
             ),
         )
+        logger.warning(
+            "This filter will not work correctly if `filter_samples` contains sample"
+            " IDs with collisions with gnomAD samples and `add_project_prefix` is not"
+            " set."
+        )
         vds = hl.vds.filter_samples(vds, filter_samples)
 
     return vds
