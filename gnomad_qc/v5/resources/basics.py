@@ -156,7 +156,7 @@ def get_aou_vds(
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
-    :param add_project_prefix: Whether to add the project prefix to the sample IDs in the VDS. Default is False.
+    :param add_project_prefix: Whether to prefix sample IDs (e.g., 'aou_') for samples that exist in multiple projects to avoid ID collisions. Default is False.
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
