@@ -60,11 +60,9 @@ from gnomad.utils.annotations import (
     age_hists_expr,
     agg_by_strata,
     bi_allelic_site_inbreeding_expr,
-    build_freq_stratification_list,
     compute_freq_by_strata,
     faf_expr,
     gen_anc_faf_max_expr,
-    generate_freq_group_membership_array,
     get_adj_expr,
     grpmax_expr,
     merge_freq_arrays,
@@ -79,6 +77,7 @@ from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj as annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
+    coverage_and_an_path,
     get_consent_ans,
     get_freq,
     get_group_membership,
@@ -252,12 +251,6 @@ def _calculate_consent_frequencies_and_age_histograms(
         )
     )
 
-    group_membership_globals = group_membership_ht.index_globals()
-    mt = mt.annotate_globals(
-        freq_meta=group_membership_globals.freq_meta,
-        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
-    )
-
     logger.info(
         "Computing frequencies for consent samples using compute_freq_by_strata..."
     )
@@ -299,8 +292,8 @@ def _subtract_consent_frequencies_and_age_histograms(
     )
 
     joined_freq_ht = joined_freq_ht.annotate_globals(
-        consent_freq_meta=consent_freq_ht.index_globals().consent_freq_meta,
-        consent_freq_meta_sample_count=consent_freq_ht.index_globals().consent_freq_meta_sample_count,
+        consent_freq_meta=consent_freq_ht.index_globals().freq_meta,
+        consent_freq_meta_sample_count=consent_freq_ht.index_globals().freq_meta_sample_count,
     )
 
     logger.info("Subtracting consent frequencies...")
@@ -344,10 +337,8 @@ def _subtract_consent_frequencies_and_age_histograms(
     )
 
     joined_freq_ht = joined_freq_ht.annotate_globals(
-        freq_meta=hl.literal(hl.eval(updated_freq_meta)),
-        freq_meta_sample_count=hl.literal(
-            hl.eval(updated_sample_counts["freq_meta_sample_count"])
-        ),
+        freq_meta=updated_freq_meta,
+        freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
 
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq_and_hists", "ht"))
@@ -532,31 +523,35 @@ def _merge_updated_frequency_fields(
     return final_freq_ht
 
 
-def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
+def mt_hists_fields(
+    mt: hl.MatrixTable, all_sites_ans_ht: hl.Table
+) -> hl.StructExpression:
     """
-    Annotate quality metrics histograms and age histograms onto MatrixTable.
+    Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
 
     :param mt: Input MatrixTable.
-    :return: Struct with quality metrics histograms and age histograms.
+    :param all_sites_ans_ht: Table with all sites ANs.
+    :return: Struct with allele balance quality metrics histograms and age histograms.
     """
     logger.info(
         "Computing quality metrics histograms and age histograms for each variant..."
     )
-
+    qual_hists = qual_hist_expr(
+        gt_expr=mt.GT,
+        adj_expr=mt.adj,
+        ab_expr=mt.AD[1] / hl.sum(mt.AD),
+        split_adj_and_raw=True,
+    )
+    qual_hists = qual_hists.annotate(
+        **all_sites_ans_ht[mt.row_key].qual_hists,
+    )
     return hl.struct(
-        **qual_hist_expr(
-            gt_expr=mt.GT,
-            gq_expr=mt.GQ,
-            dp_expr=mt.DP,
-            adj_expr=mt.adj,
-            ab_expr=mt._het_ab,
-            split_adj_and_raw=True,
-        ),
+        qual_hists=qual_hists,
         age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
     )
 
 
-def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.MatrixTable:
+def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
 
@@ -569,7 +564,7 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.MatrixTable:
         "Loading AoU group membership table for variant frequency stratification..."
     )
     group_membership_ht = get_group_membership(subset="aou").ht()
-
+    group_membership_globals = group_membership_ht.index_globals()
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here
     aou_vmt = aou_vmt.annotate_cols(
@@ -579,18 +574,12 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.MatrixTable:
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
     aou_vmt = aou_vmt.annotate_globals(
-        freq_meta=group_membership_ht.index_globals().freq_meta,
-        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
+        freq_meta=group_membership_globals().freq_meta,
+        freq_meta_sample_count=group_membership_globals().freq_meta_sample_count,
     )
+
     # Add adj annotation required by annotate_freq
     aou_vmt = annotate_adj_no_dp(aou_vmt)
-
-    # Create freq_meta from group membership table (agg_by_strata doesn't create this)
-    group_membership_globals = group_membership_ht.index_globals()
-    aou_vmt = aou_vmt.annotate_globals(
-        freq_meta=group_membership_globals.freq_meta,
-        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
-    )
 
     # Rename LGT to GT and LAD to AD for compatibility with annotate_freq
     aou_vds = hl.vds.split_multi(hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt))
@@ -609,18 +598,23 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     :return: Table with freq and age_hists annotations
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
+    all_sites_ans_ht = coverage_and_an_path(test=test).ht()
     aou_variant_mt = aou_variant_mt.annotate_rows(
-        hists_fields=mt_hists_fields(aou_variant_mt)
+        hists_fields=mt_hists_fields(aou_variant_mt, all_sites_ans_ht)
     )
-    logger.info("Annotating frequencies and age histograms...")
-
-    logger.info("Using all sites ANs for frequency calculations...")
+    # Add all of the qual hists from the consent_ans table into the
+    # aou_variant_freq_ht qual_hists struct
+    aou_variant_mt = aou_variant_mt.annotate_rows(
+        qual_hists=aou_variant_mt.qual_hists.annotate(
+            **all_sites_ans_ht[aou_variant_mt.row_key].qual_hists,
+        )
+    )
+    logger.info("Annotating frequencies with all sites ANs...")
     group_membership_ht = get_group_membership(subset="aou").ht()
-    # Use efficient agg_by_strata approach for AoU variant data
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
             "GT",
-            "adj",  # Required by agg_by_strata for quality filtering
+            "adj",
             n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
             is_hom_var=aou_variant_mt.GT.is_hom_var(),
         ),
@@ -629,14 +623,14 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
             "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
         },
         group_membership_ht=group_membership_ht,
+        select_fields=["hists_fields"],
     )
 
     # Load AN values from consent_ans (calculated by another script but used
     # same group membership HT so same strata order)
     logger.info("Loading AN values from consent_ans...")
-    consent_ans_ht = get_consent_ans(test=test).ht()
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-        consent_an=consent_ans_ht[aou_variant_freq_ht.key].AN
+        all_sites_an=all_sites_ans_ht[aou_variant_freq_ht.key].AN
     )
 
     logger.info("Building complete frequency struct with imported AN values...")
@@ -649,15 +643,16 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
                 homozygote_count=freq_data.homozygote_count,
             ),
             aou_variant_freq_ht.freq,
-            aou_variant_freq_ht.consent_an,
+            aou_variant_freq_ht.all_sites_an,
         ),
-    ).drop("consent_an")
+    ).drop("all_sites_an")
 
-    return aou_variant_freq_ht
+    return aou_variant_freq_ht.select("freq", "qual_hists", "age_hists")
 
 
 def _calculate_aou_frequencies_and_hists_using_densify(
-    aou_vds: hl.vds.VariantDataset, test: bool = False
+    aou_vds: hl.vds.VariantDataset,
+    test: bool = False,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using densify.
@@ -667,8 +662,11 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     :return: Table with freq and age_hists annotations
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
+    all_sites_ans_ht = coverage_and_an_path(test=test).ht()
     aou_mt = hl.vds.to_dense_mt(aou_vds)
-    aou_mt = aou_mt.annotate_rows(hists_fields=mt_hists_fields(aou_mt))
+    aou_mt = aou_mt.annotate_rows(
+        hists_fields=mt_hists_fields(aou_mt, all_sites_ans_ht)
+    )
     aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hists_fields"])
     return aou_freq_ht
 
@@ -712,19 +710,15 @@ def process_aou_dataset(
 def merge_gnomad_and_aou_frequencies(
     gnomad_freq_ht: hl.Table,
     aou_freq_ht: hl.Table,
-    gnomad_age_hist_ht: hl.Table,
-    aou_age_hist_ht: hl.Table,
     test: bool = False,
-) -> Tuple[hl.Table, hl.Table]:
+) -> hl.Table:
     """
     Merge frequency data and age histograms from gnomAD and All of Us datasets.
 
-    :param gnomad_freq_ht: Frequency Table for gnomAD.
+    :param gnomad_freq_ht: Frequency Tale for gnomAD.
     :param aou_freq_ht: Frequency Table for AoU.
-    :param gnomad_age_hist_ht: Age histogram Table for gnomAD.
-    :param aou_age_hist_ht: Age histogram Table for AoU.
     :param test: Whether to run in test mode.
-    :return: Tuple of (Merged frequency Table, Merged age histogram Table).
+    :return: Merged frequency Table.
     """
     logger.info("Merging frequency data and age histograms from both datasets...")
 
@@ -757,46 +751,124 @@ def merge_gnomad_and_aou_frequencies(
         freq_index_dict=make_freq_index_dict_from_meta(merged_meta),
     )
 
-    if test:
-        logger.info(
-            "Skipping age histogram merging in test mode due to simplified structure..."
-        )
-        # In test mode, just use gnomAD age histograms since AoU has simplified
-        # structure
-        merged_age_hist_ht = gnomad_age_hist_ht
-    else:
-        # Production mode: proper age histogram merging
-        joined_age_hist_ht = gnomad_age_hist_ht.annotate(
-            aou_age_hist_het=aou_age_hist_ht[gnomad_age_hist_ht.key].age_hist_het,
-            aou_age_hist_hom=aou_age_hist_ht[gnomad_age_hist_ht.key].age_hist_hom,
-        )
+    # Merge all histograms (qual_hists, raw_qual_hists, and age_hists)
+    logger.info("Merging quality histograms and age histograms from both datasets...")
 
-        merged_age_hist_ht = joined_age_hist_ht.annotate(
-            age_hist_het=hl.if_else(
-                hl.is_defined(joined_age_hist_ht.aou_age_hist_het),
-                merge_histograms(
-                    [
-                        joined_age_hist_ht.age_hist_het,
-                        joined_age_hist_ht.aou_age_hist_het,
-                    ],
-                    operation="sum",
-                ),
-                joined_age_hist_ht.age_hist_het,
-            ),
-            age_hist_hom=hl.if_else(
-                hl.is_defined(joined_age_hist_ht.aou_age_hist_hom),
-                merge_histograms(
-                    [
-                        joined_age_hist_ht.age_hist_hom,
-                        joined_age_hist_ht.aou_age_hist_hom,
-                    ],
-                    operation="sum",
-                ),
-                joined_age_hist_ht.age_hist_hom,
-            ),
-        )
+    # Join all histogram data from both datasets
+    joined_hist_ht = gnomad_freq_ht.annotate(
+        aou_histograms=aou_freq_ht[gnomad_freq_ht.key].histograms,
+        aou_age_hists=aou_freq_ht[gnomad_freq_ht.key].age_hists,
+    )
 
-    return merged_freq_ht, merged_age_hist_ht.select("age_hist_het", "age_hist_hom")
+    # Merge age histograms
+    merged_age_hist_het = merge_histograms(
+        [
+            joined_hist_ht.histograms.age_hists.age_hist_het,
+            joined_hist_ht.aou_age_hists.age_hist_het,
+        ],
+        operation="sum",
+    )
+
+    merged_age_hist_hom = merge_histograms(
+        [
+            joined_hist_ht.histograms.age_hists.age_hist_hom,
+            joined_hist_ht.aou_age_hists.age_hist_hom,
+        ],
+        operation="sum",
+    )
+
+    # Merge qual histograms - merge each field individually
+    merged_qual_hists = hl.struct(
+        gq_hist_all=merge_histograms(
+            [
+                joined_hist_ht.histograms.qual_hists.gq_hist_all,
+                joined_hist_ht.aou_histograms.qual_hists.gq_hist_all,
+            ],
+            operation="sum",
+        ),
+        dp_hist_all=merge_histograms(
+            [
+                joined_hist_ht.histograms.qual_hists.dp_hist_all,
+                joined_hist_ht.aou_histograms.qual_hists.dp_hist_all,
+            ],
+            operation="sum",
+        ),
+        gq_hist_alt=merge_histograms(
+            [
+                joined_hist_ht.histograms.qual_hists.gq_hist_alt,
+                joined_hist_ht.aou_histograms.qual_hists.gq_hist_alt,
+            ],
+            operation="sum",
+        ),
+        dp_hist_alt=merge_histograms(
+            [
+                joined_hist_ht.histograms.qual_hists.dp_hist_alt,
+                joined_hist_ht.aou_histograms.qual_hists.dp_hist_alt,
+            ],
+            operation="sum",
+        ),
+        ab_hist_alt=merge_histograms(
+            [
+                joined_hist_ht.histograms.qual_hists.ab_hist_alt,
+                joined_hist_ht.aou_histograms.qual_hists.ab_hist_alt,
+            ],
+            operation="sum",
+        ),
+    )
+
+    # Merge raw qual histograms
+    merged_raw_qual_hists = hl.struct(
+        gq_hist_all=merge_histograms(
+            [
+                joined_hist_ht.histograms.raw_qual_hists.gq_hist_all,
+                joined_hist_ht.aou_histograms.raw_qual_hists.gq_hist_all,
+            ],
+            operation="sum",
+        ),
+        dp_hist_all=merge_histograms(
+            [
+                joined_hist_ht.histograms.raw_qual_hists.dp_hist_all,
+                joined_hist_ht.aou_histograms.raw_qual_hists.dp_hist_all,
+            ],
+            operation="sum",
+        ),
+        gq_hist_alt=merge_histograms(
+            [
+                joined_hist_ht.histograms.raw_qual_hists.gq_hist_alt,
+                joined_hist_ht.aou_histograms.raw_qual_hists.gq_hist_alt,
+            ],
+            operation="sum",
+        ),
+        dp_hist_alt=merge_histograms(
+            [
+                joined_hist_ht.histograms.raw_qual_hists.dp_hist_alt,
+                joined_hist_ht.aou_histograms.raw_qual_hists.dp_hist_alt,
+            ],
+            operation="sum",
+        ),
+        ab_hist_alt=merge_histograms(
+            [
+                joined_hist_ht.histograms.raw_qual_hists.ab_hist_alt,
+                joined_hist_ht.aou_histograms.raw_qual_hists.ab_hist_alt,
+            ],
+            operation="sum",
+        ),
+    )
+
+    # Create merged histograms struct with all three histogram types
+    merged_histograms = hl.struct(
+        qual_hists=merged_qual_hists,
+        raw_qual_hists=merged_raw_qual_hists,
+        age_hists=hl.struct(
+            age_hist_het=merged_age_hist_het,
+            age_hist_hom=merged_age_hist_hom,
+        ),
+    )
+
+    # Create final merged frequency table with updated histograms
+    merged_freq_ht = merged_freq_ht.annotate(histograms=merged_histograms)
+
+    return merged_freq_ht
 
 
 def _initialize_hail(args) -> None:
@@ -880,13 +952,9 @@ def main(args):
             logger.info("Processing All of Us dataset...")
 
             aou_freq = get_freq(test=test, data_type="genomes", subset="aou")
-            # Note: AoU still uses separate age histogram tables for now
-            aou_age_hist = get_freq(
-                test=test, data_type="genomes", subset="aou"
-            )  # Placeholder - will be separate age hist table
 
             check_resource_existence(
-                output_step_resources={"process-aou": [aou_freq, aou_age_hist]},
+                output_step_resources={"process-aou": [aou_freq]},
                 overwrite=overwrite,
             )
 
@@ -896,12 +964,6 @@ def main(args):
 
             logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
-
-            # Write age histograms separately if needed
-            logger.info(f"Writing AoU age histogram HT to {aou_age_hist.path}...")
-            aou_freq_ht.select("age_hists").write(
-                aou_age_hist.path, overwrite=overwrite
-            )
 
         if args.merge_datasets:
             logger.info(
@@ -917,37 +979,19 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            gnomad_freq_input = get_freq(
-                test=test, data_type="genomes", subset="gnomad"
-            )
-            aou_freq_input = get_freq(test=test, data_type="genomes", subset="aou")
+            gnomad_freq_ht = get_freq(test=test, data_type="genomes", subset="gnomad")
+            aou_freq_ht = get_freq(test=test, data_type="genomes", subset="aou")
 
             check_resource_existence(
                 input_step_resources={
-                    "process-gnomad": [gnomad_freq_input],
-                    "process-aou": [aou_freq_input],
+                    "process-gnomad": [gnomad_freq_ht],
+                    "process-aou": [aou_freq_ht],
                 }
             )
-
-            gnomad_freq_ht = get_freq(test=test, data_type="genomes", subset="gnomad")
-            aou_freq_ht = get_freq(test=test, data_type="genomes", subset="aou")
-            # Extract age histograms from frequency tables for merging
-            gnomad_age_hist_ht = gnomad_freq_ht.ht().select(
-                age_hist_het=gnomad_freq_ht.ht().histograms.age_hists.age_hist_het,
-                age_hist_hom=gnomad_freq_ht.ht().histograms.age_hists.age_hist_hom,
-            )
-            # Extract age histograms from AoU frequency table
-            aou_age_hist_ht = aou_freq_ht.ht().select(
-                age_hist_het=aou_freq_ht.ht().age_hists.age_hist_het,
-                age_hist_hom=aou_freq_ht.ht().age_hists.age_hist_hom,
-            )
-
             # TODO: 11/18 Start Here
-            merged_freq_ht, merged_age_hist_ht = merge_gnomad_and_aou_frequencies(
+            merged_freq_ht = merge_gnomad_and_aou_frequencies(
                 gnomad_freq_ht,
                 aou_freq_ht,
-                gnomad_age_hist_ht,
-                aou_age_hist_ht,
                 test=test,
             )
 
