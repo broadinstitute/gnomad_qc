@@ -4,6 +4,49 @@ Script to generate frequency data for gnomAD v5.
 This script calculates variant frequencies for samples that will be removed from gnomAD v4
 in v5 due to relatedness filtering or ancestry changes. It uses a differential approach
 to avoid densifying the full dataset.
+
+Processing Workflow:
+-------------------
+1. process_gnomad_dataset: Update v4 frequency table by subtracting consent withdrawal samples
+   - Load v4 frequency table (contains frequencies and age histograms)
+   - Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
+   - Calculate frequencies and age histograms for consent samples
+   - Subtract from v4 frequencies to get updated gnomAD v5 frequencies
+
+2. process_aou_dataset: Calculate frequencies and age histograms for All of Us dataset
+   - Load AoU VDS with metadata
+   - Calculate frequencies using either:
+     a) All sites ANs (efficient, requires pre-computed AN values)
+     b) Densify approach (standard, more resource intensive)
+   - Generate age histograms during frequency calculation
+
+3. merge_gnomad_and_aou_frequencies: Combine gnomAD and AoU frequency data
+   - Merge frequency arrays from both datasets
+   - Combine age histograms
+   - Create unified frequency metadata
+
+4. _calculate_faf_and_grpmax_annotations: Add final annotations to merged dataset
+   - Calculate FAF (Filtering Allele Frequency)
+   - Calculate grpmax (group maximum frequency)
+   - Calculate gen_anc_faf_max
+   - Add inbreeding coefficient
+
+Usage Examples:
+--------------
+# Process gnomAD consent withdrawals
+python generate_frequency.py --process-gnomad --environment dataproc
+
+# Process AoU dataset using all-sites ANs
+python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
+
+# Process AoU on batch/QoB with custom resources
+python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
+
+# Merge both datasets
+python generate_frequency.py --merge-datasets --environment dataproc
+
+# Run in test mode
+python generate_frequency.py --process-gnomad --runtime-test --test-partitions 2
 """
 
 import argparse
@@ -46,7 +89,11 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import consent_samples_to_drop
+
+# Constants for age histogram binning
+AGE_HIST_MIN = 30
+AGE_HIST_MAX = 80
+AGE_HIST_BINS = 10
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("v5_frequency")
@@ -84,6 +131,8 @@ def _prepare_consent_vds(
     )
 
     # Prepare variant data with metadata
+    # Note: In test mode, metadata structure differs from production
+    # (nested fields vs flat structure)
     vmt = vds.variant_data
     vmt.describe()
     if test:
@@ -98,9 +147,6 @@ def _prepare_consent_vds(
             sex_karyotype=vmt.meta.sex_karyotype,
             age=vmt.meta.age,
         )
-    vmt = vmt.annotate_globals(
-        age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
-    )
 
     # Select required entries and annotate non_ref hets before split_multi
     logger.info("Selecting entries and annotating non_ref hets pre-split...")
@@ -148,117 +194,57 @@ def _prepare_consent_vds(
             use_v3_1_correction=True,
         )
     )
+    logger.info("Annotating age distribution...")
+    vmt = vmt.annotate_globals(
+        age_distribution=vmt.aggregate_cols(
+            hl.agg.hist(vmt.age, AGE_HIST_MIN, AGE_HIST_MAX, AGE_HIST_BINS)
+        )
+    )
 
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
     return vds.checkpoint(new_temp_file("consent_samples_vds_prepared", "vds"))
 
 
 def _calculate_consent_frequencies_and_age_histograms(
-    vds: hl.vds.VariantDataset, test: bool = False
+    vds: hl.vds.VariantDataset,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vds: Prepared VDS with consent samples.
-    :param test: Whether running in test mode.
     :return: Table with freq and age_hists annotations for consent samples.
     """
     logger.info("Densifying VDS for frequency calculations...")
-
-    # Densify the VDS to MatrixTable
-    # The metadata (pop, sex_karyotype, age) was already extracted to column
-    # level in _prepare_consent_vds
     mt = hl.vds.to_dense_mt(vds)
+    consent_sample_ids = set(mt.s.collect())
+    group_membership_ht = get_group_membership(subset="gnomad").ht()
 
-    # Try to load group membership resource, fall back to generating from
-    # scratch for testing
-    try:
-        logger.info("Loading group membership resource...")
-        group_membership_ht = get_group_membership(subset="gnomad").ht()
-        consent_sample_ids = set(mt.s.collect())
-        group_membership_ht = group_membership_ht.filter(
-            hl.literal(consent_sample_ids).contains(group_membership_ht.s)
-        )
-        logger.info("Successfully loaded group membership resource")
-    except Exception:
-        logger.info(
-            "Group membership resource not found, generating from scratch for testing..."
-        )
+    logger.info(
+        "Filtering group membership table to %s consent samples...",
+        len(consent_sample_ids),
+    )
+    group_membership_ht = group_membership_ht.filter(
+        hl.literal(list(consent_sample_ids)).contains(group_membership_ht.s)
+    )
+    logger.info(
+        "Group membership table has been filtered to %s consent samples...",
+        group_membership_ht.count(),
+    )
 
-        # Create meta table from MatrixTable columns (only consent samples)
-        # Note: mt.cols() returns a Table keyed by the column key (typically 's')
-        # Following the v4 pattern from compute_coverage.py:get_genomes_group_membership_ht
-        # We need to get the cols table first, then reference fields from it
-        cols_ht = mt.cols()
-        n_cols = cols_ht.count()
-        logger.info(f"MatrixTable has {n_cols} columns (samples)")
-
-        meta_ht = cols_ht.select(
-            gen_anc=cols_ht.gen_anc,
-            sex_karyotype=cols_ht.sex_karyotype,
-        )
-        n_meta_rows = meta_ht.count()
-        logger.info(f"meta_ht has {n_meta_rows} rows after select")
-
-        if n_meta_rows == 0:
-            raise ValueError(
-                "meta_ht is empty after select. Check that gen_anc and sex_karyotype "
-                "fields exist on MatrixTable columns."
-            )
-
-        # Build frequency stratification list using expressions from meta_ht
-        # Following the v4 pattern - build_freq_stratification_list takes expressions
-        # bound to meta_ht and returns a list of dictionaries
-        logger.info("Building frequency stratification list...")
-        strata_expr = build_freq_stratification_list(
-            sex_expr=meta_ht.sex_karyotype,
-            gen_anc_expr=meta_ht.gen_anc,
-        )
-
-        # Generate group membership array
-        # Both meta_ht and strata_expr expressions must reference the same table
-        logger.info("Generating group membership array...")
-        group_membership_ht = generate_freq_group_membership_array(
-            meta_ht,
-            strata_expr,
-        )
-
-        # Verify group_membership_ht has rows
-        n_samples_in_group_membership = group_membership_ht.count()
-        logger.info(
-            f"Group membership table has {n_samples_in_group_membership} samples"
-        )
-        if n_samples_in_group_membership == 0:
-            raise ValueError(
-                "Generated group_membership_ht is empty. This likely means meta_ht "
-                "has no samples or all samples were filtered out."
-            )
-
-    # Annotate MatrixTable with group membership
     mt = mt.annotate_cols(
         group_membership=group_membership_ht[mt.col_key].group_membership,
     )
-
-    # Verify group_membership was annotated correctly
-    n_samples_with_group_membership = mt.aggregate_cols(
-        hl.agg.count_where(hl.is_defined(mt.group_membership))
+    mt = mt.annotate_globals(
+        freq_meta=group_membership_ht.index_globals().freq_meta,
+        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
     )
-    logger.info(
-        f"Annotated {n_samples_with_group_membership} samples with group_membership"
-    )
-    if n_samples_with_group_membership == 0:
-        raise ValueError(
-            "No samples have group_membership annotation. Check that group_membership_ht "
-            "keys match MatrixTable column keys."
-        )
 
     logger.info(
         "Calculating frequencies and age histograms using compute_freq_by_strata..."
     )
 
-    # Annotate hists_fields on MatrixTable rows before calling compute_freq_by_strata
-    # This is required when using select_fields=["hists_fields"]
-    # Following v4 pattern but simplified - we only need age_hists
+    # Annotate hists_fields on MatrixTable rows before calling compute_freq_by_strata so
+    # to keep the age_hists annotation on the frequency table.
     logger.info("Annotating hists_fields on MatrixTable rows...")
     mt = mt.annotate_rows(
         hists_fields=hl.struct(
@@ -266,25 +252,24 @@ def _calculate_consent_frequencies_and_age_histograms(
         )
     )
 
-    # Use compute_freq_by_strata to calculate frequencies and age histograms
-    # This follows the v4 approach and automatically calculates AC, AN, AF, homozygote_count
-    # and includes age histograms when select_fields=["hists_fields"] is specified
+    group_membership_globals = group_membership_ht.index_globals()
+    mt = mt.annotate_globals(
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+    )
+
+    logger.info(
+        "Computing frequencies for consent samples using compute_freq_by_strata..."
+    )
     consent_freq_ht = compute_freq_by_strata(
         mt,
         select_fields=["hists_fields"],
     )
 
     # Extract age_hists from hists_fields struct
-    consent_freq_ht = consent_freq_ht.annotate(
+    consent_freq_ht = consent_freq_ht.transmute(
         age_hists=consent_freq_ht.hists_fields.age_hists,
     ).drop("hists_fields")
-
-    # Annotate globals from group membership table
-    group_membership_globals = group_membership_ht.index_globals()
-    consent_freq_ht = consent_freq_ht.annotate_globals(
-        consent_freq_meta=group_membership_globals.freq_meta,
-        consent_freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
-    )
 
     return consent_freq_ht.checkpoint(new_temp_file("consent_freq_and_hists", "ht"))
 
@@ -470,15 +455,8 @@ def process_gnomad_dataset(
     """
     # Test is used for formatting file paths
     test = runtime_test or data_test
-
-    logger.info("Processing gnomAD dataset for consent withdrawals...")
-
-    # Load v4 frequency table (contains both frequencies and age histograms)
-    logger.info("Loading v4 frequency table...")
     v4_freq_ht = get_v4_freq(data_type="genomes").ht()
 
-    # Prepare consent VDS (without filtering yet)
-    logger.info("Loading consent VDS...")
     vds = _prepare_consent_vds(
         v4_freq_ht,
         test=test,
@@ -486,19 +464,15 @@ def process_gnomad_dataset(
         test_partitions=test_partitions,
     )
 
-    # Calculate frequencies and age histograms for consent samples
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
+    logger.info("Calculating frequencies and age histograms for consent samples...")
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds)
 
-    logger.info(
-        "Subtracting consent frequencies and age histograms from v4 frequency table..."
-    )
-
+    logger.info("Subtracting consent frequencies and age histograms from v4...")
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
         v4_freq_ht, consent_freq_ht, test=test
     )
 
-    # Only overwrite fields that were actually updated (merge back with
-    # original full table)
+    # Only overwrite fields that were actually updated (merge back with original table)
     # Note: FAF/grpmax annotations will be calculated on the final merged dataset
     final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
 
@@ -825,16 +799,14 @@ def merge_gnomad_and_aou_frequencies(
     return merged_freq_ht, merged_age_hist_ht.select("age_hist_het", "age_hist_hom")
 
 
-def main(args):
-    """Generate v5 frequency data."""
+def _initialize_hail(args) -> None:
+    """
+    Initialize Hail with appropriate configuration for the environment.
+
+    :param args: Parsed command-line arguments.
+    """
     environment = args.environment
-    data_test = args.data_test
-    runtime_test = args.runtime_test
-    use_all_sites_ans = args.use_all_sites_ans
-    test = data_test or runtime_test
-    test_partitions = args.test_partitions
     tmp_dir_days = args.tmp_dir_days
-    overwrite = args.overwrite
 
     if environment == "batch":
         batch_kwargs = {
@@ -844,16 +816,17 @@ def main(args):
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],
         }
-        if args.app_name is not None:
-            batch_kwargs["app_name"] = args.app_name
-        if args.driver_cores is not None:
-            batch_kwargs["driver_cores"] = args.driver_cores
-        if args.driver_memory is not None:
-            batch_kwargs["driver_memory"] = args.driver_memory
-        if args.worker_cores is not None:
-            batch_kwargs["worker_cores"] = args.worker_cores
-        if args.worker_memory is not None:
-            batch_kwargs["worker_memory"] = args.worker_memory
+        # Add optional batch configuration parameters
+        for param in [
+            "app_name",
+            "driver_cores",
+            "driver_memory",
+            "worker_cores",
+            "worker_memory",
+        ]:
+            value = getattr(args, param, None)
+            if value is not None:
+                batch_kwargs[param] = value
 
         hl.init(**batch_kwargs)
     else:
@@ -866,6 +839,19 @@ def main(args):
             ),
         )
     hl.default_reference("GRCh38")
+
+
+def main(args):
+    """Generate v5 frequency data."""
+    environment = args.environment
+    data_test = args.data_test
+    runtime_test = args.runtime_test
+    use_all_sites_ans = args.use_all_sites_ans
+    test = data_test or runtime_test
+    test_partitions = args.test_partitions
+    overwrite = args.overwrite
+
+    _initialize_hail(args)
 
     try:
         logger.info("Running generate_frequency.py...")
@@ -935,15 +921,11 @@ def main(args):
                 test=test, data_type="genomes", subset="gnomad"
             )
             aou_freq_input = get_freq(test=test, data_type="genomes", subset="aou")
-            # Note: gnomAD freq table now contains embedded age histograms
-            aou_age_hist_input = get_freq(
-                test=test, data_type="genomes", subset="aou"
-            )  # Placeholder for AoU age hist
 
             check_resource_existence(
                 input_step_resources={
                     "process-gnomad": [gnomad_freq_input],
-                    "process-aou": [aou_freq_input, aou_age_hist_input],
+                    "process-aou": [aou_freq_input],
                 }
             )
 
@@ -960,6 +942,7 @@ def main(args):
                 age_hist_hom=aou_freq_ht.ht().age_hists.age_hist_hom,
             )
 
+            # TODO: 11/18 Start Here
             merged_freq_ht, merged_age_hist_ht = merge_gnomad_and_aou_frequencies(
                 gnomad_freq_ht,
                 aou_freq_ht,
@@ -978,102 +961,118 @@ def main(args):
             logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
 
-            # Note: Age histograms are now embedded in the merged frequency table
-            logger.info("Age histograms are embedded in the merged frequency table.")
-
     finally:
         hl.copy_log(get_logging_path("v5_frequency", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Generate frequency data for gnomAD v5."
+    )
+
+    # General arguments
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
-    parser.add_argument(
+
+    # Test/debug arguments
+    test_group = parser.add_argument_group("testing options")
+    test_group.add_argument(
         "--data-test",
         help="Filter to the first N partitions of full VDS for testing (N controlled by --test-partitions).",
         action="store_true",
     )
-    parser.add_argument(
+    test_group.add_argument(
         "--runtime-test",
         help="Load test dataset and filter to test partitions.",
         action="store_true",
     )
-    parser.add_argument(
-        "--process-gnomad",
-        help="Process gnomAD dataset for frequency calculations.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--process-aou",
-        help="Process All of Us dataset for frequency calculations.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--use-all-sites-ans",
-        help="Use all sites ANs in frequency calculations to avoid a densify.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--merge-datasets",
-        help="Merge frequency data from both gnomAD and AoU datasets.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--environment",
-        help="Environment to run in.",
-        choices=["rwb", "batch", "dataproc"],
-        default="rwb",
-    )
-    parser.add_argument(
-        "--gcp-billing-project",
-        type=str,
-        default="broad-mpg-gnomad",
-        help="Google Cloud billing project for reading requester pays buckets.",
-    )
-    parser.add_argument(
+    test_group.add_argument(
         "--test-partitions",
         type=int,
         default=2,
         help="Number of partitions to use in test mode. Default is 2.",
     )
-    parser.add_argument(
+
+    # Processing step arguments
+    processing_group = parser.add_argument_group("processing steps")
+    processing_group.add_argument(
+        "--process-gnomad",
+        help="Process gnomAD dataset for frequency calculations.",
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--process-aou",
+        help="Process All of Us dataset for frequency calculations.",
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--merge-datasets",
+        help="Merge frequency data from both gnomAD and AoU datasets.",
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--use-all-sites-ans",
+        help="Use all sites ANs in frequency calculations to avoid a densify.",
+        action="store_true",
+    )
+
+    # Environment configuration
+    env_group = parser.add_argument_group("environment configuration")
+    env_group.add_argument(
+        "--environment",
+        help="Environment to run in.",
+        choices=["rwb", "batch", "dataproc"],
+        default="rwb",
+    )
+    env_group.add_argument(
         "--tmp-dir-days",
         type=int,
         default=4,
         help="Number of days for temp directory retention. Default is 4.",
     )
-    parser.add_argument(
+    env_group.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        default="broad-mpg-gnomad",
+        help="Google Cloud billing project for reading requester pays buckets.",
+    )
+
+    # Batch-specific configuration
+    batch_group = parser.add_argument_group(
+        "batch configuration",
+        "Optional parameters for batch/QoB backend (only used when --environment=batch)",
+    )
+    batch_group.add_argument(
         "--app-name",
         type=str,
         default=None,
-        help="Job name for batch/QoB backend. Default is None.",
+        help="Job name for batch/QoB backend.",
     )
-    parser.add_argument(
+    batch_group.add_argument(
         "--driver-cores",
         type=int,
         default=None,
-        help="Number of cores for driver node in batch/QoB. Default is None.",
+        help="Number of cores for driver node.",
     )
-    parser.add_argument(
-        "--worker-memory",
-        type=str,
-        default=None,
-        help="Memory type for worker nodes in batch/QoB (e.g., 'highmem'). Default is None.",
-    )
-    parser.add_argument(
-        "--worker-cores",
-        type=int,
-        default=None,
-        help="Number of cores for worker nodes in batch/QoB. Default is None.",
-    )
-    parser.add_argument(
+    batch_group.add_argument(
         "--driver-memory",
         type=str,
         default=None,
-        help="Memory type for driver node in batch/QoB (e.g., 'highmem'). Default is None.",
+        help="Memory type for driver node (e.g., 'highmem').",
+    )
+    batch_group.add_argument(
+        "--worker-cores",
+        type=int,
+        default=None,
+        help="Number of cores for worker nodes.",
+    )
+    batch_group.add_argument(
+        "--worker-memory",
+        type=str,
+        default=None,
+        help="Memory type for worker nodes (e.g., 'highmem').",
     )
 
     return parser
