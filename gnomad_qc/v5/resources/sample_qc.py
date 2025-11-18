@@ -678,7 +678,7 @@ def dense_trios(
     Get the VersionedMatrixTableResource for the dense trio MatrixTable.
 
     .. note::
-        Sample IDs in this MT will contain 'aou_' prefix.
+        Sample IDs in this MT will contain ``'aou_'`` prefix.
 
     :param split: Whether to get the resource for the split trio MatrixTable.
     :param test: Whether to use a tmp path for a test resource.
