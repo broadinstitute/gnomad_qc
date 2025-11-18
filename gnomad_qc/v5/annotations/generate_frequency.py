@@ -574,8 +574,8 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.VariantDataset:
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
     aou_vmt = aou_vmt.annotate_globals(
-        freq_meta=group_membership_globals().freq_meta,
-        freq_meta_sample_count=group_membership_globals().freq_meta_sample_count,
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
 
     # Add adj annotation required by annotate_freq
@@ -710,15 +710,13 @@ def process_aou_dataset(
 def merge_gnomad_and_aou_frequencies(
     gnomad_freq_ht: hl.Table,
     aou_freq_ht: hl.Table,
-    test: bool = False,
 ) -> hl.Table:
     """
     Merge frequency data and age histograms from gnomAD and All of Us datasets.
 
-    :param gnomad_freq_ht: Frequency Tale for gnomAD.
-    :param aou_freq_ht: Frequency Table for AoU.
-    :param test: Whether to run in test mode.
-    :return: Merged frequency Table.
+    :param gnomad_freq_ht: Frequency Table for gnomAD (already loaded).
+    :param aou_freq_ht: Frequency Table for AoU (already loaded).
+    :return: Merged frequency Table with combined frequencies and histograms.
     """
     logger.info("Merging frequency data and age histograms from both datasets...")
 
