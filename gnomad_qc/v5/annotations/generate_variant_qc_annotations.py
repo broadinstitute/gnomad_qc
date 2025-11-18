@@ -8,8 +8,9 @@ from gnomad.sample_qc.relatedness import filter_to_trios
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
-from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
+from gnomad_qc.v5.resources.sample_qc import pedigree, relatedness
 from gnomad_qc.v5.sample_qc.identify_trios import filter_relatedness_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -79,6 +80,13 @@ def main(args):
 
     overwrite = args.overwrite
     test = args.test_n_partitions
+
+    # NOTE: VDS will have 'aou_' prefix on sample IDs.
+    # TODO: Add high quality only filter.
+    vds = get_aou_vds(
+        filter_partitions=range(2) if test else None,
+        annotate_meta=True,
+    )
 
     try:
         if args.generate_trio_stats:
