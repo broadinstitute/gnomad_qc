@@ -7,7 +7,9 @@ import hail as hl
 from gnomad.sample_qc.relatedness import filter_to_trios
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
+from gnomad_qc.v5.resources.annotations import get_trio_stats
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
 from gnomad_qc.v5.resources.sample_qc import pedigree, relatedness
@@ -80,6 +82,7 @@ def main(args):
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
+    test = test_n_partitions is not None
 
     # NOTE: VDS will have 'aou_' prefix on sample IDs.
     vds = get_aou_vds(
@@ -90,7 +93,15 @@ def main(args):
 
     try:
         if args.generate_trio_stats:
-            pass
+            trio_stats_ht_path = get_trio_stats(test=test).path
+            check_resource_existence(
+                output_step_resources={"trio_stats_ht": trio_stats_ht_path}
+            )
+            ht = run_generate_trio_stats(
+                vds, pedigree(test=test).pedigree(), pedigree(test=test).ht()
+            )
+            ht.write(trio_stats_ht_path, overwrite=overwrite)
+
         if args.generate_sibling_stats:
             pass
 
