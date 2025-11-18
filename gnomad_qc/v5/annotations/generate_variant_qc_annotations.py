@@ -48,8 +48,7 @@ def run_generate_trio_stats(
 
     # Create trio matrix and generate trio stats.
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
-    # TODO: Check why this is False when we filter to bi-allelics above.
-    return generate_trio_stats(mt, bi_allelic_only=False)
+    return generate_trio_stats(mt)
 
 
 def run_generate_sib_stats(
