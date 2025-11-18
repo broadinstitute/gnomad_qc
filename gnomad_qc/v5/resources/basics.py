@@ -143,6 +143,8 @@ def get_aou_vds(
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+        If `filter_samples` contains sample IDs with collisions with gnomAD samples,
+        `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
