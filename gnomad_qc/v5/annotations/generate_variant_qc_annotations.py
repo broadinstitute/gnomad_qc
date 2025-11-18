@@ -9,10 +9,14 @@ from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
-from gnomad_qc.v5.resources.annotations import get_trio_stats
+from gnomad_qc.v5.resources.annotations import get_sib_stats, get_trio_stats
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
-from gnomad_qc.v5.resources.sample_qc import pedigree, relatedness
+from gnomad_qc.v5.resources.sample_qc import (
+    finalized_outlier_filtering,
+    pedigree,
+    relatedness,
+)
 from gnomad_qc.v5.sample_qc.identify_trios import filter_relatedness_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -90,9 +94,11 @@ def main(args):
         filter_partitions=range(test_n_partitions) if test_n_partitions else None,
         annotate_meta=True,
     )
+    mt = vds.variant_data
 
     try:
         if args.generate_trio_stats:
+            logger.info("Generating trio stats...")
             trio_stats_ht_path = get_trio_stats(test=test).path
             check_resource_existence(
                 output_step_resources={"trio_stats_ht": trio_stats_ht_path}
@@ -103,7 +109,15 @@ def main(args):
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.generate_sibling_stats:
-            pass
+            logger.info("Generating sibling stats...")
+            sib_stats_ht_path = get_sib_stats(test=test).path
+            check_resource_existence(
+                output_step_resources={"sib_stats_ht": sib_stats_ht_path}
+            )
+            ht = run_generate_sib_stats(
+                mt, relatedness().ht(), finalized_outlier_filtering().ht()
+            )
+            ht.write(sib_stats_ht_path, overwrite=overwrite)
 
     finally:
         logger.info("Copying log to logging bucket...")
