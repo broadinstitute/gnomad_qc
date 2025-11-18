@@ -79,12 +79,12 @@ def main(args):
     hl.default_reference("GRCh38")
 
     overwrite = args.overwrite
-    test = args.test_n_partitions
+    test_n_partitions = args.test_n_partitions
 
     # NOTE: VDS will have 'aou_' prefix on sample IDs.
     vds = get_aou_vds(
         high_quality_only=True,
-        filter_partitions=range(2) if test else None,
+        filter_partitions=range(test_n_partitions) if test_n_partitions else None,
         annotate_meta=True,
     )
 
