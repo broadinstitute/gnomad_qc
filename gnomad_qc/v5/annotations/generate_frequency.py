@@ -299,17 +299,21 @@ def _subtract_consent_frequencies_and_age_histograms(
     logger.info("Subtracting consent frequencies...")
     updated_freq_expr, updated_freq_meta, updated_sample_counts = merge_freq_arrays(
         [joined_freq_ht.freq, joined_freq_ht.consent_freq],
-        [joined_freq_ht.freq_meta, joined_freq_ht.consent_freq_meta],
+        [
+            joined_freq_ht.index_globals().freq_meta,
+            joined_freq_ht.index_globals().consent_freq_meta,
+        ],
         operation="diff",
         count_arrays={
             "freq_meta_sample_count": [
-                joined_freq_ht.freq_meta_sample_count,
-                joined_freq_ht.consent_freq_meta_sample_count,
+                joined_freq_ht.index_globals().freq_meta_sample_count,
+                joined_freq_ht.index_globals().consent_freq_meta_sample_count,
             ]
         },
     )
     # Update the frequency table with all changes
-    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr).annotate_globals(
+    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
+    joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=updated_freq_meta,
         freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
@@ -560,6 +564,7 @@ def _prepare_aou_vds(
     :param test: Whether running in test mode.
     :return: Prepared AoU VariantDataset
     """
+    logger.info(f"Using test mode: {test}")
     aou_vmt = aou_vds.variant_data
     # Use existing AoU group membership table and filter to variant samples
     logger.info(
@@ -570,9 +575,9 @@ def _prepare_aou_vds(
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here
     aou_vmt = aou_vmt.annotate_cols(
-        sex_karyotype=aou_vmt.meta.sex_karyotype,
-        gen_anc=aou_vmt.meta.gen_anc,
-        age=aou_vmt.meta.age,
+        sex_karyotype=aou_vmt.sex_karyotype,
+        gen_anc=aou_vmt.gen_anc,
+        age=aou_vmt.age,
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
     aou_vmt = aou_vmt.annotate_globals(
@@ -709,6 +714,7 @@ def process_aou_dataset(
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     logger.info("Processing All of Us dataset...")
+    logger.info(f"Using test mode: {test}")
     aou_vds = get_aou_vds(release_only=True, test=test)
     aou_vds = _prepare_aou_vds(aou_vds, test=test)
 
@@ -904,7 +910,7 @@ def _initialize_hail(args) -> None:
         batch_kwargs = {
             "backend": "batch",
             "log": get_logging_path("v5_frequency_generation", environment="batch"),
-            "tmp_dir": f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day",
+            "tmp_dir": f"gs://{GNOMAD_TMP_BUCKET}-4day/tmp/frequency_generation",
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],
         }
@@ -971,6 +977,7 @@ def main(args):
 
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
+            logger.info(f"Using test mode: {test}")
 
             aou_freq = get_freq(test=test, data_type="genomes", data_set="aou")
 
