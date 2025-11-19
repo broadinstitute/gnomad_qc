@@ -260,10 +260,9 @@ def _calculate_consent_frequencies_and_age_histograms(
         select_fields=["hists_fields"],
     )
 
-    # Extract age_hists from hists_fields struct
     consent_freq_ht = consent_freq_ht.transmute(
         age_hists=consent_freq_ht.hists_fields.age_hists,
-    ).drop("hists_fields")
+    )
 
     return consent_freq_ht.checkpoint(new_temp_file("consent_freq_and_hists", "ht"))
 
@@ -552,11 +551,14 @@ def mt_hists_fields(
     )
 
 
-def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
+def _prepare_aou_vds(
+    aou_vds: hl.vds.VariantDataset, test: bool = False
+) -> hl.vds.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
 
     :param aou_vds: AoU VariantDataset
+    :param test: Whether running in test mode.
     :return: Prepared AoU VariantDataset
     """
     aou_vmt = aou_vds.variant_data
@@ -564,7 +566,7 @@ def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = group_membership(data_set="aou").ht()
+    group_membership_ht = group_membership(test=test, data_set="aou").ht()
     group_membership_globals = group_membership_ht.index_globals()
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here
@@ -611,7 +613,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         )
     )
     logger.info("Annotating frequencies with all sites ANs...")
-    group_membership_ht = group_membership(data_set="aou").ht()
+    group_membership_ht = group_membership(test=test, data_set="aou").ht()
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
             "GT",
