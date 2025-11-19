@@ -547,7 +547,9 @@ def mt_hists_fields(
         split_adj_and_raw=True,
     )
     qual_hists = qual_hists.annotate(
-        **all_sites_ans_ht[mt.row_key].qual_hists,
+        **all_sites_ans_ht[
+            mt.locus
+        ].qual_hists,  # Is this correct? Are these by locus, not allele?
     )
     return hl.struct(
         qual_hists=qual_hists,
