@@ -62,7 +62,7 @@ aou_test_dataset = VariantDatasetResource(
 def qc_temp_prefix(
     version: str = CURRENT_VERSION,
     environment: str = "dataproc",
-    days: Optional[int] = 4,
+    days: Optional[int] = None,
 ) -> str:
     """
     Return path to temporary QC bucket.
