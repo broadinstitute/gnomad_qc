@@ -576,9 +576,9 @@ def _prepare_aou_vds(
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here
     aou_vmt = aou_vmt.annotate_cols(
-        sex_karyotype=aou_vmt.sex_karyotype,
-        gen_anc=aou_vmt.gen_anc,
-        age=aou_vmt.age,
+        sex_karyotype=aou_vmt.meta.sex_karyotype,
+        gen_anc=aou_vmt.meta.gen_anc,
+        age=aou_vmt.meta.age,
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
     aou_vmt = aou_vmt.annotate_globals(

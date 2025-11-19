@@ -60,19 +60,27 @@ aou_test_dataset = VariantDatasetResource(
 
 
 def qc_temp_prefix(
-    version: str = CURRENT_VERSION, environment: str = "dataproc"
+    version: str = CURRENT_VERSION,
+    environment: str = "dataproc",
+    days: Optional[int] = None,
 ) -> str:
     """
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
     :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param days: Number of days to keep temporary data. Defaults to None.
     :return: Path to bucket with temporary QC data.
     """
+    if days not in [None, 4, 30]:
+        raise ValueError("Days must be either None, 4, or 30.")
+
     if environment == "rwb":
-        env_bucket = f"{WORKSPACE_BUCKET}/tmp"
+        env_bucket = (
+            f"{WORKSPACE_BUCKET}/tmp/{f'{days}_day' if days is not None else ''}"
+        )
     elif environment == "dataproc":
-        env_bucket = GNOMAD_TMP_BUCKET
+        env_bucket = f"{GNOMAD_TMP_BUCKET}-{f'{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
@@ -131,6 +139,7 @@ def get_aou_vds(
     entries_to_keep: Optional[List[str]] = None,
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
+    add_project_prefix: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -142,6 +151,8 @@ def get_aou_vds(
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
+        If `filter_samples` contains sample IDs with collisions with gnomAD samples,
+        `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
@@ -155,6 +166,7 @@ def get_aou_vds(
     :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. 'GT') instead of the local entries (e.g. 'LGT') to keep.
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
+    :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
@@ -206,17 +218,6 @@ def get_aou_vds(
         keep=False,
     )
 
-    if filter_samples:
-        logger.info(
-            "Filtering to %s samples...",
-            (
-                len(filter_samples)
-                if isinstance(filter_samples, list)
-                else filter_samples.count()
-            ),
-        )
-        vds = hl.vds.filter_samples(vds, filter_samples)
-
     if naive_coalesce_partitions:
         vds = hl.vds.VariantDataset(
             vds.reference_data.naive_coalesce(naive_coalesce_partitions),
@@ -246,7 +247,7 @@ def get_aou_vds(
     vmt = vds.variant_data
     rmt = vds.reference_data
 
-    if release_only or annotate_meta:
+    if release_only or annotate_meta or add_project_prefix:
         meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
@@ -290,6 +291,22 @@ def get_aou_vds(
         logger.info("Filtering VDS to release samples only...")
         filter_expr = meta_ht.release
         vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if filter_samples:
+        logger.info(
+            "Filtering to %s samples...",
+            (
+                len(filter_samples)
+                if isinstance(filter_samples, list)
+                else filter_samples.count()
+            ),
+        )
+        logger.warning(
+            "This filter will not work correctly if `filter_samples` contains sample"
+            " IDs with collisions with gnomAD samples and `add_project_prefix` is not"
+            " set."
+        )
+        vds = hl.vds.filter_samples(vds, filter_samples)
 
     return vds
 
