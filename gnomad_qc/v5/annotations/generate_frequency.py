@@ -933,7 +933,7 @@ def _initialize_hail(args) -> None:
             tmp_dir=(
                 f"gs://{WORKSPACE_BUCKET}/tmp/{tmp_dir_days}_day"
                 if environment == "rwb"
-                else f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day"
+                else f"gs://{GNOMAD_TMP_BUCKET}-{tmp_dir_days}day/frequency_generation"
             ),
             default_reference="GRCh38",
         )
