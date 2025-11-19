@@ -60,19 +60,27 @@ aou_test_dataset = VariantDatasetResource(
 
 
 def qc_temp_prefix(
-    version: str = CURRENT_VERSION, environment: str = "dataproc"
+    version: str = CURRENT_VERSION,
+    environment: str = "dataproc",
+    days: Optional[int] = None,
 ) -> str:
     """
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
     :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param days: Number of days to keep temporary data. Defaults to None.
     :return: Path to bucket with temporary QC data.
     """
+    if days not in [None, 4, 30]:
+        raise ValueError("Days must be either None, 4, or 30.")
+
     if environment == "rwb":
-        env_bucket = f"{WORKSPACE_BUCKET}/tmp"
+        env_bucket = (
+            f"{WORKSPACE_BUCKET}/tmp/{f'{days}_day' if days is not None else ''}"
+        )
     elif environment == "dataproc":
-        env_bucket = GNOMAD_TMP_BUCKET
+        env_bucket = f"{GNOMAD_TMP_BUCKET}-{f'{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
