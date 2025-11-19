@@ -565,7 +565,6 @@ def finalized_outlier_filtering(
 
 ######################################################################
 # Trio identification resources
-# All sample IDs in resources below will contain ``'aou_'`` prefix.
 ######################################################################
 
 
@@ -677,6 +676,9 @@ def dense_trios(
 ) -> VersionedMatrixTableResource:
     """
     Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+
+    .. note::
+        All sample IDs in resources below will contain ``'aou_'`` prefix.
 
     :param split: Whether to get the resource for the split trio MatrixTable.
     :param test: Whether to use a tmp path for a test resource.
