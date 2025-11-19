@@ -85,6 +85,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
+    qc_temp_prefix,
 )
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
 
@@ -715,7 +716,7 @@ def process_aou_dataset(
     """
     logger.info("Processing All of Us dataset...")
     logger.info(f"Using test mode: {test}")
-    aou_vds = get_aou_vds(release_only=True, test=test)
+    aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
     aou_vds = _prepare_aou_vds(aou_vds, test=test)
 
     # Calculate frequencies and age histograms together
@@ -910,7 +911,9 @@ def _initialize_hail(args) -> None:
         batch_kwargs = {
             "backend": "batch",
             "log": get_logging_path("v5_frequency_generation", environment="batch"),
-            "tmp_dir": f"gs://{GNOMAD_TMP_BUCKET}-4day/tmp/frequency_generation",
+            "tmp_dir": (
+                f"{qc_temp_prefix(environment='dataproc', days=tmp_dir_days)}/frequency_generation"
+            ),
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],
         }
@@ -930,11 +933,7 @@ def _initialize_hail(args) -> None:
     else:
         hl.init(
             log=get_logging_path("v5_frequency_generation", environment=environment),
-            tmp_dir=(
-                f"gs://{WORKSPACE_BUCKET}/tmp/{tmp_dir_days}_day"
-                if environment == "rwb"
-                else f"gs://{GNOMAD_TMP_BUCKET}-{tmp_dir_days}day/frequency_generation"
-            ),
+            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}/frequency_generation",
             default_reference="GRCh38",
         )
     # hl.default_reference("GRCh38")
