@@ -577,8 +577,8 @@ def _prepare_aou_vds(
     # to adjust it here
     aou_vmt = aou_vmt.annotate_cols(
         sex_karyotype=aou_vmt.meta.sex_karyotype,
-        gen_anc=aou_vmt.meta.gen_anc,
-        age=aou_vmt.meta.age,
+        gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
+        age=aou_vmt.meta.project_meta.age,
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
     aou_vmt = aou_vmt.annotate_globals(
