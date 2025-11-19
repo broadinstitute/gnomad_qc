@@ -21,10 +21,11 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import (
     WORKSPACE_BUCKET,
+    add_project_prefix_to_sample_collisions,
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.meta import meta
+from gnomad_qc.v5.resources.meta import meta, sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
     duplicates,
@@ -217,6 +218,7 @@ def filter_ped(
 def create_dense_trio_mt(
     fam_ht: hl.Table,
     meta_ht: hl.Table,
+    sample_collisions: hl.Table,
     test: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
 ) -> hl.MatrixTable:
@@ -225,6 +227,7 @@ def create_dense_trio_mt(
 
     :param fam_ht: Table with family information.
     :param meta_ht: Table with metadata information.
+    :param sample_collisions: Table containing samples with ID collisions between AoU/gnomAD.
     :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
@@ -234,10 +237,12 @@ def create_dense_trio_mt(
     meta_ht = meta_ht.filter(
         meta_ht.high_quality & (meta_ht.project_meta.project == "aou")
     )
-    fam_ht = fam_ht.filter(
-        hl.is_defined(meta_ht[fam_ht.id])
-        & hl.is_defined(meta_ht[fam_ht.pat_id])
-        & hl.is_defined(meta_ht[fam_ht.mat_id])
+
+    # Add project prefix to `fam_ht`.
+    fam_ht = add_project_prefix_to_sample_collisions(
+        t=fam_ht,
+        sample_collisions=sample_collisions,
+        project="aou",
     )
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
@@ -286,7 +291,6 @@ def main(args):
 
         rel_ht = relatedness().ht()
         filter_ht = finalized_outlier_filtering().ht()
-        rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
         dup_ht_path = duplicates().path
         raw_ped_path = pedigree(finalized=False).path
         fake_ped_path = pedigree(finalized=False, fake=True).path
@@ -295,6 +299,11 @@ def main(args):
         filter_json_path = ped_filter_param_json_path(test=test)
         trios_path = trios(test=test).path
         dense_trio_mt_path = dense_trios(test=test).path
+
+        logger.info(
+            "Filtering relatedness HT to only include high quality AoU samples..."
+        )
+        rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
@@ -407,6 +416,7 @@ def main(args):
             dense_trio_mt = create_dense_trio_mt(
                 hl.import_fam(final_ped_path),
                 meta().ht(),
+                sample_collisions=sample_id_collisions.ht(),
                 test=test,
                 naive_coalesce_partitions=args.naive_coalesce_partitions,
             )
