@@ -4,7 +4,8 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.sample_qc.relatedness import filter_to_trios
+from gnomad.utils.annotations import bi_allelic_expr
+from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -13,6 +14,7 @@ from gnomad_qc.v5.resources.annotations import get_sib_stats, get_trio_stats
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
+    dense_trios,
     finalized_outlier_filtering,
     pedigree,
     relatedness,
@@ -25,31 +27,19 @@ logger.setLevel(logging.INFO)
 
 
 def run_generate_trio_stats(
-    vds: hl.vds.VariantDataset,
+    mt: hl.MatrixTable,
     fam_ped: hl.Pedigree,
-    fam_ht: hl.Table,
 ) -> hl.Table:
     """
     Generate trio transmission stats from a VariantDataset and pedigree info.
 
-    :param vds: VariantDataset to generate trio stats from.
+    :param mt: Dense trio MatrixTable.
     :param fam_ped: Pedigree containing trio info.
-    :param fam_ht: Table containing trio info.
     :return: Table containing trio stats.
     """
-    # Filter the VDS to autosomes and trios.
-    vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
-    vds = filter_to_trios(vds, fam_ht)
-
-    vmt = vds.variant_data
-    rmt = vds.reference_data
-
-    # Filter the variant data to bi-allelic sites.
-    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
-
-    # Densify and annotate adj.
-    vds = hl.vds.VariantDataset(reference_data=rmt, variant_data=vmt)
-    mt = hl.vds.to_dense_mt(vds)
+    # Filter to autosomes and bi-allelic sites, also annotate adj.
+    mt = filter_to_autosomes(mt)
+    mt = mt.filter_rows(bi_allelic_expr(mt))
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
 
@@ -103,12 +93,10 @@ def main(args):
             check_resource_existence(
                 output_step_resources={"trio_stats_ht": trio_stats_ht_path}
             )
-            fam_ht = pedigree(test=test).ht()
-            if test:
-                # Filter to first 100 samples for testing in RWB
-                # because densify in RWB is slow.
-                fam_ht = fam_ht.head(100)
-            ht = run_generate_trio_stats(vds, pedigree(test=test).pedigree(), fam_ht)
+
+            ht = run_generate_trio_stats(
+                dense_trios(test=test).mt(), pedigree(test=test).pedigree()
+            )
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.generate_sibling_stats:
