@@ -398,8 +398,6 @@ def main(args):
                 d.write(json.dumps(filters))
 
         if args.create_dense_trio_mt:
-            # TODO: Decide if we want to run this for v5.
-            # This was created for the v4 de novo release.
             logger.info("Creating dense trio MT...")
             logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")
             check_resource_existence(
