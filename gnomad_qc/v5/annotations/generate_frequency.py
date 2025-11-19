@@ -205,17 +205,19 @@ def _prepare_consent_vds(
 
 def _calculate_consent_frequencies_and_age_histograms(
     vds: hl.vds.VariantDataset,
+    test: bool = False,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vds: Prepared VDS with consent samples.
+    :param test: Whether running in test mode.
     :return: Table with freq and age_hists annotations for consent samples.
     """
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
     consent_sample_ids = set(mt.s.collect())
-    group_membership_ht = group_membership(data_set="gnomad").ht()
+    group_membership_ht = group_membership(test=test, data_set="gnomad").ht()
 
     logger.info(
         "Filtering group membership table to %s consent samples...",
@@ -455,7 +457,7 @@ def process_gnomad_dataset(
     )
 
     logger.info("Calculating frequencies and age histograms for consent samples...")
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds)
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
 
     logger.info("Subtracting consent frequencies and age histograms from v4...")
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
@@ -550,7 +552,7 @@ def mt_hists_fields(
     )
 
 
-def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.VariantDataset:
+def _prepare_aou_vds(aou_vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
 
@@ -926,8 +928,9 @@ def _initialize_hail(args) -> None:
                 if environment == "rwb"
                 else f"gs://{GNOMAD_TMP_BUCKET}/tmp/{tmp_dir_days}_day"
             ),
+            default_reference="GRCh38",
         )
-    hl.default_reference("GRCh38")
+    # hl.default_reference("GRCh38")
 
 
 def main(args):
