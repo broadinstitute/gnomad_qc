@@ -309,9 +309,7 @@ def _subtract_consent_frequencies_and_age_histograms(
         },
     )
     # Update the frequency table with all changes
-    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
-
-    joined_freq_ht = joined_freq_ht.annotate_globals(
+    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr).annotate_globals(
         freq_meta=updated_freq_meta,
         freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
@@ -712,7 +710,7 @@ def process_aou_dataset(
     """
     logger.info("Processing All of Us dataset...")
     aou_vds = get_aou_vds(release_only=True, test=test)
-    aou_vds = _prepare_aou_vds(aou_vds)
+    aou_vds = _prepare_aou_vds(aou_vds, test=test)
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
