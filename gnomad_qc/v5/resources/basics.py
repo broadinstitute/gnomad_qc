@@ -69,7 +69,7 @@ def qc_temp_prefix(
 
     :param version: Version of annotation path to return.
     :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
-    :param days: Number of days to keep temporary data. Defaults to 4.
+    :param days: Number of days to keep temporary data. Defaults to None.
     :return: Path to bucket with temporary QC data.
     """
     if days not in [None, 4, 30]:
