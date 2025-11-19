@@ -308,6 +308,10 @@ def _subtract_consent_frequencies_and_age_histograms(
             ]
         },
     )
+    joined_freq_ht = joined_freq_ht.annotate_globals(
+        freq_meta=updated_freq_meta,
+        freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
+    )
 
     logger.info("Subtracting consent age histograms...")
     updated_age_hist_het = merge_histograms(
@@ -334,11 +338,6 @@ def _subtract_consent_frequencies_and_age_histograms(
                 age_hist_hom=updated_age_hist_hom,
             )
         ),
-    )
-
-    joined_freq_ht = joined_freq_ht.annotate_globals(
-        freq_meta=updated_freq_meta,
-        freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
     )
 
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq_and_hists", "ht"))
@@ -749,8 +748,8 @@ def merge_gnomad_and_aou_frequencies(
     # Annotate globals from AoU frequency table (extract as literals to avoid
     # source mismatch)
     joined_freq_ht = joined_freq_ht.annotate_globals(
-        aou_freq_meta=aou_freq_ht.freq_meta,
-        aou_freq_meta_sample_count=aou_freq_ht.freq_meta_sample_count,
+        aou_freq_meta=aou_freq_ht.index_globals().freq_meta,
+        aou_freq_meta_sample_count=aou_freq_ht.index_globals().freq_meta_sample_count,
     )
 
     merged_freq, merged_meta, sample_counts = merge_freq_arrays(
