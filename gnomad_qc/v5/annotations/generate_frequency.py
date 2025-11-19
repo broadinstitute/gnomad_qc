@@ -308,6 +308,9 @@ def _subtract_consent_frequencies_and_age_histograms(
             ]
         },
     )
+    # Update the frequency table with all changes
+    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
+
     joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=updated_freq_meta,
         freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
@@ -331,7 +334,6 @@ def _subtract_consent_frequencies_and_age_histograms(
 
     # Update the frequency table with all changes
     joined_freq_ht = joined_freq_ht.annotate(
-        freq=updated_freq_expr,
         histograms=joined_freq_ht.histograms.annotate(
             age_hists=joined_freq_ht.histograms.age_hists.annotate(
                 age_hist_het=updated_age_hist_het,
