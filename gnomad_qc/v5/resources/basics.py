@@ -80,7 +80,7 @@ def qc_temp_prefix(
             f"{WORKSPACE_BUCKET}/tmp/{f'{days}_day' if days is not None else ''}"
         )
     elif environment == "dataproc":
-        env_bucket = f"{GNOMAD_TMP_BUCKET}-{f'{days}day' if days is not None else ''}"
+        env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
@@ -108,7 +108,10 @@ def get_checkpoint_path(
 
 
 def get_logging_path(
-    name: str, version: str = CURRENT_VERSION, environment: str = "dataproc"
+    name: str,
+    version: str = CURRENT_VERSION,
+    environment: str = "dataproc",
+    tmp_dir_days: Optional[int] = None,
 ) -> str:
     """
     Create a path for Hail log files.
@@ -116,9 +119,10 @@ def get_logging_path(
     :param name: Name of log file.
     :param version: Version of annotation path to return.
     :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param tmp_dir_days: Number of days to keep temporary data. Defaults to None.
     :return: Output log path.
     """
-    return f"{qc_temp_prefix(version, environment)}{name}.log"
+    return f"{qc_temp_prefix(version, environment, tmp_dir_days)}{name}.log"
 
 
 def get_aou_vds(
