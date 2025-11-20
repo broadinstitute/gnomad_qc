@@ -11,7 +11,11 @@ from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
 from gnomad_qc.v5.resources.annotations import get_sib_stats, get_trio_stats
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
+from gnomad_qc.v5.resources.basics import (
+    WORKSPACE_BUCKET,
+    get_aou_vds,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -68,10 +72,17 @@ def run_generate_sib_stats(
 
 def main(args):
     """Generate all variant annotations needed for variant QC."""
-    hl.init(
-        tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/4_day",
-        log="generate_variant_qc_annotations.log",
-    )
+    if args.rwb:
+        environment = "rwb"
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
+    else:
+        hl.init(
+            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/4_day",
+            log="generate_variant_qc_annotations.log",
+        )
     hl.default_reference("GRCh38")
 
     overwrite = args.overwrite
@@ -118,6 +129,11 @@ def main(args):
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Create script argument parser."""
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--rwb",
+        help="Run the script in RWB environment.",
+        action="store_true",
+    )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument(
         "--test-n-partitions",
