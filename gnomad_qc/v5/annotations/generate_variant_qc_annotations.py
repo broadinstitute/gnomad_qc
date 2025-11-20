@@ -17,13 +17,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
 )
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET
-from gnomad_qc.v5.resources.sample_qc import (
-    dense_trios,
-    finalized_outlier_filtering,
-    pedigree,
-    relatedness,
-)
-from gnomad_qc.v5.sample_qc.identify_trios import filter_relatedness_ht
+from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_variant_qc_annotations")
@@ -41,33 +35,9 @@ def run_generate_trio_stats(
     :param fam_ped: Pedigree containing trio info.
     :return: Table containing trio stats.
     """
-    # Filter to autosomes and bi-allelic sites, also annotate adj.
-    mt = filter_to_autosomes(mt)
-    mt = mt.filter_rows(bi_allelic_expr(mt))
-    mt = hl.experimental.sparse_split_multi(mt)
-    mt = annotate_adj(mt)
-
     # Create trio matrix and generate trio stats.
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     return generate_trio_stats(mt)
-
-
-def run_generate_sib_stats(
-    mt: hl.MatrixTable,
-    rel_ht: hl.Table,
-    filter_ht: hl.Table,
-) -> hl.Table:
-    """
-    Generate stats for the number of alternate alleles in common between sibling pairs.
-
-    :param mt: MatrixTable to generate sibling stats from.
-    :param rel_ht: Table containing relatedness info for pairs in `mt`.
-    :param filter_ht: Table containing outlier filtering info for samples in `mt`.
-    :return: Table containing sibling stats.
-    """
-    # Filter relatedness Table to non-filtered AoU genomes.
-    rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
-    return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
 
 
 def main(args):
@@ -97,6 +67,8 @@ def main(args):
         annotate_meta=True,
     )
     mt = vds.variant_data
+    mt = hl.experimental.sparse_split_multi(mt)
+    mt = annotate_adj(mt)
 
     try:
         if args.generate_trio_stats:
@@ -117,9 +89,7 @@ def main(args):
             check_resource_existence(
                 output_step_resources={"sib_stats_ht": sib_stats_ht_path}
             )
-            ht = run_generate_sib_stats(
-                mt, relatedness().ht(), finalized_outlier_filtering().ht()
-            )
+            ht = generate_sib_stats(mt, relatedness().ht())
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
     finally:
