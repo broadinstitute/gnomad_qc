@@ -247,9 +247,16 @@ def create_dense_trio_mt(
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
     if test:
-        # Filter to first 100 samples for testing in RWB
-        # because densify in RWB is slow.
-        meta_ht = meta_ht.head(100)
+        # Filter to the first 15 trios for testing.
+        fam_ht = fam_ht.head(15)
+        fam_ht_list = fam_ht.collect()
+        trio_samples = set()
+        for row in fam_ht_list:
+            trio_samples.add(row.id)
+            trio_samples.add(row.pat_id)
+            trio_samples.add(row.mat_id)
+
+        meta_ht = meta_ht.filter(hl.literal(trio_samples).contains(meta_ht.s))
 
     # v4 used `entries_to_keep` to filter non `gvcf_info` entries, but
     # AoU VDS only has GQ, RGQ, PS, LGT, LAD, LA, FT entries.
