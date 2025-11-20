@@ -243,6 +243,7 @@ def create_dense_trio_mt(
         t=fam_ht,
         sample_collisions=sample_collisions,
         project="aou",
+        sample_id_field="id",
     )
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
