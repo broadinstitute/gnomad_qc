@@ -77,10 +77,10 @@ def qc_temp_prefix(
 
     if environment == "rwb":
         env_bucket = (
-            f"{WORKSPACE_BUCKET}/tmp/{f'{days}_day' if days is not None else ''}"
+            f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
         )
     elif environment == "dataproc":
-        env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
+        env_bucket = f"{GNOMAD_TMP_BUCKET}-{f'{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
