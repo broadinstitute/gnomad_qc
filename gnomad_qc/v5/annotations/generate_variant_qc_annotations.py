@@ -44,7 +44,7 @@ def run_generate_trio_stats(
     # Filter to autosomes and bi-allelic sites, also annotate adj.
     mt = filter_to_autosomes(mt)
     mt = mt.filter_rows(bi_allelic_expr(mt))
-    mt = mt.transmute_entries(GT=mt.LGT)
+    mt = hl.experimental.sparse_split_multi(mt)
     mt = annotate_adj(mt)
 
     # Create trio matrix and generate trio stats.
