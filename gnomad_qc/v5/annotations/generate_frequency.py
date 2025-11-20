@@ -934,7 +934,11 @@ def _initialize_hail(args) -> None:
         hl.init(**batch_kwargs)
     else:
         hl.init(
-            log=get_logging_path("v5_frequency_generation", environment=environment),
+            log=get_logging_path(
+                "v5_frequency_generation",
+                environment=environment,
+                tmp_dir_days=tmp_dir_days,
+            ),
             tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}/frequency_generation",
             default_reference="GRCh38",
         )
