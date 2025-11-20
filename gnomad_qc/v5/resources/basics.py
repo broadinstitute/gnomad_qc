@@ -60,19 +60,27 @@ aou_test_dataset = VariantDatasetResource(
 
 
 def qc_temp_prefix(
-    version: str = CURRENT_VERSION, environment: str = "dataproc"
+    version: str = CURRENT_VERSION,
+    environment: str = "dataproc",
+    days: Optional[int] = None,
 ) -> str:
     """
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
     :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
+    :param days: Number of days to keep temporary data. Defaults to None.
     :return: Path to bucket with temporary QC data.
     """
+    if days not in [None, 4, 30]:
+        raise ValueError("Days must be either None, 4, or 30.")
+
     if environment == "rwb":
-        env_bucket = f"{WORKSPACE_BUCKET}/tmp"
+        env_bucket = (
+            f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
+        )
     elif environment in ("dataproc", "batch"):
-        env_bucket = GNOMAD_TMP_BUCKET
+        env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb', 'dataproc', or 'batch'."
@@ -100,7 +108,10 @@ def get_checkpoint_path(
 
 
 def get_logging_path(
-    name: str, version: str = CURRENT_VERSION, environment: str = "dataproc"
+    name: str,
+    version: str = CURRENT_VERSION,
+    environment: str = "dataproc",
+    tmp_dir_days: Optional[int] = None,
 ) -> str:
     """
     Create a path for Hail log files.
@@ -108,9 +119,10 @@ def get_logging_path(
     :param name: Name of log file.
     :param version: Version of annotation path to return.
     :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
+    :param tmp_dir_days: Number of days to keep temporary data. Defaults to None.
     :return: Output log path.
     """
-    return f"{qc_temp_prefix(version, environment)}{name}.log"
+    return f"{qc_temp_prefix(version, environment, tmp_dir_days)}{name}.log"
 
 
 def get_aou_vds(
