@@ -79,6 +79,7 @@ def main(args):
             tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
         )
     else:
+        environment = "batch"
         hl.init(
             tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/4_day",
             log="generate_variant_qc_annotations.log",
@@ -123,7 +124,9 @@ def main(args):
 
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("generate_variant_qc_annotations.log"))
+        hl.copy_log(
+            get_logging_path("generate_variant_qc_annotations", environment=environment)
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
