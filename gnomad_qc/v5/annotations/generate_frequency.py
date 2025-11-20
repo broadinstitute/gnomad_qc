@@ -785,8 +785,8 @@ def merge_gnomad_and_aou_frequencies(
     # Join all histogram data from both datasets
     # Both datasets now have the same structure: histograms.{qual_hists,
     # raw_qual_hists, age_hists}
-    joined_hist_ht = gnomad_freq_ht.annotate(
-        aou_histograms=aou_freq_ht[gnomad_freq_ht.key].histograms,
+    joined_hist_ht = merged_freq_ht.annotate(
+        aou_histograms=aou_freq_ht[merged_freq_ht.key].histograms,
     )
 
     # Merge age histograms
