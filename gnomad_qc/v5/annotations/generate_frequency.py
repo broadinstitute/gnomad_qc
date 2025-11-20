@@ -954,6 +954,7 @@ def main(args):
     test = data_test or runtime_test
     test_partitions = args.test_partitions
     overwrite = args.overwrite
+    tmp_dir_days = args.tmp_dir_days
 
     _initialize_hail(args)
 
@@ -1038,7 +1039,11 @@ def main(args):
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
 
     finally:
-        hl.copy_log(get_logging_path("v5_frequency", environment=environment))
+        hl.copy_log(
+            get_logging_path(
+                "v5_frequency", environment=environment, tmp_dir_days=tmp_dir_days
+            )
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
