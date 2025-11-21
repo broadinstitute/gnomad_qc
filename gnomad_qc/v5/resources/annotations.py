@@ -2,7 +2,7 @@
 
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
-from gnomad_qc.v5.resources.basics import get_checkpoint_path, qc_temp_prefix
+from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ANNOTATION_VERSIONS,
     CURRENT_ANNOTATION_VERSION,
@@ -151,7 +151,7 @@ def get_info_ht(test: bool = False) -> VersionedTableResource:
 
 
 # Header for AoU annotation sites only VCF. This is needed for proper import of the sites only vcf as the QUALapprox annotation
-# is stated in the previous header as an int but it is actaully a float.
+# is stated in the previous header as an int but it is actually a float.
 aou_vcf_header = (
     f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
 )

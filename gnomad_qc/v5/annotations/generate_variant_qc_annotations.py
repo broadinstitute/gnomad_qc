@@ -41,7 +41,7 @@ def create_info_ht(
 
     logger.info("Reformatting annotations...")
 
-    # List ingle-element array annotations.
+    # List single-element array annotations.
     array_annotations = ["AS_FS", "AS_MQ", "AS_MQRankSum", "AS_ReadPosRankSum"]
 
     # Build a dictionary of info updates.
@@ -50,7 +50,7 @@ def create_info_ht(
     info_updates = {
         # Convert single-element array annotations to float64.
         **{ann: hl.float64(ht.info[ann][0]) for ann in array_annotations},
-        # Extract singular element from  AS_QD array and convert to int32.
+        # Extract singular element from AS_QD array and convert to int32.
         "AS_QD": hl.int32(ht.info.AS_QD[0]),
         "AS_QUALapprox": hl.int64(ht.info.QUALapprox),
         "AS_VarDP": ht.info.VarDP,
@@ -97,7 +97,7 @@ def main(args):
             ht = create_info_ht(
                 vcf_path=aou_annotated_sites_only_vcf,
                 header_path=aou_vcf_header,
-                lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_priorf,
+                lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
             )
             ht.write(info_ht_path, overwrite=overwrite)
     finally:
