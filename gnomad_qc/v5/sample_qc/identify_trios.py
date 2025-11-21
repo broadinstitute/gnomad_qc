@@ -238,13 +238,7 @@ def create_dense_trio_mt(
         meta_ht.high_quality & (meta_ht.project_meta.project == "aou")
     )
 
-    # Add project prefix to `fam_ht`.
-    fam_ht = add_project_prefix_to_sample_collisions(
-        t=fam_ht,
-        sample_collisions=sample_collisions,
-        project="aou",
-        sample_id_field="id",
-    )
+    # Note: Checked IDs for samples in trios; none of them have sample ID collisions.
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
     if test:
