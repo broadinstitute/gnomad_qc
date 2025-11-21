@@ -5,7 +5,12 @@ import hail as hl
 from gnomad.utils.annotations import get_lowqual_expr
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.resources.annotations import get_info_ht
+from gnomad_qc.v5.resources.annotations import (
+    aou_annotated_sites_only_vcf,
+    aou_vcf_header,
+    get_info_ht,
+)
+from gnomad_qc.v5.resources.basics import get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -33,12 +38,13 @@ def main(args):
             overwrite=overwrite,
         )
 
-        vcf_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/echo_full_gnomad_annotated.sites-only.vcf.gz"
-        header_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/4_day/aou_annotation_sites_only_header.vcf"
+        logger.info("Importing VCF...")
+        # vcf_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/echo_full_gnomad_annotated.sites-only.vcf.gz"
+        # header_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/4_day/aou_annotation_sites_only_header.vcf"
         ht = hl.import_vcf(
-            vcf_path,
+            aou_annotated_sites_only_vcf,
             force_bgz=True,
-            header_file=header_path,
+            header_file=aou_vcf_header,
             reference_genome="GRCh38",
         ).rows()
 
@@ -68,7 +74,7 @@ def main(args):
 
         ht = ht.annotate(info=ht.info.drop("SB", "VarDP"))
 
-        logger.info("Adding AS_lowqual annotation...")
+        # Add AS_lowqual annotation.
         ht = ht.annotate(
             AS_lowqual=get_lowqual_expr(
                 ht.alleles,
