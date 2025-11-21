@@ -776,7 +776,7 @@ def merge_gnomad_and_aou_frequencies(
         },
     )
 
-    merged_freq_ht = joined_freq_ht.select(freq=merged_freq).select_globals(
+    merged_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
         freq_meta=merged_meta,
         freq_meta_sample_count=sample_counts["counts"],
         freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
