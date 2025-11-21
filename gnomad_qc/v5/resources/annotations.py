@@ -2,7 +2,7 @@
 
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
-from gnomad_qc.v5.resources.basics import qc_temp_prefix
+from gnomad_qc.v5.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ANNOTATION_VERSIONS,
     CURRENT_ANNOTATION_VERSION,
@@ -27,7 +27,7 @@ def _annotations_root(
     :param data_set: Data set of annotation resource. Default is "aou".
     :return: Root path of the variant annotation files.
     """
-    path_suffix = f"sample_qc/{data_type}/{data_set}"
+    path_suffix = f"annotations/{data_type}/{data_set}"
 
     if test:
         environment = "rwb" if data_set == "aou" else "dataproc"
@@ -121,6 +121,29 @@ def coverage_and_an_path(
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test, data_set=data_set)}/{'aou' if data_set == 'aou' else 'gnomad'}.genomes.v{version}.coverage_and_an.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+######################################################################
+# Variant QC annotation resources
+######################################################################
+
+
+def get_info_ht(test: bool = False) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: Info VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.info.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
