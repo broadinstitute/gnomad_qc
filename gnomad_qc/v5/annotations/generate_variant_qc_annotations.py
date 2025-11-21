@@ -6,6 +6,7 @@ from gnomad.utils.annotations import get_lowqual_expr
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.annotations import get_info_ht
+from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_annotations")
