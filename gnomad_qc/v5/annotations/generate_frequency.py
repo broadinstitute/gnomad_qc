@@ -767,8 +767,8 @@ def merge_gnomad_and_aou_frequencies(
         operation="sum",
         count_arrays={
             "counts": [
-                joined_freq_ht.freq_meta_sample_count,
-                joined_freq_ht.aou_freq_meta_sample_count,
+                joined_freq_ht.index_globals().freq_meta_sample_count,
+                joined_freq_ht.index_globals().freq_meta_sample_count,
             ]
         },
     )
