@@ -543,7 +543,7 @@ def mt_hists_fields(
     qual_hists = qual_hist_expr(
         gt_expr=mt.GT,
         gq_expr=mt.GQ,
-        dp_expr=mt.DP,
+        dp_expr=hl.sum(mt.AD),
         adj_expr=mt.adj,
         ab_expr=mt.AD[1] / hl.sum(mt.AD),
         split_adj_and_raw=True,
