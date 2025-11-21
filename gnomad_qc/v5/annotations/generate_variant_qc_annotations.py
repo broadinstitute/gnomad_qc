@@ -39,8 +39,6 @@ def main(args):
         )
 
         logger.info("Importing VCF...")
-        # vcf_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/echo_full_gnomad_annotated.sites-only.vcf.gz"
-        # header_path = "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/4_day/aou_annotation_sites_only_header.vcf"
         ht = hl.import_vcf(
             aou_annotated_sites_only_vcf,
             force_bgz=True,
@@ -60,7 +58,7 @@ def main(args):
             # Convert AS_QUALapprox to int64.
             "AS_QUALapprox": hl.int64(ht.info.QUALapprox),
             # Extract ALT value from AS_VarDP string and convert to int32.
-            "AS_VarDP": hl.int32(ht.info.AS_VarDP.split("|")[1]),
+            "AS_VarDP": hl.int32(ht.info.AS_VarDP.split("\|")[1]),
         }
 
         # Apply info updates.
