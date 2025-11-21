@@ -31,9 +31,10 @@ def main(args):
     overwrite = args.overwrite
 
     try:
+        info_ht_path = get_info_ht(test=test).path
         check_resource_existence(
             output_step_resources={
-                "info_ht": [get_info_ht(test=test).path],
+                "info_ht": [info_ht_path],
             },
             overwrite=overwrite,
         )
@@ -50,6 +51,8 @@ def main(args):
         array_annotations = ["AS_FS", "AS_MQ", "AS_MQRankSum", "AS_ReadPosRankSum"]
 
         # Build a dictionary of info updates.
+        # AS_VarDP is in the format of "ref|alt" and VarDP is an int of the alt value from this, so can just set AS_VarDP to VarDP.
+        # AS_SB_TABLE is an alternate formatting (string ref1, ref2 | alt 1, alt2) of SB_TABLE,  so can just set AS_SB_TABLE to SB_TABLE.
         info_updates = {
             # Convert single-element array annotations to float64.
             **{ann: hl.float64(ht.info[ann][0]) for ann in array_annotations},
@@ -57,20 +60,13 @@ def main(args):
             "AS_QD": hl.int32(ht.info.AS_QD[0]),
             # Convert AS_QUALapprox to int64.
             "AS_QUALapprox": hl.int64(ht.info.QUALapprox),
-            # Extract ALT value from AS_VarDP string and convert to int32.
-            "AS_VarDP": hl.int32(ht.info.AS_VarDP.split("\|")[1]),
+            "AS_VarDP": ht.info.VarDP,
+            "AS_SB_TABLE": ht.info.SB_TABLE,
         }
 
         # Apply info updates.
         ht = ht.transmute(info=ht.info.annotate(**info_updates))
-
-        ht = ht.annotate(
-            info=ht.info.annotate(
-                AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\||,").map(hl.parse_int)
-            )
-        )
-
-        ht = ht.annotate(info=ht.info.drop("SB", "VarDP"))
+        ht = ht.annotate(info=ht.info.drop("SB"))
 
         # Add AS_lowqual annotation.
         ht = ht.annotate(
@@ -81,7 +77,7 @@ def main(args):
             )
         )
 
-        ht.write(get_info_ht(test=test).path, overwrite=overwrite)
+        ht.write(info_ht_path, overwrite=overwrite)
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(
