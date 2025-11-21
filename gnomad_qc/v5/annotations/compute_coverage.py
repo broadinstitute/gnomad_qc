@@ -645,8 +645,13 @@ def main(args):
     if environment == "batch":
         hl.init(
             backend="batch",
+            app_name="compute_coverage",
             log="compute_coverage.log",
             tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/4_day",
+            driver_memory="highmem",
+            driver_cores=8,
+            worker_memory="highmem",
+            worker_cores=8,
             gcs_requester_pays_configuration=args.gcp_billing_project,
             regions=["us-central1"],
         )
