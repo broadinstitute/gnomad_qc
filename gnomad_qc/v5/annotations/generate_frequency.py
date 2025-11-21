@@ -658,12 +658,13 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     ).drop("all_sites_an")
 
     # Nest histograms to match gnomAD structure
+    # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
+    # as nested fields due to split_adj_and_raw=True in qual_hist_expr
     aou_variant_freq_ht = aou_variant_freq_ht.select(
         freq=aou_variant_freq_ht.freq,
         histograms=hl.struct(
-            qual_hists=aou_variant_freq_ht.hists_fields.qual_hists,
-            # AoU doesn't distinguish raw vs adj, keep adj?
-            raw_qual_hists=aou_variant_freq_ht.hists_fields.qual_hists,
+            qual_hists=aou_variant_freq_ht.hists_fields.qual_hists.qual_hists,
+            raw_qual_hists=aou_variant_freq_ht.hists_fields.qual_hists.raw_qual_hists,
             age_hists=aou_variant_freq_ht.hists_fields.age_hists,
         ),
     )
@@ -691,10 +692,12 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hists_fields"])
 
     # Nest histograms to match gnomAD structure
+    # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
+    # as nested fields due to split_adj_and_raw=True in qual_hist_expr
     aou_freq_ht = aou_freq_ht.transmute(
         histograms=hl.struct(
-            qual_hists=aou_freq_ht.hists_fields.qual_hists,
-            raw_qual_hists=aou_freq_ht.hists_fields.qual_hists,  # AoU doesn't distinguish raw vs adj
+            qual_hists=aou_freq_ht.hists_fields.qual_hists.qual_hists,
+            raw_qual_hists=aou_freq_ht.hists_fields.qual_hists.raw_qual_hists,
             age_hists=aou_freq_ht.hists_fields.age_hists,
         )
     )
