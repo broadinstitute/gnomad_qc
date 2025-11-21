@@ -2,8 +2,10 @@
 
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
+    PedigreeResource,
     TableResource,
     VersionedMatrixTableResource,
+    VersionedPedigreeResource,
     VersionedTableResource,
 )
 
@@ -555,6 +557,137 @@ def finalized_outlier_filtering(
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.genomes.v{version}.final_outlier_filtering.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+######################################################################
+# Trio identification resources
+######################################################################
+
+
+# TODO: Add support for Batch for resources below.
+def duplicates() -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for duplicated (or twin) samples.
+
+    :return: VersionedTableResource of duplicate samples.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.genomes.v{version}.duplicates.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def pedigree(
+    finalized: bool = True, fake: bool = False, test: bool = False
+) -> VersionedPedigreeResource:
+    """
+    Get the VersionedPedigreeResource for the trio pedigree including multiple trios per family.
+
+    :param finalized: Whether to return the finalized pedigree resource.
+    :param fake: Whether to return the fake pedigree resource.
+    :param test: Whether to use a tmp path for a test resource. This is only an option
+        for the finalized pedigree, which depends on `ped_mendel_errors`.
+    :return: VersionedPedigreeResource of trio pedigree including multiple trios per
+        family.
+    """
+    if finalized and fake:
+        raise ValueError("Only one of 'finalized' or 'fake' can be True!")
+    if test and not finalized:
+        raise ValueError(
+            "The test Pedigree is only available for the finalized Pedigree because it "
+            "depends on filtering using `ped_mendel_errors` which has a test option!"
+        )
+
+    return VersionedPedigreeResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: PedigreeResource(
+                f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
+                delimiter="\t",
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for the number of mendel errors per trio.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource of number of mendel errors per trio.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.mendel_errors.samples.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def ped_filter_param_json_path(
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
+):
+    """
+    Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.
+
+    :param version: Version of the JSON to return.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: Path to Pedigree filter JSON.
+    """
+    return f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.ped_filters.json"
+
+
+def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
+    """
+    Get the VersionedPedigreeResource for finalized trio samples.
+
+    :param fake: Whether to return the fake trio resource.
+    :param test: Whether to use a tmp path for a test resource. This is only an option
+        for the finalized Pedigree, which depends on `ped_mendel_errors`.
+    :return: VersionedPedigreeResource of trio samples.
+    """
+    return VersionedPedigreeResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: PedigreeResource(
+                f"{get_sample_qc_root(version, test,)}/relatedness/trios/gnomad.genomes.v{version}.trios{'.fake' if fake else ''}.fam"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def dense_trios(
+    split: bool = False,
+    test: bool = False,
+) -> VersionedMatrixTableResource:
+    """
+    Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+
+    :param split: Whether to get the resource for the split trio MatrixTable.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource of dense trio MatrixTable.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test)}"
+                f"/relatedness/trios/gnomad.genomes.v{version}.trios.dense"
+                f"{'.split' if split else ''}.mt"
             )
             for version in SAMPLE_QC_VERSIONS
         },
