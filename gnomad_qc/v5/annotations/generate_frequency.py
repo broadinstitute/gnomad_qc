@@ -923,7 +923,7 @@ def _initialize_hail(args) -> None:
             "backend": "batch",
             "log": get_logging_path("v5_frequency_generation", environment="batch"),
             "tmp_dir": (
-                f"{qc_temp_prefix(environment='dataproc', days=tmp_dir_days)}/frequency_generation"
+                f"{qc_temp_prefix(environment='dataproc', days=tmp_dir_days)}frequency_generation"
             ),
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],
@@ -948,7 +948,7 @@ def _initialize_hail(args) -> None:
                 environment=environment,
                 tmp_dir_days=tmp_dir_days,
             ),
-            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}/frequency_generation",
+            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
             default_reference="GRCh38",
         )
     # hl.default_reference("GRCh38")
