@@ -396,7 +396,7 @@ def _calculate_faf_and_grpmax_annotations(
     updated_freq_ht = updated_freq_ht.annotate(
         faf=faf,
         grpmax=grpmax,
-        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta),
+        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta, gen_anc_label="pop"),
         inbreeding_coeff=bi_allelic_site_inbreeding_expr(
             callstats_expr=updated_freq_ht.freq[1]
         ),
