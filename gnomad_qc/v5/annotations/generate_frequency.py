@@ -6,7 +6,7 @@ in v5 due to relatedness filtering or ancestry changes. It uses a differential a
 to avoid densifying the full dataset.
 
 Processing Workflow:
--------------------
+----------------------
 1. process_gnomad_dataset: Update v4 frequency table by subtracting consent withdrawal samples
    - Load v4 frequency table (contains frequencies and age histograms)
    - Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
@@ -32,7 +32,7 @@ Processing Workflow:
    - Add inbreeding coefficient
 
 Usage Examples:
---------------
+---------------
 # Process gnomAD consent withdrawals
 python generate_frequency.py --process-gnomad --environment dataproc
 
@@ -782,7 +782,7 @@ def merge_gnomad_and_aou_frequencies(
         },
     )
 
-    merged_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
+    joined_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
         freq_meta=merged_meta,
         freq_meta_sample_count=sample_counts["counts"],
         freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
@@ -794,23 +794,23 @@ def merge_gnomad_and_aou_frequencies(
     # Join all histogram data from both datasets
     # Both datasets now have the same structure: histograms.{qual_hists,
     # raw_qual_hists, age_hists}
-    joined_hist_ht = merged_freq_ht.annotate(
-        aou_histograms=aou_freq_ht[merged_freq_ht.key].histograms,
+    joined_freq_ht = joined_freq_ht.annotate(
+        aou_histograms=aou_freq_ht[joined_freq_ht.key].histograms,
     )
 
     # Merge age histograms
     merged_age_hist_het = merge_histograms(
         [
-            joined_hist_ht.histograms.age_hists.age_hist_het,
-            joined_hist_ht.aou_histograms.age_hists.age_hist_het,
+            joined_freq_ht.histograms.age_hists.age_hist_het,
+            joined_freq_ht.aou_histograms.age_hists.age_hist_het,
         ],
         operation="sum",
     )
 
     merged_age_hist_hom = merge_histograms(
         [
-            joined_hist_ht.histograms.age_hists.age_hist_hom,
-            joined_hist_ht.aou_histograms.age_hists.age_hist_hom,
+            joined_freq_ht.histograms.age_hists.age_hist_hom,
+            joined_freq_ht.aou_histograms.age_hists.age_hist_hom,
         ],
         operation="sum",
     )
@@ -819,36 +819,36 @@ def merge_gnomad_and_aou_frequencies(
     merged_qual_hists = hl.struct(
         gq_hist_all=merge_histograms(
             [
-                joined_hist_ht.histograms.qual_hists.gq_hist_all,
-                joined_hist_ht.aou_histograms.qual_hists.gq_hist_all,
+                joined_freq_ht.histograms.qual_hists.gq_hist_all,
+                joined_freq_ht.aou_histograms.qual_hists.gq_hist_all,
             ],
             operation="sum",
         ),
         dp_hist_all=merge_histograms(
             [
-                joined_hist_ht.histograms.qual_hists.dp_hist_all,
-                joined_hist_ht.aou_histograms.qual_hists.dp_hist_all,
+                joined_freq_ht.histograms.qual_hists.dp_hist_all,
+                joined_freq_ht.aou_histograms.qual_hists.dp_hist_all,
             ],
             operation="sum",
         ),
         gq_hist_alt=merge_histograms(
             [
-                joined_hist_ht.histograms.qual_hists.gq_hist_alt,
-                joined_hist_ht.aou_histograms.qual_hists.gq_hist_alt,
+                joined_freq_ht.histograms.qual_hists.gq_hist_alt,
+                joined_freq_ht.aou_histograms.qual_hists.gq_hist_alt,
             ],
             operation="sum",
         ),
         dp_hist_alt=merge_histograms(
             [
-                joined_hist_ht.histograms.qual_hists.dp_hist_alt,
-                joined_hist_ht.aou_histograms.qual_hists.dp_hist_alt,
+                joined_freq_ht.histograms.qual_hists.dp_hist_alt,
+                joined_freq_ht.aou_histograms.qual_hists.dp_hist_alt,
             ],
             operation="sum",
         ),
         ab_hist_alt=merge_histograms(
             [
-                joined_hist_ht.histograms.qual_hists.ab_hist_alt,
-                joined_hist_ht.aou_histograms.qual_hists.ab_hist_alt,
+                joined_freq_ht.histograms.qual_hists.ab_hist_alt,
+                joined_freq_ht.aou_histograms.qual_hists.ab_hist_alt,
             ],
             operation="sum",
         ),
@@ -858,36 +858,36 @@ def merge_gnomad_and_aou_frequencies(
     merged_raw_qual_hists = hl.struct(
         gq_hist_all=merge_histograms(
             [
-                joined_hist_ht.histograms.raw_qual_hists.gq_hist_all,
-                joined_hist_ht.aou_histograms.raw_qual_hists.gq_hist_all,
+                joined_freq_ht.histograms.raw_qual_hists.gq_hist_all,
+                joined_freq_ht.aou_histograms.raw_qual_hists.gq_hist_all,
             ],
             operation="sum",
         ),
         dp_hist_all=merge_histograms(
             [
-                joined_hist_ht.histograms.raw_qual_hists.dp_hist_all,
-                joined_hist_ht.aou_histograms.raw_qual_hists.dp_hist_all,
+                joined_freq_ht.histograms.raw_qual_hists.dp_hist_all,
+                joined_freq_ht.aou_histograms.raw_qual_hists.dp_hist_all,
             ],
             operation="sum",
         ),
         gq_hist_alt=merge_histograms(
             [
-                joined_hist_ht.histograms.raw_qual_hists.gq_hist_alt,
-                joined_hist_ht.aou_histograms.raw_qual_hists.gq_hist_alt,
+                joined_freq_ht.histograms.raw_qual_hists.gq_hist_alt,
+                joined_freq_ht.aou_histograms.raw_qual_hists.gq_hist_alt,
             ],
             operation="sum",
         ),
         dp_hist_alt=merge_histograms(
             [
-                joined_hist_ht.histograms.raw_qual_hists.dp_hist_alt,
-                joined_hist_ht.aou_histograms.raw_qual_hists.dp_hist_alt,
+                joined_freq_ht.histograms.raw_qual_hists.dp_hist_alt,
+                joined_freq_ht.aou_histograms.raw_qual_hists.dp_hist_alt,
             ],
             operation="sum",
         ),
         ab_hist_alt=merge_histograms(
             [
-                joined_hist_ht.histograms.raw_qual_hists.ab_hist_alt,
-                joined_hist_ht.aou_histograms.raw_qual_hists.ab_hist_alt,
+                joined_freq_ht.histograms.raw_qual_hists.ab_hist_alt,
+                joined_freq_ht.aou_histograms.raw_qual_hists.ab_hist_alt,
             ],
             operation="sum",
         ),
@@ -904,9 +904,9 @@ def merge_gnomad_and_aou_frequencies(
     )
 
     # Create final merged frequency table with updated histograms
-    merged_freq_ht = merged_freq_ht.annotate(histograms=merged_histograms)
+    joined_freq_ht = joined_freq_ht.annotate(histograms=merged_histograms)
 
-    return merged_freq_ht
+    return joined_freq_ht
 
 
 def _initialize_hail(args) -> None:
