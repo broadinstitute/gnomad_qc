@@ -62,7 +62,10 @@ def create_info_ht(
 
     # Apply info updates.
     ht = ht.transmute(info=ht.info.annotate(**info_updates))
-    ht = ht.annotate(info=ht.info.drop("SB"))
+    ht = ht.annotate(
+        info=ht.info.drop("SB", "QUALapprox", "VarDP", "SB_TABLE", "AS_RAW_MQ")
+    )
+    ht = ht.drop("rsid")
 
     # Add AS_lowqual annotation.
     ht = ht.annotate(
