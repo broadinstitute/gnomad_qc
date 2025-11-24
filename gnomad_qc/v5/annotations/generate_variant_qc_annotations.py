@@ -1,3 +1,5 @@
+"""Script to generate annotations for variant QC on gnomAD v5."""
+
 import argparse
 import logging
 
