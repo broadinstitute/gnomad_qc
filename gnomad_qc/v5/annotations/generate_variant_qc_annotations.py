@@ -46,7 +46,8 @@ def create_info_ht(
 
     # Build a dictionary of info updates.
     # AS_VarDP is in the format of "ref|alt" and VarDP is an int of the alt value from this, so can just set AS_VarDP to VarDP.
-    # AS_SB_TABLE is an alternate formatting (string ref1, ref2 | alt 1, alt2) of SB_TABLE,  so can just set AS_SB_TABLE to SB_TABLE.
+    # AS_SB_TABLE is an alternate formatting (string ref1, ref2 | alt 1, alt2)
+    # of SB_TABLE,  so can just set AS_SB_TABLE to SB_TABLE.
     info_updates = {
         # Convert single-element array annotations to float64.
         **{ann: hl.float64(ht.info[ann][0]) for ann in array_annotations},
