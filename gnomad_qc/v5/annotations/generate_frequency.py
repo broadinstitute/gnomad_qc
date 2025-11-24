@@ -51,7 +51,7 @@ python generate_frequency.py --process-gnomad --runtime-test --test-partitions 2
 
 import argparse
 import logging
-from typing import Tuple
+from typing import Optional
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
@@ -528,31 +528,35 @@ def _merge_updated_frequency_fields(
 
 
 def mt_hists_fields(
-    mt: hl.MatrixTable, all_sites_ans_ht: hl.Table
+    mt: hl.MatrixTable, all_sites_ans_ht: Optional[hl.Table] = None
 ) -> hl.StructExpression:
     """
     Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
 
     :param mt: Input MatrixTable.
-    :param all_sites_ans_ht: Table with all sites ANs.
+    :param all_sites_ans_ht: Optional Table with all sites ANs. If None, will recalculate all hists.
     :return: Struct with allele balance quality metrics histograms and age histograms.
     """
     logger.info(
         "Computing quality metrics histograms and age histograms for each variant..."
     )
-    qual_hists = qual_hist_expr(
-        gt_expr=mt.GT,
-        gq_expr=mt.GQ,
-        dp_expr=hl.sum(mt.AD),
-        adj_expr=mt.adj,
-        ab_expr=mt.AD[1] / hl.sum(mt.AD),
-        split_adj_and_raw=True,
-    )
-    qual_hists = qual_hists.annotate(
-        **all_sites_ans_ht[
-            mt.locus
-        ].qual_hists,  # Is this correct? Are these by locus, not allele?
-    )
+
+    # Should I recalc all hists or just the alts? Would need to update gnomad_methods
+    if all_sites_ans_ht is not None:
+        qual_hists = qual_hists.annotate(
+            **all_sites_ans_ht[
+                mt.locus
+            ].qual_hists,  # Is this correct? Are these by locus, not allele?
+        )
+    else:
+        qual_hists = qual_hist_expr(
+            gt_expr=mt.GT,
+            gq_expr=mt.GQ,
+            dp_expr=hl.sum(mt.AD),
+            adj_expr=mt.adj,
+            ab_expr=(mt.AD[1] / hl.sum(mt.AD)),
+            split_adj_and_raw=True,
+        )
     return hl.struct(
         qual_hists=qual_hists,
         age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
@@ -686,11 +690,8 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     :return: Table with freq and age_hists annotations
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
-    all_sites_ans_ht = coverage_and_an_path(test=test).ht()
     aou_mt = hl.vds.to_dense_mt(aou_vds)
-    aou_mt = aou_mt.annotate_rows(
-        hists_fields=mt_hists_fields(aou_mt, all_sites_ans_ht)
-    )
+    aou_mt = aou_mt.annotate_rows(hists_fields=mt_hists_fields(aou_mt))
     aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hists_fields"])
 
     # Nest histograms to match gnomAD structure
