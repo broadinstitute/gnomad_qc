@@ -33,7 +33,6 @@ def create_info_ht(
     :param lowqual_indel_phred_het_prior: "Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR
     :return: Hail Table with reformatted annotations.
     """
-    # Import VCF
     ht = hl.import_vcf(
         vcf_path,
         force_bgz=True,
@@ -43,10 +42,8 @@ def create_info_ht(
 
     logger.info("Reformatting annotations...")
 
-    # List single-element array annotations.
     array_annotations = ["AS_FS", "AS_MQ", "AS_MQRankSum", "AS_ReadPosRankSum"]
 
-    # Build a dictionary of info updates.
     # AS_VarDP is in the format of "ref|alt" and VarDP is an int of the alt value from this, so can just set AS_VarDP to VarDP.
     # AS_SB_TABLE is an alternate formatting (string ref1, ref2 | alt 1, alt2)
     # of SB_TABLE,  so can just set AS_SB_TABLE to SB_TABLE.
@@ -60,14 +57,12 @@ def create_info_ht(
         "AS_SB_TABLE": ht.info.SB_TABLE,
     }
 
-    # Apply info updates.
     ht = ht.transmute(info=ht.info.annotate(**info_updates))
     ht = ht.annotate(
         info=ht.info.drop("SB", "QUALapprox", "VarDP", "SB_TABLE", "AS_RAW_MQ")
     )
     ht = ht.drop("rsid")
 
-    # Add AS_lowqual annotation.
     ht = ht.annotate(
         AS_lowqual=get_lowqual_expr(
             ht.alleles,
