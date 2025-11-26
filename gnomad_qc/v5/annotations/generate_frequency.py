@@ -1033,6 +1033,9 @@ def main(args):
                 gnomad_freq_ht.ht(),
                 aou_freq_ht.ht(),
             )
+            merged_freq_ht = merged_freq_ht.checkpoint(
+                new_temp_file("merged_freq", "ht")
+            )
 
             # Calculate FAF, grpmax, and other post-processing annotations on merged
             # dataset
