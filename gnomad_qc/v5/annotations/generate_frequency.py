@@ -1,521 +1,70 @@
 """
-Script to generate frequency data for gnomAD v5.
+Script to process All of Us (AoU) dataset for gnomAD v5 frequency calculations.
 
-This script calculates variant frequencies for samples that will be removed from gnomAD v4
-in v5 due to relatedness filtering or ancestry changes. It uses a differential approach
-to avoid densifying the full dataset.
+This script calculates variant frequencies and age histograms for the AoU dataset
+using either pre-computed allele numbers or a densify approach.
 
 Processing Workflow:
 --------------------
-1. process_gnomad_dataset: Update v4 frequency table by subtracting consent withdrawal samples
-   - Load v4 frequency table (contains frequencies and age histograms)
-   - Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
-   - Calculate frequencies and age histograms for consent samples
-   - Subtract from v4 frequencies to get updated gnomAD v5 frequencies
+1. Load AoU VDS with metadata
+2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
+3. Calculate frequencies using either:
+   - All sites ANs (efficient, requires pre-computed AN values)
+   - Densify approach (standard, more resource intensive)
+4. Generate age histograms during frequency calculation
 
 Usage Examples:
 ---------------
-# Process gnomAD consent withdrawals
-python generate_frequency.py --process-gnomad --environment dataproc
+# Process AoU dataset using all-sites ANs
+python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
 
-# Run in test mode
-python generate_frequency.py --process-gnomad --runtime-test --test-partitions 2
+# Process AoU on batch/QoB with custom resources
+python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
 """
 
 import argparse
 import logging
-from typing import Optional
 
 import hail as hl
-from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
+    agg_by_strata,
     compute_freq_by_strata,
-    get_adj_expr,
-    merge_freq_arrays,
-    merge_histograms,
+    qual_hist_expr,
 )
-from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v3.utils import hom_alt_depletion_fix
-from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
-from gnomad_qc.v5.resources.annotations import get_freq, group_membership
-from gnomad_qc.v5.resources.basics import (
-    get_gnomad_v5_genomes_vds,
-    get_logging_path,
-    qc_temp_prefix,
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj as annotate_adj_no_dp
+from gnomad_qc.v5.resources.annotations import (
+    coverage_and_an_path,
+    get_freq,
+    group_membership,
 )
-from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
-
-# Constants for age histogram binning
-AGE_HIST_MIN = 30
-AGE_HIST_MAX = 80
-AGE_HIST_BINS = 10
+from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path, qc_temp_prefix
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
 
 
-def _prepare_consent_vds(
-    v4_freq_ht: hl.Table,
-    test: bool = False,
-    runtime_test: bool = False,
-    test_partitions: int = 2,
-) -> hl.vds.VariantDataset:
-    """
-    Load and prepare VDS for consent withdrawal sample processing.
-
-    :param v4_freq_ht: v4 frequency table for AF annotation.
-    :param test: Whether running in test mode.
-    :param runtime_test: Whether to use test VDS.
-    :param test_partitions: Number of partitions to use in test mode. Default is 2.
-    :return: Prepared VDS with consent samples, split multiallelics, and annotations.
-    """
-    logger.info("Loading and preparing VDS for consent withdrawal samples...")
-
-    vds = get_gnomad_v5_genomes_vds(
-        test=runtime_test,
-        release_only=True,
-        consent_drop_only=True,
-        annotate_meta=True,
-        filter_partitions=list(range(test_partitions)) if test else None,
-    )
-
-    logger.info(
-        "VDS has been filtered to %s consent withdrawal samples...",
-        vds.variant_data.count_cols(),
-    )
-
-    # Prepare variant data with metadata
-    # Note: In test mode, metadata structure differs from production
-    # (nested fields vs flat structure)
-    vmt = vds.variant_data
-    vmt.describe()
-    if test:
-        vmt = vmt.select_cols(
-            gen_anc=vmt.meta.population_inference.pop,
-            sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
-            age=vmt.meta.project_meta.age,
-        )
-    else:
-        vmt = vmt.select_cols(
-            gen_anc=vmt.meta.gen_anc,
-            sex_karyotype=vmt.meta.sex_karyotype,
-            age=vmt.meta.age,
-        )
-
-    # Select required entries and annotate non_ref hets before split_multi
-    logger.info("Selecting entries and annotating non_ref hets pre-split...")
-    vmt = vmt.select_entries(
-        "LA", "LAD", "DP", "GQ", "LGT", _het_non_ref=vmt.LGT.is_het_non_ref()
-    )
-
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-    vds = vds.checkpoint(new_temp_file("consent_samples_vds", "vds"))
-
-    logger.info("Splitting multiallelics in gnomAD sample withdrawal VDS...")
-    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-
-    # Annotate with v4 frequencies and apply quality adjustments
-    vmt = vds.variant_data
-    vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
-
-    # This follows the v3/v4 genomes workflow for adj and sex adjusted genotypes which
-    # were added before the hom alt depletion fix.
-    # The correct order is to do the hom alt fix before adjusting sex ploidy and before
-    # determining the adj annotation because haploid GTs have different adj filtering
-    # criteria, but the option to adjust ploidy after adj is included for consistency
-    # with v3.1, where we added the adj annotation before adjusting for sex ploidy.
-    logger.info("Computing sex adjusted genotypes and quality annotations...")
-    vmt = vmt.annotate_entries(
-        adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD),
-    )
-    vmt = vmt.select_entries(
-        "AD",
-        "DP",
-        "GQ",
-        "_het_non_ref",
-        "adj",
-        GT=adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
-    )
-
-    # We set use_v3_1_correction to True to mimic the v4 genomes approach.
-    logger.info("Applying v4 genomes hom alt depletion fix...")
-    vmt = vmt.annotate_entries(
-        GT=hom_alt_depletion_fix(
-            vmt.GT,
-            het_non_ref_expr=vmt._het_non_ref,
-            af_expr=vmt.v4_af,
-            ab_expr=vmt.AD[1] / vmt.DP,
-            use_v3_1_correction=True,
-        )
-    )
-    logger.info("Annotating age distribution...")
-    vmt = vmt.annotate_globals(
-        age_distribution=vmt.aggregate_cols(
-            hl.agg.hist(vmt.age, AGE_HIST_MIN, AGE_HIST_MAX, AGE_HIST_BINS)
-        )
-    )
-
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-    return vds.checkpoint(new_temp_file("consent_samples_vds_prepared", "vds"))
-
-
-def _calculate_consent_frequencies_and_age_histograms(
-    vds: hl.vds.VariantDataset,
-    test: bool = False,
-) -> hl.Table:
-    """
-    Calculate frequencies and age histograms for consent withdrawal samples.
-
-    :param vds: Prepared VDS with consent samples.
-    :param test: Whether running in test mode.
-    :return: Table with freq and age_hists annotations for consent samples.
-    """
-    logger.info("Densifying VDS for frequency calculations...")
-    mt = hl.vds.to_dense_mt(vds)
-    consent_sample_ids = set(mt.s.collect())
-    group_membership_ht = group_membership(test=test, data_set="gnomad").ht()
-
-    logger.info(
-        "Filtering group membership table to %s consent samples...",
-        len(consent_sample_ids),
-    )
-    group_membership_ht = group_membership_ht.filter(
-        hl.literal(list(consent_sample_ids)).contains(group_membership_ht.s)
-    )
-    logger.info(
-        "Group membership table has been filtered to %s consent samples...",
-        group_membership_ht.count(),
-    )
-
-    mt = mt.annotate_cols(
-        group_membership=group_membership_ht[mt.col_key].group_membership,
-    )
-    mt = mt.annotate_globals(
-        freq_meta=group_membership_ht.index_globals().freq_meta,
-        freq_meta_sample_count=group_membership_ht.index_globals().freq_meta_sample_count,
-    )
-
-    logger.info(
-        "Calculating frequencies and age histograms using compute_freq_by_strata..."
-    )
-
-    # Annotate hists_fields on MatrixTable rows before calling compute_freq_by_strata so
-    # to keep the age_hists annotation on the frequency table.
-    logger.info("Annotating hists_fields on MatrixTable rows...")
-    mt = mt.annotate_rows(
-        hists_fields=hl.struct(
-            age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
-        )
-    )
-
-    logger.info(
-        "Computing frequencies for consent samples using compute_freq_by_strata..."
-    )
-    consent_freq_ht = compute_freq_by_strata(
-        mt,
-        select_fields=["hists_fields"],
-    )
-
-    consent_freq_ht = consent_freq_ht.transmute(
-        age_hists=consent_freq_ht.hists_fields.age_hists,
-    )
-
-    return consent_freq_ht.checkpoint(new_temp_file("consent_freq_and_hists", "ht"))
-
-
-def _subtract_consent_frequencies_and_age_histograms(
-    v4_freq_ht: hl.Table,
-    consent_freq_ht: hl.Table,
-    test: bool = False,
-) -> hl.Table:
-    """
-    Subtract consent withdrawal frequencies and age histograms from v4 frequency table.
-
-    :param v4_freq_ht: v4 frequency table (contains both freq and histograms.age_hists).
-    :param consent_freq_ht: Consent withdrawal table with freq and age_hists annotations.
-    :param test: Whether running in test mode.
-    :return: Updated frequency table with consent frequencies and age histograms subtracted.
-    """
-    logger.info(
-        "Subtracting consent withdrawal frequencies and age histograms from v4 frequency table..."
-    )
-    if test:
-        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_freq_ht[v4_freq_ht.key]))
-
-    joined_freq_ht = v4_freq_ht.annotate(
-        consent_freq=consent_freq_ht[v4_freq_ht.key].freq,
-        consent_age_hists=consent_freq_ht[v4_freq_ht.key].age_hists,
-    )
-
-    joined_freq_ht = joined_freq_ht.annotate_globals(
-        consent_freq_meta=consent_freq_ht.index_globals().freq_meta,
-        consent_freq_meta_sample_count=consent_freq_ht.index_globals().freq_meta_sample_count,
-    )
-
-    logger.info("Subtracting consent frequencies...")
-    updated_freq_expr, updated_freq_meta, updated_sample_counts = merge_freq_arrays(
-        [joined_freq_ht.freq, joined_freq_ht.consent_freq],
-        [
-            joined_freq_ht.index_globals().freq_meta,
-            joined_freq_ht.index_globals().consent_freq_meta,
-        ],
-        operation="diff",
-        count_arrays={
-            "freq_meta_sample_count": [
-                joined_freq_ht.index_globals().freq_meta_sample_count,
-                joined_freq_ht.index_globals().consent_freq_meta_sample_count,
-            ]
-        },
-    )
-    # Update the frequency table with all changes
-    joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
-    joined_freq_ht = joined_freq_ht.annotate_globals(
-        freq_meta=updated_freq_meta,
-        freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
-    )
-
-    logger.info("Subtracting consent age histograms...")
-    updated_age_hist_het = merge_histograms(
-        [
-            joined_freq_ht.histograms.age_hists.age_hist_het,
-            joined_freq_ht.consent_age_hists.age_hist_het,
-        ],
-        operation="diff",
-    )
-    updated_age_hist_hom = merge_histograms(
-        [
-            joined_freq_ht.histograms.age_hists.age_hist_hom,
-            joined_freq_ht.consent_age_hists.age_hist_hom,
-        ],
-        operation="diff",
-    )
-
-    # Update the frequency table with all changes
-    joined_freq_ht = joined_freq_ht.annotate(
-        histograms=joined_freq_ht.histograms.annotate(
-            age_hists=joined_freq_ht.histograms.age_hists.annotate(
-                age_hist_het=updated_age_hist_het,
-                age_hist_hom=updated_age_hist_hom,
-            )
-        ),
-    )
-
-    return joined_freq_ht.checkpoint(new_temp_file("merged_freq_and_hists", "ht"))
-
-
-def _calculate_faf_and_grpmax_annotations(
-    updated_freq_ht: hl.Table,
-) -> hl.Table:
-    """
-    Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.
-
-    This function handles the complex post-processing annotations that are added
-    to frequency tables after the core frequency calculations are complete.
-
-    :param updated_freq_ht: Frequency table after consent withdrawal subtraction
-    :return: Updated frequency table with FAF/grpmax annotations
-    """
-    logger.info("Computing FAF, grpmax, gen_anc_faf_max, and InbreedingCoeff...")
-
-    # Change 'gen_anc' keys to 'pop' for faf computation
-    freq_meta_for_faf = hl.literal(
-        [
-            {("pop" if k == "gen_anc" else k): m[k] for k in m}
-            for m in hl.eval(updated_freq_ht.freq_meta)
-        ]
-    )
-
-    # Calculate FAF (Filtering Allele Frequency)
-    faf, faf_meta = faf_expr(
-        updated_freq_ht.freq,
-        freq_meta_for_faf,
-        updated_freq_ht.locus,
-        GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
-    )
-
-    # Calculate grpmax (group maximum frequency)
-    grpmax = grpmax_expr(
-        updated_freq_ht.freq,
-        freq_meta_for_faf,
-        GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
-    )
-
-    # Annotate grpmax with corresponding FAF95 values
-    grpmax = grpmax.annotate(
-        faf95=faf[
-            hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.gen_anc])
-        ].faf95,
-    )
-
-    # Add all annotations to the frequency table
-    updated_freq_ht = updated_freq_ht.annotate(
-        faf=faf,
-        grpmax=grpmax,
-        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta, gen_anc_label="pop"),
-        inbreeding_coeff=bi_allelic_site_inbreeding_expr(
-            callstats_expr=updated_freq_ht.freq[1]
-        ),
-    )
-
-    # Checkpoint after expensive FAF/grpmax calculations
-    updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
-
-    # Change 'pop' keys back to 'gen_anc' for consistency
-    final_freq_meta = hl.literal(
-        [
-            {("gen_anc" if k == "pop" else k): m[k] for k in m}
-            for m in hl.eval(updated_freq_ht.freq_meta)
-        ]
-    )
-    final_faf_meta = hl.literal(
-        [{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in faf_meta]
-    )
-
-    # Update globals with final metadata
-    updated_freq_ht = updated_freq_ht.annotate_globals(
-        freq_meta=final_freq_meta,
-        faf_meta=final_faf_meta,
-        faf_index_dict=make_freq_index_dict_from_meta(hl.literal(final_faf_meta)),
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(final_freq_meta)),
-    )
-
-    return updated_freq_ht
-
-
-def process_gnomad_dataset(
-    data_test: bool = False,
-    runtime_test: bool = False,
-    test_partitions: int = 2,
-) -> hl.Table:
-    """
-    Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
-
-    This function performs frequency adjustment by:
-    1. Loading v4 frequency HT (contains both frequencies and age histograms)
-    2. Loading consent withdrawal VDS
-    3. Filtering to sites present in BOTH consent VDS AND v4 frequency table
-    4. Calculating frequencies and age histograms for consent withdrawal samples
-    5. Subtracting both frequencies and age histograms from v4 frequency HT
-    6. Only overwriting fields that were actually updated in the final output
-
-    :param data_test: Whether to run in data test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
-    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first N partitions (N controlled by test_partitions).
-    :param test_partitions: Number of partitions to use in test mode. Default is 2.
-    :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
-    """
-    # Test is used for formatting file paths
-    test = runtime_test or data_test
-    v4_freq_ht = get_v4_freq(data_type="genomes").ht()
-
-    vds = _prepare_consent_vds(
-        v4_freq_ht,
-        test=test,
-        runtime_test=runtime_test,
-        test_partitions=test_partitions,
-    )
-
-    logger.info("Calculating frequencies and age histograms for consent samples...")
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
-
-    logger.info("Subtracting consent frequencies and age histograms from v4...")
-    updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
-        v4_freq_ht, consent_freq_ht, test=test
-    )
-
-    # Only overwrite fields that were actually updated (merge back with original table)
-    # Note: FAF/grpmax annotations will be calculated on the final merged dataset
-    final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
-
-    return final_freq_ht
-
-
-def _merge_updated_frequency_fields(
-    original_freq_ht: hl.Table, updated_freq_ht: hl.Table
-) -> hl.Table:
-    """
-    Merge frequency tables, only overwriting fields that were actually updated.
-
-    For sites that exist in updated_freq_ht, use the updated values.
-    For sites that don't exist in updated_freq_ht, keep original values.
-
-    Note: FAF/grpmax annotations are not calculated during consent withdrawal processing
-    and will be calculated later on the final merged dataset.
-
-    :param original_freq_ht: Original v4 frequency table.
-    :param updated_freq_ht: Updated frequency table with consent withdrawals subtracted.
-    :return: Final frequency table with selective field updates.
-    """
-    logger.info("Merging frequency tables with selective field updates...")
-
-    # For sites in updated_freq_ht, use updated values; otherwise keep original
-    # Only updates fields that are present in updated_freq_ht (freq and histograms)
-    final_freq_ht = original_freq_ht.annotate(
-        **{
-            field: hl.if_else(
-                hl.is_defined(updated_freq_ht[original_freq_ht.key]),
-                updated_freq_ht[original_freq_ht.key][field],
-                original_freq_ht[field],
-            )
-            for field in [
-                "freq",
-                "faf",
-                "grpmax",
-                "gen_anc_faf_max",
-                "inbreeding_coeff",
-                "histograms",
-            ]
-            if field in updated_freq_ht.row
-        }
-    )
-
-    # Update globals from updated table if they exist
-    updated_globals = {}
-    for global_field in ["freq_meta", "faf_meta", "freq_index_dict", "faf_index_dict"]:
-        if global_field in updated_freq_ht.globals:
-            updated_globals[global_field] = updated_freq_ht.index_globals()[
-                global_field
-            ]
-
-    if updated_globals:
-        final_freq_ht = final_freq_ht.annotate_globals(**updated_globals)
-
-    return final_freq_ht
-
-
-def mt_hists_fields(
-    mt: hl.MatrixTable, all_sites_ans_ht: Optional[hl.Table] = None
-) -> hl.StructExpression:
+def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     """
     Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
 
     :param mt: Input MatrixTable.
-    :param all_sites_ans_ht: Optional Table with all sites ANs. If None, will recalculate all hists.
     :return: Struct with allele balance quality metrics histograms and age histograms.
     """
     logger.info(
         "Computing quality metrics histograms and age histograms for each variant..."
     )
-
-    # Should I recalc all hists or just the alts? Would need to update gnomad_methods
-    if all_sites_ans_ht is not None:
-        qual_hists = qual_hists.annotate(
-            **all_sites_ans_ht[
-                mt.locus
-            ].qual_hists,  # Is this correct? Are these by locus, not allele?
-        )
-    else:
-        qual_hists = qual_hist_expr(
-            gt_expr=mt.GT,
-            gq_expr=mt.GQ,
-            dp_expr=hl.sum(mt.AD),
-            adj_expr=mt.adj,
-            ab_expr=(mt.AD[1] / hl.sum(mt.AD)),
-            split_adj_and_raw=True,
-        )
+    qual_hists = qual_hist_expr(
+        gt_expr=mt.GT,
+        gq_expr=mt.GQ,
+        dp_expr=hl.sum(mt.AD),
+        adj_expr=mt.adj,
+        ab_expr=(mt.AD[1] / hl.sum(mt.AD)),
+        split_adj_and_raw=True,
+    )
     return hl.struct(
         qual_hists=qual_hists,
         age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
@@ -573,15 +122,15 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     :return: Table with freq and age_hists annotations
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
-    all_sites_ans_ht = coverage_and_an_path(test=test).ht()
+    all_sites_an_ht = coverage_and_an_path(test=test).ht()
     aou_variant_mt = aou_variant_mt.annotate_rows(
-        hists_fields=mt_hists_fields(aou_variant_mt, all_sites_ans_ht)
+        hists_fields=mt_hists_fields(aou_variant_mt)
     )
     # Add all of the qual hists from the consent_ans table into the
     # aou_variant_freq_ht qual_hists struct
     aou_variant_mt = aou_variant_mt.annotate_rows(
         qual_hists=aou_variant_mt.qual_hists.annotate(
-            **all_sites_ans_ht[aou_variant_mt.row_key].qual_hists,
+            **all_sites_an_ht[aou_variant_mt.row_key].qual_hists,
         )
     )
     logger.info("Annotating frequencies with all sites ANs...")
@@ -605,7 +154,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     # same group membership HT so same strata order)
     logger.info("Loading AN values from consent_ans...")
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-        all_sites_an=all_sites_ans_ht[aou_variant_freq_ht.key].AN
+        all_sites_an=all_sites_an_ht[aou_variant_freq_ht.key].AN
     )
 
     logger.info("Building complete frequency struct with imported AN values...")
@@ -702,172 +251,6 @@ def process_aou_dataset(
     return aou_freq_ht
 
 
-def merge_gnomad_and_aou_frequencies(
-    gnomad_freq_ht: hl.Table,
-    aou_freq_ht: hl.Table,
-) -> hl.Table:
-    """
-    Merge frequency data and age histograms from gnomAD and All of Us datasets.
-
-    :param gnomad_freq_ht: Frequency Table for gnomAD (already loaded).
-    :param aou_freq_ht: Frequency Table for AoU (already loaded).
-    :return: Merged frequency Table with combined frequencies and histograms.
-    """
-    logger.info("Merging frequency data and age histograms from both datasets...")
-
-    joined_freq_ht = gnomad_freq_ht.annotate(
-        aou_freq=aou_freq_ht[gnomad_freq_ht.key].freq
-    )
-
-    # Annotate globals from AoU frequency table (extract as literals to avoid
-    # source mismatch)
-    joined_freq_ht = joined_freq_ht.annotate_globals(
-        aou_freq_meta=aou_freq_ht.index_globals().freq_meta,
-        aou_freq_meta_sample_count=aou_freq_ht.index_globals().freq_meta_sample_count,
-    )
-
-    merged_freq, merged_meta, sample_counts = merge_freq_arrays(
-        [joined_freq_ht.freq, joined_freq_ht.aou_freq],
-        [
-            joined_freq_ht.index_globals().freq_meta,
-            joined_freq_ht.index_globals().aou_freq_meta,
-        ],
-        operation="sum",
-        count_arrays={
-            "counts": [
-                joined_freq_ht.index_globals().freq_meta_sample_count,
-                joined_freq_ht.index_globals().freq_meta_sample_count,
-            ]
-        },
-    )
-
-    joined_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
-        freq_meta=merged_meta,
-        freq_meta_sample_count=sample_counts["counts"],
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
-    )
-
-    # Merge all histograms (qual_hists, raw_qual_hists, and age_hists)
-    logger.info("Merging quality histograms and age histograms from both datasets...")
-
-    # Join all histogram data from both datasets
-    # Both datasets now have the same structure: histograms.{qual_hists,
-    # raw_qual_hists, age_hists}
-    joined_freq_ht = joined_freq_ht.annotate(
-        aou_histograms=aou_freq_ht[joined_freq_ht.key].histograms,
-    )
-
-    # Merge age histograms
-    merged_age_hist_het = merge_histograms(
-        [
-            joined_freq_ht.histograms.age_hists.age_hist_het,
-            joined_freq_ht.aou_histograms.age_hists.age_hist_het,
-        ],
-        operation="sum",
-    )
-
-    merged_age_hist_hom = merge_histograms(
-        [
-            joined_freq_ht.histograms.age_hists.age_hist_hom,
-            joined_freq_ht.aou_histograms.age_hists.age_hist_hom,
-        ],
-        operation="sum",
-    )
-
-    # Merge qual histograms - merge each field individually
-    merged_qual_hists = hl.struct(
-        gq_hist_all=merge_histograms(
-            [
-                joined_freq_ht.histograms.qual_hists.gq_hist_all,
-                joined_freq_ht.aou_histograms.qual_hists.gq_hist_all,
-            ],
-            operation="sum",
-        ),
-        dp_hist_all=merge_histograms(
-            [
-                joined_freq_ht.histograms.qual_hists.dp_hist_all,
-                joined_freq_ht.aou_histograms.qual_hists.dp_hist_all,
-            ],
-            operation="sum",
-        ),
-        gq_hist_alt=merge_histograms(
-            [
-                joined_freq_ht.histograms.qual_hists.gq_hist_alt,
-                joined_freq_ht.aou_histograms.qual_hists.gq_hist_alt,
-            ],
-            operation="sum",
-        ),
-        dp_hist_alt=merge_histograms(
-            [
-                joined_freq_ht.histograms.qual_hists.dp_hist_alt,
-                joined_freq_ht.aou_histograms.qual_hists.dp_hist_alt,
-            ],
-            operation="sum",
-        ),
-        ab_hist_alt=merge_histograms(
-            [
-                joined_freq_ht.histograms.qual_hists.ab_hist_alt,
-                joined_freq_ht.aou_histograms.qual_hists.ab_hist_alt,
-            ],
-            operation="sum",
-        ),
-    )
-
-    # Merge raw qual histograms
-    merged_raw_qual_hists = hl.struct(
-        gq_hist_all=merge_histograms(
-            [
-                joined_freq_ht.histograms.raw_qual_hists.gq_hist_all,
-                joined_freq_ht.aou_histograms.raw_qual_hists.gq_hist_all,
-            ],
-            operation="sum",
-        ),
-        dp_hist_all=merge_histograms(
-            [
-                joined_freq_ht.histograms.raw_qual_hists.dp_hist_all,
-                joined_freq_ht.aou_histograms.raw_qual_hists.dp_hist_all,
-            ],
-            operation="sum",
-        ),
-        gq_hist_alt=merge_histograms(
-            [
-                joined_freq_ht.histograms.raw_qual_hists.gq_hist_alt,
-                joined_freq_ht.aou_histograms.raw_qual_hists.gq_hist_alt,
-            ],
-            operation="sum",
-        ),
-        dp_hist_alt=merge_histograms(
-            [
-                joined_freq_ht.histograms.raw_qual_hists.dp_hist_alt,
-                joined_freq_ht.aou_histograms.raw_qual_hists.dp_hist_alt,
-            ],
-            operation="sum",
-        ),
-        ab_hist_alt=merge_histograms(
-            [
-                joined_freq_ht.histograms.raw_qual_hists.ab_hist_alt,
-                joined_freq_ht.aou_histograms.raw_qual_hists.ab_hist_alt,
-            ],
-            operation="sum",
-        ),
-    )
-
-    # Create merged histograms struct with all three histogram types
-    merged_histograms = hl.struct(
-        qual_hists=merged_qual_hists,
-        raw_qual_hists=merged_raw_qual_hists,
-        age_hists=hl.struct(
-            age_hist_het=merged_age_hist_het,
-            age_hist_hom=merged_age_hist_hom,
-        ),
-    )
-
-    # Create final merged frequency table with updated histograms
-    joined_freq_ht = joined_freq_ht.annotate(histograms=merged_histograms)
-
-    return joined_freq_ht
-
-
 def _initialize_hail(args) -> None:
     """
     Initialize Hail with appropriate configuration for the environment.
@@ -910,7 +293,7 @@ def _initialize_hail(args) -> None:
             tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
             default_reference="GRCh38",
         )
-    # hl.default_reference("GRCh38")
+    # hl.default_reference("GRCh38") Commenting out for now to test in hail 0.2.130
 
 
 def main(args):
@@ -920,7 +303,6 @@ def main(args):
     runtime_test = args.runtime_test
     use_all_sites_ans = args.use_all_sites_ans
     test = data_test or runtime_test
-    test_partitions = args.test_partitions
     overwrite = args.overwrite
     tmp_dir_days = args.tmp_dir_days
 
@@ -928,27 +310,6 @@ def main(args):
 
     try:
         logger.info("Running generate_frequency.py...")
-        if args.process_gnomad:
-            logger.info("Processing gnomAD dataset...")
-
-            gnomad_freq = get_freq(test=test, data_type="genomes", data_set="gnomad")
-
-            check_resource_existence(
-                output_step_resources={"process-gnomad": [gnomad_freq]},
-                overwrite=overwrite,
-            )
-
-            gnomad_freq_ht = process_gnomad_dataset(
-                data_test=data_test,
-                runtime_test=runtime_test,
-                test_partitions=test_partitions,
-            )
-
-            logger.info(
-                f"Writing gnomAD frequency HT (with embedded age histograms) to {gnomad_freq.path}..."
-            )
-            gnomad_freq_ht.write(gnomad_freq.path, overwrite=overwrite)
-
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
             logger.info(f"Using test mode: {test}")
@@ -966,42 +327,6 @@ def main(args):
 
             logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
-
-        if args.merge_datasets:
-            logger.info(
-                "Merging frequency data and age histograms from both datasets..."
-            )
-
-            merged_freq = get_freq(test=test, data_type="genomes", data_set="merged")
-
-            check_resource_existence(
-                output_step_resources={"merge-datasets": [merged_freq]},
-                overwrite=overwrite,
-            )
-
-            gnomad_freq_ht = get_freq(data_type="genomes", test=test, data_set="gnomad")
-            aou_freq_ht = get_freq(data_type="genomes", test=test, data_set="aou")
-
-            check_resource_existence(
-                input_step_resources={
-                    "process-gnomad": [gnomad_freq_ht],
-                    "process-aou": [aou_freq_ht],
-                }
-            )
-            merged_freq_ht = merge_gnomad_and_aou_frequencies(
-                gnomad_freq_ht.ht(),
-                aou_freq_ht.ht(),
-            )
-
-            # Calculate FAF, grpmax, and other post-processing annotations on merged
-            # dataset
-            logger.info(
-                "Calculating FAF, grpmax, and other annotations on merged dataset..."
-            )
-            merged_freq_ht = _calculate_faf_and_grpmax_annotations(merged_freq_ht)
-
-            logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
-            merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
 
     finally:
         hl.copy_log(
@@ -1044,18 +369,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     # Processing step arguments
     processing_group = parser.add_argument_group("processing steps")
     processing_group.add_argument(
-        "--process-gnomad",
-        help="Process gnomAD dataset for frequency calculations.",
-        action="store_true",
-    )
-    processing_group.add_argument(
         "--process-aou",
         help="Process All of Us dataset for frequency calculations.",
-        action="store_true",
-    )
-    processing_group.add_argument(
-        "--merge-datasets",
-        help="Merge frequency data from both gnomAD and AoU datasets.",
         action="store_true",
     )
     processing_group.add_argument(
