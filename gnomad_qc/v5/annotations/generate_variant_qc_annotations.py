@@ -50,8 +50,8 @@ def create_info_ht(
     info_updates = {
         # Convert single-element array annotations to float64.
         **{ann: hl.float64(ht.info[ann][0]) for ann in array_annotations},
-        # Extract singular element from AS_QD array and convert to int32.
-        "AS_QD": hl.int32(ht.info.AS_QD[0]),
+        # Extract singular element from AS_QD array and convert to float32.
+        "AS_QD": hl.float32(ht.info.AS_QD[0]),
         "AS_QUALapprox": hl.int64(ht.info.QUALapprox),
         "AS_VarDP": ht.info.VarDP,
         "AS_SB_TABLE": ht.info.SB_TABLE,
