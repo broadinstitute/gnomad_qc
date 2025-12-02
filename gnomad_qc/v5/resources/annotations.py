@@ -150,7 +150,7 @@ def get_info_ht(test: bool = False) -> VersionedTableResource:
     )
 
 
-# Header for AoU annotation sites only VCF. This is needed for proper import of the sites only vcf as the QUALapprox annotation
+# Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
 # is stated in the previous header as an int but it is actually a float.
 aou_vcf_header = (
     f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
