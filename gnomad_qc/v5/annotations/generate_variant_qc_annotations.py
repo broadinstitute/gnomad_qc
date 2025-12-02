@@ -42,7 +42,13 @@ def create_info_ht(
 
     logger.info("Reformatting annotations...")
 
-    array_annotations = ["AS_FS", "AS_MQ", "AS_MQRankSum", "AS_ReadPosRankSum"]
+    array_annotations = [
+        "AS_FS",
+        "AS_MQ",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_SOR",
+    ]
 
     # AS_VarDP is in the format of "ref|alt" and VarDP is an int of the alt value from this, so can just set AS_VarDP to VarDP.
     # AS_SB_TABLE is an alternate formatting (string ref1, ref2 | alt 1, alt2)
