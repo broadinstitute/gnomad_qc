@@ -325,8 +325,8 @@ def _merge_updated_frequency_fields(
     For sites that exist in updated_freq_ht, use the updated values.
     For sites that don't exist in updated_freq_ht, keep original values.
 
-    Note: FAF/grpmax annotations are not calculated during consent withdrawal processing
-    and will be calculated later on the final merged dataset.
+    Note: FAF/grpmax/inbreeding_coeff annotations are not calculated during consent
+    withdrawal processing and will be calculated later on the final merged dataset.
 
     :param original_freq_ht: Original v4 frequency table.
     :param updated_freq_ht: Updated frequency table with consent withdrawals subtracted.
@@ -335,25 +335,27 @@ def _merge_updated_frequency_fields(
     logger.info("Merging frequency tables with selective field updates...")
 
     # For sites in updated_freq_ht, use updated values; otherwise keep original
-    # Only updates fields that are present in updated_freq_ht (freq and histograms)
+    # Update freq field directly
     final_freq_ht = original_freq_ht.annotate(
-        **{
-            field: hl.if_else(
-                hl.is_defined(updated_freq_ht[original_freq_ht.key]),
-                updated_freq_ht[original_freq_ht.key][field],
-                original_freq_ht[field],
-            )
-            for field in [
-                "freq",
-                "faf",
-                "grpmax",
-                "gen_anc_faf_max",
-                "inbreeding_coeff",
-                "histograms",
-            ]
-            if field in updated_freq_ht.row
-        }
+        freq=hl.if_else(
+            hl.is_defined(updated_freq_ht[original_freq_ht.key]),
+            updated_freq_ht[original_freq_ht.key].freq,
+            original_freq_ht.freq,
+        )
     )
+
+    # Update only age histograms within the histograms struct, preserving other histogram fields
+    # (qual_hists, raw_qual_hists remain unchanged)
+    if "histograms" in updated_freq_ht.row and "histograms" in original_freq_ht.row:
+        final_freq_ht = final_freq_ht.annotate(
+            histograms=hl.if_else(
+                hl.is_defined(updated_freq_ht[original_freq_ht.key]),
+                final_freq_ht.histograms.annotate(
+                    age_hists=updated_freq_ht[original_freq_ht.key].histograms.age_hists
+                ),
+                final_freq_ht.histograms,
+            )
+        )
 
     # Update globals from updated table if they exist.
     updated_globals = {}
@@ -441,7 +443,9 @@ def main(args):
                 test_partitions=test_partitions,
             )
 
-            logger.info("Writing gnomAD frequency HT (with embedded age histograms) to %s...", gnomad_freq.path
+            logger.info(
+                "Writing gnomAD frequency HT (with embedded age histograms) to %s...",
+                gnomad_freq.path,
             )
             gnomad_freq_ht.write(gnomad_freq.path, overwrite=overwrite)
 
