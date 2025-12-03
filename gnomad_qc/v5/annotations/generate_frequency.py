@@ -2,8 +2,7 @@
 Script to generate frequency data for gnomAD v5.
 
 This script calculates variant frequencies for samples that will be removed from gnomAD v4
-in v5 due to relatedness filtering or ancestry changes. It uses a differential approach
-to avoid densifying the full dataset.
+in v5 due to consent withdrawal.
 
 Processing Workflow:
 ----------------------
