@@ -81,9 +81,9 @@ def _prepare_consent_vds(
     vmt = vds.variant_data
     vmt.describe()
     vmt = vmt.select_cols(
-        gen_anc=vmt.meta.gen_anc,
-        sex_karyotype=vmt.meta.sex_karyotype,
-        age=vmt.meta.age,
+        gen_anc=vmt.meta.population_inference.pop,
+        sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
+        age=vmt.meta.project_meta.age,
     )
 
     logger.info("Selecting entries and annotating non_ref hets pre-split...")
