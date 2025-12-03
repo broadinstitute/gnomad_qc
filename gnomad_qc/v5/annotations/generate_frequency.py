@@ -19,7 +19,7 @@ Usage Examples:
 python generate_frequency.py --process-gnomad --environment dataproc
 
 # Run in test mode
-python generate_frequency.py --process-gnomad --runtime-test --test-partitions 2
+python generate_frequency.py --process-gnomad --test --test-partitions 2
 """
 
 import argparse
@@ -54,7 +54,6 @@ logger.setLevel(logging.INFO)
 def _prepare_consent_vds(
     v4_freq_ht: hl.Table,
     test: bool = False,
-    runtime_test: bool = False,
     test_partitions: int = 2,
 ) -> hl.vds.VariantDataset:
     """
@@ -62,14 +61,12 @@ def _prepare_consent_vds(
 
     :param v4_freq_ht: v4 frequency table for AF annotation.
     :param test: Whether running in test mode.
-    :param runtime_test: Whether to use test VDS.
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Prepared VDS with consent samples, split multiallelics, and annotations.
     """
     logger.info("Loading and preparing VDS for consent withdrawal samples...")
 
     vds = get_gnomad_v5_genomes_vds(
-        test=runtime_test,
         release_only=True,
         consent_drop_only=True,
         annotate_meta=True,
@@ -81,25 +78,14 @@ def _prepare_consent_vds(
         vds.variant_data.count_cols(),
     )
 
-    # Prepare variant data with metadata
-    # Note: In test mode, metadata structure differs from production
-    # (nested fields vs flat structure)
     vmt = vds.variant_data
     vmt.describe()
-    if test:
-        vmt = vmt.select_cols(
-            gen_anc=vmt.meta.population_inference.pop,
-            sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
-            age=vmt.meta.project_meta.age,
-        )
-    else:
-        vmt = vmt.select_cols(
-            gen_anc=vmt.meta.gen_anc,
-            sex_karyotype=vmt.meta.sex_karyotype,
-            age=vmt.meta.age,
-        )
+    vmt = vmt.select_cols(
+        gen_anc=vmt.meta.gen_anc,
+        sex_karyotype=vmt.meta.sex_karyotype,
+        age=vmt.meta.age,
+    )
 
-    # Select required entries and annotate non_ref hets before split_multi
     logger.info("Selecting entries and annotating non_ref hets pre-split...")
     vmt = vmt.select_entries(
         "LA", "LAD", "DP", "GQ", "LGT", _het_non_ref=vmt.LGT.is_het_non_ref()
@@ -111,7 +97,7 @@ def _prepare_consent_vds(
     logger.info("Splitting multiallelics in gnomAD sample withdrawal VDS...")
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
-    # Annotate with v4 frequencies and apply quality adjustments
+    # Annotate with v4 frequencies for hom alt depletion fix
     vmt = vds.variant_data
     vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
 
@@ -167,20 +153,8 @@ def _calculate_consent_frequencies_and_age_histograms(
     """
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
-    consent_sample_ids = set(mt.s.collect())
+    # Group membership table is already filtered to consent drop samples.
     group_membership_ht = group_membership(test=test, data_set="gnomad").ht()
-
-    logger.info(
-        "Filtering group membership table to %s consent samples...",
-        len(consent_sample_ids),
-    )
-    group_membership_ht = group_membership_ht.filter(
-        hl.literal(list(consent_sample_ids)).contains(group_membership_ht.s)
-    )
-    logger.info(
-        "Group membership table has been filtered to %s consent samples...",
-        group_membership_ht.count(),
-    )
 
     mt = mt.annotate_cols(
         group_membership=group_membership_ht[mt.col_key].group_membership,
@@ -234,8 +208,6 @@ def _subtract_consent_frequencies_and_age_histograms(
     logger.info(
         "Subtracting consent withdrawal frequencies and age histograms from v4 frequency table..."
     )
-    if test:
-        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_freq_ht[v4_freq_ht.key]))
 
     joined_freq_ht = v4_freq_ht.annotate(
         consent_freq=consent_freq_ht[v4_freq_ht.key].freq,
@@ -262,7 +234,7 @@ def _subtract_consent_frequencies_and_age_histograms(
             ]
         },
     )
-    # Update the frequency table with all changes
+    # Update the frequency table with all changes.
     joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
     joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=updated_freq_meta,
@@ -299,8 +271,7 @@ def _subtract_consent_frequencies_and_age_histograms(
 
 
 def process_gnomad_dataset(
-    data_test: bool = False,
-    runtime_test: bool = False,
+    test: bool = False,
     test_partitions: int = 2,
 ) -> hl.Table:
     """
@@ -314,32 +285,32 @@ def process_gnomad_dataset(
     5. Subtracting both frequencies and age histograms from v4 frequency HT
     6. Only overwriting fields that were actually updated in the final output
 
-    :param data_test: Whether to run in data test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
-    :param runtime_test: Whether to run in runtime test mode. If True, filters v4 test vds to first N partitions (N controlled by test_partitions).
+    :param test: Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
-    # Test is used for formatting file paths
-    test = runtime_test or data_test
+    # Test is used for formatting file paths.
     v4_freq_ht = get_v4_freq(data_type="genomes").ht()
 
     vds = _prepare_consent_vds(
         v4_freq_ht,
         test=test,
-        runtime_test=runtime_test,
         test_partitions=test_partitions,
     )
 
     logger.info("Calculating frequencies and age histograms for consent samples...")
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test=test)
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test)
+
+    if test:
+        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_freq_ht[v4_freq_ht.key]))
 
     logger.info("Subtracting consent frequencies and age histograms from v4...")
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
-        v4_freq_ht, consent_freq_ht, test=test
+        v4_freq_ht, consent_freq_ht, test
     )
 
     # Only overwrite fields that were actually updated (merge back with original table)
-    # Note: FAF/grpmax annotations will be calculated on the final merged dataset
+    # Note: FAF/grpmax annotations will be calculated on the final merged dataset.
     final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
 
     return final_freq_ht
@@ -446,9 +417,7 @@ def _initialize_hail(args) -> None:
 def main(args):
     """Generate v5 frequency data."""
     environment = args.environment
-    data_test = args.data_test
-    runtime_test = args.runtime_test
-    test = data_test or runtime_test
+    test = args.test
     test_partitions = args.test_partitions
     overwrite = args.overwrite
     tmp_dir_days = args.tmp_dir_days
@@ -468,8 +437,7 @@ def main(args):
             )
 
             gnomad_freq_ht = process_gnomad_dataset(
-                data_test=data_test,
-                runtime_test=runtime_test,
+                test=test,
                 test_partitions=test_partitions,
             )
 
@@ -500,13 +468,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     # Test/debug arguments
     test_group = parser.add_argument_group("testing options")
     test_group.add_argument(
-        "--data-test",
+        "--test",
         help="Filter to the first N partitions of full VDS for testing (N controlled by --test-partitions).",
-        action="store_true",
-    )
-    test_group.add_argument(
-        "--runtime-test",
-        help="Load test dataset and filter to test partitions.",
         action="store_true",
     )
     test_group.add_argument(
