@@ -30,7 +30,7 @@ def create_info_ht(
 
     :param vcf_path: Path to the annotated sites-only VCF.
     :param header_path: Path to the header file for the VCF.
-    :param lowqual_indel_phred_het_prior: Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR
+    :param lowqual_indel_phred_het_prior: Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.
     :return: Hail Table with reformatted annotations.
     """
     ht = hl.import_vcf(
