@@ -355,7 +355,7 @@ def _merge_updated_frequency_fields(
         }
     )
 
-    # Update globals from updated table if they exist
+    # Update globals from updated table if they exist.
     updated_globals = {}
     for global_field in ["freq_meta", "faf_meta", "freq_index_dict", "faf_index_dict"]:
         if global_field in updated_freq_ht.globals:
@@ -388,7 +388,7 @@ def _initialize_hail(args) -> None:
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],
         }
-        # Add optional batch configuration parameters
+        # Add optional batch configuration parameters.
         for param in [
             "app_name",
             "driver_cores",
@@ -441,8 +441,7 @@ def main(args):
                 test_partitions=test_partitions,
             )
 
-            logger.info(
-                f"Writing gnomAD frequency HT (with embedded age histograms) to {gnomad_freq.path}..."
+            logger.info("Writing gnomAD frequency HT (with embedded age histograms) to %s...", gnomad_freq.path
             )
             gnomad_freq_ht.write(gnomad_freq.path, overwrite=overwrite)
 
@@ -460,12 +459,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         description="Generate frequency data for gnomAD v5."
     )
 
-    # General arguments
+    # General arguments.
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
 
-    # Test/debug arguments
+    # Test/debug arguments.
     test_group = parser.add_argument_group("testing options")
     test_group.add_argument(
         "--test",
