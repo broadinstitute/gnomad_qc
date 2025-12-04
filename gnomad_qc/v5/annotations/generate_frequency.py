@@ -334,26 +334,23 @@ def _merge_updated_frequency_fields(
     """
     logger.info("Merging frequency tables with selective field updates...")
 
-    # For sites in updated_freq_ht, use updated values; otherwise keep original
-    # Update freq field directly
+    # Bring in updated values with a single lookup
+    updated_row = updated_freq_ht[original_freq_ht.key]
+
+    # Update freq: use updated if present, otherwise keep original
     final_freq_ht = original_freq_ht.annotate(
-        freq=hl.if_else(
-            hl.is_defined(updated_freq_ht[original_freq_ht.key]),
-            updated_freq_ht[original_freq_ht.key].freq,
-            original_freq_ht.freq,
-        )
+        freq=hl.coalesce(updated_row.freq, original_freq_ht.freq),
     )
 
-    # Update only age histograms within the histograms struct, preserving other histogram fields
-    # (qual_hists, raw_qual_hists remain unchanged)
+    # Update only age_hists within histograms struct, preserving qual_hists
+    # and raw_qual_hists
     if "histograms" in updated_freq_ht.row and "histograms" in original_freq_ht.row:
         final_freq_ht = final_freq_ht.annotate(
-            histograms=hl.if_else(
-                hl.is_defined(updated_freq_ht[original_freq_ht.key]),
-                final_freq_ht.histograms.annotate(
-                    age_hists=updated_freq_ht[original_freq_ht.key].histograms.age_hists
-                ),
-                final_freq_ht.histograms,
+            histograms=original_freq_ht.histograms.annotate(
+                age_hists=hl.coalesce(
+                    updated_row.histograms.age_hists,
+                    original_freq_ht.histograms.age_hists,
+                )
             )
         )
 
