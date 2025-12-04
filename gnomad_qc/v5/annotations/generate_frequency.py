@@ -337,22 +337,18 @@ def _merge_updated_frequency_fields(
     # Bring in updated values with a single lookup
     updated_row = updated_freq_ht[original_freq_ht.key]
 
-    # Update freq: use updated if present, otherwise keep original
+    # Update freq and age_hists in a single annotate to avoid source mismatch
+    # - freq: use updated if present, otherwise keep original
+    # - histograms.age_hists: update only age_hists, preserving qual_hists and raw_qual_hists
     final_freq_ht = original_freq_ht.annotate(
         freq=hl.coalesce(updated_row.freq, original_freq_ht.freq),
-    )
-
-    # Update only age_hists within histograms struct, preserving qual_hists
-    # and raw_qual_hists
-    if "histograms" in updated_freq_ht.row and "histograms" in original_freq_ht.row:
-        final_freq_ht = final_freq_ht.annotate(
-            histograms=original_freq_ht.histograms.annotate(
-                age_hists=hl.coalesce(
-                    updated_row.histograms.age_hists,
-                    original_freq_ht.histograms.age_hists,
-                )
+        histograms=original_freq_ht.histograms.annotate(
+            age_hists=hl.coalesce(
+                updated_row.histograms.age_hists,
+                original_freq_ht.histograms.age_hists,
             )
-        )
+        ),
+    )
 
     # Update globals from updated table if they exist.
     updated_globals = {}
