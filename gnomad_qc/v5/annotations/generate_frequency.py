@@ -439,4 +439,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    batch_args = [
+        "app_name",
+        "driver_cores",
+        "driver_memory",
+        "worker_cores",
+        "worker_memory",
+    ]
+    provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
+    if provided_batch_args and args.environment != "batch":
+        parser.error(
+            f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
+            f"require --environment=batch"
+        )
+
     main(args)
