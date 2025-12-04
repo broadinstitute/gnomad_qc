@@ -298,10 +298,8 @@ def _initialize_hail(args) -> None:
 def main(args):
     """Generate v5 frequency data."""
     environment = args.environment
-    data_test = args.data_test
-    runtime_test = args.runtime_test
     use_all_sites_ans = args.use_all_sites_ans
-    test = data_test or runtime_test
+    test = args.test
     overwrite = args.overwrite
     tmp_dir_days = args.tmp_dir_days
 
@@ -347,13 +345,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     # Test/debug arguments
     test_group = parser.add_argument_group("testing options")
     test_group.add_argument(
-        "--data-test",
+        "--test",
         help="Filter to the first N partitions of full VDS for testing (N controlled by --test-partitions).",
-        action="store_true",
-    )
-    test_group.add_argument(
-        "--runtime-test",
-        help="Load test dataset and filter to test partitions.",
         action="store_true",
     )
     test_group.add_argument(
