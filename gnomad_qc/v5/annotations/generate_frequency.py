@@ -47,7 +47,7 @@ logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
 
 
-def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
+def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     """
     Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
 
@@ -124,13 +124,13 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     logger.info("Annotating quality metrics histograms and age histograms...")
     all_sites_an_ht = coverage_and_an_path(test=test).ht()
     aou_variant_mt = aou_variant_mt.annotate_rows(
-        hists_fields=mt_hists_fields(aou_variant_mt)
+        hist_fields=mt_hist_fields(aou_variant_mt)
     )
-    # Add all of the qual hists from the consent_ans table into the
-    # aou_variant_freq_ht qual_hists struct
+    # Add all of the qual hists from the all sites AN table into the
+    # aou_variant_freq_ht qual_hists struct.
     aou_variant_mt = aou_variant_mt.annotate_rows(
-        qual_hists=aou_variant_mt.qual_hists.annotate(
-            **all_sites_an_ht[aou_variant_mt.row_key].qual_hists,
+        qual_hists=aou_variant_mt.hist_fields.qual_hists.annotate(
+            **all_sites_an_ht[aou_variant_mt.locus].qual_hists,
         )
     )
     logger.info("Annotating frequencies with all sites ANs...")
@@ -147,39 +147,40 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
             "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
         },
         group_membership_ht=group_membership_ht,
-        select_fields=["hists_fields"],
+        select_fields=["hist_fields"],
     )
 
-    # Load AN values from consent_ans (calculated by another script but used
-    # same group membership HT so same strata order)
+    # Load AN values from all sites ANs table (calculated by another script but used
+    # same group membership HT so same strata order).
     logger.info("Loading AN values from consent_ans...")
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
-        all_sites_an=all_sites_an_ht[aou_variant_freq_ht.key].AN
+        all_sites_an=all_sites_an_ht[aou_variant_freq_ht.locus].AN
     )
 
     logger.info("Building complete frequency struct with imported AN values...")
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         freq=hl.map(
-            lambda freq_data, an_data: hl.struct(
-                AC=freq_data.AC,
-                AF=hl.if_else(an_data > 0, freq_data.AC / an_data, 0.0),
-                AN=an_data,
-                homozygote_count=freq_data.homozygote_count,
+            lambda AC, hom_alt, AN: hl.struct(
+                AC=AC,
+                AF=hl.if_else(AN > 0, AC / AN, 0.0),
+                AN=AN,
+                homozygote_count=hom_alt,
             ),
-            aou_variant_freq_ht.freq,
+            aou_variant_freq_ht.AC,
+            aou_variant_freq_ht.homozygote_count,
             aou_variant_freq_ht.all_sites_an,
         ),
     ).drop("all_sites_an")
 
     # Nest histograms to match gnomAD structure
     # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
-    # as nested fields due to split_adj_and_raw=True in qual_hist_expr
+    # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
     aou_variant_freq_ht = aou_variant_freq_ht.select(
         freq=aou_variant_freq_ht.freq,
         histograms=hl.struct(
-            qual_hists=aou_variant_freq_ht.hists_fields.qual_hists.qual_hists,
-            raw_qual_hists=aou_variant_freq_ht.hists_fields.qual_hists.raw_qual_hists,
-            age_hists=aou_variant_freq_ht.hists_fields.age_hists,
+            qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.qual_hists,
+            raw_qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.raw_qual_hists,
+            age_hists=aou_variant_freq_ht.hist_fields.age_hists,
         ),
     )
 
@@ -199,17 +200,17 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
     aou_mt = hl.vds.to_dense_mt(aou_vds)
-    aou_mt = aou_mt.annotate_rows(hists_fields=mt_hists_fields(aou_mt))
-    aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hists_fields"])
+    aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
+    aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hist_fields"])
 
-    # Nest histograms to match gnomAD structure
-    # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
-    # as nested fields due to split_adj_and_raw=True in qual_hist_expr
+    # Nest histograms to match gnomAD structure.
+    # Note: hist_fields.qual_hists already contains raw_qual_hists and qual_hists
+    # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
     aou_freq_ht = aou_freq_ht.transmute(
         histograms=hl.struct(
-            qual_hists=aou_freq_ht.hists_fields.qual_hists.qual_hists,
-            raw_qual_hists=aou_freq_ht.hists_fields.qual_hists.raw_qual_hists,
-            age_hists=aou_freq_ht.hists_fields.age_hists,
+            qual_hists=aou_freq_ht.hist_fields.qual_hists.qual_hists,
+            raw_qual_hists=aou_freq_ht.hist_fields.qual_hists.raw_qual_hists,
+            age_hists=aou_freq_ht.hist_fields.age_hists,
         )
     )
 
@@ -223,15 +224,13 @@ def process_aou_dataset(
     Process All of Us dataset for frequency calculations and age histograms.
 
     This function efficiently processes the AoU VDS by:
-    1. Computing complete frequency struct using imported AN from consent_ans
+    1. Computing complete frequency struct using imported AN from AoU all site ANs
     2. Generating age histograms within the frequency calculation
 
     :param test: Whether to run in test mode.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
-    logger.info("Processing All of Us dataset...")
-    logger.info(f"Using test mode: {test}")
     aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
     aou_vds = _prepare_aou_vds(aou_vds, test=test)
 
@@ -312,8 +311,6 @@ def main(args):
         logger.info("Running generate_frequency.py...")
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
-            logger.info(f"Using test mode: {test}")
-
             aou_freq = get_freq(test=test, data_type="genomes", data_set="aou")
 
             check_resource_existence(
