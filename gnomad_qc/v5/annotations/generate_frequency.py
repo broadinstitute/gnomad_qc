@@ -1,5 +1,5 @@
 """
-Script to process All of Us (AoU) dataset for gnomAD v5 frequency calculations.
+Script to generate frequency data for gnomAD v5.
 
 This script calculates variant frequencies and age histograms for the AoU dataset
 using either pre-computed allele numbers or a densify approach.
@@ -15,10 +15,10 @@ Processing Workflow:
 
 Usage Examples:
 ---------------
-# Process AoU dataset using all-sites ANs
+# Process AoU dataset using all-sites ANs.
 python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
 
-# Process AoU on batch/QoB with custom resources
+# Process AoU on batch/QoB with custom resources.
 python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
 """
 
@@ -52,7 +52,7 @@ def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
 
     :param mt: Input MatrixTable.
-    :return: Struct with allele balance quality metrics histograms and age histograms.
+    :return: Struct with allele balance, quality metrics histograms, and age histograms.
     """
     logger.info(
         "Computing quality metrics histograms and age histograms for each variant..."
@@ -77,20 +77,20 @@ def _prepare_aou_vds(
     """
     Prepare AoU VDS for frequency calculations.
 
-    :param aou_vds: AoU VariantDataset
+    :param aou_vds: AoU VariantDataset.
     :param test: Whether running in test mode.
-    :return: Prepared AoU VariantDataset
+    :return: Prepared AoU VariantDataset.
     """
     logger.info(f"Using test mode: {test}")
     aou_vmt = aou_vds.variant_data
-    # Use existing AoU group membership table and filter to variant samples
+    # Use existing AoU group membership table and filter to variant samples.
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
     group_membership_ht = group_membership(test=test, data_set="aou").ht()
     group_membership_globals = group_membership_ht.index_globals()
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
-    # to adjust it here
+    # to adjust it here.
     aou_vmt = aou_vmt.annotate_cols(
         sex_karyotype=aou_vmt.meta.sex_karyotype,
         gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
@@ -102,10 +102,10 @@ def _prepare_aou_vds(
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
     )
 
-    # Add adj annotation required by annotate_freq
+    # Add adj annotation required by annotate_freq.
     aou_vmt = annotate_adj_no_dp(aou_vmt)
 
-    # Rename LGT to GT and LAD to AD for compatibility with annotate_freq
+    # Rename LGT to GT and LAD to AD for compatibility with annotate_freq.
     aou_vds = hl.vds.split_multi(hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt))
 
     return aou_vds
@@ -115,11 +115,11 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     aou_variant_mt: hl.MatrixTable, test: bool = False
 ) -> hl.Table:
     """
-    Calculate frequencies and age histograms for AoU variant data.
+    Calculate frequencies and age histograms for AoU variant data using all sites ANs.
 
-    :param aou_variant_mt: Prepared variant MatrixTable
-    :param test: Whether to use test resources
-    :return: Table with freq and age_hists annotations
+    :param aou_variant_mt: Prepared variant MatrixTable.
+    :param test: Whether to use test resources.
+    :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
     all_sites_an_ht = coverage_and_an_path(test=test).ht()
@@ -193,9 +193,9 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     """
     Calculate frequencies and age histograms for AoU variant data using densify.
 
-    :param aou_vds: Prepared AoU VariantDataset
-    :param test: Whether to use test resources
-    :return: Table with freq and age_hists annotations
+    :param aou_vds: Prepared AoU VariantDataset.
+    :param test: Whether to use test resources.
+    :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
     aou_mt = hl.vds.to_dense_mt(aou_vds)
@@ -224,7 +224,7 @@ def process_aou_dataset(
 
     This function efficiently processes the AoU VDS by:
     1. Computing complete frequency struct using imported AN from consent_ans
-    2. Age histograms are calculated within the frequency calculation
+    2. Generating age histograms within the frequency calculation
 
     :param test: Whether to run in test mode.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
