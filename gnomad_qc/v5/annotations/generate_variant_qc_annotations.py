@@ -49,7 +49,7 @@ def main(args):
     else:
         environment = "batch"
         hl.init(
-            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}/tmp/4_day",
+            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4_day",
             log="generate_variant_qc_annotations.log",
         )
     hl.default_reference("GRCh38")
