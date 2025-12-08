@@ -21,7 +21,6 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import (
     WORKSPACE_BUCKET,
-    add_project_prefix_to_sample_collisions,
     get_aou_vds,
     get_logging_path,
 )
@@ -197,7 +196,7 @@ def filter_ped(
     for m, max_z in cutoffs_by_method["stdev"].items():
         cutoffs[m] = {"max_z": max_z}
         log_expr = (
-            "Filtering %strios with more than %f %s errors (%i standard deviations "
+            "Filtering trios with more than %f %s errors (%i standard deviations "
             "from the mean)"
         )
         max_n = z_stats[m].mean + max_z * z_stats[m].stdev
@@ -206,7 +205,7 @@ def filter_ped(
         cutoffs[m]["max_n"] = max_n
 
     for m, max_n in cutoffs_by_method["count"].items():
-        log_expr = "Filtering %strios with more than %d %s errors."
+        log_expr = "Filtering trios with more than %d %s errors."
         logger.info(log_expr, "", max_n, m)
         filter_expr &= mendel_by_s[f"n_{m}"] < max_n
         cutoffs[m] = {"max_n": max_n}
@@ -222,7 +221,6 @@ def filter_ped(
 def create_dense_trio_mt(
     fam_ht: hl.Table,
     meta_ht: hl.Table,
-    sample_collisions: hl.Table,
     test: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
 ) -> hl.MatrixTable:
@@ -231,7 +229,6 @@ def create_dense_trio_mt(
 
     :param fam_ht: Table with family information.
     :param meta_ht: Table with metadata information.
-    :param sample_collisions: Table containing samples with ID collisions between AoU/gnomAD.
     :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
@@ -421,7 +418,6 @@ def main(args):
             dense_trio_mt = create_dense_trio_mt(
                 hl.import_fam(final_ped_path),
                 meta_ht,
-                sample_collisions=sample_id_collisions.ht(),
                 test=test,
                 naive_coalesce_partitions=args.naive_coalesce_partitions,
             )
