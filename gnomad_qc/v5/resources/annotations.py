@@ -60,7 +60,7 @@ def get_trio_stats(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}."
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}."
                 "trio_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
@@ -82,7 +82,7 @@ def get_sib_stats(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.sib_stats.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}.sib_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
