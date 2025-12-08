@@ -110,12 +110,11 @@ def run_mendel_errors(
     logger.info("Sub-setting VDS to %i samples...", len(ped_samples))
     vds = hl.vds.filter_samples(vds, ped_samples)
     vds.variant_data = vds.variant_data.select_entries("LA", "LGT")
+    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
     mt = hl.vds.to_dense_mt(vds)
 
-    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-
     logger.info("Running Mendel errors for %s trios.", len(merged_ped.trios))
-    mendel_err_ht, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
+    mendel_err_ht, _, _, _ = hl.mendel_errors(mt.GT, merged_ped)
 
     return mendel_err_ht
 
