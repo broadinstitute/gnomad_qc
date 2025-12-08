@@ -4,8 +4,6 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
