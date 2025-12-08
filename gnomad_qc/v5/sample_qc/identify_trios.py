@@ -165,6 +165,11 @@ def filter_ped(
             cutoffs_by_method["count"][m] = max_n
         elif max_z:
             cutoffs_by_method["stdev"][m] = max_z
+        else:
+            logger.warning(
+                "Neither `max_%s_z` nor `max_%s_n` are set. Please specify at least one of them.",
+                *(m,) * 2,
+            )
 
     # Filter Mendel errors Table to only errors in inferred families not from the
     # fake Pedigree.
