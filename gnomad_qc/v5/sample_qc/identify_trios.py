@@ -54,7 +54,7 @@ def filter_relatedness_ht(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
 
     # Keep only high quality sample pairs.
     ht = ht.filter(
-        meta_ht[ht.i.s].high_quality & meta_ht[ht.j.s].high_quality,
+        meta_ht[ht.i].high_quality & meta_ht[ht.j].high_quality,
     )
     return ht
 
