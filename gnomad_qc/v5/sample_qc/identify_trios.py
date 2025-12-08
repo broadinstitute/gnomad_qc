@@ -325,8 +325,8 @@ def main(args):
 
             # Filter meta to AoU and XX/XY samples.
             sex_ht = meta_ht.filter(
-                (sex_ht.project_meta.project == "aou")
-                & hl.literal(SEXES).contains(sex_ht.sex_karyotype)
+                (meta_ht.project_meta.project == "aou")
+                & hl.literal(SEXES).contains(meta_ht.sex_karyotype)
             )
             sex_ht = sex_ht.annotate(is_xx=sex_ht.sex_karyotype == "XX")
 
