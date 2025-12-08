@@ -29,7 +29,6 @@ from gnomad_qc.v5.resources.meta import meta, sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
     duplicates,
-    finalized_outlier_filtering,
     ped_filter_param_json_path,
     ped_mendel_errors,
     pedigree,
@@ -66,14 +65,14 @@ def filter_relatedness_ht(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
 
 def run_create_fake_pedigree(
     ped: hl.Pedigree,
-    filter_ht: hl.Table,
+    meta_ht: hl.Table,
     fake_fam_prop: float = 0.1,
 ) -> hl.Pedigree:
     """
     Generate a fake Pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.
 
     :param ped: Pedigree to use for generating fake Pedigree.
-    :param filter_ht: Outlier filtering Table.
+    :param meta_ht: Metadata Table.
     :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake
         Pedigree. Default is 0.1.
     :return: Fake Pedigree.
@@ -83,7 +82,9 @@ def run_create_fake_pedigree(
     fake_ped = create_fake_pedigree(
         n=n_fake_trios,
         sample_list=list(
-            filter_ht.filter(filter_ht.outlier_filtered, keep=False).s.collect()
+            meta_ht.filter(
+                meta_ht.high_quality & (meta_ht.project_meta.project == "aou")
+            ).s.collect()
         ),
         real_pedigree=ped,
     )
@@ -291,7 +292,7 @@ def main(args):
     try:
 
         rel_ht = relatedness().ht()
-        filter_ht = finalized_outlier_filtering().ht()
+        meta_ht = meta().ht()
         dup_ht_path = duplicates().path
         raw_ped_path = pedigree(finalized=False).path
         fake_ped_path = pedigree(finalized=False, fake=True).path
@@ -304,7 +305,7 @@ def main(args):
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
         )
-        rel_ht = filter_relatedness_ht(rel_ht, filter_ht)
+        rel_ht = filter_relatedness_ht(rel_ht, meta_ht)
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
@@ -324,10 +325,9 @@ def main(args):
                 output_step_resources={"raw_pedigree": [raw_ped_path]},
                 overwrite=overwrite,
             )
-            sex_ht = meta().ht()
 
             # Filter meta to AoU and XX/XY samples.
-            sex_ht = sex_ht.filter(
+            sex_ht = meta_ht.filter(
                 (sex_ht.project_meta.project == "aou")
                 & hl.literal(SEXES).contains(sex_ht.sex_karyotype)
             )
@@ -354,7 +354,7 @@ def main(args):
 
             fake_ped = run_create_fake_pedigree(
                 hl.Pedigree.read(raw_ped_path),
-                filter_ht,
+                meta_ht,
                 fake_fam_prop=args.fake_fam_prop,
             )
             fake_ped.write(fake_ped_path)
@@ -416,7 +416,7 @@ def main(args):
             )
             dense_trio_mt = create_dense_trio_mt(
                 hl.import_fam(final_ped_path),
-                meta().ht(),
+                meta_ht,
                 sample_collisions=sample_id_collisions.ht(),
                 test=test,
                 naive_coalesce_partitions=args.naive_coalesce_partitions,
