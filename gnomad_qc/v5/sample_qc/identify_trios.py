@@ -24,7 +24,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.meta import meta, sample_id_collisions
+from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
     duplicates,
