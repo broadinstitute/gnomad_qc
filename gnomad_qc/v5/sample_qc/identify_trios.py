@@ -49,10 +49,7 @@ def filter_relatedness_ht(ht: hl.Table, meta_ht: hl.Table) -> hl.Table:
     :param meta_ht: Metadata Table.
     :return: Filtered relatedness Table.
     """
-    ht = ht.filter(
-        ((ht.i.data_type == "genomes") & (ht.i.project == "aou"))
-        & ((ht.j.data_type == "genomes") & (ht.j.project == "aou"))
-    )
+    ht = ht.filter((ht.i.project == "aou") & (ht.j.project == "aou"))
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
     # Keep only high quality sample pairs.
