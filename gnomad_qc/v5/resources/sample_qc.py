@@ -579,7 +579,7 @@ def duplicates() -> VersionedTableResource:
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.genomes.v{version}.duplicates.ht"
+                f"{get_sample_qc_root(version)}/relatedness/trios/aou.genomes.v{version}.duplicates.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -611,7 +611,7 @@ def pedigree(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
+                f"{get_sample_qc_root(version, test)}/relatedness/trios/aou.genomes.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
                 delimiter="\t",
             )
             for version in SAMPLE_QC_VERSIONS
@@ -630,7 +630,7 @@ def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.mendel_errors.samples.ht"
+                f"{get_sample_qc_root(version, test)}/relatedness/trios/aou.genomes.v{version}.mendel_errors.samples.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -647,7 +647,7 @@ def ped_filter_param_json_path(
     :param test: Whether to use a tmp path for a test resource.
     :return: Path to Pedigree filter JSON.
     """
-    return f"{get_sample_qc_root(version, test)}/relatedness/trios/gnomad.genomes.v{version}.ped_filters.json"
+    return f"{get_sample_qc_root(version, test)}/relatedness/trios/aou.genomes.v{version}.ped_filters.json"
 
 
 def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
@@ -663,7 +663,7 @@ def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, test,)}/relatedness/trios/gnomad.genomes.v{version}.trios{'.fake' if fake else ''}.fam"
+                f"{get_sample_qc_root(version, test,)}/relatedness/trios/aou.genomes.v{version}.trios{'.fake' if fake else ''}.fam"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -686,7 +686,7 @@ def dense_trios(
         {
             version: MatrixTableResource(
                 f"{get_sample_qc_root(version, test)}"
-                f"/relatedness/trios/gnomad.genomes.v{version}.trios.dense"
+                f"/relatedness/trios/aou.genomes.v{version}.trios.dense"
                 f"{'.split' if split else ''}.mt"
             )
             for version in SAMPLE_QC_VERSIONS
