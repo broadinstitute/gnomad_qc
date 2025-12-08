@@ -321,7 +321,6 @@ def main(args):
             logger.info("Inferring families...")
             check_resource_existence(
                 output_step_resources={"raw_pedigree": [raw_ped_path]},
-                overwrite=overwrite,
             )
 
             # Filter meta to AoU and XX/XY samples.
@@ -347,7 +346,6 @@ def main(args):
             logger.info("Creating fake Pedigree...")
             check_resource_existence(
                 output_step_resources={"fake_pedigree": [fake_ped_path]},
-                overwrite=overwrite,
             )
 
             fake_ped = run_create_fake_pedigree(
@@ -361,7 +359,6 @@ def main(args):
             logger.info("Running Mendel errors on chr20...")
             check_resource_existence(
                 output_step_resources={"mendel_err_ht": [mendel_err_ht_path]},
-                overwrite=overwrite,
             )
             vds = get_aou_vds(
                 split=False,
@@ -384,7 +381,6 @@ def main(args):
                     "final_trios": [trios_path],
                     "filter_json": [filter_json_path],
                 },
-                overwrite=overwrite,
             )
             ped, filters = filter_ped(
                 hl.Pedigree.read(raw_ped_path),
