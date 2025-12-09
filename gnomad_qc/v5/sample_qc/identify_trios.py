@@ -203,7 +203,7 @@ def filter_ped(
 
     for m, max_n in cutoffs_by_method["count"].items():
         log_expr = "Filtering trios with more than %d %s errors."
-        logger.info(log_expr, "", max_n, m)
+        logger.info(log_expr, max_n, m)
         filter_expr &= mendel_by_s[f"n_{m}"] < max_n
         cutoffs[m] = {"max_n": max_n}
 
