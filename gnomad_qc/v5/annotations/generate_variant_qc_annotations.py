@@ -33,7 +33,9 @@ def run_generate_trio_stats(
     :param fam_ped: Pedigree containing trio info.
     :return: Table containing trio stats.
     """
-    # Create trio matrix and generate trio stats.
+    # Add adj annotation and convert LGT to GT since only
+    # autosomal bi-allelics are used to calculate trio stats.
+    mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     return generate_trio_stats(mt)
