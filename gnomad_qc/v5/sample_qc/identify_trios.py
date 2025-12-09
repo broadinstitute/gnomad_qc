@@ -412,11 +412,18 @@ def main(args):
                 output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
                 overwrite=overwrite,
             )
+            naive_coalesce_partitions = args.naive_coalesce_partitions
+
+            if naive_coalesce_partitions:
+                logger.warning(
+                    "Specifying naive coalesce partitions may make the densify significantly slower..."
+                )
+
             dense_trio_mt = create_dense_trio_mt(
                 hl.import_fam(final_ped_path),
                 meta_ht,
                 test=test,
-                naive_coalesce_partitions=args.naive_coalesce_partitions,
+                naive_coalesce_partitions=naive_coalesce_partitions,
             )
             dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 
