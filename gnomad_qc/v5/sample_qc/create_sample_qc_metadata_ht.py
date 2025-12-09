@@ -292,10 +292,12 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
     # Annotate metadata Table with relatedness inference and filters.
     meta_ht = meta_ht.annotate(
         relatedness_inference=hl.struct(
-            relatedness_filters=relatedness_filters_ht[meta_ht.key].relatedness_filters,
+            relatedness_filters=relatedness_filters_ht[
+                meta_ht.key
+            ].relatedness_inference.relatedness_filters,
             release_relatedness_filters=relatedness_filters_ht[
                 meta_ht.key
-            ].release_relatedness_filters,
+            ].relatedness_inference.release_relatedness_filters,
             relationships=relatedness_inference_ht[meta_ht.key].relationships,
             released_gnomad_exomes_aou_duplicate=relatedness_inference_ht[
                 meta_ht.key
