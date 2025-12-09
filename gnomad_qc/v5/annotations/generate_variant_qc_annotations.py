@@ -12,7 +12,8 @@ from gnomad_qc.v5.resources.annotations import (
     aou_vcf_header,
     get_info_ht,
 )
-from gnomad_qc.v5.resources.basics import get_logging_path
+from gnomad_qc.v5.annotations.annotation_utils import get_adj_expr
+from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -20,10 +21,70 @@ logger = logging.getLogger("variant_qc_annotations")
 logger.setLevel(logging.INFO)
 
 
+def generate_ac_info(vds: hl.vds.VariantDataset) -> hl.Table:
+    """Compute AC and AC_raw annotations for each allele count filter group.
+
+    :param vds: VariantDataset to use for computing AC and AC_raw annotations.
+    :return: Table with AC and AC_raw annotations split by high quality, release, and unrelated.
+    """
+    mt = vds.variant_data
+
+    ac_filter_groups = {
+        "high_quality": mt.meta.high_quality,
+        "release": mt.meta.release,
+        "unrelated": ~mt.meta.relatedness_inference.relatedness_filters.related,
+    }
+
+    ac_filter_groups = {**(ac_filter_groups or {})}
+    mt = mt.annotate_cols(_ac_filter_groups=ac_filter_groups)
+    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
+
+    ac_info_expr = hl.struct()
+    # First compute ACs for each non-ref allele, grouped by adj.
+    grp_ac_expr = {
+        f: hl.agg.array_agg(
+            lambda ai: hl.agg.filter(
+                mt.LA.contains(ai) & mt._ac_filter_groups[f],
+                hl.agg.group_by(
+                    get_adj_expr(mt.LGT, mt.GQ, mt.LAD),
+                    hl.agg.sum(
+                        mt.LGT.one_hot_alleles(mt.LA.map(lambda x: hl.str(x)))[
+                            mt.LA.index(ai)
+                        ]
+                    ),
+                ),
+            ),
+            mt.alt_alleles_range_array,
+        )
+        for f in ac_filter_groups
+    }
+
+    # Then, for each non-ref allele, compute
+    # 'AC' as the adj group
+    # 'AC_raw' as the sum of adj and non-adj groups
+    ac_info_expr = ac_info_expr.annotate(
+        **{
+            f"AC{'_' + f if f else f}_raw": grp.map(
+                lambda i: hl.int32(i.get(True, 0) + i.get(False, 0))
+            )
+            for f, grp in grp_ac_expr.items()
+        },
+        **{
+            f"AC{'_' + f if f else f}": grp.map(lambda i: hl.int32(i.get(True, 0)))
+            for f, grp in grp_ac_expr.items()
+        },
+    )
+
+    ac_info_ht = mt.select_rows(AC_info=ac_info_expr).rows()
+
+    return ac_info_ht
+
+
 def create_info_ht(
     vcf_path: str,
     header_path: str,
     lowqual_indel_phred_het_prior: int = 40,
+    vds: hl.vds.VariantDataset = None,
 ) -> hl.Table:
     """
     Import a VCF of AoU annotated sites, reformat annotations, and add AS_lowqual.
@@ -31,6 +92,7 @@ def create_info_ht(
     :param vcf_path: Path to the annotated sites-only VCF.
     :param header_path: Path to the header file for the VCF.
     :param lowqual_indel_phred_het_prior: Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.
+    :param vds: VariantDataset to use for computing AC and AC_raw annotations.
     :return: Hail Table with reformatted annotations.
     """
     ht = hl.import_vcf(
@@ -77,6 +139,10 @@ def create_info_ht(
         )
     )
 
+    logger.info("Adding AC info annotations to info ht...")
+    ac_info_ht = generate_ac_info(vds)
+    info_ht = info_ht.annotate(AC_info=ac_info_ht[info_ht.key].AC_info)
+
     return ht
 
 
@@ -101,10 +167,18 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
+
+            aou_vds = get_aou_vds(
+                test=True,
+                # high_quality_only=True,
+                annotate_meta=True,
+            )
+
             ht = create_info_ht(
                 vcf_path=aou_annotated_sites_only_vcf,
                 header_path=aou_vcf_header,
                 lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
+                vds=aou_vds,
             )
             ht.write(info_ht_path, overwrite=overwrite)
     finally:
