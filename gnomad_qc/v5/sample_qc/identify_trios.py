@@ -197,7 +197,7 @@ def filter_ped(
             "from the mean)"
         )
         max_n = z_stats[m].mean + max_z * z_stats[m].stdev
-        logger.info(log_expr, "", max_n, m, max_z)
+        logger.info(log_expr, max_n, m, max_z)
         filter_expr &= mendel_by_s[f"n_{m}"] < max_n
         cutoffs[m]["max_n"] = max_n
 
