@@ -77,9 +77,9 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            ht = run_generate_trio_stats(
-                dense_trios(test=test).mt(), pedigree(test=test).pedigree()
-            )
+            trio_mt = dense_trios(test=test).mt()
+            trio_mt = annotate_adj(trio_mt)
+            ht = run_generate_trio_stats(trio_mt, pedigree(test=test).pedigree())
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.generate_sibling_stats:
