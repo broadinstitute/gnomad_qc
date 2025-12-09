@@ -542,12 +542,7 @@ def main(args):
         )
 
         meta_ht = meta_ht.filter(meta_ht.project_meta.data_type == "genomes")
-        meta_ht = meta_ht.checkpoint(
-            "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/30_day/redo_infot_ht.ht",
-            overwrite=args.overwrite,
-        )
-
-        # meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
+        meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
 
         logger.info("Total genome sample count: %s", meta_ht.count())
 
