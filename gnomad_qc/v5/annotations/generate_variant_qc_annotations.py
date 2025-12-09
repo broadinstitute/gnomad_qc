@@ -34,6 +34,7 @@ def run_generate_trio_stats(
     :return: Table containing trio stats.
     """
     # Create trio matrix and generate trio stats.
+    mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     return generate_trio_stats(mt)
 
@@ -77,9 +78,9 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            trio_mt = dense_trios(test=test).mt()
-            trio_mt = annotate_adj(trio_mt)
-            ht = run_generate_trio_stats(trio_mt, pedigree(test=test).pedigree())
+            ht = run_generate_trio_stats(
+                dense_trios(test=test).mt(), pedigree(test=test).pedigree()
+            )
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.generate_sibling_stats:
