@@ -292,6 +292,7 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
     # Annotate metadata Table with relatedness inference and filters.
     meta_ht = meta_ht.annotate(
         relatedness_inference=hl.struct(
+            relatedness_filters=relatedness_filters_ht[meta_ht.key].relatedness_filters,
             release_relatedness_filters=relatedness_filters_ht[
                 meta_ht.key
             ].release_relatedness_filters,
@@ -403,7 +404,7 @@ def annotate_relatedness_filters(
     Get relatedness filtering Table for the combined meta Table.
 
     Add the following related filter boolean annotations to the input `ht` under a
-    `release_relatedness_filters` struct:
+    `relatedness_filters` and `release_relatedness_filters` struct:
 
         - related: Whether the release filtered sample was filtered for
           second-degree (or closer) relatedness in the final release.
@@ -423,8 +424,7 @@ def annotate_relatedness_filters(
         hard-filtered.
     :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
         outlier-filtered.
-    :return: Table with related filters added and Table with relationship and gnomad v3
-        overlap information.
+    :return: Table of relatedness filters.
     """
     rel_dict = {
         "related": SECOND_DEGREE_RELATIVES,
@@ -434,17 +434,34 @@ def annotate_relatedness_filters(
     }
     relationships = relationship_ht[ht.key]
     relatedness_filters_ht = ht.annotate(
-        release_relatedness_filters=hl.struct(
-            **{
-                rel: get_relationship_filter_expr(
-                    hard_filtered_expr | outlier_filtered_expr,
-                    hl.is_defined(related_samples_to_drop(release=True).ht()[ht.key]),
-                    relationships.relationships_high_quality,
-                    rel_val,
-                )
-                for rel, rel_val in rel_dict.items()
-            }
-        ),
+        relatedness_inference=hl.struct(
+            relatedness_filters=hl.struct(
+                **{
+                    rel: get_relationship_filter_expr(
+                        hard_filtered_expr,
+                        hl.is_defined(
+                            related_samples_to_drop(release=False).ht()[ht.key]
+                        ),
+                        relationships.relationships,
+                        rel_val,
+                    )
+                    for rel, rel_val in rel_dict.items()
+                }
+            ),
+            release_relatedness_filters=hl.struct(
+                **{
+                    rel: get_relationship_filter_expr(
+                        hard_filtered_expr | outlier_filtered_expr,
+                        hl.is_defined(
+                            related_samples_to_drop(release=True).ht()[ht.key]
+                        ),
+                        relationships.relationships_high_quality,
+                        rel_val,
+                    )
+                    for rel, rel_val in rel_dict.items()
+                }
+            ),
+        )
     )
 
     return relatedness_filters_ht
@@ -523,7 +540,12 @@ def main(args):
         )
 
         meta_ht = meta_ht.filter(meta_ht.project_meta.data_type == "genomes")
-        meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
+        meta_ht = meta_ht.checkpoint(
+            "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/30_day/redo_infot_ht.ht",
+            overwrite=args.overwrite,
+        )
+
+        # meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
 
         logger.info("Total genome sample count: %s", meta_ht.count())
 
