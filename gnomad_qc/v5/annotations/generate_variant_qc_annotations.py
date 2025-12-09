@@ -74,7 +74,7 @@ def main(args):
     try:
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
-            trio_stats_ht_path = get_trio_stats(test=test).path
+            trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={"trio_stats_ht": trio_stats_ht_path},
                 overwrite=overwrite,
@@ -87,7 +87,7 @@ def main(args):
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
-            sib_stats_ht_path = get_sib_stats(test=test).path
+            sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={"sib_stats_ht": sib_stats_ht_path},
                 overwrite=overwrite,
