@@ -46,7 +46,7 @@ def main(args):
     if args.rwb:
         environment = "rwb"
         hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
+            log="/home/jupyter/workspaces/gnomadproduction/generate_variant_qc_annotations.log",
             tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
         )
     else:
