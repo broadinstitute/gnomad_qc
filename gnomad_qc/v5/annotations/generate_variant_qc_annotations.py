@@ -35,8 +35,8 @@ def run_generate_trio_stats(
     """
     # Add adj annotation and convert LGT to GT since only
     # autosomal bi-allelics are used to calculate trio stats.
-    mt = mt.transmute_entries(GT=mt.LGT)
     mt = annotate_adj(mt)
+    mt = mt.transmute_entries(GT=mt.LGT)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     return generate_trio_stats(mt)
 
