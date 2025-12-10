@@ -242,6 +242,7 @@ def get_aou_vds(
     rmt = vds.reference_data
 
     if release_only or annotate_meta or add_project_prefix or high_quality_only:
+        # TODO: Switch back to meta(data_type="genomes").ht() after AoU metadata is updated.
         # meta_ht = meta(data_type="genomes").ht()
         meta_ht = hl.read_table(
             "gs://fc-secure-b25d1307-7763-48b8-8045-fcae9caadfa1/tmp/30_day/redo_infot_ht.ht"

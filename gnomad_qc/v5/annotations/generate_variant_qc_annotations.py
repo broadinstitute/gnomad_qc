@@ -169,7 +169,7 @@ def main(args):
 
             aou_vds = get_aou_vds(
                 test=True,
-                # high_quality_only=True,
+                high_quality_only=True,
                 annotate_meta=True,
             )
 
