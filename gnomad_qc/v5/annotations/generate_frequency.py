@@ -349,7 +349,15 @@ def _merge_updated_frequency_fields(
             )
         ),
     )
-
+    # Convert all int64 annotations in the freq struct to int32s for merging type
+    # compatibility.
+    final_freq_ht = final_freq_ht.annotate(
+        freq=final_freq_ht.freq.map(
+            lambda x: x.annotate(
+                **{k: hl.int32(v) for k, v in x.items() if isinstance(v, hl.expr.Int64)}
+            )
+        )
+    )
     # Update globals from updated table if they exist.
     updated_globals = {}
     for global_field in ["freq_meta", "faf_meta", "freq_index_dict", "faf_index_dict"]:
