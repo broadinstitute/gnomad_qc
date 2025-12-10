@@ -68,8 +68,8 @@ def main(args):
         annotate_meta=True,
     )
     mt = vds.variant_data
-    mt = hl.experimental.sparse_split_multi(mt)
     mt = annotate_adj(mt)
+    mt = hl.experimental.sparse_split_multi(mt)
 
     try:
         if args.generate_trio_stats:
