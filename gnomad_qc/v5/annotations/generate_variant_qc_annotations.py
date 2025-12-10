@@ -7,12 +7,12 @@ import hail as hl
 from gnomad.utils.annotations import get_lowqual_expr
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v5.annotations.annotation_utils import get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     aou_annotated_sites_only_vcf,
     aou_vcf_header,
     get_info_ht,
 )
-from gnomad_qc.v5.annotations.annotation_utils import get_adj_expr
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
