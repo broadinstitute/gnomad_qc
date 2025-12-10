@@ -7,12 +7,12 @@ import hail as hl
 from gnomad.utils.annotations import get_lowqual_expr
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.annotations.annotation_utils import get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     aou_annotated_sites_only_vcf,
     aou_vcf_header,
     get_info_ht,
 )
+from gnomad_qc.v5.annotations.annotation_utils import get_adj_expr
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 
@@ -21,7 +21,7 @@ logger = logging.getLogger("variant_qc_annotations")
 logger.setLevel(logging.INFO)
 
 
-def generate_ac_info(vds: hl.vds.VariantDataset) -> hl.Table:
+def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
     """Compute AC and AC_raw annotations for each allele count filter group.
 
     :param vds: VariantDataset to use for computing AC and AC_raw annotations.
@@ -140,9 +140,8 @@ def create_info_ht(
     )
 
     logger.info("Adding AC info annotations to info ht...")
-    ac_info_ht = generate_ac_info(vds)
-    info_ht = info_ht.annotate(AC_info=ac_info_ht[info_ht.key].AC_info)
-
+    ac_info_ht = generate_ac_info_ht(vds)
+    ht = ht.annotate(AC_info=ac_info_ht[ht.key].AC_info)
     return ht
 
 
