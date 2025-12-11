@@ -4,7 +4,8 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.utils.annotations import get_lowqual_expr
+from gnomad.utils.annotations import annotate_allele_info, get_lowqual_expr
+from gnomad.utils.sparse_mt import split_info_annotation
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import get_adj_expr
@@ -75,6 +76,18 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
     )
 
     ac_info_ht = mt.select_rows(AC_info=ac_info_expr).rows()
+
+    # Split multi-allelic sites.
+    ac_info_ht = annotate_allele_info(ac_info_ht)
+    ac_info_ht = ac_info_ht.annotate(
+        **{
+            a: ac_info_ht[a].annotate(
+                **split_info_annotation(ac_info_ht[a], ac_info_ht.a_index),
+            )
+            for a in ["AC_info"]
+        },
+    )
+    ac_info_ht = ac_info_ht.drop("allele_info")
 
     return ac_info_ht
 
