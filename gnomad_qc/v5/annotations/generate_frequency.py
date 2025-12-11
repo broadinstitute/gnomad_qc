@@ -196,14 +196,12 @@ def _calculate_consent_frequencies_and_age_histograms(
 def _subtract_consent_frequencies_and_age_histograms(
     v4_freq_ht: hl.Table,
     consent_freq_ht: hl.Table,
-    test: bool = False,
 ) -> hl.Table:
     """
     Subtract consent withdrawal frequencies and age histograms from v4 frequency table.
 
     :param v4_freq_ht: v4 frequency table (contains both freq and histograms.age_hists).
     :param consent_freq_ht: Consent withdrawal table with freq and age_hists annotations.
-    :param test: Whether running in test mode.
     :return: Updated frequency table with consent frequencies and age histograms subtracted.
     """
     logger.info(
