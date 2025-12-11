@@ -41,6 +41,22 @@ def run_generate_trio_stats(
     return generate_trio_stats(mt)
 
 
+def run_generate_sib_stats(
+    mt: hl.MatrixTable,
+    relatedness_ht: hl.Table,
+) -> hl.Table:
+    """
+    Generate sibling stats from a VariantDataset and relatedness info.
+
+    :param mt: Input MatrixTable.
+    :param relatedness_ht: Table containing relatedness info.
+    :return: Table containing sibling stats.
+    """
+    mt = annotate_adj(mt)
+    mt = hl.experimental.sparse_split_multi(mt)
+    return generate_sib_stats(mt, relatedness_ht)
+
+
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     if args.rwb:
@@ -67,9 +83,6 @@ def main(args):
         filter_partitions=range(test_n_partitions) if test_n_partitions else None,
         annotate_meta=True,
     )
-    mt = vds.variant_data
-    mt = annotate_adj(mt)
-    mt = hl.experimental.sparse_split_multi(mt)
 
     try:
         if args.generate_trio_stats:
@@ -93,7 +106,7 @@ def main(args):
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
-            ht = generate_sib_stats(mt, relatedness().ht())
+            ht = run_generate_sib_stats(vds.variant_data, relatedness().ht())
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
     finally:
