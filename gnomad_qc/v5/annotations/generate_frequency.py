@@ -354,7 +354,7 @@ def _merge_updated_frequency_fields(
     final_freq_ht = final_freq_ht.annotate(
         freq=final_freq_ht.freq.map(
             lambda x: x.annotate(
-                **{k: hl.int32(v) for k, v in x.items() if isinstance(v, hl.expr.Int64)}
+                **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
             )
         )
     )
