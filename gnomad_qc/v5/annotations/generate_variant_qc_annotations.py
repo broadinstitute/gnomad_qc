@@ -87,7 +87,6 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
             for a in ["AC_info"]
         },
     )
-    ac_info_ht = ac_info_ht.drop("allele_info")
 
     return ac_info_ht
 
@@ -157,7 +156,7 @@ def create_info_ht(
 
     logger.info("Adding AC info annotations to info ht...")
     ac_info_ht = generate_ac_info_ht(vds)
-    ht = ht.annotate(AC_info=ac_info_ht[ht.key].AC_info)
+    ht = ht.annotate(**ac_info_ht[ht.key])
     return ht
 
 
