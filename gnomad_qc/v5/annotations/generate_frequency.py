@@ -1,8 +1,9 @@
 """
 Script to generate frequency data for gnomAD v5.
 
-This script calculates variant frequencies for samples that will be removed from gnomAD v4
-in v5 due to consent withdrawal.
+This script calculates variant frequencies for samples that will be removed from gnomAD
+v4 in v5 due to consent withdrawal. These are then subtracted from the original v4
+frequency table to get the updated v5 frequency table for gnomAD.
 
 Processing Workflow:
 ----------------------
@@ -357,9 +358,9 @@ def _merge_updated_frequency_fields(
             )
         )
     )
-    # Update globals from updated table if they exist.
+    # Update globals from updated table.
     updated_globals = {}
-    for global_field in ["freq_meta", "faf_meta", "freq_index_dict", "faf_index_dict"]:
+    for global_field in ["freq_meta", "freq_meta_sample_count"]:
         if global_field in updated_freq_ht.globals:
             updated_globals[global_field] = updated_freq_ht.index_globals()[
                 global_field
