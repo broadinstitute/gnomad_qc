@@ -71,6 +71,7 @@ def main(args):
             tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4day",
             log="generate_variant_qc_annotations.log",
         )
+        # TODO: Add machine configurations for Batch.
     hl.default_reference("GRCh38")
 
     overwrite = args.overwrite
