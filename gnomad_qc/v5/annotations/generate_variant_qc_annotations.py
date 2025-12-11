@@ -103,7 +103,7 @@ def main(args):
             logger.info("Generating sibling stats...")
             sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
             check_resource_existence(
-                output_step_resources={"sib_stats_ht": sib_stats_ht_path},
+                output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
