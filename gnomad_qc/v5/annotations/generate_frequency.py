@@ -201,6 +201,8 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     logger.info("Annotating quality metrics histograms and age histograms...")
     aou_mt = hl.vds.to_dense_mt(aou_vds)
     aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
+    # hl.agg.call_stats is used within compute_freq_by_strata which returns int32s for
+    # AC, AN, and homozygote_count so do not need to convert to int32 here.
     aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hist_fields"])
 
     # Nest histograms to match gnomAD structure.
