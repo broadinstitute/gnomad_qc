@@ -161,10 +161,10 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         freq=hl.map(
             lambda AC, hom_alt, AN: hl.struct(
-                AC=AC,
+                AC=hl.int32(AC),
                 AF=hl.if_else(AN > 0, AC / AN, 0.0),
-                AN=AN,
-                homozygote_count=hom_alt,
+                AN=hl.int32(AN),
+                homozygote_count=hl.int32(hom_alt),
             ),
             aou_variant_freq_ht.AC,
             aou_variant_freq_ht.homozygote_count,
