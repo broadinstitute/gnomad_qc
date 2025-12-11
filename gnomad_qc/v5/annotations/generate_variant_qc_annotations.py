@@ -35,7 +35,6 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
         "unrelated": ~mt.meta.relatedness_inference.relatedness_filters.related,
     }
 
-    ac_filter_groups = {**(ac_filter_groups)}
     mt = mt.annotate_cols(_ac_filter_groups=ac_filter_groups)
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
 
