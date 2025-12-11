@@ -80,7 +80,6 @@ def _prepare_consent_vds(
     )
 
     vmt = vds.variant_data
-    vmt.describe()
     vmt = vmt.select_cols(
         gen_anc=vmt.meta.population_inference.pop,
         sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
