@@ -289,7 +289,6 @@ def process_gnomad_dataset(
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
-    # Test is used for formatting file paths.
     v4_freq_ht = get_v4_freq(data_type="genomes").ht()
 
     vds = _prepare_consent_vds(
