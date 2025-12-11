@@ -234,7 +234,7 @@ def _subtract_consent_frequencies_and_age_histograms(
             ]
         },
     )
-    # Update the frequency table with all changes.
+    # Update the frequency table with freq changes.
     joined_freq_ht = joined_freq_ht.annotate(freq=updated_freq_expr)
     joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=updated_freq_meta,
@@ -257,7 +257,7 @@ def _subtract_consent_frequencies_and_age_histograms(
         operation="diff",
     )
 
-    # Update the frequency table with all changes
+    # Update the frequency table with age hist changes.
     joined_freq_ht = joined_freq_ht.annotate(
         histograms=joined_freq_ht.histograms.annotate(
             age_hists=joined_freq_ht.histograms.age_hists.annotate(
@@ -334,10 +334,10 @@ def _merge_updated_frequency_fields(
     """
     logger.info("Merging frequency tables with selective field updates...")
 
-    # Bring in updated values with a single lookup
+    # Bring in updated values with a single lookup.
     updated_row = updated_freq_ht[original_freq_ht.key]
 
-    # Update freq and age_hists in a single annotate to avoid source mismatch
+    # Update freq and age_hists in a single annotate to avoid source mismatch:
     # - freq: use updated if present, otherwise keep original
     # - histograms.age_hists: update only age_hists, preserving qual_hists and raw_qual_hists
     final_freq_ht = original_freq_ht.annotate(
