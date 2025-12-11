@@ -90,7 +90,7 @@ def main(args):
             logger.info("Generating trio stats...")
             trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
             check_resource_existence(
-                output_step_resources={"trio_stats_ht": trio_stats_ht_path},
+                output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
             )
 
