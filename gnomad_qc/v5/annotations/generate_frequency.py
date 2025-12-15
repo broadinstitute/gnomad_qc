@@ -303,7 +303,7 @@ def process_gnomad_dataset(
 
     logger.info("Subtracting consent frequencies and age histograms from v4...")
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
-        v4_freq_ht, consent_freq_ht, test
+        v4_freq_ht, consent_freq_ht
     )
 
     # Only overwrite fields that were actually updated (merge back with original table)
