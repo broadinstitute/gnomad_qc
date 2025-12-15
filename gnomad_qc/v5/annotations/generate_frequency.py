@@ -172,7 +172,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         ),
     ).drop("all_sites_an")
 
-    # Nest histograms to match gnomAD structure
+    # Nest histograms to match gnomAD structure.
     # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
     # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
     aou_variant_freq_ht = aou_variant_freq_ht.select(
@@ -226,7 +226,7 @@ def process_aou_dataset(
     Process All of Us dataset for frequency calculations and age histograms.
 
     This function efficiently processes the AoU VDS by:
-    1. Computing complete frequency struct using imported AN from AoU all site ANs
+    1. Computing complete frequency struct (uses imported AN from AoU all site ANs if requested)
     2. Generating age histograms within the frequency calculation
 
     :param test: Whether to run in test mode.
@@ -271,7 +271,7 @@ def _initialize_hail(args) -> None:
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],
         }
-        # Add optional batch configuration parameters
+        # Add optional batch configuration parameters.
         for param in [
             "app_name",
             "driver_cores",
@@ -339,12 +339,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         description="Generate frequency data for gnomAD v5."
     )
 
-    # General arguments
+    # General arguments.
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
 
-    # Test/debug arguments
+    # Test/debug arguments.
     test_group = parser.add_argument_group("testing options")
     test_group.add_argument(
         "--test",
@@ -358,7 +358,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to use in test mode. Default is 2.",
     )
 
-    # Processing step arguments
+    # Processing step arguments.
     processing_group = parser.add_argument_group("processing steps")
     processing_group.add_argument(
         "--process-aou",
@@ -371,7 +371,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
 
-    # Environment configuration
+    # Environment configuration.
     env_group = parser.add_argument_group("environment configuration")
     env_group.add_argument(
         "--environment",
