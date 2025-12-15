@@ -180,3 +180,38 @@ def coverage_and_an_path(
             for version in ANNOTATION_VERSIONS
         },
     )
+
+
+######################################################################
+# Variant QC annotation resources
+######################################################################
+
+
+def get_info_ht(test: bool = False) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: Info VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.info.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+# Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
+# is stated in the previous header as an int but it is actually a float.
+aou_vcf_header = (
+    f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
+)
+
+# AoU sites-only VCF with annotations needed for variant QC.
+aou_annotated_sites_only_vcf = (
+    f"gs://{WORKSPACE_BUCKET}/echo_full_gnomad_annotated.sites-only.vcf.gz"
+)
