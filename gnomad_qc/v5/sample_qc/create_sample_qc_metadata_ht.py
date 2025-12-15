@@ -292,9 +292,12 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
     # Annotate metadata Table with relatedness inference and filters.
     meta_ht = meta_ht.annotate(
         relatedness_inference=hl.struct(
+            relatedness_filters=relatedness_filters_ht[
+                meta_ht.key
+            ].relatedness_inference.relatedness_filters,
             release_relatedness_filters=relatedness_filters_ht[
                 meta_ht.key
-            ].release_relatedness_filters,
+            ].relatedness_inference.release_relatedness_filters,
             relationships=relatedness_inference_ht[meta_ht.key].relationships,
             released_gnomad_exomes_aou_duplicate=relatedness_inference_ht[
                 meta_ht.key
@@ -403,7 +406,7 @@ def annotate_relatedness_filters(
     Get relatedness filtering Table for the combined meta Table.
 
     Add the following related filter boolean annotations to the input `ht` under a
-    `release_relatedness_filters` struct:
+    `relatedness_filters` and `release_relatedness_filters` struct:
 
         - related: Whether the release filtered sample was filtered for
           second-degree (or closer) relatedness in the final release.
@@ -423,8 +426,7 @@ def annotate_relatedness_filters(
         hard-filtered.
     :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
         outlier-filtered.
-    :return: Table with related filters added and Table with relationship and gnomad v3
-        overlap information.
+    :return: Table of relatedness filters.
     """
     rel_dict = {
         "related": SECOND_DEGREE_RELATIVES,
@@ -434,17 +436,34 @@ def annotate_relatedness_filters(
     }
     relationships = relationship_ht[ht.key]
     relatedness_filters_ht = ht.annotate(
-        release_relatedness_filters=hl.struct(
-            **{
-                rel: get_relationship_filter_expr(
-                    hard_filtered_expr | outlier_filtered_expr,
-                    hl.is_defined(related_samples_to_drop(release=True).ht()[ht.key]),
-                    relationships.relationships_high_quality,
-                    rel_val,
-                )
-                for rel, rel_val in rel_dict.items()
-            }
-        ),
+        relatedness_inference=hl.struct(
+            relatedness_filters=hl.struct(
+                **{
+                    rel: get_relationship_filter_expr(
+                        hard_filtered_expr,
+                        hl.is_defined(
+                            related_samples_to_drop(release=False).ht()[ht.key]
+                        ),
+                        relationships.relationships,
+                        rel_val,
+                    )
+                    for rel, rel_val in rel_dict.items()
+                }
+            ),
+            release_relatedness_filters=hl.struct(
+                **{
+                    rel: get_relationship_filter_expr(
+                        hard_filtered_expr | outlier_filtered_expr,
+                        hl.is_defined(
+                            related_samples_to_drop(release=True).ht()[ht.key]
+                        ),
+                        relationships.relationships_high_quality,
+                        rel_val,
+                    )
+                    for rel, rel_val in rel_dict.items()
+                }
+            ),
+        )
     )
 
     return relatedness_filters_ht

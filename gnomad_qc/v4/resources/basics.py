@@ -312,8 +312,8 @@ def get_gnomad_v4_vds(
             keep_samples = False
             if high_quality_only:
                 logger.info("Filtering VDS to high quality samples only...")
-                filter_ht = finalized_outlier_filtering().ht()
-                filter_ht = filter_ht.filter(~filter_ht.outlier_filtered)
+                filter_ht = meta().ht()
+                filter_ht = filter_ht.filter(filter_ht.high_quality)
                 keep_samples = True
             elif remove_hard_filtered_samples:
                 logger.info(

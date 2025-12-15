@@ -32,7 +32,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
-from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_aou_downsampling,
@@ -313,8 +313,9 @@ def _rename_cov_annotations(
         # Revert v4 genomes fraction over X bins to sample count over X bins.
         ht = ht.transmute(
             **{
-                f"over_{x}_{project}": hl.float64(ht[f"over_{x}_{project}"])
-                * sample_count
+                f"over_{x}_{project}": (
+                    hl.float64(ht[f"over_{x}_{project}"]) * sample_count
+                )
                 for x in coverage_over_x_bins
             }
         )
@@ -347,9 +348,10 @@ def _merge_coverage_fields(
     if operation == "diff":
         # Make sure over_x fields are float64s.
         merged_fields = {
-            "sum_gnomad": (ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"]),
-            "total_DP_gnomad": ht[f"total_DP_{project_1}"]
-            - ht[f"total_DP_{project_2}"],
+            "sum_gnomad": ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"],
+            "total_DP_gnomad": (
+                ht[f"total_DP_{project_1}"] - ht[f"total_DP_{project_2}"]
+            ),
         }
         merged_fields.update(
             {
@@ -365,8 +367,10 @@ def _merge_coverage_fields(
         }
         merged_fields.update(
             {
-                f"over_{x}": (ht[f"over_{x}_{project_1}"] + ht[f"over_{x}_{project_2}"])
-                / sample_count
+                f"over_{x}": (
+                    (ht[f"over_{x}_{project_1}"] + ht[f"over_{x}_{project_2}"])
+                    / sample_count
+                )
                 for x in coverage_over_x_bins
             }
         )
@@ -766,7 +770,7 @@ def main(args):
                 # Also adding DP here to make sure `compute_stats_per_ref_site`
                 # doesn't throw an error.
                 vmt = vds.variant_data
-                vmt = annotate_adj(vmt)
+                vmt = annotate_adj_no_dp(vmt)
                 vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
                 vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
