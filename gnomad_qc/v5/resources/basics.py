@@ -68,7 +68,7 @@ def qc_temp_prefix(
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
     :param days: Number of days to keep temporary data. Defaults to None.
     :return: Path to bucket with temporary QC data.
     """
@@ -101,7 +101,7 @@ def get_checkpoint_path(
     :param str name: Name of intermediate Table/MatrixTable.
     :param version: Version of annotation path to return.
     :param bool mt: Whether path is for a MatrixTable, default is False.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
     :return: Output checkpoint path.
     """
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'

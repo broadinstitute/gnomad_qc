@@ -182,6 +182,32 @@ def coverage_and_an_path(
     )
 
 
+def get_freq(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    data_type: str = "genomes",
+    test: bool = False,
+    data_set: str = "aou",
+) -> TableResource:
+    """
+    Get the frequency annotation Table for v5.
+
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource ("genomes" or "exomes").
+    :param test: Whether to use a tmp path for testing.
+    :param data_set: Data set of annotation resource. Default is "aou".
+    :param finalized: Whether to return the finalized frequency table. Default is True.
+    :return: Hail Table containing frequency annotations.
+    """
+    assert data_set in [
+        "aou",
+        "gnomad",
+        "merged",
+    ], "data_set must be either 'aou', 'gnomad', or 'merged'"
+    return TableResource(
+        f"{_annotations_root(version, test, data_type, data_set)}/{data_set}.genomes.v{version}.frequencies.ht"
+    )
+
+
 ######################################################################
 # Variant QC annotation resources
 ######################################################################
