@@ -104,8 +104,11 @@ def run_mendel_errors(
     ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
 
     logger.info("Sub-setting VDS to %i samples...", len(ped_samples))
+    vds = hl.vds.VariantDataset(
+        reference_data=vds.reference_data,
+        variant_data=vds.variant_data.select_entries("LA", "LGT"),
+    )
     vds = hl.vds.filter_samples(vds, ped_samples)
-    vds.variant_data = vds.variant_data.select_entries("LA", "LGT")
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
     mt = hl.vds.to_dense_mt(vds)
 
