@@ -16,6 +16,7 @@ def _annotations_root(
     test: bool = False,
     data_type: str = "genomes",
     data_set: str = "aou",
+    environment: str = "rwb",
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -25,18 +26,72 @@ def _annotations_root(
         full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
     :param data_set: Data set of annotation resource. Default is "aou".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Root path of the variant annotation files.
     """
     path_suffix = f"annotations/{data_type}/{data_set}"
 
     if test:
-        environment = "rwb" if data_set == "aou" else "dataproc"
         return (
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    base_bucket = WORKSPACE_BUCKET if data_set == "aou" else GNOMAD_BUCKET
+    base_bucket = WORKSPACE_BUCKET if environment == "rwb" else GNOMAD_BUCKET
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
+
+
+######################################################################
+# Variant QC annotation resources
+######################################################################
+
+
+def get_trio_stats(
+    test: bool = False,
+    environment: str = "rwb",
+) -> VersionedTableResource:
+    """
+    Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.
+
+    :param test: Whether to use a temporary path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: AoU trio stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}."
+                "trio_stats.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+def get_sib_stats(
+    test: bool = False, environment: str = "rwb"
+) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 (AoU genomes only) sibling stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: AoU sibling stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}.sib_stats.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+######################################################################
+# Frequency, coverage, and AN annotation resources
+######################################################################
 
 
 def get_aou_downsampling(test: bool = False) -> VersionedTableResource:

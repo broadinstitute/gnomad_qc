@@ -79,11 +79,11 @@ def qc_temp_prefix(
         env_bucket = (
             f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
         )
-    elif environment in ["dataproc", "batch"]:
+    elif environment in ("dataproc", "batch"):
         env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
-            f"Environment {environment} not recognized. Choose 'rwb' or 'dataproc'."
+            f"Environment {environment} not recognized. Choose 'rwb', 'dataproc', or 'batch'."
         )
 
     return f"gs://{env_bucket}/gnomad.genomes.v{version}.qc_data/"
@@ -118,7 +118,7 @@ def get_logging_path(
 
     :param name: Name of log file.
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
     :param tmp_dir_days: Number of days to keep temporary data. Defaults to None.
     :return: Output log path.
     """
@@ -128,6 +128,7 @@ def get_logging_path(
 def get_aou_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
+    high_quality_only: bool = False,
     release_only: bool = False,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
@@ -144,7 +145,6 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
-    high_quality_only: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -153,6 +153,7 @@ def get_aou_vds(
         rather than grab an already split VDS. Default is False.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
         filters (only relevant after hard filtering is complete). Default is True.
+    :param high_quality_only: Whether to filter the VDS to only high quality samples. Default is False.
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.
@@ -172,7 +173,6 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
-    :param high_quality_only: Whether to filter the VDS to only high quality samples. Default is False.
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
@@ -253,7 +253,7 @@ def get_aou_vds(
     vmt = vds.variant_data
     rmt = vds.reference_data
 
-    if release_only or annotate_meta or add_project_prefix or high_quality_only:
+    if release_only or high_quality_only or annotate_meta or add_project_prefix:
         meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
