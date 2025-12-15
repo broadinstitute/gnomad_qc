@@ -14,7 +14,7 @@ logger.setLevel(logging.INFO)
 # Adapted from https://github.com/broadinstitute/gatk/pull/8772/files.
 # After discussion, we decided to use GQ 30 threshold for both haploid and diploid genotypes.
 # See thread: https://atgu.slack.com/archives/CRA2TKTV0/p1762443074200349
-def annotate_adj(
+def annotate_adj_no_dp(
     mt: hl.MatrixTable,
     adj_gq: int = 30,
     adj_ab: float = 0.2,
