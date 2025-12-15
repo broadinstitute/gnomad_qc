@@ -291,7 +291,7 @@ def main(args):
 
         rel_ht = relatedness().ht()
         meta_ht = meta().ht()
-        dup_ht_path = duplicates().path
+        dup_ht_path = duplicates(environment=environment).path
         raw_ped_path = pedigree(finalized=False).path
         fake_ped_path = pedigree(finalized=False, fake=True).path
         mendel_err_ht_path = ped_mendel_errors(test=test).path

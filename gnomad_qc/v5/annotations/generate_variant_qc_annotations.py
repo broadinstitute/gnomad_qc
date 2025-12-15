@@ -259,7 +259,8 @@ def main(args):
             )
 
             ht = run_generate_trio_stats(
-                dense_trios(test=test).mt(), pedigree(test=test).pedigree()
+                dense_trios(test=test, environment=environment).mt(),
+                pedigree(test=test, environment=environment).pedigree(),
             )
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
