@@ -23,7 +23,8 @@ logger.setLevel(logging.INFO)
 
 
 def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
-    """Compute AC and AC_raw annotations for each allele count filter group.
+    """
+    Compute AC and AC_raw annotations for each allele count filter group.
 
     :param vds: VariantDataset to use for computing AC and AC_raw annotations.
     :return: Table with AC and AC_raw annotations split by high quality, release, and unrelated.
