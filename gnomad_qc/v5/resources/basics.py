@@ -254,7 +254,6 @@ def get_aou_vds(
     rmt = vds.reference_data
 
     if release_only or annotate_meta or add_project_prefix or high_quality_only:
-        # TODO: Switch back to meta(data_type="genomes").ht() after AoU metadata is updated.
         meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
