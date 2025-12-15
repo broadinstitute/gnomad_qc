@@ -7,7 +7,7 @@ import hail as hl
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.annotations.annotation_utils import annotate_adj
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import get_sib_stats, get_trio_stats
 from gnomad_qc.v5.resources.basics import (
     WORKSPACE_BUCKET,
@@ -35,7 +35,7 @@ def run_generate_trio_stats(
     """
     # Add adj annotation and convert LGT to GT since only
     # autosomal bi-allelics are used to calculate trio stats.
-    mt = annotate_adj(mt)
+    mt = annotate_adj_no_dp(mt)
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     return generate_trio_stats(mt)
@@ -52,7 +52,7 @@ def run_generate_sib_stats(
     :param relatedness_ht: Table containing relatedness info.
     :return: Table containing sibling stats.
     """
-    mt = annotate_adj(mt)
+    mt = annotate_adj_no_dp(mt)
     mt = hl.experimental.sparse_split_multi(mt)
     return generate_sib_stats(mt, relatedness_ht)
 
