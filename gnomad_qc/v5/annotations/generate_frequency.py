@@ -34,7 +34,7 @@ from gnomad.utils.annotations import (
 )
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.annotations.annotation_utils import annotate_adj as annotate_adj_no_dp
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_freq,
