@@ -288,7 +288,7 @@ def _initialize_hail(args) -> None:
             tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
             default_reference="GRCh38",
         )
-    # hl.default_reference("GRCh38") Commenting out for now to test in hail 0.2.130
+    hl.default_reference("GRCh38")
 
 
 def main(args):
