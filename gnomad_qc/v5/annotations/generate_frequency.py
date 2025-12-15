@@ -126,13 +126,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     aou_variant_mt = aou_variant_mt.annotate_rows(
         hist_fields=mt_hist_fields(aou_variant_mt)
     )
-    # Add all of the qual hists from the all sites AN table into the
-    # aou_variant_freq_ht qual_hists struct.
-    aou_variant_mt = aou_variant_mt.annotate_rows(
-        qual_hists=aou_variant_mt.hist_fields.qual_hists.annotate(
-            **all_sites_an_ht[aou_variant_mt.locus].qual_hists,
-        )
-    )
+
     logger.info("Annotating frequencies with all sites ANs...")
     group_membership_ht = group_membership(test=test, data_set="aou").ht()
     aou_variant_freq_ht = agg_by_strata(
