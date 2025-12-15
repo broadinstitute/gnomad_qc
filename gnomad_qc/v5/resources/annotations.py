@@ -151,8 +151,8 @@ def get_freq(
     return TableResource(
         f"{_annotations_root(version, test, data_type, data_set)}/{data_set}.genomes.v{version}.frequencies.ht"
     )
-  
-  
+
+
 ######################################################################
 # Variant QC annotation resources
 ######################################################################
