@@ -68,7 +68,7 @@ def qc_temp_prefix(
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
     :param days: Number of days to keep temporary data. Defaults to None.
     :return: Path to bucket with temporary QC data.
     """
@@ -79,7 +79,7 @@ def qc_temp_prefix(
         env_bucket = (
             f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
         )
-    elif environment == "dataproc":
+    elif environment in ["dataproc", "batch"]:
         env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
@@ -101,7 +101,7 @@ def get_checkpoint_path(
     :param str name: Name of intermediate Table/MatrixTable.
     :param version: Version of annotation path to return.
     :param bool mt: Whether path is for a MatrixTable, default is False.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
     :return: Output checkpoint path.
     """
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'
@@ -144,6 +144,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
+    high_quality_only: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -171,6 +172,7 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
+    :param high_quality_only: Whether to filter the VDS to only high quality samples. Default is False.
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
@@ -251,7 +253,7 @@ def get_aou_vds(
     vmt = vds.variant_data
     rmt = vds.reference_data
 
-    if release_only or annotate_meta or add_project_prefix:
+    if release_only or annotate_meta or add_project_prefix or high_quality_only:
         meta_ht = meta(data_type="genomes").ht()
 
         logger.warning(
@@ -294,6 +296,11 @@ def get_aou_vds(
     if release_only:
         logger.info("Filtering VDS to release samples only...")
         filter_expr = meta_ht.release
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if high_quality_only:
+        logger.info("Filtering VDS to high quality samples only...")
+        filter_expr = meta_ht.high_quality
         vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
 
     if filter_samples:
