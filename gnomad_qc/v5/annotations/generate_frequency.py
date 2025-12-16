@@ -73,11 +73,6 @@ logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
 
 
-######################################################################
-# AoU frequency processing functions
-######################################################################
-
-
 def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     """
     Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
@@ -273,11 +268,6 @@ def process_aou_dataset(
         )
 
     return aou_freq_ht
-
-
-######################################################################
-# gnomAD consent withdrawal frequency processing functions
-######################################################################
 
 
 def _prepare_consent_vds(
@@ -595,11 +585,6 @@ def _merge_updated_frequency_fields(
         final_freq_ht = final_freq_ht.annotate_globals(**updated_globals)
 
     return final_freq_ht
-
-
-######################################################################
-# Hail initialization and main
-######################################################################
 
 
 def _initialize_hail(args) -> None:
