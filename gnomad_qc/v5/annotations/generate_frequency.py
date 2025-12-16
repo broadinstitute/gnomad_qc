@@ -1,25 +1,37 @@
 """
 Script to generate frequency data for gnomAD v5.
 
-This script calculates variant frequencies for samples that will be removed from gnomAD
-v4 in v5 due to consent withdrawal. These are then subtracted from the original v4
-frequency table to get the updated v5 frequency table for gnomAD.
+This script calculates variant frequencies and histograms for:
+1. gnomAD dataset - updating v4 frequencies by subtracting consent withdrawal samples
+2. AoU dataset - using either pre-computed allele numbers or a densify approach
 
 Processing Workflow:
-----------------------
-1. process_gnomad_dataset: Update v4 frequency table by subtracting consent withdrawal samples
-   - Load v4 frequency table (contains frequencies and age histograms)
-   - Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
-   - Calculate frequencies and age histograms for consent samples
-   - Subtract from v4 frequencies to get updated gnomAD v5 frequencies
+--------------------
+gnomAD (--process-gnomad):
+1. Load v4 frequency table (contains frequencies and age histograms)
+2. Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
+3. Calculate frequencies and age histograms for consent samples
+4. Subtract from v4 frequencies to get updated gnomAD v5 frequencies
 
+AoU (--process-aou):
+1. Load AoU VDS with metadata
+2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
+3. Calculate frequencies using either: All sites ANs (efficient, requires pre-computed
+AN values) or Densify approach (standard, more resource intensive)
+4. Generate age histograms during frequency calculation
 
 Usage Examples:
 ---------------
+# Process AoU dataset using all-sites ANs.
+python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
+
+# Process AoU on batch/QoB with custom resources.
+python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
+
 # Process gnomAD consent withdrawals
 python generate_frequency.py --process-gnomad --environment dataproc
 
-# Run in test mode
+# Run gnomAD in test mode
 python generate_frequency.py --process-gnomad --test --test-partitions 2
 """
 
@@ -30,18 +42,26 @@ import hail as hl
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
+    agg_by_strata,
     compute_freq_by_strata,
     get_adj_expr,
     merge_freq_arrays,
     merge_histograms,
+    qual_hist_expr,
 )
 from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
-from gnomad_qc.v5.resources.annotations import get_freq, group_membership
+from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
+from gnomad_qc.v5.resources.annotations import (
+    coverage_and_an_path,
+    get_freq,
+    group_membership,
+)
 from gnomad_qc.v5.resources.basics import (
+    get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
     qc_temp_prefix,
@@ -50,6 +70,203 @@ from gnomad_qc.v5.resources.basics import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
+
+
+def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
+    """
+    Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
+
+    :param mt: Input MatrixTable.
+    :return: Struct with allele balance, quality metrics histograms, and age histograms.
+    """
+    logger.info(
+        "Computing quality metrics histograms and age histograms for each variant..."
+    )
+    qual_hists = qual_hist_expr(
+        gt_expr=mt.GT,
+        gq_expr=mt.GQ,
+        dp_expr=hl.sum(mt.AD),
+        adj_expr=mt.adj,
+        ab_expr=(mt.AD[1] / hl.sum(mt.AD)),
+        split_adj_and_raw=True,
+    )
+    return hl.struct(
+        qual_hists=qual_hists,
+        age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
+    )
+
+
+def _prepare_aou_vds(
+    aou_vds: hl.vds.VariantDataset, test: bool = False
+) -> hl.vds.VariantDataset:
+    """
+    Prepare AoU VDS for frequency calculations.
+
+    :param aou_vds: AoU VariantDataset.
+    :param test: Whether running in test mode.
+    :return: Prepared AoU VariantDataset.
+    """
+    logger.info(f"Using test mode: {test}")
+    aou_vmt = aou_vds.variant_data
+    # Use existing AoU group membership table and filter to variant samples.
+    logger.info(
+        "Loading AoU group membership table for variant frequency stratification..."
+    )
+    group_membership_ht = group_membership(test=test, data_set="aou").ht()
+    group_membership_globals = group_membership_ht.index_globals()
+    # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
+    # to adjust it here.
+    aou_vmt = aou_vmt.annotate_cols(
+        sex_karyotype=aou_vmt.meta.sex_karyotype,
+        gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
+        age=aou_vmt.meta.project_meta.age,
+        group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
+    )
+    aou_vmt = aou_vmt.annotate_globals(
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+    )
+
+    # Add adj annotation required by annotate_freq.
+    aou_vmt = annotate_adj_no_dp(aou_vmt)
+    aou_vds = hl.vds.split_multi(hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt))
+
+    return aou_vds
+
+
+def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
+    aou_variant_mt: hl.MatrixTable, test: bool = False
+) -> hl.Table:
+    """
+    Calculate frequencies and age histograms for AoU variant data using all sites ANs.
+
+    :param aou_variant_mt: Prepared variant MatrixTable.
+    :param test: Whether to use test resources.
+    :return: Table with freq and age_hists annotations.
+    """
+    logger.info("Annotating quality metrics histograms and age histograms...")
+    all_sites_an_ht = coverage_and_an_path(test=test).ht()
+    aou_variant_mt = aou_variant_mt.annotate_rows(
+        hist_fields=mt_hist_fields(aou_variant_mt)
+    )
+
+    logger.info("Annotating frequencies with all sites ANs...")
+    group_membership_ht = group_membership(test=test, data_set="aou").ht()
+    aou_variant_freq_ht = agg_by_strata(
+        aou_variant_mt.select_entries(
+            "GT",
+            "adj",
+            n_alt_alleles=aou_variant_mt.GT.n_alt_alleles(),
+            is_hom_var=aou_variant_mt.GT.is_hom_var(),
+        ),
+        {
+            "AC": (lambda t: t.n_alt_alleles, hl.agg.sum),
+            "homozygote_count": (lambda t: t.is_hom_var, hl.agg.count_where),
+        },
+        group_membership_ht=group_membership_ht,
+        select_fields=["hist_fields"],
+    )
+
+    # Load AN values from all sites ANs table (calculated by another script but used
+    # same group membership HT so same strata order).
+    logger.info("Loading AN values from consent_ans...")
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        all_sites_an=all_sites_an_ht[aou_variant_freq_ht.locus].AN
+    )
+
+    logger.info("Building complete frequency struct with imported AN values...")
+    aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+        freq=hl.map(
+            lambda AC, hom_alt, AN: hl.struct(
+                AC=hl.int32(AC),
+                AF=hl.if_else(AN > 0, AC / AN, 0.0),
+                AN=hl.int32(AN),
+                homozygote_count=hl.int32(hom_alt),
+            ),
+            aou_variant_freq_ht.AC,
+            aou_variant_freq_ht.homozygote_count,
+            aou_variant_freq_ht.all_sites_an,
+        ),
+    ).drop("all_sites_an")
+
+    # Nest histograms to match gnomAD structure.
+    # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
+    # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
+    aou_variant_freq_ht = aou_variant_freq_ht.select(
+        freq=aou_variant_freq_ht.freq,
+        histograms=hl.struct(
+            qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.qual_hists,
+            raw_qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.raw_qual_hists,
+            age_hists=aou_variant_freq_ht.hist_fields.age_hists,
+        ),
+    )
+
+    return aou_variant_freq_ht
+
+
+def _calculate_aou_frequencies_and_hists_using_densify(
+    aou_vds: hl.vds.VariantDataset,
+    test: bool = False,
+) -> hl.Table:
+    """
+    Calculate frequencies and age histograms for AoU variant data using densify.
+
+    :param aou_vds: Prepared AoU VariantDataset.
+    :param test: Whether to use test resources.
+    :return: Table with freq and age_hists annotations.
+    """
+    logger.info("Annotating quality metrics histograms and age histograms...")
+    aou_mt = hl.vds.to_dense_mt(aou_vds)
+    aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
+    # hl.agg.call_stats is used within compute_freq_by_strata which returns int32s for
+    # AC, AN, and homozygote_count so do not need to convert to int32 here.
+    aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hist_fields"])
+
+    # Nest histograms to match gnomAD structure.
+    # Note: hist_fields.qual_hists already contains raw_qual_hists and qual_hists
+    # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
+    aou_freq_ht = aou_freq_ht.transmute(
+        histograms=hl.struct(
+            qual_hists=aou_freq_ht.hist_fields.qual_hists.qual_hists,
+            raw_qual_hists=aou_freq_ht.hist_fields.qual_hists.raw_qual_hists,
+            age_hists=aou_freq_ht.hist_fields.age_hists,
+        )
+    )
+
+    return aou_freq_ht
+
+
+def process_aou_dataset(
+    test: bool = False, use_all_sites_ans: bool = False
+) -> hl.Table:
+    """
+    Process All of Us dataset for frequency calculations and age histograms.
+
+    This function efficiently processes the AoU VDS by:
+    1. Computing complete frequency struct (uses imported AN from AoU all site ANs if requested)
+    2. Generating age histograms within the frequency calculation
+
+    :param test: Whether to run in test mode.
+    :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
+    :return: Table with freq and age_hists annotations for AoU dataset.
+    """
+    aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
+    aou_vds = _prepare_aou_vds(aou_vds, test=test)
+
+    # Calculate frequencies and age histograms together
+    logger.info("Calculating AoU frequencies and age histograms...")
+    if use_all_sites_ans:
+        logger.info("Using all sites ANs for frequency calculations...")
+        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
+            aou_vds.variant_data, test=test
+        )
+    else:
+        logger.info("Using densify for frequency calculations...")
+        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
+            aou_vds, test=test
+        )
+
+    return aou_freq_ht
 
 
 def _prepare_consent_vds(
@@ -409,14 +626,14 @@ def _initialize_hail(args) -> None:
                 tmp_dir_days=tmp_dir_days,
             ),
             tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
-            default_reference="GRCh38",  # Remove if running in 0.2.134 or later
         )
-    # hl.default_reference("GRCh38") # Testing in hail 0.2.130 so commenting out for now
+    hl.default_reference("GRCh38")
 
 
 def main(args):
     """Generate v5 frequency data."""
     environment = args.environment
+    use_all_sites_ans = args.use_all_sites_ans
     test = args.test
     test_partitions = args.test_partitions
     overwrite = args.overwrite
@@ -426,6 +643,7 @@ def main(args):
 
     try:
         logger.info("Running generate_frequency.py...")
+
         if args.process_gnomad:
             logger.info("Processing gnomAD dataset...")
 
@@ -446,6 +664,22 @@ def main(args):
                 gnomad_freq.path,
             )
             gnomad_freq_ht.write(gnomad_freq.path, overwrite=overwrite)
+
+        if args.process_aou:
+            logger.info("Processing All of Us dataset...")
+            aou_freq = get_freq(test=test, data_type="genomes", data_set="aou")
+
+            check_resource_existence(
+                output_step_resources={"process-aou": [aou_freq]},
+                overwrite=overwrite,
+            )
+
+            aou_freq_ht = process_aou_dataset(
+                test=test, use_all_sites_ans=use_all_sites_ans
+            )
+
+            logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
+            aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
 
     finally:
         hl.copy_log(
@@ -480,15 +714,25 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to use in test mode. Default is 2.",
     )
 
-    # Processing step arguments
+    # Processing step arguments.
     processing_group = parser.add_argument_group("processing steps")
     processing_group.add_argument(
         "--process-gnomad",
         help="Process gnomAD dataset for frequency calculations.",
         action="store_true",
     )
+    processing_group.add_argument(
+        "--process-aou",
+        help="Process All of Us dataset for frequency calculations.",
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--use-all-sites-ans",
+        help="Use all sites ANs in frequency calculations to avoid a densify.",
+        action="store_true",
+    )
 
-    # Environment configuration
+    # Environment configuration.
     env_group = parser.add_argument_group("environment configuration")
     env_group.add_argument(
         "--environment",
@@ -509,10 +753,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Google Cloud billing project for reading requester pays buckets.",
     )
 
-    # Batch-specific configuration
+    # Batch-specific configuration.
     batch_group = parser.add_argument_group(
         "batch configuration",
-        "Optional parameters for batch/QoB backend (only used when --environment=batch)",
+        "Optional parameters for batch/QoB backend (only used when --environment=batch).",
     )
     batch_group.add_argument(
         "--app-name",
@@ -551,4 +795,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    batch_args = [
+        "app_name",
+        "driver_cores",
+        "driver_memory",
+        "worker_cores",
+        "worker_memory",
+    ]
+    provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
+    if provided_batch_args and args.environment != "batch":
+        parser.error(
+            f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
+            f"require --environment=batch"
+        )
+
     main(args)
