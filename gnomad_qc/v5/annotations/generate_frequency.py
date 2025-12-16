@@ -16,9 +16,8 @@ gnomAD (--process-gnomad):
 AoU (--process-aou):
 1. Load AoU VDS with metadata
 2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
-3. Calculate frequencies using either:
-   - All sites ANs (efficient, requires pre-computed AN values)
-   - Densify approach (standard, more resource intensive)
+3. Calculate frequencies using either: All sites ANs (efficient, requires pre-computed
+AN values) or Densify approach (standard, more resource intensive)
 4. Generate age histograms during frequency calculation
 
 Usage Examples:
