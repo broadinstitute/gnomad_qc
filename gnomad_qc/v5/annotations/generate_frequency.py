@@ -135,8 +135,6 @@ def _prepare_aou_vds(
 
     # Add adj annotation required by annotate_freq.
     aou_vmt = annotate_adj_no_dp(aou_vmt)
-
-    # Rename LGT to GT and LAD to AD for compatibility with annotate_freq.
     aou_vds = hl.vds.split_multi(hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt))
 
     return aou_vds
