@@ -130,6 +130,7 @@ def group_membership(
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Hail Table containing group membership annotations.
     """
+    environment = "rwb" if data_set == "aou" else "dataproc"
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
