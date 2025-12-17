@@ -98,7 +98,7 @@ def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
 
 
 def _prepare_aou_vds(
-    aou_vds: hl.vds.VariantDataset, test: bool = False
+    aou_vds: hl.vds.VariantDataset, test: bool = False, environment: str = "rwb"
 ) -> hl.vds.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
@@ -113,7 +113,9 @@ def _prepare_aou_vds(
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
     )
-    group_membership_ht = group_membership(test=test, data_set="aou").ht()
+    group_membership_ht = group_membership(
+        test=test, data_set="aou", environment=environment
+    ).ht()
     group_membership_globals = group_membership_ht.index_globals()
     # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
     # to adjust it here.
@@ -137,23 +139,26 @@ def _prepare_aou_vds(
 
 
 def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
-    aou_variant_mt: hl.MatrixTable, test: bool = False
+    aou_variant_mt: hl.MatrixTable, test: bool = False, environment: str = "rwb"
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using all sites ANs.
 
     :param aou_variant_mt: Prepared variant MatrixTable.
     :param test: Whether to use test resources.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
-    all_sites_an_ht = coverage_and_an_path(test=test).ht()
+    all_sites_an_ht = coverage_and_an_path(test=test, environment=environment).ht()
     aou_variant_mt = aou_variant_mt.annotate_rows(
         hist_fields=mt_hist_fields(aou_variant_mt)
     )
 
     logger.info("Annotating frequencies with all sites ANs...")
-    group_membership_ht = group_membership(test=test, data_set="aou").ht()
+    group_membership_ht = group_membership(
+        test=test, data_set="aou", environment=environment
+    ).ht()
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
             "GT",
@@ -239,7 +244,7 @@ def _calculate_aou_frequencies_and_hists_using_densify(
 
 
 def process_aou_dataset(
-    test: bool = False, use_all_sites_ans: bool = False
+    test: bool = False, use_all_sites_ans: bool = False, environment: str = "rwb"
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -250,17 +255,18 @@ def process_aou_dataset(
 
     :param test: Whether to run in test mode.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
-    aou_vds = _prepare_aou_vds(aou_vds, test=test)
+    aou_vds = _prepare_aou_vds(aou_vds, test=test, environment=environment)
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
     if use_all_sites_ans:
         logger.info("Using all sites ANs for frequency calculations...")
         aou_freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
-            aou_vds.variant_data, test=test
+            aou_vds.variant_data, test=test, environment=environment
         )
     else:
         logger.info("Using densify for frequency calculations...")
@@ -374,7 +380,9 @@ def _calculate_consent_frequencies_and_age_histograms(
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
     # Group membership table is already filtered to consent drop samples.
-    group_membership_ht = group_membership(test=test, data_set="gnomad").ht()
+    group_membership_ht = group_membership(
+        test=test, data_set="gnomad", environment="dataproc"
+    ).ht()
 
     mt = mt.annotate_cols(
         group_membership=group_membership_ht[mt.col_key].group_membership,
