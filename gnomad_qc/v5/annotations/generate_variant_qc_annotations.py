@@ -86,8 +86,10 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
     ac_info_ht = annotate_allele_info(ac_info_ht)
     ac_info_ht = ac_info_ht.annotate(
         **{
-            a: ac_info_ht[a].annotate(
-                **split_info_annotation(ac_info_ht[a], ac_info_ht.a_index),
+            a: (
+                ac_info_ht[a].annotate(
+                    **split_info_annotation(ac_info_ht[a], ac_info_ht.a_index),
+                )
             )
             for a in ["AC_info"]
         },
@@ -233,7 +235,7 @@ def main(args):
 
     try:
         if args.create_info_ht:
-            info_ht_path = get_info_ht(test=test).path
+            info_ht_path = get_info_ht(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={
                     "info_ht": [info_ht_path],

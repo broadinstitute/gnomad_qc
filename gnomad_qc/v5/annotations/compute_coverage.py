@@ -672,10 +672,15 @@ def main(args):
         cov_and_an_ht_path = coverage_and_an_path(
             test=test,
             data_set=project,
+            environment=environment,
         ).path
-        downsampling_ht_path = get_aou_downsampling(test=test).path
+        downsampling_ht_path = get_aou_downsampling(
+            test=test, environment=environment
+        ).path
         meta_ht_path = meta(data_type="genomes").path
-        group_membership_ht_path = group_membership(test=test, data_set=project).path
+        group_membership_ht_path = group_membership(
+            test=test, data_set=project, environment=environment
+        ).path
         meta_ht = None
         if project == "aou":
             meta_ht = hl.read_table(meta_ht_path)
@@ -930,7 +935,7 @@ def main(args):
             ht.export(an_tsv_path)
 
         if args.merge_qual_hists:
-            qual_hists_path = qual_hists(test=test).path
+            qual_hists_path = qual_hists(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
                 overwrite=overwrite,
