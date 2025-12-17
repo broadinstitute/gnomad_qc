@@ -538,7 +538,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
         )
     )
 
-    return ht.select(*final_fields).select_globals(**final_globals)
+    return ht.select(*final_fields).select_globals(*final_globals)
 
 
 def process_gnomad_dataset(
