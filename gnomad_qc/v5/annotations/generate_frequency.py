@@ -129,6 +129,7 @@ def _prepare_aou_vds(
         freq_meta=group_membership_globals.freq_meta,
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
         age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
+        downsamplings=group_membership_globals.downsamplings,
     )
 
     # Add adj annotation required by annotate_freq.
@@ -525,7 +526,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
             freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
         )
     else:
-        # AoU has on extra 'downsampling' global field that is not present in gnomAD.
+        # AoU has on extra 'downsamplings' global field that is not present in gnomAD.
         final_globals.append("downsamplings")
 
     # Convert all int64 annotations in the freq struct to int32s for merging type
