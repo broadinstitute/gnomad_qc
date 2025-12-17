@@ -94,20 +94,23 @@ def get_sib_stats(
 ######################################################################
 
 
-def get_aou_downsampling(test: bool = False) -> VersionedTableResource:
+def get_aou_downsampling(
+    test: bool = False, environment: str = "rwb"
+) -> VersionedTableResource:
     """
     Get the downsampling annotation table.
 
     v5 downsamplings only applies to the AoU dataset.
 
     :param test: Whether to use a tmp path for tests. Default is False.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Hail Table containing downsampling annotations.
     """
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.genomes.v{version}.downsampling.aou.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.downsampling.aou.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -117,15 +120,16 @@ def get_aou_downsampling(test: bool = False) -> VersionedTableResource:
 def group_membership(
     test: bool = False,
     data_set: str = "aou",
+    environment: str = "rwb",
 ) -> VersionedTableResource:
     """
     Get the group membership Table for coverage, AN, quality histograms, and frequency calculations.
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :param data_set: Data set of annotation resource. Default is "aou".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Hail Table containing group membership annotations.
     """
-    environment = "rwb" if data_set == "aou" else "dataproc"
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -158,6 +162,7 @@ def qual_hists(test: bool = False) -> VersionedTableResource:
 def coverage_and_an_path(
     test: bool = False,
     data_set: str = "aou",
+    environment: str = "rwb",
 ) -> VersionedTableResource:
     """
     Fetch filepath for all sites coverage or allele number Table.
@@ -176,7 +181,7 @@ def coverage_and_an_path(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, data_set=data_set)}/{'aou' if data_set == 'aou' else 'gnomad'}.genomes.v{version}.coverage_and_an.ht"
+                f"{_annotations_root(version, test=test, data_set=data_set, environment=environment)}/{'aou' if data_set == 'aou' else 'gnomad'}.genomes.v{version}.coverage_and_an.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
