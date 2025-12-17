@@ -49,6 +49,7 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
+from gnomad.utils.filtering import filter_arrays_by_meta
 from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -265,6 +266,7 @@ def process_aou_dataset(
         aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
             aou_vds, test=test
         )
+    aou_freq_ht = select_final_dataset_fields(aou_freq_ht, dataset="aou")
 
     return aou_freq_ht
 
@@ -485,6 +487,51 @@ def _subtract_consent_frequencies_and_age_histograms(
     return joined_freq_ht.checkpoint(new_temp_file("merged_freq_and_hists", "ht"))
 
 
+def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Table:
+    """
+    Create final freq Table with only desired annotations.
+
+    :param ht: Hail Table containing all annotations.
+    :return: Hail Table with final annotations.
+    """
+    if dataset not in ["gnomad", "aou"]:
+        raise ValueError(f"Invalid dataset: {dataset}")
+
+    final_globals = ["freq_meta", "freq_meta_sample_count", "age_distribution"]
+    final_fields = ["freq", "histograms"]
+
+    if dataset == "gnomad":
+        logger.info("Dropping 'subsets' from gnomAD freq ht array annotations...")
+        freq_meta, array_exprs = filter_arrays_by_meta(
+            ht.freq_meta,
+            {
+                "freq": ht.freq,
+                "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+            },
+            items_to_filter=["subset"],
+            keep=False,
+        )
+        ht = ht.annotate(freq=array_exprs["freq"]).annotate_globals(
+            freq_meta=freq_meta,
+            freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+        )
+    else:
+        # AoU has on extra 'downsampling' global field that is not present in gnomAD.
+        final_globals.append("downsamplings")
+
+    # Convert all int64 annotations in the freq struct to int32s for merging type
+    # compatibility.
+    ht = ht.annotate(
+        freq=ht.freq.map(
+            lambda x: x.annotate(
+                **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
+            )
+        )
+    )
+
+    return ht.select(*final_fields).select_globals(**final_globals)
+
+
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
@@ -522,10 +569,10 @@ def process_gnomad_dataset(
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
         v4_freq_ht, consent_freq_ht
     )
-
-    # Only overwrite fields that were actually updated (merge back with original table)
-    # Note: FAF/grpmax annotations will be calculated on the final merged dataset.
-    final_freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
+    # Select only the fields that were updated as FAF/grpmax/inbreeding_coeff annotations
+    # will be calculated on the final merged dataset.
+    freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
+    final_freq_ht = select_final_dataset_fields(freq_ht, dataset="gnomad")
 
     return final_freq_ht
 
