@@ -125,11 +125,12 @@ def group_membership(
     :param data_set: Data set of annotation resource. Default is "aou".
     :return: Hail Table containing group membership annotations.
     """
+    environment = "rwb" if data_set == "aou" else "dataproc"
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, data_set=data_set)}/gnomad.genomes.v{version}.group_membership.ht"
+                f"{_annotations_root(version, test=test, data_set=data_set, environment=environment)}/gnomad.genomes.v{version}.group_membership.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
