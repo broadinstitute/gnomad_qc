@@ -935,7 +935,7 @@ def main(args):
             ht.export(an_tsv_path)
 
         if args.merge_qual_hists:
-            qual_hists_path = qual_hists(test=test).path
+            qual_hists_path = qual_hists(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
                 overwrite=overwrite,
