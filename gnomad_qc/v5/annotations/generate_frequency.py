@@ -126,6 +126,7 @@ def _prepare_aou_vds(
     aou_vmt = aou_vmt.annotate_globals(
         freq_meta=group_membership_globals.freq_meta,
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+        age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
     )
 
     # Add adj annotation required by annotate_freq.
