@@ -129,6 +129,7 @@ def _prepare_aou_vds(
     aou_vmt = aou_vmt.select_entries(
         GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype),
         GQ=aou_vmt.GQ,
+        AD=aou_vmt.AD,
     )
 
     group_membership_globals = group_membership_ht.index_globals()
