@@ -54,7 +54,7 @@ from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
-from gnomad_qc.v4.resources.annotations import get_freq as get_v4_freq
+from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
@@ -280,14 +280,14 @@ def process_aou_dataset(
 
 
 def _prepare_consent_vds(
-    v4_freq_ht: hl.Table,
+    v4_ht: hl.Table,
     test: bool = False,
     test_partitions: int = 2,
 ) -> hl.vds.VariantDataset:
     """
     Load and prepare VDS for consent withdrawal sample processing.
 
-    :param v4_freq_ht: v4 frequency table for AF annotation.
+    :param v4_ht: v4 release table for AF annotation.
     :param test: Whether running in test mode.
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Prepared VDS with consent samples, split multiallelics, and annotations.
@@ -326,7 +326,7 @@ def _prepare_consent_vds(
 
     # Annotate with v4 frequencies for hom alt depletion fix
     vmt = vds.variant_data
-    vmt = vmt.annotate_rows(v4_af=v4_freq_ht[vmt.row_key].freq[0].AF)
+    vmt = vmt.annotate_rows(v4_af=v4_ht[vmt.row_key].freq[0].AF)
 
     # This follows the v3/v4 genomes workflow for adj and sex adjusted genotypes which
     # were added before the hom alt depletion fix.
@@ -422,23 +422,23 @@ def _calculate_consent_frequencies_and_age_histograms(
 
 
 def _subtract_consent_frequencies_and_age_histograms(
-    v4_freq_ht: hl.Table,
+    v4_ht: hl.Table,
     consent_freq_ht: hl.Table,
 ) -> hl.Table:
     """
     Subtract consent withdrawal frequencies and age histograms from v4 frequency table.
 
-    :param v4_freq_ht: v4 frequency table (contains both freq and histograms.age_hists).
+    :param v4_ht: v4 release table (contains both freq and histograms.age_hists).
     :param consent_freq_ht: Consent withdrawal table with freq and age_hists annotations.
     :return: Updated frequency table with consent frequencies and age histograms subtracted.
     """
     logger.info(
-        "Subtracting consent withdrawal frequencies and age histograms from v4 frequency table..."
+        "Subtracting consent withdrawal frequencies and age histograms from v4 release table..."
     )
 
-    joined_freq_ht = v4_freq_ht.annotate(
-        consent_freq=consent_freq_ht[v4_freq_ht.key].freq,
-        consent_age_hists=consent_freq_ht[v4_freq_ht.key].age_hists,
+    joined_freq_ht = v4_ht.annotate(
+        consent_freq=consent_freq_ht[v4_ht.key].freq,
+        consent_age_hists=consent_freq_ht[v4_ht.key].age_hists,
     )
 
     joined_freq_ht = joined_freq_ht.annotate_globals(
@@ -510,22 +510,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     final_globals = ["freq_meta", "freq_meta_sample_count", "age_distribution"]
     final_fields = ["freq", "histograms"]
 
-    if dataset == "gnomad":
-        logger.info("Dropping 'subsets' from gnomAD freq ht array annotations...")
-        freq_meta, array_exprs = filter_arrays_by_meta(
-            ht.freq_meta,
-            {
-                "freq": ht.freq,
-                "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
-            },
-            items_to_filter=["subset"],
-            keep=False,
-        )
-        ht = ht.annotate(freq=array_exprs["freq"]).annotate_globals(
-            freq_meta=freq_meta,
-            freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
-        )
-    else:
+    if dataset == "aou":
         # AoU has on extra 'downsamplings' global field that is not present in gnomAD.
         final_globals.append("downsamplings")
 
@@ -561,10 +546,10 @@ def process_gnomad_dataset(
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
-    v4_freq_ht = get_v4_freq(data_type="genomes").ht()
+    v4_ht = release_sites(data_type="genomes").ht()
 
     vds = _prepare_consent_vds(
-        v4_freq_ht,
+        v4_ht,
         test=test,
         test_partitions=test_partitions,
     )
@@ -573,25 +558,25 @@ def process_gnomad_dataset(
     consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test)
 
     if test:
-        v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_freq_ht[v4_freq_ht.key]))
-        v4_freq_ht = v4_freq_ht.naive_coalesce(100).checkpoint(
-            new_temp_file("v4_freq_ht_filtered_test", "ht")
+        v4_ht = v4_ht.filter(hl.is_defined(consent_freq_ht[v4_ht.key]))
+        v4_ht = v4_ht.naive_coalesce(100).checkpoint(
+            new_temp_file("v4_ht_filtered_test", "ht")
         )
 
     logger.info("Subtracting consent frequencies and age histograms from v4...")
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
-        v4_freq_ht, consent_freq_ht
+        v4_ht, consent_freq_ht
     )
     # Select only the fields that were updated as FAF/grpmax/inbreeding_coeff annotations
     # will be calculated on the final merged dataset.
-    freq_ht = _merge_updated_frequency_fields(v4_freq_ht, updated_freq_ht)
+    freq_ht = _merge_updated_frequency_fields(v4_ht, updated_freq_ht)
     final_freq_ht = select_final_dataset_fields(freq_ht, dataset="gnomad")
 
     return final_freq_ht
 
 
 def _merge_updated_frequency_fields(
-    original_freq_ht: hl.Table, updated_freq_ht: hl.Table
+    v4_release_ht: hl.Table, updated_freq_ht: hl.Table
 ) -> hl.Table:
     """
     Merge frequency tables, only overwriting fields that were actually updated.
@@ -602,24 +587,24 @@ def _merge_updated_frequency_fields(
     Note: FAF/grpmax/inbreeding_coeff annotations are not calculated during consent
     withdrawal processing and will be calculated later on the final merged dataset.
 
-    :param original_freq_ht: Original v4 frequency table.
+    :param original_release_ht: Original v4 release table.
     :param updated_freq_ht: Updated frequency table with consent withdrawals subtracted.
     :return: Final frequency table with selective field updates.
     """
     logger.info("Merging frequency tables with selective field updates...")
 
     # Bring in updated values with a single lookup.
-    updated_row = updated_freq_ht[original_freq_ht.key]
+    updated_row = updated_freq_ht[v4_release_ht.key]
 
     # Update freq and age_hists in a single annotate to avoid source mismatch:
     # - freq: use updated if present, otherwise keep original
     # - histograms.age_hists: update only age_hists, preserving qual_hists and raw_qual_hists
-    final_freq_ht = original_freq_ht.annotate(
-        freq=hl.coalesce(updated_row.freq, original_freq_ht.freq),
-        histograms=original_freq_ht.histograms.annotate(
+    final_freq_ht = v4_release_ht.annotate(
+        freq=hl.coalesce(updated_row.freq, v4_release_ht.freq),
+        histograms=v4_release_ht.histograms.annotate(
             age_hists=hl.coalesce(
                 updated_row.histograms.age_hists,
-                original_freq_ht.histograms.age_hists,
+                v4_release_ht.histograms.age_hists,
             )
         ),
     )
