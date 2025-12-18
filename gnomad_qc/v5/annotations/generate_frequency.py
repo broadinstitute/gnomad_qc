@@ -108,7 +108,8 @@ def _prepare_aou_vds(
     :return: Prepared AoU VariantDataset.
     """
     logger.info(f"Using test mode: {test}")
-    aou_vmt = aou_vds.variant_data
+    aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
+
     # Use existing AoU group membership table and filter to variant samples.
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
@@ -117,27 +118,25 @@ def _prepare_aou_vds(
         test=test, data_set="aou", environment=environment
     ).ht()
     group_membership_globals = group_membership_ht.index_globals()
-    # Ploidy is already adjusted in the AoU VDS because of DRAGEN, do not need
-    # to adjust it here.
-    aou_vmt = aou_vmt.annotate_cols(
-        sex_karyotype=aou_vmt.meta.sex_karyotype,
-        gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
-        age=aou_vmt.meta.project_meta.age,
-        group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
-    )
-    aou_vmt = aou_vmt.annotate_globals(
+    aou_vmt = aou_vds.variant_data
+    aou_vmt = aou_vmt.select_globals(
         freq_meta=group_membership_globals.freq_meta,
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
         age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
         downsamplings=group_membership_globals.downsamplings,
     )
-    aou_vmt = aou_vmt.annotate_entries(
-        GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype)
+    aou_vmt = aou_vmt.select_cols(
+        sex_karyotype=aou_vmt.meta.sex_karyotype,
+        gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
+        age=aou_vmt.meta.project_meta.age,
+        group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
-
-    # Add adj annotation required by annotate_freq.
+    aou_vmt = aou_vmt.select_entries(
+        GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype),
+        GQ=aou_vmt.GQ,
+    )
     aou_vmt = annotate_adj_no_dp(aou_vmt)
-    aou_vds = hl.vds.split_multi(hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt))
+    aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
 
     return aou_vds
 
@@ -721,7 +720,10 @@ def main(args):
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
             aou_freq = get_freq(
-                test=test, data_type="genomes", data_set="aou", environment=environment
+                test=test,
+                data_type="genomes",
+                data_set="aou",
+                environment=environment,
             )
 
             check_resource_existence(
@@ -730,7 +732,9 @@ def main(args):
             )
 
             aou_freq_ht = process_aou_dataset(
-                test=test, use_all_sites_ans=use_all_sites_ans
+                test=test,
+                use_all_sites_ans=use_all_sites_ans,
+                environment=environment,
             )
 
             logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
