@@ -704,7 +704,12 @@ def main(args):
         if args.process_gnomad:
             logger.info("Processing gnomAD dataset...")
 
-            gnomad_freq = get_freq(test=test, data_type="genomes", data_set="gnomad")
+            gnomad_freq = get_freq(
+                test=test,
+                data_type="genomes",
+                data_set="gnomad",
+                environment=environment,
+            )
 
             check_resource_existence(
                 output_step_resources={"process-gnomad": [gnomad_freq]},
@@ -724,7 +729,9 @@ def main(args):
 
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
-            aou_freq = get_freq(test=test, data_type="genomes", data_set="aou")
+            aou_freq = get_freq(
+                test=test, data_type="genomes", data_set="aou", environment=environment
+            )
 
             check_resource_existence(
                 output_step_resources={"process-aou": [aou_freq]},
