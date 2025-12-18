@@ -574,6 +574,9 @@ def process_gnomad_dataset(
 
     if test:
         v4_freq_ht = v4_freq_ht.filter(hl.is_defined(consent_freq_ht[v4_freq_ht.key]))
+        v4_freq_ht = v4_freq_ht.naive_coalesce(100).checkpoint(
+            new_temp_file("v4_freq_ht_filtered_test", "ht")
+        )
 
     logger.info("Subtracting consent frequencies and age histograms from v4...")
     updated_freq_ht = _subtract_consent_frequencies_and_age_histograms(
