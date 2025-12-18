@@ -109,6 +109,7 @@ def _prepare_aou_vds(
     logger.info("Splitting multiallelics in AoU VDS...")
     aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
 
+    aou_vmt = aou_vds.variant_data
     # Use existing AoU group membership table and filter to variant samples.
     logger.info(
         "Loading AoU group membership table for variant frequency stratification..."
@@ -116,14 +117,8 @@ def _prepare_aou_vds(
     group_membership_ht = group_membership(
         test=test, data_set="aou", environment=environment
     ).ht()
-    group_membership_globals = group_membership_ht.index_globals()
-    aou_vmt = aou_vds.variant_data
-    aou_vmt = aou_vmt.select_globals(
-        freq_meta=group_membership_globals.freq_meta,
-        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
-        age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
-        downsamplings=group_membership_globals.downsamplings,
-    )
+
+    logger.info("Selecting cols for frequency stratification...")
     aou_vmt = aou_vmt.select_cols(
         sex_karyotype=aou_vmt.meta.sex_karyotype,
         gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
@@ -134,6 +129,14 @@ def _prepare_aou_vds(
     aou_vmt = aou_vmt.select_entries(
         GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype),
         GQ=aou_vmt.GQ,
+    )
+
+    group_membership_globals = group_membership_ht.index_globals()
+    aou_vmt = aou_vmt.select_globals(
+        freq_meta=group_membership_globals.freq_meta,
+        freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
+        age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
+        downsamplings=group_membership_globals.downsamplings,
     )
     logger.info("Annotating adj...")
     aou_vmt = annotate_adj_no_dp(aou_vmt)
