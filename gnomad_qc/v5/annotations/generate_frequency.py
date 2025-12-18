@@ -49,7 +49,6 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
-from gnomad.utils.filtering import filter_arrays_by_meta
 from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -107,7 +106,7 @@ def _prepare_aou_vds(
     :param test: Whether running in test mode.
     :return: Prepared AoU VariantDataset.
     """
-    logger.info(f"Using test mode: {test}")
+    logger.info("Splitting multiallelics in AoU VDS...")
     aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
 
     # Use existing AoU group membership table and filter to variant samples.
@@ -131,10 +130,12 @@ def _prepare_aou_vds(
         age=aou_vmt.meta.project_meta.age,
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
+    logger.info("Adjusting sex ploidy...")
     aou_vmt = aou_vmt.select_entries(
         GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype),
         GQ=aou_vmt.GQ,
     )
+    logger.info("Annotating adj...")
     aou_vmt = annotate_adj_no_dp(aou_vmt)
     aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
 
@@ -610,15 +611,7 @@ def _merge_updated_frequency_fields(
             )
         ),
     )
-    # Convert all int64 annotations in the freq struct to int32s for merging type
-    # compatibility.
-    final_freq_ht = final_freq_ht.annotate(
-        freq=final_freq_ht.freq.map(
-            lambda x: x.annotate(
-                **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
-            )
-        )
-    )
+
     # Update globals from updated table.
     updated_globals = {}
     for global_field in ["freq_meta", "freq_meta_sample_count"]:
