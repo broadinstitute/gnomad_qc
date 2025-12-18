@@ -131,6 +131,9 @@ def _prepare_aou_vds(
         age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
         downsamplings=group_membership_globals.downsamplings,
     )
+    aou_vmt = aou_vmt.annotate_entries(
+        GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype)
+    )
 
     # Add adj annotation required by annotate_freq.
     aou_vmt = annotate_adj_no_dp(aou_vmt)
