@@ -143,6 +143,7 @@ def _prepare_aou_vds(
             ),
             GQ=aou_vmt.GQ,
             LAD=aou_vmt.LAD,
+            LA=aou_vmt.LA,
         )
         aou_vmt = annotate_adj_no_dp(aou_vmt)
         aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
