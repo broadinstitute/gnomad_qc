@@ -213,7 +213,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
     # Load AN values from all sites ANs table (calculated by another script but used
     # same group membership HT so same strata order).
-    logger.info("Loading AN values from consent_ans...")
+    logger.info("Annotating AN values from consent_ans...")
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         all_sites_an=all_sites_an_ht[aou_variant_freq_ht.locus].AN
     )
@@ -250,7 +250,6 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
 def _calculate_aou_frequencies_and_hists_using_densify(
     aou_vds: hl.vds.VariantDataset,
-    test: bool = False,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using densify.
@@ -309,9 +308,7 @@ def process_aou_dataset(
         )
     else:
         logger.info("Using densify for frequency calculations...")
-        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
-            aou_vds, test=test
-        )
+        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(aou_vds)
     aou_freq_ht = select_final_dataset_fields(aou_freq_ht, dataset="aou")
 
     return aou_freq_ht
@@ -418,7 +415,7 @@ def _calculate_consent_frequencies_and_age_histograms(
     """
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
-    # Group membership table is already filtered to consent drop samples.
+    # Group membership table is already filtered to consent drop samples and is in GCS.
     group_membership_ht = group_membership(
         test=test, data_set="gnomad", environment="dataproc"
     ).ht()
@@ -540,6 +537,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     Create final freq Table with only desired annotations.
 
     :param ht: Hail Table containing all annotations.
+    :param dataset: Dataset to select final fields, either "gnomad" or "aou".
     :return: Hail Table with final annotations.
     """
     if dataset not in ["gnomad", "aou"]:
@@ -655,7 +653,7 @@ def _merge_updated_frequency_fields(
     Note: FAF/grpmax/inbreeding_coeff annotations are not calculated during consent
     withdrawal processing and will be calculated later on the final merged dataset.
 
-    :param original_release_ht: Original v4 release table.
+    :param v4_release_ht: Original v4 release table.
     :param updated_freq_ht: Updated frequency table with consent withdrawals subtracted.
     :return: Final frequency table with selective field updates.
     """
@@ -795,7 +793,7 @@ def main(args):
                 environment=environment,
             )
 
-            logger.info(f"Writing AoU frequency HT to {aou_freq.path}...")
+            logger.info(f"Writing AoU frequency HT to %s...", aou_freq.path)
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
 
     finally:
