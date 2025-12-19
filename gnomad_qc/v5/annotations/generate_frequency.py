@@ -577,7 +577,9 @@ def _fix_v4_global_age_distribution(freq_ht: hl.Table) -> hl.Table:
         (meta_ht.release) & (meta_ht.project_meta.project == "gnomad")
     )
     meta_ht = meta_ht.annotate_globals(
-        age_distribution=meta_ht.aggregate(hl.agg.hist(meta_ht.age, 30, 80, 10))
+        age_distribution=meta_ht.aggregate(
+            hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10)
+        )
     )
     freq_ht = freq_ht.annotate_globals(
         age_distribution=meta_ht.index_globals().age_distribution
@@ -793,7 +795,7 @@ def main(args):
                 environment=environment,
             )
 
-            logger.info(f"Writing AoU frequency HT to %s...", aou_freq.path)
+            logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
 
     finally:
