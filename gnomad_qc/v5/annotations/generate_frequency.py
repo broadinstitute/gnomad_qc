@@ -98,18 +98,20 @@ def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
 
 
 def _prepare_aou_vds(
-    aou_vds: hl.vds.VariantDataset, test: bool = False, environment: str = "rwb"
+    aou_vds: hl.vds.VariantDataset,
+    use_all_sites_ans: bool = False,
+    test: bool = False,
+    environment: str = "rwb",
 ) -> hl.vds.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
 
     :param aou_vds: AoU VariantDataset.
+    :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param test: Whether running in test mode.
+    :param environment: Environment being used. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Prepared AoU VariantDataset.
     """
-    logger.info("Splitting multiallelics in AoU VDS...")
-    aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
-
     aou_vmt = aou_vds.variant_data
     # Use existing AoU group membership table and filter to variant samples.
     logger.info(
@@ -126,13 +128,40 @@ def _prepare_aou_vds(
         age=aou_vmt.meta.project_meta.age,
         group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
     )
-    logger.info("Adjusting sex ploidy...")
-    aou_vmt = aou_vmt.select_entries(
-        GT=adjusted_sex_ploidy_expr(aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype),
-        GQ=aou_vmt.GQ,
-        AD=aou_vmt.AD,
-    )
+    # NOTE: At the time of writing this code, it was not yet decided if we would use
+    # the all sites AN for the frequency calculcation, a cost-savings approach to
+    # avoid a densify, or if we would densify within the frequency script to get
+    # call stats. The split timing depends on whether we use all-sites ANs:
+    # - With all-sites ANs: adjust ploidy -> adj -> split (preserves LGT for adj)
+    # - Without: split -> adjust ploidy -> adj (consistent with v4 workflow)
+    # Please see project notes for more details:
+    # https://docs.google.com/document/d/109NuIQlZ3a8uw__iBMK7FpoO2bFFGECzEDnBpB1xW8E/edit?tab=t.0#heading=h.neezqe6t09ul
+    if use_all_sites_ans:
+        aou_vmt = aou_vmt.select_entries(
+            LGT=adjusted_sex_ploidy_expr(
+                aou_vmt.locus, aou_vmt.LGT, aou_vmt.sex_karyotype
+            ),
+            GQ=aou_vmt.GQ,
+            LAD=aou_vmt.LAD,
+        )
+        aou_vmt = annotate_adj_no_dp(aou_vmt)
+        aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
+        aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
+        aou_vmt = aou_vds.variant_data
+    else:
+        aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
+        aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
+        aou_vmt = aou_vds.variant_data
+        aou_vmt = aou_vmt.select_entries(
+            GT=adjusted_sex_ploidy_expr(
+                aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype
+            ),
+            GQ=aou_vmt.GQ,
+            AD=aou_vmt.AD,
+        )
+        aou_vmt = annotate_adj_no_dp(aou_vmt)
 
+    logger.info("Annotating globals...")
     group_membership_globals = group_membership_ht.index_globals()
     aou_vmt = aou_vmt.select_globals(
         freq_meta=group_membership_globals.freq_meta,
@@ -140,8 +169,7 @@ def _prepare_aou_vds(
         age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
         downsamplings=group_membership_globals.downsamplings,
     )
-    logger.info("Annotating adj...")
-    aou_vmt = annotate_adj_no_dp(aou_vmt)
+
     aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
 
     return aou_vds
@@ -268,7 +296,9 @@ def process_aou_dataset(
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
-    aou_vds = _prepare_aou_vds(aou_vds, test=test, environment=environment)
+    aou_vds = _prepare_aou_vds(
+        aou_vds, use_all_sites_ans=use_all_sites_ans, test=test, environment=environment
+    )
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
