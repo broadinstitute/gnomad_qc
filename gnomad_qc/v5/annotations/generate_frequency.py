@@ -53,6 +53,7 @@ from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
+from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
@@ -451,6 +452,7 @@ def _subtract_consent_frequencies_and_age_histograms(
     joined_freq_ht = joined_freq_ht.annotate_globals(
         consent_freq_meta=consent_freq_ht.index_globals().freq_meta,
         consent_freq_meta_sample_count=consent_freq_ht.index_globals().freq_meta_sample_count,
+        consent_age_distribution=consent_freq_ht.index_globals().age_distribution,
     )
 
     logger.info("Subtracting consent frequencies...")
@@ -465,7 +467,11 @@ def _subtract_consent_frequencies_and_age_histograms(
             "freq_meta_sample_count": [
                 joined_freq_ht.index_globals().freq_meta_sample_count,
                 joined_freq_ht.index_globals().consent_freq_meta_sample_count,
-            ]
+            ],
+            "age_distribution": [
+                joined_freq_ht.index_globals().age_distribution,
+                joined_freq_ht.index_globals().consent_age_distribution,
+            ],
         },
     )
     # Update the frequency table with freq changes.
@@ -473,6 +479,7 @@ def _subtract_consent_frequencies_and_age_histograms(
     joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=updated_freq_meta,
         freq_meta_sample_count=updated_sample_counts["freq_meta_sample_count"],
+        age_distribution=updated_sample_counts["age_distribution"],
     )
 
     logger.info("Subtracting consent age histograms...")
@@ -534,6 +541,35 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     return ht.select(*final_fields).select_globals(*final_globals)
 
 
+def correct_v4_age_distribution(v4_ht: hl.Table) -> hl.Table:
+    """
+    Correct the age distribution for the v4 release table.
+
+    :param v4_ht: v4 release table.
+    :return: Corrected v4 release table.
+    """
+    logger.info("Correcting age distribution for v4 release table...")
+    v4_meta_ht = v4_meta(data_type="genomes").ht()
+    v4_meta_ht = v4_meta_ht.filter(v4_meta_ht.release_version == "4.0")
+    v4_meta_ht = v4_meta_ht.annotate_cols(
+        age=hl.if_else(
+            hl.is_defined(v4_meta_ht.meta.project_meta.age),
+            v4_meta_ht.meta.project_meta.age,
+            v4_meta_ht.meta.project_meta.age_alt,
+            # NOTE: most age data is stored as integers in 'age' annotation, but for a
+            # select number of samples, age is stored as a bin range and 'age_alt'
+            # corresponds to an integer in the middle of the bin.
+        )
+    )
+    v4_meta_ht = v4_meta_ht.annotate_globals(
+        age_distribution=v4_meta_ht.aggregate(hl.agg.hist(v4_meta_ht.age, 30, 80, 10))
+    )
+    v4_ht = v4_ht.annotate_globals(
+        age_distribution=v4_meta_ht.index_globals().age_distribution
+    )
+    return v4_ht
+
+
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
@@ -554,6 +590,7 @@ def process_gnomad_dataset(
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     v4_ht = release_sites(data_type="genomes").ht()
+    v4_ht = correct_v4_age_distribution(v4_ht)
 
     vds = _prepare_consent_vds(
         v4_ht,
@@ -618,7 +655,7 @@ def _merge_updated_frequency_fields(
 
     # Update globals from updated table.
     updated_globals = {}
-    for global_field in ["freq_meta", "freq_meta_sample_count"]:
+    for global_field in ["freq_meta", "freq_meta_sample_count", "age_distribution"]:
         if global_field in updated_freq_ht.globals:
             updated_globals[global_field] = updated_freq_ht.index_globals()[
                 global_field
