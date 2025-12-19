@@ -581,7 +581,7 @@ def correct_v4_age_distribution(v4_ht: hl.Table) -> hl.Table:
     logger.info("Correcting age distribution for v4 release table...")
     v4_meta_ht = v4_meta(data_type="genomes").ht()
     v4_meta_ht = v4_meta_ht.filter(v4_meta_ht.release)
-    v4_meta_ht = v4_meta_ht.annotate_cols(
+    v4_meta_ht = v4_meta_ht.annotate(
         age=hl.if_else(
             hl.is_defined(v4_meta_ht.meta.project_meta.age),
             v4_meta_ht.meta.project_meta.age,
