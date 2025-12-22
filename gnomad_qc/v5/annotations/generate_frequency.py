@@ -214,7 +214,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
     # Load AN values from all sites ANs table (calculated by another script but used
     # same group membership HT so same strata order).
-    logger.info("Annotating AN values from consent_ans...")
+    logger.info("Annotating AN values from all sites ANs...")
     aou_variant_freq_ht = aou_variant_freq_ht.annotate(
         all_sites_an=all_sites_an_ht[aou_variant_freq_ht.locus].AN
     )
@@ -548,7 +548,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     final_fields = ["freq", "histograms"]
 
     if dataset == "aou":
-        # AoU has on extra 'downsamplings' global field that is not present in gnomAD.
+        # AoU has one extra 'downsamplings' global field that is not present in gnomAD.
         final_globals.append("downsamplings")
 
     # Convert all int64 annotations in the freq struct to int32s for merging type
