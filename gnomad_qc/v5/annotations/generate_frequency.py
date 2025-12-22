@@ -771,6 +771,9 @@ def merge_gnomad_and_aou_frequencies(
         freq_meta=renamed_freq_meta,
     )
     logger.info(f"joined_freq_ht.freq_meta: {hl.eval(joined_freq_ht.freq_meta)}")
+    logger.info(
+        f"len of joined_freq_ht.freq_meta: {len(hl.eval(joined_freq_ht.freq_meta))}"
+    )
     # Merge all histograms (qual_hists, raw_qual_hists, and age_hists)
     logger.info("Merging quality histograms and age histograms from both datasets...")
 
