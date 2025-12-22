@@ -724,7 +724,7 @@ def merge_gnomad_and_aou_frequencies(
         aou_freq_meta=aou_freq_ht.index_globals().freq_meta,
         aou_freq_meta_sample_count=aou_freq_ht.index_globals().freq_meta_sample_count,
         aou_age_distribution=aou_freq_ht.index_globals().age_distribution,
-        aou_downsamplings=aou_freq_ht.index_globals().downsamplings,
+        downsamplings=aou_freq_ht.index_globals().downsamplings,
     )
 
     # Debug: Check array lengths before merge
