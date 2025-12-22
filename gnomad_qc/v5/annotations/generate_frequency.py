@@ -256,7 +256,6 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     Calculate frequencies and age histograms for AoU variant data using densify.
 
     :param aou_vds: Prepared AoU VariantDataset.
-    :param test: Whether to use test resources.
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
