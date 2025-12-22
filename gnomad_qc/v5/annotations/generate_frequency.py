@@ -727,29 +727,6 @@ def merge_gnomad_and_aou_frequencies(
         aou_age_distribution=aou_freq_ht.index_globals().age_distribution,
         aou_downsamplings=aou_freq_ht.index_globals().downsamplings,
     )
-    joined_freq_ht.describe()
-    # Debug: Check array lengths before merge
-    gnomad_meta = hl.eval(joined_freq_ht.freq_meta)
-    aou_meta = hl.eval(joined_freq_ht.aou_freq_meta)
-    logger.info(f"gnomAD freq_meta length: {len(gnomad_meta)}")
-    logger.info(f"AoU freq_meta length: {len(aou_meta)}")
-
-    # Debug: Check actual freq array lengths on sample rows
-    sample_row = joined_freq_ht.take(1)[0]
-    logger.info(f"Sample gnomAD freq array length: {len(sample_row.freq)}")
-    if sample_row.aou_freq is not None:
-        logger.info(f"Sample AoU freq array length: {len(sample_row.aou_freq)}")
-    else:
-        logger.info("Sample AoU freq is None (variant not in AoU)")
-
-    # Also check a row where AoU data exists
-    aou_present_row = joined_freq_ht.filter(
-        hl.is_defined(joined_freq_ht.aou_freq)
-    ).take(1)
-    if aou_present_row:
-        logger.info(
-            f"AoU-present row freq array length: {len(aou_present_row[0].aou_freq)}"
-        )
 
     merged_freq, merged_meta, sample_counts = merge_freq_arrays(
         [joined_freq_ht.freq, joined_freq_ht.aou_freq],
@@ -892,7 +869,6 @@ def calculate_faf_and_grpmax_annotations(
             callstats_expr=updated_freq_ht.freq[1]
         ),
     )
-    updated_freq_ht.describe()
 
     # Checkpoint after expensive FAF/grpmax calculations
     updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
