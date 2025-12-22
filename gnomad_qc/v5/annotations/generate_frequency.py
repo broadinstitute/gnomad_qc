@@ -737,24 +737,6 @@ def merge_gnomad_and_aou_frequencies(
         freq_meta_sample_count=filtered_arrays["freq_meta_sample_count"],
     )
 
-    logger.info("Merging frequency data and age histograms from both datasets...")
-    # Convert all int64 annotations in the freq struct to int32s for
-    # compatibility with merge_freq_arrays
-    gnomad_freq_ht = gnomad_freq_ht.annotate(
-        freq=gnomad_freq_ht.freq.map(
-            lambda x: x.annotate(
-                **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
-            )
-        )
-    )
-    aou_freq_ht = aou_freq_ht.annotate(
-        freq=aou_freq_ht.freq.map(
-            lambda x: x.annotate(
-                **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
-            )
-        )
-    )
-
     joined_freq_ht = gnomad_freq_ht.annotate(
         aou_freq=aou_freq_ht[gnomad_freq_ht.key].freq
     )
