@@ -719,8 +719,6 @@ def merge_gnomad_and_aou_frequencies(
         aou_freq=aou_freq_ht[gnomad_freq_ht.key].freq
     )
 
-    # Annotate globals from AoU frequency table (extract as literals to avoid
-    # source mismatch)
     joined_freq_ht = joined_freq_ht.annotate_globals(
         aou_freq_meta=aou_freq_ht.index_globals().freq_meta,
         aou_freq_meta_sample_count=aou_freq_ht.index_globals().freq_meta_sample_count,
@@ -751,7 +749,7 @@ def merge_gnomad_and_aou_frequencies(
 
     # Rename the 'downsampling' group in freq meta list to 'aou_downsampling' as aou
     # is the source dataset for downsampling group. gnomAD downsamplings can
-    # be retrieved from v3
+    # be retrieved from v3.
     logger.info(
         "Renaming 'downsampling' group in freq meta list to 'aou_downsampling'..."
     )
@@ -764,17 +762,8 @@ def merge_gnomad_and_aou_frequencies(
     joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=renamed_freq_meta,
     )
-    logger.info(f"joined_freq_ht.freq_meta: {hl.eval(joined_freq_ht.freq_meta)}")
-    logger.info(
-        f"len of joined_freq_ht.freq_meta: {len(hl.eval(joined_freq_ht.freq_meta))}"
-    )
-    joined_freq_ht.select("freq").show()
-    # Merge all histograms (qual_hists, raw_qual_hists, and age_hists)
-    logger.info("Merging quality histograms and age histograms from both datasets...")
 
-    # Join all histogram data from both datasets
-    # Both datasets now have the same structure: histograms.{qual_hists,
-    # raw_qual_hists, age_hists}
+    logger.info("Merging quality histograms and age histograms from both datasets...")
     joined_freq_ht = joined_freq_ht.annotate(
         aou_histograms=aou_freq_ht[joined_freq_ht.key].histograms,
     )
@@ -805,7 +794,6 @@ def merge_gnomad_and_aou_frequencies(
         ),
     )
 
-    # Create final merged frequency table with updated histograms
     joined_freq_ht = joined_freq_ht.annotate(histograms=merged_histograms)
 
     # Merge age_distribution global histograms (single histogram per dataset, not
@@ -838,7 +826,6 @@ def calculate_faf_and_grpmax_annotations(
     """
     logger.info("Computing FAF, grpmax, gen_anc_faf_max, and InbreedingCoeff...")
 
-    # Calculate FAF (Filtering Allele Frequency)
     faf, faf_meta = faf_expr(
         updated_freq_ht.freq,
         updated_freq_ht.freq_meta,
@@ -846,21 +833,18 @@ def calculate_faf_and_grpmax_annotations(
         GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
     )
 
-    # Calculate grpmax (group maximum frequency)
     grpmax = grpmax_expr(
         updated_freq_ht.freq,
         updated_freq_ht.freq_meta,
         GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
     )
 
-    # Annotate grpmax with corresponding FAF95 values
     grpmax = grpmax.annotate(
         faf95=faf[
             hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.gen_anc])
         ].faf95,
     )
 
-    # Add all annotations to the frequency table
     updated_freq_ht = updated_freq_ht.annotate(
         faf=faf,
         grpmax=grpmax,
@@ -870,10 +854,8 @@ def calculate_faf_and_grpmax_annotations(
         ),
     )
 
-    # Checkpoint after expensive FAF/grpmax calculations
     updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
 
-    # Change 'pop' keys back to 'gen_anc' for consistency
     final_freq_meta = hl.literal(
         [
             {("gen_anc" if k == "pop" else k): m[k] for k in m}
@@ -884,7 +866,6 @@ def calculate_faf_and_grpmax_annotations(
         [{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in faf_meta]
     )
 
-    # Update globals with final metadata
     updated_freq_ht = updated_freq_ht.annotate_globals(
         freq_meta=final_freq_meta,
         faf_meta=final_faf_meta,
