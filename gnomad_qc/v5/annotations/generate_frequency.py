@@ -739,12 +739,9 @@ def merge_gnomad_and_aou_frequencies(
                 joined_freq_ht.index_globals().freq_meta_sample_count,
                 joined_freq_ht.index_globals().aou_freq_meta_sample_count,
             ],
-            "age_distribution": [
-                joined_freq_ht.index_globals().age_distribution,
-                joined_freq_ht.index_globals().aou_age_distribution,
-            ],
         },
     )
+
     # Rename the 'downsampling' group in freq meta list to 'aou_downsampling' as aou
     # is the source dataset for downsampling group. gnomAD downsamplings can
     # be retrieved from v3
@@ -804,6 +801,19 @@ def merge_gnomad_and_aou_frequencies(
 
     # Create final merged frequency table with updated histograms
     joined_freq_ht = joined_freq_ht.annotate(histograms=merged_histograms)
+
+    # Merge age_distribution global histograms (single histogram per dataset, not
+    # per-strata like freq_meta_sample_count).
+    merged_age_distribution = merge_histograms(
+        [
+            joined_freq_ht.index_globals().age_distribution,
+            joined_freq_ht.index_globals().aou_age_distribution,
+        ],
+        operation="sum",
+    )
+    joined_freq_ht = joined_freq_ht.annotate_globals(
+        age_distribution=merged_age_distribution
+    )
 
     return joined_freq_ht
 
