@@ -60,6 +60,7 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from hail.utils import new_temp_file
 
