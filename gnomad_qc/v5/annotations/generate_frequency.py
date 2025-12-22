@@ -728,8 +728,8 @@ def merge_gnomad_and_aou_frequencies(
     )
 
     # Debug: Check array lengths before merge
-    gnomad_meta = hl.eval(joined_freq_ht.index_globals().freq_meta)
-    aou_meta = hl.eval(joined_freq_ht.index_globals().aou_freq_meta)
+    gnomad_meta = hl.eval(joined_freq_ht.freq_meta)
+    aou_meta = hl.eval(joined_freq_ht.aou_freq_meta)
     logger.info(f"gnomAD freq_meta length: {len(gnomad_meta)}")
     logger.info(f"AoU freq_meta length: {len(aou_meta)}")
     logger.info(f"gnomAD freq_meta: {gnomad_meta}")
