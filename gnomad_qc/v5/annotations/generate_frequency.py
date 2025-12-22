@@ -46,6 +46,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
@@ -726,7 +727,7 @@ def merge_gnomad_and_aou_frequencies(
         aou_age_distribution=aou_freq_ht.index_globals().age_distribution,
         aou_downsamplings=aou_freq_ht.index_globals().downsamplings,
     )
-
+    joined_freq_ht.describe()
     # Debug: Check array lengths before merge
     gnomad_meta = hl.eval(joined_freq_ht.freq_meta)
     aou_meta = hl.eval(joined_freq_ht.aou_freq_meta)
