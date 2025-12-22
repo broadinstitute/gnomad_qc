@@ -60,7 +60,6 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
-from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from hail.utils import new_temp_file
 
@@ -715,28 +714,6 @@ def merge_gnomad_and_aou_frequencies(
     :param aou_freq_ht: Frequency Table for AoU (already loaded).
     :return: Merged frequency Table with combined frequencies and histograms.
     """
-    logger.info("Removing 'subset' entries from gnomAD frequency table...")
-    # Filter each table to the same set of metadata, use the gnomad_methods
-    # filter_array_by_meta function.
-    filtered_gnomad_freq_meta, filtered_arrays = filter_arrays_by_meta(
-        gnomad_freq_ht.freq_meta,
-        {
-            "freq": gnomad_freq_ht.freq,
-            "freq_meta_sample_count": (
-                gnomad_freq_ht.index_globals().freq_meta_sample_count
-            ),
-        },
-        items_to_filter=["subset"],
-        keep=False,
-    )
-    gnomad_freq_ht = gnomad_freq_ht.annotate(
-        freq=filtered_arrays["freq"],
-    )
-    gnomad_freq_ht = gnomad_freq_ht.annotate_globals(
-        freq_meta=filtered_gnomad_freq_meta,
-        freq_meta_sample_count=filtered_arrays["freq_meta_sample_count"],
-    )
-
     joined_freq_ht = gnomad_freq_ht.annotate(
         aou_freq=aou_freq_ht[gnomad_freq_ht.key].freq
     )
