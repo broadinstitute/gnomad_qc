@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.sample_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.analyses" href="../../analyses/index.html" />
+    <link rel="prev" title="gnomad_qc.v5.resources.rwb_utils" href="rwb_utils.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../configs/index.html">configs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../data_ingestion/index.html">data_ingestion</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">resources</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotations.html">annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="basics.html">basics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="constants.html">constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="meta.html">meta</a></li>
+<li class="toctree-l4"><a class="reference internal" href="release.html">release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="rwb_utils.html">rwb_utils</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">sample_qc</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.resources</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.sample_qc</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/resources/sample_qc.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-resources-sample-qc">
+<h1>gnomad_qc.v5.resources.sample_qc<a class="headerlink" href="#gnomad-qc-v5-resources-sample-qc" title="Permalink to this heading"></a></h1>
+<p>Script containing sample QC related resources.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_sample_qc_root" title="gnomad_qc.v5.resources.sample_qc.get_sample_qc_root"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_sample_qc_root</span></code></a>([...])</p></td>
+<td><p>Return the root GCS path to sample QC results.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_sample_qc" title="gnomad_qc.v5.resources.sample_qc.get_sample_qc"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_sample_qc</span></code></a>([...])</p></td>
+<td><p>Get AoU sample QC annotations generated by Hail for the specified stratification.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_aou_mt_union" title="gnomad_qc.v5.resources.sample_qc.get_aou_mt_union"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_aou_mt_union</span></code></a>([test])</p></td>
+<td><p>Get the union of AoU ACAF and exome MatrixTables.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_joint_qc" title="gnomad_qc.v5.resources.sample_qc.get_joint_qc"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_joint_qc</span></code></a>([test])</p></td>
+<td><p>Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_cuking_input_path" title="gnomad_qc.v5.resources.sample_qc.get_cuking_input_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_cuking_input_path</span></code></a>([...])</p></td>
+<td><p>Return the path containing the input files read by cuKING.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_cuking_output_path" title="gnomad_qc.v5.resources.sample_qc.get_cuking_output_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_cuking_output_path</span></code></a>([...])</p></td>
+<td><p>Return the path containing the output files written by cuKING.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.relatedness" title="gnomad_qc.v5.resources.sample_qc.relatedness"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.relatedness</span></code></a>([...])</p></td>
+<td><p>Get the VersionedTableResource for relatedness results.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.related_samples_to_drop" title="gnomad_qc.v5.resources.sample_qc.related_samples_to_drop"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.related_samples_to_drop</span></code></a>([...])</p></td>
+<td><p>Get the VersionedTableResource for samples to drop for genetic ancestry PCA.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.sample_rankings" title="gnomad_qc.v5.resources.sample_qc.sample_rankings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.sample_rankings</span></code></a>([...])</p></td>
+<td><p>Get the VersionedTableResource for sample rankings for genetic ancestry PCA or release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_loadings" title="gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_loadings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_loadings</span></code></a>([...])</p></td>
+<td><p>Get the genetic ancestry PCA loadings VersionedTableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_scores" title="gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_scores"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_scores</span></code></a>([...])</p></td>
+<td><p>Get the genetic ancestry PCA scores VersionedTableResource.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_eigenvalues" title="gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_eigenvalues"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_eigenvalues</span></code></a>([...])</p></td>
+<td><p>Get the genetic ancestry PCA eigenvalues VersionedTableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.gen_anc_rf_path" title="gnomad_qc.v5.resources.sample_qc.gen_anc_rf_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.gen_anc_rf_path</span></code></a>([...])</p></td>
+<td><p>Path to RF model used for inferring genetic ancestry groups.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_gen_anc_ht" title="gnomad_qc.v5.resources.sample_qc.get_gen_anc_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_gen_anc_ht</span></code></a>([...])</p></td>
+<td><p>Get the TableResource of samples' inferred genetic ancestry group for the indicated gnomAD version.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_gen_anc_pr_ht" title="gnomad_qc.v5.resources.sample_qc.get_gen_anc_pr_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_gen_anc_pr_ht</span></code></a>([...])</p></td>
+<td><p>Get the TableResource of genetic ancestry inference precision and recall values.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.per_grp_min_rf_probs_json_path" title="gnomad_qc.v5.resources.sample_qc.per_grp_min_rf_probs_json_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.per_grp_min_rf_probs_json_path</span></code></a>([...])</p></td>
+<td><p>Get path to JSON file containing per genetic ancestry group minimum RF probabilities.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.get_outlier_detection_sample_qc" title="gnomad_qc.v5.resources.sample_qc.get_outlier_detection_sample_qc"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.get_outlier_detection_sample_qc</span></code></a>([test])</p></td>
+<td><p>Get modified sample QC Table for sample outlier detection.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.stratified_filtering" title="gnomad_qc.v5.resources.sample_qc.stratified_filtering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.stratified_filtering</span></code></a>([test])</p></td>
+<td><p>Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.regressed_filtering" title="gnomad_qc.v5.resources.sample_qc.regressed_filtering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.regressed_filtering</span></code></a>([...])</p></td>
+<td><p>Get VersionedTableResource for regression genetic ancestry-based metrics filtering.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.nearest_neighbors" title="gnomad_qc.v5.resources.sample_qc.nearest_neighbors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.nearest_neighbors</span></code></a>([...])</p></td>
+<td><p>Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.nearest_neighbors_filtering" title="gnomad_qc.v5.resources.sample_qc.nearest_neighbors_filtering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.nearest_neighbors_filtering</span></code></a>([test])</p></td>
+<td><p>Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.finalized_outlier_filtering" title="gnomad_qc.v5.resources.sample_qc.finalized_outlier_filtering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.finalized_outlier_filtering</span></code></a>([test])</p></td>
+<td><p>Get VersionedTableResource for the finalized outlier filtering.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.duplicates" title="gnomad_qc.v5.resources.sample_qc.duplicates"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.duplicates</span></code></a>([...])</p></td>
+<td><p>Get the VersionedTableResource for duplicated (or twin) samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.pedigree" title="gnomad_qc.v5.resources.sample_qc.pedigree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.pedigree</span></code></a>([...])</p></td>
+<td><p>Get the VersionedPedigreeResource for the trio pedigree including multiple trios per family.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.ped_mendel_errors" title="gnomad_qc.v5.resources.sample_qc.ped_mendel_errors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.ped_mendel_errors</span></code></a>([...])</p></td>
+<td><p>Get the VersionedTableResource for the number of mendel errors per trio.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.ped_filter_param_json_path" title="gnomad_qc.v5.resources.sample_qc.ped_filter_param_json_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.ped_filter_param_json_path</span></code></a>([...])</p></td>
+<td><p>Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.trios" title="gnomad_qc.v5.resources.sample_qc.trios"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.trios</span></code></a>([...])</p></td>
+<td><p>Get the VersionedPedigreeResource for finalized trio samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.resources.sample_qc.dense_trios" title="gnomad_qc.v5.resources.sample_qc.dense_trios"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.resources.sample_qc.dense_trios</span></code></a>([...])</p></td>
+<td><p>Get the VersionedMatrixTableResource for the dense trio MatrixTable.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.resources.sample_qc"></span><p>Script containing sample QC related resources.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_sample_qc_root">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_sample_qc_root</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'genomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_set</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'aou'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_sample_qc_root"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_sample_qc_root" title="Permalink to this definition"></a></dt>
+<dd><p>Return the root GCS path to sample QC results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sample QC version (default: CURRENT_SAMPLE_QC_VERSION).</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If True, return a temporary path (e.g., for testing or development).</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type (e.g., “genomes” or “exomes”).</p></li>
+<li><p><strong>data_set</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset identifier (e.g., “aou”, “hgdp_tgp”).</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>GCS path to the sample QC directory.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_sample_qc">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_sample_qc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">strat</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'all'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_sample_qc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_sample_qc" title="Permalink to this definition"></a></dt>
+<dd><p>Get AoU sample QC annotations generated by Hail for the specified stratification.</p>
+<dl class="simple">
+<dt>Possible values for <cite>strat</cite>:</dt><dd><ul class="simple">
+<li><p>bi_allelic</p></li>
+<li><p>multi_allelic</p></li>
+<li><p>all</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>strat</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Which stratification to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test VDS instead of the
+full VDS.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sample QC table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_aou_mt_union">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_aou_mt_union</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_aou_mt_union"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_aou_mt_union" title="Permalink to this definition"></a></dt>
+<dd><p>Get the union of AoU ACAF and exome MatrixTables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.
+Default is True.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTableResource containing the union of AoU ACAF and exome MTs.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_joint_qc">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_joint_qc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_joint_qc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_joint_qc" title="Permalink to this definition"></a></dt>
+<dd><p>Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedMatrixTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedMatrixTableResource of QC sites.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_cuking_input_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_cuking_input_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_cuking_input_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_cuking_input_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return the path containing the input files read by cuKING.</p>
+<p>Those files correspond to Parquet tables derived from the dense QC matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sample QC version (default: <cite>CURRENT_SAMPLE_QC_VERSION</cite>).</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return a path corresponding to a test subset. Default is False.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Compute environment, either ‘dataproc’ or ‘rwb’. Default is ‘rwb’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Temporary path to hold Parquet input tables for running cuKING.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_cuking_output_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_cuking_output_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_cuking_output_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_cuking_output_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return the path containing the output files written by cuKING.</p>
+<p>Those files correspond to Parquet tables containing relatedness results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sample QC version (default: <cite>CURRENT_SAMPLE_QC_VERSION</cite>).</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return a path corresponding to a test subset. Default is False.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Compute environment, either ‘dataproc’ or ‘rwb’. Default is ‘rwb’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Temporary path to hold Parquet output tables for running cuKING.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.relatedness">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">relatedness</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raw</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#relatedness"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.relatedness" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedTableResource for relatedness results.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>raw</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the raw cuKING output in Hail Table format. If False,
+returns the processed relatedness table. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.related_samples_to_drop">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">related_samples_to_drop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#related_samples_to_drop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.related_samples_to_drop" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedTableResource for samples to drop for genetic ancestry PCA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>release</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to determine related samples to drop for the release based
+on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
+Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.sample_rankings">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">sample_rankings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#sample_rankings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.sample_rankings" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedTableResource for sample rankings for genetic ancestry PCA or release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>release</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return resource for ranking of all samples based on
+outlier filtering of sample QC metrics. Used to determine related samples to
+drop for the release.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_loadings">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">genetic_ancestry_pca_loadings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">include_unreleasable_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'joint'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#genetic_ancestry_pca_loadings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_loadings" title="Permalink to this definition"></a></dt>
+<dd><p>Get the genetic ancestry PCA loadings VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>include_unreleasable_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the PCA loadings from the PCA
+that used unreleasable samples.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a temp path.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type used in sample QC, e.g. “exomes” or “joint”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Genetic ancestry PCA loadings.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_scores">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">genetic_ancestry_pca_scores</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">include_unreleasable_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'joint'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">projection</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#genetic_ancestry_pca_scores"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_scores" title="Permalink to this definition"></a></dt>
+<dd><p>Get the genetic ancestry PCA scores VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>include_unreleasable_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the PCA scores from the PCA
+that used unreleasable samples.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a temp path.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type used in sample QC, e.g. “exomes” or “joint”.</p></li>
+<li><p><strong>projection</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the scores ht includes projection scores instead of just original scores.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Genetic ancestry PCA scores.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_eigenvalues">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">genetic_ancestry_pca_eigenvalues</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">include_unreleasable_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'joint'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#genetic_ancestry_pca_eigenvalues"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_eigenvalues" title="Permalink to this definition"></a></dt>
+<dd><p>Get the genetic ancestry PCA eigenvalues VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>include_unreleasable_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the PCA eigenvalues from the
+PCA that used unreleasable samples.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a temp path.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type used in sample QC, e.g. “exomes” or “joint”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Genetic ancestry PCA eigenvalues.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.gen_anc_rf_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">gen_anc_rf_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'joint'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#gen_anc_rf_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.gen_anc_rf_path" title="Permalink to this definition"></a></dt>
+<dd><p>Path to RF model used for inferring genetic ancestry groups.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – gnomAD Version.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the RF assignment was from a test dataset.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type used in sample QC, e.g. “exomes” or “joint”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>String path to sample genetic ancestry group RF model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_gen_anc_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_gen_anc_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'joint'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">projection_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_gen_anc_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_gen_anc_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get the TableResource of samples’ inferred genetic ancestry group for the indicated gnomAD version.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of gen anc group TableResource to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the test version of the genetic ancestry TableResource.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type used in sample QC, e.g. “exomes” or “joint”.</p></li>
+<li><p><strong>projection_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the inference results consist of just the results for the projected samples. When set to False, probability scores will not be included as they cannot be obtained for all samples.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>TableResource of sample gen anc groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_gen_anc_pr_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_gen_anc_pr_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'joint'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_gen_anc_pr_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_gen_anc_pr_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get the TableResource of genetic ancestry inference precision and recall values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of gen anc group PR TableResource to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the test version of the gen anc group PR TableResource.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type used in sample QC, e.g. “exomes” or “joint”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>TableResource of genetic ancestry inference PR values.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.per_grp_min_rf_probs_json_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">per_grp_min_rf_probs_json_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#per_grp_min_rf_probs_json_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.per_grp_min_rf_probs_json_path" title="Permalink to this definition"></a></dt>
+<dd><p>Get path to JSON file containing per genetic ancestry group minimum RF probabilities.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of the JSON to return.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path to per genetic ancestry group minimum RF probabilities JSON.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.get_outlier_detection_sample_qc">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">get_outlier_detection_sample_qc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#get_outlier_detection_sample_qc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.get_outlier_detection_sample_qc" title="Permalink to this definition"></a></dt>
+<dd><p>Get modified sample QC Table for sample outlier detection.</p>
+<dl class="simple">
+<dt>This table has the following modifications:</dt><dd><ul class="simple">
+<li><p>Remove hard filtered samples</p></li>
+<li><p>Add project prefix to sample collisions</p></li>
+<li><p>Add ‘r_snp_indel’ metric</p></li>
+<li><p>Sample 1% of the dataset if <cite>test</cite> is True</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the test version of the sample QC TableResource.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Modified sample QC Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.stratified_filtering">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">stratified_filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#stratified_filtering"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.stratified_filtering" title="Permalink to this definition"></a></dt>
+<dd><p>Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.regressed_filtering">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">regressed_filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_unreleasable_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#regressed_filtering"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.regressed_filtering" title="Permalink to this definition"></a></dt>
+<dd><p>Get VersionedTableResource for regression genetic ancestry-based metrics filtering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>include_unreleasable_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get resource that included
+unreleasable samples in regression.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.nearest_neighbors">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">nearest_neighbors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">approximation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_unreleasable_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#nearest_neighbors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.nearest_neighbors" title="Permalink to this definition"></a></dt>
+<dd><p>Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>approximation</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get resource that is approximate nearest
+neighbors.</p></li>
+<li><p><strong>include_unreleasable_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get resource that included
+unreleasable samples in nearest neighbors determination.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.nearest_neighbors_filtering">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">nearest_neighbors_filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#nearest_neighbors_filtering"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.nearest_neighbors_filtering" title="Permalink to this definition"></a></dt>
+<dd><p>Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.finalized_outlier_filtering">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">finalized_outlier_filtering</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#finalized_outlier_filtering"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.finalized_outlier_filtering" title="Permalink to this definition"></a></dt>
+<dd><p>Get VersionedTableResource for the finalized outlier filtering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.duplicates">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">duplicates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#duplicates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.duplicates" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedTableResource for duplicated (or twin) samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>VersionedTableResource of duplicate samples.</p>
+</dd>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.pedigree">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">pedigree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">finalized</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fake</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#pedigree"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.pedigree" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedPedigreeResource for the trio pedigree including multiple trios per family.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>finalized</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the finalized pedigree resource.</p></li>
+<li><p><strong>fake</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the fake pedigree resource.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource. This is only an option
+for the finalized pedigree, which depends on <cite>ped_mendel_errors</cite>.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedPedigreeResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedPedigreeResource of trio pedigree including multiple trios per
+family.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.ped_mendel_errors">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">ped_mendel_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#ped_mendel_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.ped_mendel_errors" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedTableResource for the number of mendel errors per trio.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource of number of mendel errors per trio.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.ped_filter_param_json_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">ped_filter_param_json_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'5.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#ped_filter_param_json_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.ped_filter_param_json_path" title="Permalink to this definition"></a></dt>
+<dd><p>Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of the JSON to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Path to Pedigree filter JSON.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.trios">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">trios</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fake</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#trios"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.trios" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedPedigreeResource for finalized trio samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fake</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the fake trio resource.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource. This is only an option
+for the finalized Pedigree, which depends on <cite>ped_mendel_errors</cite>.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedPedigreeResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedPedigreeResource of trio samples.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.resources.sample_qc.dense_trios">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.resources.sample_qc.</span></span><span class="sig-name descname"><span class="pre">dense_trios</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/resources/sample_qc.html#dense_trios"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.resources.sample_qc.dense_trios" title="Permalink to this definition"></a></dt>
+<dd><p>Get the VersionedMatrixTableResource for the dense trio MatrixTable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the resource for the split trio MatrixTable.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for a test resource.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedMatrixTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedMatrixTableResource of dense trio MatrixTable.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="rwb_utils.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.resources.rwb_utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../analyses/index.html" class="btn btn-neutral float-right" title="gnomad_qc.analyses" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

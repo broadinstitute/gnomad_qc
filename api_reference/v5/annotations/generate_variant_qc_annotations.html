@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.generate_variant_qc_annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.configs" href="../configs/index.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations.generate_frequency" href="generate_frequency.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../configs/index.html">configs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../data_ingestion/index.html">data_ingestion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.generate_variant_qc_annotations</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/generate_variant_qc_annotations.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-generate-variant-qc-annotations">
+<h1>gnomad_qc.v5.annotations.generate_variant_qc_annotations<a class="headerlink" href="#gnomad-qc-v5-annotations-generate-variant-qc-annotations" title="Permalink to this heading"></a></h1>
+<p>Script to generate annotations for variant QC on gnomAD v5.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v5</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">generate_variant_qc_annotations</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">rwb</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="p">[</span><span class="n">TEST_N_PARTITIONS</span><span class="p">]]</span> <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">trio</span><span class="o">-</span><span class="n">stats</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">sibling</span><span class="o">-</span><span class="n">stats</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">lowqual</span><span class="o">-</span><span class="n">indel</span><span class="o">-</span><span class="n">phred</span><span class="o">-</span><span class="n">het</span><span class="o">-</span><span class="n">prior</span> <span class="n">LOWQUAL_INDEL_PHRED_HET_PRIOR</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--rwb</kbd></dt>
+<dd><p>Run the script in RWB environment.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Write to test path.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-n-partitions</kbd></dt>
+<dd><p>Use only n partitions of the VDS as input for testing purposes (default: 2).</p>
+</dd>
+<dt><kbd>--generate-trio-stats</kbd></dt>
+<dd><p>Calculates trio stats.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--generate-sibling-stats</kbd></dt>
+<dd><p>Calculates sibling stats.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--create-info-ht</kbd></dt>
+<dd><p>Create the info ht containing annotations needed for variant QC.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--lowqual-indel-phred-het-prior</kbd></dt>
+<dd><p>Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad’s Data Sciences Platform for VQSR.</p>
+<p>Default: 40</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht</span></code></a>(vds)</p></td>
+<td><p>Compute AC and AC_raw annotations for each allele count filter group.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_info_ht" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_info_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_info_ht</span></code></a>(...)</p></td>
+<td><p>Import a VCF of AoU annotated sites, reformat annotations, and add AS_lowqual.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats</span></code></a>(mt, ...)</p></td>
+<td><p>Generate trio transmission stats from a VariantDataset and pedigree info.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats</span></code></a>(mt, ...)</p></td>
+<td><p>Generate sibling stats from a VariantDataset and relatedness info.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.main" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.main</span></code></a>(args)</p></td>
+<td><p>Generate all variant annotations needed for variant QC.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.generate_variant_qc_annotations"></span><p>Script to generate annotations for variant QC on gnomAD v5.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">generate_ac_info_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#generate_ac_info_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Compute AC and AC_raw annotations for each allele count filter group.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset to use for computing AC and AC_raw annotations.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with AC and AC_raw annotations split by high quality, release, and unrelated.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_info_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">create_info_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vcf_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lowqual_indel_phred_het_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">40</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#create_info_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_info_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Import a VCF of AoU annotated sites, reformat annotations, and add AS_lowqual.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vcf_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the annotated sites-only VCF.</p></li>
+<li><p><strong>header_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the header file for the VCF.</p></li>
+<li><p><strong>lowqual_indel_phred_het_prior</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad’s Data Sciences Platform for VQSR.</p></li>
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset to use for computing AC and AC_raw annotations.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to write run a test using just the first two partitions of the loaded VCF.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with reformatted annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">run_generate_trio_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fam_ped</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#run_generate_trio_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Generate trio transmission stats from a VariantDataset and pedigree info.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Dense trio MatrixTable.</p></li>
+<li><p><strong>fam_ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree containing trio info.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing trio stats.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">run_generate_sib_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relatedness_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#run_generate_sib_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Generate sibling stats from a VariantDataset and relatedness info.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p></li>
+<li><p><strong>relatedness_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing relatedness info.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing sibling stats.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.main" title="Permalink to this definition"></a></dt>
+<dd><p>Generate all variant annotations needed for variant QC.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generate_frequency.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations.generate_frequency" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../configs/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.configs" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

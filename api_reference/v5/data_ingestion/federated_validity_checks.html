@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.data_ingestion.federated_validity_checks &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.data_ingestion.field_md_to_html" href="field_md_to_html.html" />
+    <link rel="prev" title="gnomad_qc.v5.data_ingestion.create_vds" href="create_vds.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../configs/index.html">configs</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">data_ingestion</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_vds.html">create_vds</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">federated_validity_checks</a></li>
+<li class="toctree-l4"><a class="reference internal" href="field_md_to_html.html">field_md_to_html</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.data_ingestion</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.data_ingestion.federated_validity_checks</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/data_ingestion/federated_validity_checks.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-data-ingestion-federated-validity-checks">
+<h1>gnomad_qc.v5.data_ingestion.federated_validity_checks<a class="headerlink" href="#gnomad-qc-v5-data-ingestion-federated-validity-checks" title="Permalink to this heading"></a></h1>
+<p>Script to perform validity checks on input federated data or final release files.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.get_table_kind" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.get_table_kind"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.get_table_kind</span></code></a>(...)</p></td>
+<td><p>Determine whether a markdown table corresponds to &quot;global&quot; or &quot;row&quot; fields by scanning upward from the table header line.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.hail_type_from_string" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.hail_type_from_string"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.hail_type_from_string</span></code></a>(...)</p></td>
+<td><p>Convert a type string from the markdown to a Hail type.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.is_concrete_type" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.is_concrete_type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.is_concrete_type</span></code></a>(htype)</p></td>
+<td><p>Determine whether a Hail type represents a &quot;concrete&quot; field that should be added to field_types, as opposed to an empty container (such as an empty array or struct).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.parse_field_necessity_from_md" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.parse_field_necessity_from_md"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.parse_field_necessity_from_md</span></code></a>(md_text)</p></td>
+<td><p>Create dictionary of field necessity from parsing markdown text.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.log_field_validation_results" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.log_field_validation_results"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.log_field_validation_results</span></code></a>(...)</p></td>
+<td><p>Log the results of field existence and type validation.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config</span></code></a>(...)</p></td>
+<td><p>Validate JSON config inputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config_fields_in_ht" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config_fields_in_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config_fields_in_ht</span></code></a>(ht, ...)</p></td>
+<td><p>Check that necessary fields defined in the JSON config are present in the Hail Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_required_fields" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_required_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_required_fields</span></code></a>(ht, ...)</p></td>
+<td><p>Validate that the table contains the required global and row fields and that their values are of the expected types.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.check_missingness" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.check_missingness"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.check_missingness</span></code></a>(ht)</p></td>
+<td><p>Check for and report the fraction of missing data in the Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_federated_data" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_federated_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_federated_data</span></code></a>(ht, ...)</p></td>
+<td><p>Perform validity checks on federated data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.create_logtest_ht" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.create_logtest_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.create_logtest_ht</span></code></a>([...])</p></td>
+<td><p>Create a test Hail Table with nested struct annotations to test log output.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.main" title="gnomad_qc.v5.data_ingestion.federated_validity_checks.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.main</span></code></a>(args)</p></td>
+<td><p>Perform validity checks for federated data.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.data_ingestion.federated_validity_checks"></span><p>Script to perform validity checks on input federated data or final release files.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.get_table_kind">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">get_table_kind</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lines</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header_index</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#get_table_kind"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.get_table_kind" title="Permalink to this definition"></a></dt>
+<dd><p>Determine whether a markdown table corresponds to “global” or “row” fields by scanning upward from the table header line.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>lines</strong> – The full list of lines from the markdown document.</p></li>
+<li><p><strong>header_index</strong> – The index of the table header line (the line with column names).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>String ‘global’ if the nearest preceding section marker indicates global fields, ‘row’ if it indicates row fields, or ‘None’ if neither is found.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.hail_type_from_string">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">hail_type_from_string</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">type_str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#hail_type_from_string"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.hail_type_from_string" title="Permalink to this definition"></a></dt>
+<dd><p>Convert a type string from the markdown to a Hail type.</p>
+<p>This function expects flattened fields (no nested dicts or nested structs).
+Complex nested types may not be fully supported.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>type_str</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Type string from markdown text, such as <cite>int32</cite>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail type represented by the type string.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.is_concrete_type">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">is_concrete_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">htype</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#is_concrete_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.is_concrete_type" title="Permalink to this definition"></a></dt>
+<dd><p>Determine whether a Hail type represents a “concrete” field that should be added to field_types, as opposed to an empty container (such as an empty array or struct).</p>
+<p>Empty structs and arrays are not concrete types. Arrays are interpreted recursively.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>htype</strong> – Hail type to check (ex: hl.tint32, hl.tarray(hl.tfloat64), hl.tstruct()).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Bool of whether or not the hail type is considered “concrete”.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.parse_field_necessity_from_md">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">parse_field_necessity_from_md</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">md_text</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#parse_field_necessity_from_md"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.parse_field_necessity_from_md" title="Permalink to this definition"></a></dt>
+<dd><p>Create dictionary of field necessity from parsing markdown text.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>md_text</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Markdown text to parse.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of field names and their necessity, and dictionary split into ‘global_field_types’ and ‘row_field_types’ keys, containing field names and their types.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.log_field_validation_results">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">log_field_validation_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">field_issues</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fields_validated</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type_issues</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">types_validated</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#log_field_validation_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.log_field_validation_results" title="Permalink to this definition"></a></dt>
+<dd><p>Log the results of field existence and type validation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>field_issues</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]]) – Nested dictionary mapping necessity (“required”, “optional”) and annotation_kind (“row”, “global”) to list of missing field names.</p></li>
+<li><p><strong>fields_validated</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]]) – Nested dictionary mapping necessity (“required”, “optional”) and annotation_kind (“row”, “global”) to list of fields successfully found.</p></li>
+<li><p><strong>type_issues</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of strings describing fields with incorrect or mismatched types.</p></li>
+<li><p><strong>types_validated</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of strings describing successful type validations.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">validate_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#validate_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config" title="Permalink to this definition"></a></dt>
+<dd><p>Validate JSON config inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – JSON configuration for parameter inputs.</p></li>
+<li><p><strong>schema</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – JSON schema to use for validation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config_fields_in_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">validate_config_fields_in_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#validate_config_fields_in_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_config_fields_in_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Check that necessary fields defined in the JSON config are present in the Hail Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table.</p></li>
+<li><p><strong>config</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – JSON configuration for parameter inputs.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_required_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">validate_required_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">field_types</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">field_necessities</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validate_all_fields</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#validate_required_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_required_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Validate that the table contains the required global and row fields and that their values are of the expected types.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Required fields can be nested (e.g., ‘info.QD’ indicates that the ‘QD’ field is nested within the ‘info’ struct).</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table to validate.</p></li>
+<li><p><strong>field_types</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]) – Nested dictionary of both global and row fields and their expected types. There are two keys: “global_field_types” and “row_field_types”, respectively containing the global and row fields as keys and their expected types as values.</p></li>
+<li><p><strong>field_necessities</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Flat dictionary with annotation fields as keys and values field necessity(“required” or “optional”) as values.</p></li>
+<li><p><strong>validate_all_fields</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to validate all fields or only the required/optional ones.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of fields checked and whether or not they passed validation checks.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.check_missingness">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">check_missingness</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">missingness_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">struct_annotations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['grpmax',</span> <span class="pre">'fafmax',</span> <span class="pre">'histograms']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#check_missingness"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.check_missingness" title="Permalink to this definition"></a></dt>
+<dd><p>Check for and report the fraction of missing data in the Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p></li>
+<li><p><strong>missingness_threshold</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Upper cutoff for allowed amount of missingness. Default is 0.50.</p></li>
+<li><p><strong>struct_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of struct annotations to check for missingness. Default is [‘grpmax’, ‘fafmax’, ‘histograms’].</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_federated_data">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">validate_federated_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_meta_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">missingness_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">struct_annotations_for_missingness</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['grpmax',</span> <span class="pre">'fafmax',</span> <span class="pre">'histograms']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_annotations_to_sum</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['AC',</span> <span class="pre">'AN',</span> <span class="pre">'homozygote_count']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sort_order</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['subset',</span> <span class="pre">'downsampling',</span> <span class="pre">'gen_anc',</span> <span class="pre">'sex',</span> <span class="pre">'group']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nhomalt_metric</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nhomalt'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subsets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_filter_field</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'AS_VQSR'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">problematic_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['lcr',</span> <span class="pre">'non_par',</span> <span class="pre">'segdup']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">site_gt_check_expr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#validate_federated_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.validate_federated_data" title="Permalink to this definition"></a></dt>
+<dd><p>Perform validity checks on federated data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p></li>
+<li><p><strong>freq_meta_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Metadata expression that contains the values of the elements in
+<cite>meta_indexed_expr</cite>. The most often used expression is <cite>freq_meta</cite> to index into
+a ‘freq’ array (example: ht.freq_meta).</p></li>
+<li><p><strong>freq_annotations_to_sum</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of annotation fields within <cite>meta_expr</cite> to sum. Default is [‘AC’, ‘AN’, ‘homozygote_count’].</p></li>
+<li><p><strong>sort_order</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Order in which groupings are unfurled into flattened annotations. Default is [“subset”, “downsampling”, gen_anc”, “sex”, “group”].</p></li>
+<li><p><strong>nhomalt_metric</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of metric denoting homozygous alternate count. Default is “nhomalt”.</p></li>
+<li><p><strong>verbose</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If True, show top values of annotations being checked, including checks that pass; if False, show only top values of annotations that fail checks. Default is False.</p></li>
+<li><p><strong>subsets</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of sample subsets.</p></li>
+<li><p><strong>variant_filter_field</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – String of variant filtration used in the filters annotation on <cite>ht</cite> (e.g. RF, VQSR, AS_VQSR). Default is “AS_VQSR”.</p></li>
+<li><p><strong>problematic_regions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of regions considered problematic to run filter check in. Default is [“lcr”, “non_par”, “segdup”].</p></li>
+<li><p><strong>site_gt_check_expr</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>]) – Optional dictionary of strings and boolean expressions typically used to log how many monoallelic or 100% heterozygous sites are in the Table.</p></li>
+<li><p><strong>missingness_threshold</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – </p></li>
+<li><p><strong>struct_annotations_for_missingness</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.create_logtest_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">create_logtest_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exclude_xnonpar_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#create_logtest_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.create_logtest_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create a test Hail Table with nested struct annotations to test log output.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>exclude_xnonpar_y</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If True, exclude chrX non-pseudoautosomal region and chrY variants when making test data. Default is False.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table to use for testing log output.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.data_ingestion.federated_validity_checks.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.data_ingestion.federated_validity_checks.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/data_ingestion/federated_validity_checks.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.data_ingestion.federated_validity_checks.main" title="Permalink to this definition"></a></dt>
+<dd><p>Perform validity checks for federated data.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_vds.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.data_ingestion.create_vds" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="field_md_to_html.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.data_ingestion.field_md_to_html" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

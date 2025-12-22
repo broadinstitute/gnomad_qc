@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.outlier_filtering &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.platform_inference" href="platform_inference.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.interval_qc" href="interval_qc.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.outlier_filtering</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/outlier_filtering.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-outlier-filtering">
+<h1>gnomad_qc.v4.sample_qc.outlier_filtering<a class="headerlink" href="#gnomad-qc-v4-sample-qc-outlier-filtering" title="Permalink to this heading"></a></h1>
+<p>Script to determine sample QC metric outliers that should be filtered.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">outlier_filtering</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">seed</span> <span class="n">SEED</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">exclude</span><span class="o">-</span><span class="n">unreleasable</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">steps</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">filtering</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">metrics</span> <span class="n">FILTERING_QC_METRICS</span> <span class="p">[</span><span class="n">FILTERING_QC_METRICS</span> <span class="o">...</span><span class="p">]]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">singleton</span><span class="o">-</span><span class="nb">filter</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">r</span><span class="o">-</span><span class="n">ti</span><span class="o">-</span><span class="n">tv</span><span class="o">-</span><span class="n">singleton</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">stratified</span><span class="o">-</span><span class="n">filters</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">stratify</span><span class="o">-</span><span class="n">population</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">stratify</span><span class="o">-</span><span class="n">platform</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">include</span><span class="o">-</span><span class="n">unreleasable</span><span class="o">-</span><span class="ow">in</span><span class="o">-</span><span class="n">cutoff</span><span class="o">-</span><span class="n">determination</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">regressed</span><span class="o">-</span><span class="n">filters</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">regress</span><span class="o">-</span><span class="n">population</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">regress</span><span class="o">-</span><span class="n">platform</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">regress</span><span class="o">-</span><span class="n">pop</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">pcs</span> <span class="n">REGRESS_POP_N_PCS</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">regress</span><span class="o">-</span><span class="n">platform</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">pcs</span> <span class="n">REGRESS_PLATFORM_N_PCS</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">regress</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">platform</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">include</span><span class="o">-</span><span class="n">unreleasable</span><span class="o">-</span><span class="ow">in</span><span class="o">-</span><span class="n">regression</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">determine</span><span class="o">-</span><span class="n">nearest</span><span class="o">-</span><span class="n">neighbors</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">nearest</span><span class="o">-</span><span class="n">neighbors</span><span class="o">-</span><span class="n">pop</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">pcs</span> <span class="n">NEAREST_NEIGHBORS_POP_N_PCS</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">nearest</span><span class="o">-</span><span class="n">neighbors</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">platform</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">nearest</span><span class="o">-</span><span class="n">neighbors</span> <span class="n">N_NEAREST_NEIGHBORS</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">jobs</span> <span class="n">N_JOBS</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">get</span><span class="o">-</span><span class="n">neighbor</span><span class="o">-</span><span class="n">distances</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">distance</span><span class="o">-</span><span class="n">metric</span> <span class="p">{</span><span class="n">euclidean</span><span class="p">,</span><span class="n">cityblock</span><span class="p">,</span><span class="n">cosine</span><span class="p">,</span><span class="n">haversine</span><span class="p">,</span><span class="n">l1</span><span class="p">,</span><span class="n">l2</span><span class="p">,</span><span class="n">manhattan</span><span class="p">,</span><span class="n">angular</span><span class="p">,</span><span class="n">hamming</span><span class="p">,</span><span class="n">dot</span><span class="p">}]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">nearest</span><span class="o">-</span><span class="n">neighbors</span><span class="o">-</span><span class="n">approximation</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">trees</span> <span class="n">N_TREES</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">nearest</span><span class="o">-</span><span class="n">neighbor</span><span class="o">-</span><span class="n">filters</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">finalized</span><span class="o">-</span><span class="n">outlier</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">existing</span><span class="o">-</span><span class="nb">filter</span><span class="o">-</span><span class="n">tables</span><span class="p">]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">final</span><span class="o">-</span><span class="n">filtering</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">metrics</span> <span class="n">FINAL_FILTERING_QC_METRICS</span> <span class="p">[</span><span class="n">FINAL_FILTERING_QC_METRICS</span> <span class="o">...</span><span class="p">]]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">ensemble</span><span class="o">-</span><span class="n">method</span><span class="o">-</span><span class="n">logical</span><span class="o">-</span><span class="n">operator</span> <span class="p">{</span><span class="ow">and</span><span class="p">,</span><span class="ow">or</span><span class="p">}]</span>
+                                                   <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>-o, --overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Test filtering using a random sample of 1% of the dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--seed</kbd></dt>
+<dd><p>Random seed for making random test dataset.</p>
+<p>Default: 24</p>
+</dd>
+<dt><kbd>--exclude-unreleasable-samples-all-steps</kbd></dt>
+<dd><p>Exclude unreleasable samples in all pipeline steps including the nearest neighbors determination, sample QC metric regressions, and sample QC filtering.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--filtering-qc-metrics</kbd></dt>
+<dd><p>List of sample QC metrics to use for filtering.</p>
+<p>Default: [‘n_snp’, ‘n_singleton’, ‘r_ti_tv’, ‘r_insertion_deletion’, ‘n_insertion’, ‘n_deletion’, ‘r_het_hom_var’, ‘n_transition’, ‘n_transversion’, ‘r_ti_tv_singleton’, ‘r_snp_indel’]</p>
+</dd>
+<dt><kbd>--apply-n-singleton-filter-to-r-ti-tv-singleton</kbd></dt>
+<dd><p>Whether to apply the filtering method to only samples with: Number of singletons (or n_singleton residuals) &gt; median(number of singletons/n_singleton residuals) where the median is computed on only samples within the same strata or on only the 50 nearest neighbors.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="apply-stratified-filtering-method.">
+<h2>Apply stratified filtering method.<a class="headerlink" href="#apply-stratified-filtering-method." title="Permalink to this heading"></a></h2>
+<p>Arguments specific to stratified outlier filtering.</p>
+<dl class="option-list">
+<dt><kbd>--apply-stratified-filters</kbd></dt>
+<dd><p>Apply stratified outlier filtering method.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--stratify-population</kbd></dt>
+<dd><p>Stratify by population for filtering.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--stratify-platform</kbd></dt>
+<dd><p>Stratify by platform for filtering.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--include-unreleasable-in-cutoff-determination</kbd></dt>
+<dd><p>Whether to include unreleasable samples when determining the sample QC filtering MAD cutoffs.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="apply-regression-filtering-method.">
+<h2>Apply regression filtering method.<a class="headerlink" href="#apply-regression-filtering-method." title="Permalink to this heading"></a></h2>
+<p>Arguments specific to regression outlier filtering.</p>
+<dl class="option-list">
+<dt><kbd>--apply-regressed-filters</kbd></dt>
+<dd><p>Apply regression outlier filtering method.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--regress-population</kbd></dt>
+<dd><p>Use population PCs in sample QC metric regressions.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--regress-platform</kbd></dt>
+<dd><p>Use platform PCs in sample QC metric regressions.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--regress-pop-n-pcs</kbd></dt>
+<dd><p>Number of population PCs to use for sample QC metric regressions.</p>
+<p>Default: 20</p>
+</dd>
+<dt><kbd>--regress-platform-n-pcs</kbd></dt>
+<dd><p>Number of platform PCs to use for sample QC metric regressions.</p>
+<p>Default: 9</p>
+</dd>
+<dt><kbd>--regress-per-platform</kbd></dt>
+<dd><p>Perform sample QC metric regressions and outlier filtering per platform.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--include-unreleasable-in-regression</kbd></dt>
+<dd><p>Whether to include unreleasable samples in sample QC metric regressions.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--include-unreleasable-in-cutoff-determination</kbd></dt>
+<dd><p>Whether to include unreleasable samples when determining the sample QC filtering MAD cutoffs.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="determine-nearest-neighbors-for-each-sample.">
+<h2>Determine nearest neighbors for each sample.<a class="headerlink" href="#determine-nearest-neighbors-for-each-sample." title="Permalink to this heading"></a></h2>
+<p>Arguments specific to determining nearest neighbors.</p>
+<dl class="option-list">
+<dt><kbd>--determine-nearest-neighbors</kbd></dt>
+<dd><p>Determine nearest neighbors for each sample.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--nearest-neighbors-pop-n-pcs</kbd></dt>
+<dd><p>Number of population PCs to use for nearest neighbor determination.</p>
+<p>Default: 20</p>
+</dd>
+<dt><kbd>--nearest-neighbors-per-platform</kbd></dt>
+<dd><p>Stratify samples by platform assignment when determining the population PC nearest neighbors.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-nearest-neighbors</kbd></dt>
+<dd><p>Number of nearest neighbors to report for each sample.</p>
+<p>Default: 50</p>
+</dd>
+<dt><kbd>--n-jobs</kbd></dt>
+<dd><p>Number of threads to use when finding the nearest neighbors. Default is -1 which uses the number of CPUs on the head node -1.</p>
+<p>Default: -1</p>
+</dd>
+<dt><kbd>--get-neighbor-distances</kbd></dt>
+<dd><p>Return distances of the nearest neighbors too.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--distance-metric</kbd></dt>
+<dd><p>Possible choices: euclidean, cityblock, cosine, haversine, l1, l2, manhattan, angular, hamming, dot</p>
+<p>Distance metric to use for nearest neighbor determination.</p>
+<p>Default: “euclidean”</p>
+</dd>
+<dt><kbd>--use-nearest-neighbors-approximation</kbd></dt>
+<dd><p>Whether to use the package Annoy to determine approximate nearest neighbors instead of using scikit-learn’s <cite>NearestNeighbors</cite>. This method is faster, but only needed for very large datasets, for instance &gt; 500,000 samples.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-trees</kbd></dt>
+<dd><p>Number of trees to build in the Annoy approximate nearest neighbors method. Only used if ‘use-nearest-neighbors-approximation’ is set. ‘n_trees’ is provided during build time and affects the build time and the index size. A larger value will give more accurate results, but larger indexes.</p>
+<p>Default: 10</p>
+</dd>
+</dl>
+</section>
+<section id="apply-nearest-neighbors-filtering-method.">
+<h2>Apply nearest neighbors filtering method.<a class="headerlink" href="#apply-nearest-neighbors-filtering-method." title="Permalink to this heading"></a></h2>
+<p>Arguments specific to nearest neighbors outlier filtering.</p>
+<dl class="option-list">
+<dt><kbd>--apply-nearest-neighbor-filters</kbd></dt>
+<dd><p>Apply nearest neighbors outlier filtering method.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--nearest-neighbors-per-platform</kbd></dt>
+<dd><p>Stratify samples by platform assignment when determining the population PC nearest neighbors.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--use-nearest-neighbors-approximation</kbd></dt>
+<dd><p>Whether to use the package Annoy to determine approximate nearest neighbors instead of using scikit-learn’s <cite>NearestNeighbors</cite>. This method is faster, but only needed for very large datasets, for instance &gt; 500,000 samples.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="create-finalized-outlier-filtering-table.">
+<h2>Create finalized outlier filtering Table.<a class="headerlink" href="#create-finalized-outlier-filtering-table." title="Permalink to this heading"></a></h2>
+<p>Arguments for finalizing outlier filtering.</p>
+<dl class="option-list">
+<dt><kbd>--create-finalized-outlier-filter</kbd></dt>
+<dd><p>Create the finalized outlier filtering Table. To specify filtering method to use for the finalized outlier filtering Table, use the parameter options from that method. e.g. To use the stratified outlier filtering with population stratification include the following arguments: –apply-stratified-filters –stratify-population. If an ensemble between two methods is desired, include arguments for both. The filtering Table for each method requested must already exist, the outlier filtering will not be rerun.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--use-existing-filter-tables</kbd></dt>
+<dd><p>Whether to use existing filter Tables if they exist instead of re-running any specified filtering methods before creating the finalized outlier filtering Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--final-filtering-qc-metrics</kbd></dt>
+<dd><p>List of sample QC metrics to use for the finalized outlier filtering. Note: This must be the same as, or a subset of <cite>–filtering-qc-metrics</cite> used when generating the filtering Table(s) desired for final filtering.</p>
+<p>Default: [‘r_ti_tv’, ‘r_insertion_deletion’, ‘r_het_hom_var’, ‘r_ti_tv_singleton’]</p>
+</dd>
+<dt><kbd>--ensemble-method-logical-operator</kbd></dt>
+<dd><p>Possible choices: and, or</p>
+<p>Logical operator to use for combining filtering methods for the ensemble method.</p>
+<p>Default: “and”</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.get_sample_qc_ht" title="gnomad_qc.v4.sample_qc.outlier_filtering.get_sample_qc_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.get_sample_qc_ht</span></code></a>(...)</p></td>
+<td><p>Get sample QC Table with modifications needed for outlier filtering.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_filter" title="gnomad_qc.v4.sample_qc.outlier_filtering.apply_filter"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.apply_filter</span></code></a>(...)</p></td>
+<td><p>Apply stratified, regressed, or nearest neighbors outlier filtering method.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_stratified_filtering_method" title="gnomad_qc.v4.sample_qc.outlier_filtering.apply_stratified_filtering_method"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.apply_stratified_filtering_method</span></code></a>(...)</p></td>
+<td><p>Use population stratified QC metrics to determine what samples are outliers and should be filtered.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_regressed_filtering_method" title="gnomad_qc.v4.sample_qc.outlier_filtering.apply_regressed_filtering_method"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.apply_regressed_filtering_method</span></code></a>(...)</p></td>
+<td><p>Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_nearest_neighbor_filtering_method" title="gnomad_qc.v4.sample_qc.outlier_filtering.apply_nearest_neighbor_filtering_method"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.apply_nearest_neighbor_filtering_method</span></code></a>(...)</p></td>
+<td><p>Use nearest neighbor QC metrics to determine what samples are outliers and should be filtered.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_n_singleton_filter_to_r_ti_tv_singleton" title="gnomad_qc.v4.sample_qc.outlier_filtering.apply_n_singleton_filter_to_r_ti_tv_singleton"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.apply_n_singleton_filter_to_r_ti_tv_singleton</span></code></a>(ht, ...)</p></td>
+<td><p>Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.create_finalized_outlier_filter_ht" title="gnomad_qc.v4.sample_qc.outlier_filtering.create_finalized_outlier_filter_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.create_finalized_outlier_filter_ht</span></code></a>(...)</p></td>
+<td><p>Create the finalized outlier filtering Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.get_outlier_filtering_resources" title="gnomad_qc.v4.sample_qc.outlier_filtering.get_outlier_filtering_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.get_outlier_filtering_resources</span></code></a>(args)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the outlier filtering pipeline.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.outlier_filtering.main" title="gnomad_qc.v4.sample_qc.outlier_filtering.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.main</span></code></a>(args)</p></td>
+<td><p>Determine sample QC metric outliers that should be filtered.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.outlier_filtering"></span><p>Script to determine sample QC metric outliers that should be filtered.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.get_sample_qc_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">get_sample_qc_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">24</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#get_sample_qc_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.get_sample_qc_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get sample QC Table with modifications needed for outlier filtering.</p>
+<dl class="simple">
+<dt>The following modifications are made:</dt><dd><ul class="simple">
+<li><p>Add ‘r_snp_indel’ metric</p></li>
+<li><p>Convert each element of <cite>bases_over_dp_threshold</cite> to a top level annotation
+with ‘bases_dp_over_{dp_threshold}’</p></li>
+<li><p>Exclude hard filtered samples</p></li>
+<li><p>Sample 1% of the dataset if <cite>test</cite> is True</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sample_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC Table.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the input Table to a random sample of 1% of the
+dataset. Default is False.</p></li>
+<li><p><strong>seed</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Random seed for making test dataset. Default is 24.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sample QC Table for outlier filtering.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.apply_filter">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">apply_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qc_metrics</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filtering_method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_r_ti_tv_singleton_filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop_scores_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#apply_filter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_filter" title="Permalink to this definition"></a></dt>
+<dd><p>Apply stratified, regressed, or nearest neighbors outlier filtering method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sample_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC HT.</p></li>
+<li><p><strong>qc_metrics</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Specific metrics to use for outlier detection.</p></li>
+<li><p><strong>filtering_method</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – The filtering method to apply to <cite>sample_qc_ht</cite>. One of
+‘stratified’, ‘regressed’, or ‘nearest_neighbors’.</p></li>
+<li><p><strong>apply_r_ti_tv_singleton_filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to apply the filtering method to
+only samples with: Number of singletons (or n_singleton residuals) &gt;
+median(comparison group number of singletons/n_singleton residuals).</p></li>
+<li><p><strong>pop_scores_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table with population PCA scores.</p></li>
+<li><p><strong>pop_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table with population assignment.</p></li>
+<li><p><strong>platform_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table with platform assignment.</p></li>
+<li><p><strong>kwargs</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>) – Additional parameters to pass to the requested filtering method
+function.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with outlier filter annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.apply_stratified_filtering_method">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">apply_stratified_filtering_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qc_metrics</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop_expr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_expr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_unreleasable_in_cutoffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#apply_stratified_filtering_method"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_stratified_filtering_method" title="Permalink to this definition"></a></dt>
+<dd><p>Use population stratified QC metrics to determine what samples are outliers and should be filtered.</p>
+<p>Use <cite>compute_stratified_metrics_filter</cite> to compute the median, MAD, and upper and
+lower thresholds for each <cite>qc_metrics</cite> stratified by assigned population and/or
+platform and return a <cite>qc_metrics_filters</cite> annotation indicating if the sample
+falls a certain number of MAD outside the distribution.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Default left and right MAD for <cite>compute_stratified_metrics_filter</cite> is 4. We
+modify this for ‘n_singleton’ to be (math.inf, 8.0) and for
+‘r_het_hom_var’ to be (math.inf, 4.0). The math.inf (infinity) is used to
+prevent a lower cutoff for these metrics.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sample_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC HT.</p></li>
+<li><p><strong>qc_metrics</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Specific metrics to use for outlier detection.</p></li>
+<li><p><strong>pop_expr</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StringExpression.html#hail.expr.StringExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StringExpression</span></code></a>]) – Optional expression with population assignment.</p></li>
+<li><p><strong>platform_expr</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StringExpression.html#hail.expr.StringExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StringExpression</span></code></a>]) – Optional expression with platform assignment.</p></li>
+<li><p><strong>include_unreleasable_in_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include unreleasable samples in
+the determination of filtering cutoffs.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with stratified metrics and filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.apply_regressed_filtering_method">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">apply_regressed_filtering_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qc_metrics</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop_scores_expr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_scores_expr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_expr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress_pop_n_pcs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress_platform_n_pcs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">9</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regress_per_platform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_unreleasable_in_regression</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_unreleasable_in_cutoffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#apply_regressed_filtering_method"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_regressed_filtering_method" title="Permalink to this definition"></a></dt>
+<dd><p>Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.</p>
+<dl class="simple">
+<dt>The following are all possible filtering options:</dt><dd><ul class="simple">
+<li><p>Include <cite>pop_scores_expr</cite>: Regress population PCs only and determine outliers
+for each metric in <cite>qc_metrics</cite>.</p></li>
+<li><p>Include <cite>platform_scores_expr</cite>: Regress platform PCs only and determine
+outliers for each metric in <cite>qc_metrics</cite>.</p></li>
+<li><p>Include <cite>pop_scores_expr</cite> and <cite>platform_scores_expr</cite>: Regress both population
+PCs and platform PCs and determine outliers for each metric in <cite>qc_metrics</cite>.</p></li>
+<li><p>For all of the above filtering options, there is also a <cite>regress_per_platform</cite>
+option, which will stratify the dataset by platform before performing the
+regression and outlier filtering.</p></li>
+</ul>
+</dd>
+</dl>
+<p>After regression, <cite>compute_stratified_metrics_filter</cite> is used to compute the
+median, MAD, and upper and lower thresholds for each of the <cite>qc_metrics</cite> residuals,
+optionally stratified by assigned platform, and return a <cite>qc_metrics_filters</cite>
+annotation indicating if the sample falls a certain number of MAD outside the
+distribution.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Default left and right MAD for <cite>compute_stratified_metrics_filter</cite> is 4. We
+modify this for ‘n_singleton_residual’ to be (math.inf, 8.0) and for
+‘r_het_hom_var_residual’ to be (math.inf, 4.0). The math.inf (infinity) is used
+to prevent a lower cutoff for these metrics.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sample_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC HT.</p></li>
+<li><p><strong>qc_metrics</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Specific metrics to use for outlier detection.</p></li>
+<li><p><strong>pop_scores_expr</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>]) – Optional expression with population PCA scores.</p></li>
+<li><p><strong>platform_scores_expr</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>]) – Optional expression with platform PCA scores.</p></li>
+<li><p><strong>platform_expr</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StringExpression.html#hail.expr.StringExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StringExpression</span></code></a>]) – Optional expression with platform assignment.</p></li>
+<li><p><strong>regress_pop_n_pcs</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Number of population PCA scores to use in regression.
+Default is 30.</p></li>
+<li><p><strong>regress_platform_n_pcs</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Number of platform PCA scores to use in regression.
+Default is 9.</p></li>
+<li><p><strong>regress_per_platform</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to perform the regression per platform.
+Default is False.</p></li>
+<li><p><strong>include_unreleasable_in_regression</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include unreleasable samples
+in the regressions.</p></li>
+<li><p><strong>include_unreleasable_in_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include unreleasable samples in
+the determination of filtering cutoffs.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with regression residuals and outlier filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.apply_nearest_neighbor_filtering_method">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">apply_nearest_neighbor_filtering_method</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qc_metrics</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nn_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#apply_nearest_neighbor_filtering_method"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_nearest_neighbor_filtering_method" title="Permalink to this definition"></a></dt>
+<dd><p>Use nearest neighbor QC metrics to determine what samples are outliers and should be filtered.</p>
+<p>Use <cite>compute_stratified_metrics_filter</cite> to compute the median, MAD, and upper and
+lower thresholds for each <cite>qc_metrics</cite> of the samples nearest neighbors and return
+a <cite>qc_metrics_filters</cite> annotation indicating if the sample falls a certain number
+of MAD outside the nearest neighbors metric distribution.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Default left and right MAD for <cite>compute_stratified_metrics_filter</cite> is 4. We
+modify this for ‘n_singleton’ to be (math.inf, 8.0) and for
+‘r_het_hom_var’ and ‘r_ti_tv_singleton’ to be (math.inf, 4.0). The
+math.inf is used to prevent a lower cutoff for these metrics.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sample_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC HT.</p></li>
+<li><p><strong>qc_metrics</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Specific metrics to use for outlier detection.</p></li>
+<li><p><strong>nn_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with nearest neighbors annotation ‘nearest_neighbors’. This
+annotation should be a List of samples that are the nearest neighbors of each
+sample.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with nearest neighbor outlier filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.apply_n_singleton_filter_to_r_ti_tv_singleton">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">apply_n_singleton_filter_to_r_ti_tv_singleton</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filtering_method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ann_exprs</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#apply_n_singleton_filter_to_r_ti_tv_singleton"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.apply_n_singleton_filter_to_r_ti_tv_singleton" title="Permalink to this definition"></a></dt>
+<dd><p>Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.</p>
+<p>This function takes a Table (<cite>ht</cite>) returned from one of the filtering functions:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><cite>apply_stratified_filtering_method</cite></p></li>
+<li><p><cite>apply_regressed_filtering_method</cite></p></li>
+<li><p><cite>apply_nearest_neighbor_filtering_method</cite></p></li>
+</ul>
+</div></blockquote>
+<p>which must include filtering information for ‘n_singleton’ or
+‘n_singleton_residuals’.</p>
+<p>Median values for ‘n_singleton’ or ‘n_singleton_residuals’ are extracted from
+‘qc_metrics_stats’ in <cite>ht</cite>. ‘qc_metrics_stats’ takes different forms depending on
+<cite>filtering_method</cite> and the use of ‘strata’ (defined as a global on <cite>ht</cite> if used) in
+filtering (described below).</p>
+<p>Then the <cite>sample_qc_ht</cite> is filtered to only samples with ‘n_singleton’ (or
+‘n_singleton_residuals’) &gt; the median in ‘qc_metrics_stats’ that is relevant to the
+sample. This filtered <cite>sample_qc_ht</cite> is rerun through the filtering function for
+<cite>filtering_method</cite> using only ‘r_ti_tv_singleton’, and <cite>ht</cite> is updated with new
+global and row values relevant to ‘r_ti_tv_singleton’ filtering.</p>
+<p>If <cite>filtering_method</cite> is ‘stratified’:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>‘strata’ is defined as a global annotation on <cite>ht</cite> in the form:
+<code class="docutils literal notranslate"><span class="pre">tuple&lt;str,</span> <span class="pre">...&gt;</span></code> where the number of string elements in the tuple depends
+on the number of strata.</p></li>
+<li><p>‘qc_metrics_stats’ is defined as a global annotation on <cite>ht</cite> in the form:</p></li>
+</ul>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nb">dict</span><span class="o">&lt;</span><span class="n">strata</span><span class="p">,</span> <span class="n">struct</span> <span class="p">{</span>
+    <span class="n">metric</span><span class="p">:</span> <span class="n">struct</span> <span class="p">{</span>
+        <span class="s1">&#39;median&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;mad&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;lower&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;upper&#39;</span><span class="p">:</span> <span class="n">float64</span>
+    <span class="p">}</span>
+<span class="p">}</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>If <cite>filtering_method</cite> is ‘regressed’:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>‘qc_metrics_stats’ is defined as a global annotation on <cite>ht</cite>.</p></li>
+<li><p>If platform stratification was performed, the ‘strata’ global annotation is
+<code class="docutils literal notranslate"><span class="pre">tuple&lt;'platform'&gt;</span></code>, and ‘qc_metrics_stats’ is in the same form as described
+for ‘stratified’, except metric -&gt; metric_residual.</p></li>
+<li><p>If there was no platform stratification, ‘qc_metrics_stats’ is in the form:</p></li>
+</ul>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">struct</span> <span class="p">{</span>
+    <span class="n">metric_residual</span><span class="p">:</span> <span class="n">struct</span> <span class="p">{</span>
+        <span class="s1">&#39;median&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;mad&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;lower&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;upper&#39;</span><span class="p">:</span> <span class="n">float64</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>If <cite>filtering_method</cite> is ‘nearest_neighbor’:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>‘qc_metrics_stats’ is defined as a row annotation on <cite>ht</cite> in the form:</p></li>
+</ul>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">struct</span> <span class="p">{</span>
+    <span class="n">metric</span><span class="p">:</span> <span class="n">struct</span> <span class="p">{</span>
+    <span class="s1">&#39;median&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;mad&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;lower&#39;</span><span class="p">:</span> <span class="n">float64</span><span class="p">,</span> <span class="s1">&#39;upper&#39;</span><span class="p">:</span> <span class="n">float64</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input filtering Table with n_singleton or n_singleton_residuals medians
+computed.</p></li>
+<li><p><strong>sample_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC HT.</p></li>
+<li><p><strong>filtering_method</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – The filtering method to apply to <cite>sample_qc_ht</cite>. One of
+‘stratified’, ‘regressed’, or ‘nearest_neighbors’.</p></li>
+<li><p><strong>ann_exprs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]) – Dictionary of the expressions for population assignment and/or
+platform assignment on <cite>sample_qc_ht</cite> to be used if filtering is stratified.</p></li>
+<li><p><strong>kwargs</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with outlier filter annotations updated for r_ti_tv_singleton or
+r_ti_tv_singleton_residuals.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.create_finalized_outlier_filter_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">create_finalized_outlier_filter_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">finalized_outlier_hts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qc_metrics</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ensemble_operator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'and'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#create_finalized_outlier_filter_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.create_finalized_outlier_filter_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create the finalized outlier filtering Table.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><cite>qc_metrics</cite> must be the same as, or a subset of the original QC metrics used
+to create each Table in <cite>finalized_outlier_hts</cite>.</p>
+</div>
+<p>Tables included in <cite>finalized_outlier_hts</cite> are reformatted to include only
+information from metrics in`qc_metrics`, and the ‘qc_metrics_filters’ annotation
+is modified to include only metrics in <cite>qc_metrics</cite>.</p>
+<p>If <cite>finalized_outlier_hts</cite> includes multiple Tables, the reformatted Table
+annotations are grouped under top level annotations specified by the keys of
+<cite>finalized_outlier_hts</cite>. The following annotations are also added:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><cite>qc_metrics_fail</cite>: includes the combined (using <cite>ensemble_operator</cite>) outlier
+fail boolean for each metric.</p></li>
+<li><p><cite>qc_metrics_filters</cite>: The combined set of QC metrics that a sample is an
+outlier for using <cite>ensemble_operator</cite> for the combination (‘and’ uses set
+intersection, ‘or’ uses set union).</p></li>
+</ul>
+</div></blockquote>
+<p>Finally, an <cite>outlier_filtered</cite> annotation is added indicating if a sample has any
+metrics in <cite>qc_metrics_filters</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>finalized_outlier_hts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Dictionary containing Tables to use for the finalized
+outlier filtering, keyed by a string to use as a top level annotation to group
+the annotations and global annotations under.</p></li>
+<li><p><strong>qc_metrics</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of sample QC metrics to use for the finalized outlier
+filtering.</p></li>
+<li><p><strong>ensemble_operator</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Logical operator to use for combining filtering methods
+when multiple Tables are in <cite>finalized_outlier_hts</cite>. Options are [‘or’, ‘and’].
+Default is ‘and’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Finalized outlier filtering Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.get_outlier_filtering_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">get_outlier_filtering_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#get_outlier_filtering_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.get_outlier_filtering_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the outlier filtering pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Namespace</span></code>) – argparse Namespace for arguments passed to the outlier_filtering.py
+script.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+outlier filtering pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.outlier_filtering.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.outlier_filtering.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/outlier_filtering.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.outlier_filtering.main" title="Permalink to this definition"></a></dt>
+<dd><p>Determine sample QC metric outliers that should be filtered.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="interval_qc.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.interval_qc" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="platform_inference.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.platform_inference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

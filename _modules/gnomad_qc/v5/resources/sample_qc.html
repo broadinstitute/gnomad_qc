@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.sample_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.sample_qc</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.resources.sample_qc</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing sample QC related resources.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MatrixTableResource</span><span class="p">,</span>
+    <span class="n">PedigreeResource</span><span class="p">,</span>
+    <span class="n">TableResource</span><span class="p">,</span>
+    <span class="n">VersionedMatrixTableResource</span><span class="p">,</span>
+    <span class="n">VersionedPedigreeResource</span><span class="p">,</span>
+    <span class="n">VersionedTableResource</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="n">qc_temp_prefix</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AOU_VERSIONS</span><span class="p">,</span>
+    <span class="n">CURRENT_AOU_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">GNOMAD_BUCKET</span><span class="p">,</span>
+    <span class="n">SAMPLE_QC_VERSIONS</span><span class="p">,</span>
+    <span class="n">WORKSPACE_BUCKET</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_sample_qc_root"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_sample_qc_root">[docs]</a><span class="k">def</span> <span class="nf">get_sample_qc_root</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">data_set</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the root GCS path to sample QC results.</span>
+
+<span class="sd">    :param version: Sample QC version (default: CURRENT_SAMPLE_QC_VERSION).</span>
+<span class="sd">    :param test: If True, return a temporary path (e.g., for testing or development).</span>
+<span class="sd">    :param data_type: Data type (e.g., &quot;genomes&quot; or &quot;exomes&quot;).</span>
+<span class="sd">    :param data_set: Dataset identifier (e.g., &quot;aou&quot;, &quot;hgdp_tgp&quot;).</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;rwb&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: GCS path to the sample QC directory.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">path_suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;sample_qc/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">data_set</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">base_bucket</span> <span class="o">=</span> <span class="n">WORKSPACE_BUCKET</span> <span class="k">if</span> <span class="n">environment</span> <span class="o">==</span> <span class="s2">&quot;rwb&quot;</span> <span class="k">else</span> <span class="n">GNOMAD_BUCKET</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">base_bucket</span><span class="si">}</span><span class="s2">/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Hard-filtering resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_sample_qc"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_sample_qc">[docs]</a><span class="k">def</span> <span class="nf">get_sample_qc</span><span class="p">(</span>
+    <span class="n">strat</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get AoU sample QC annotations generated by Hail for the specified stratification.</span>
+
+<span class="sd">    Possible values for `strat`:</span>
+<span class="sd">        - bi_allelic</span>
+<span class="sd">        - multi_allelic</span>
+<span class="sd">        - all</span>
+
+<span class="sd">    :param strat: Which stratification to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full VDS.</span>
+<span class="sd">    :return: Sample QC table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># NOTE: The sample QC tables currently do not have the `aou` prefix added to sample IDs</span>
+    <span class="c1"># that collide with gnomAD samples. This renaming step must be applied before merging</span>
+    <span class="c1"># with the metadata, using the `add_project_prefix_to_sample_collisions` function from</span>
+    <span class="c1"># `gnomad_qc.v5.resources.basics`.</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_AOU_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="s1">&#39;aou&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/hard_filtering/aou.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.sample_qc_all</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">strat</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;all&#39;</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="sa">f</span><span class="s1">&#39;_</span><span class="si">{</span><span class="n">strat</span><span class="si">}</span><span class="s1">&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">AOU_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="n">hard_filtered_samples</span> <span class="o">=</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+    <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="p">{</span>
+        <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">)</span><span class="si">}</span><span class="s2">/hard_filtering/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.hard_filtered_samples.ht&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># QC MT resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_aou_mt_union"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_aou_mt_union">[docs]</a><span class="k">def</span> <span class="nf">get_aou_mt_union</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MatrixTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the union of AoU ACAF and exome MatrixTables.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">        Default is True.</span>
+<span class="sd">    :return: MatrixTableResource containing the union of AoU ACAF and exome MTs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+        <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;genomes&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="s1">&#39;aou&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/union_aou/aou.acaf.exomes.union.mt&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_joint_qc"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_joint_qc">[docs]</a><span class="k">def</span> <span class="nf">get_joint_qc</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedMatrixTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :return: VersionedMatrixTableResource of QC sites.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedMatrixTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="s1">&#39;aou&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/qc_mt/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.qc.mt&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Relatedness resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_cuking_input_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_cuking_input_path">[docs]</a><span class="k">def</span> <span class="nf">get_cuking_input_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path containing the input files read by cuKING.</span>
+
+<span class="sd">    Those files correspond to Parquet tables derived from the dense QC matrix.</span>
+
+<span class="sd">    :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).</span>
+<span class="sd">    :param test: Whether to return a path corresponding to a test subset. Default is False.</span>
+<span class="sd">    :param environment: Compute environment, either &#39;dataproc&#39; or &#39;rwb&#39;. Default is &#39;rwb&#39;.</span>
+<span class="sd">    :return: Temporary path to hold Parquet input tables for running cuKING.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># cuKING inputs can be easily regenerated, so use a temp location.</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">cuking_input</span><span class="si">{</span><span class="s1">&#39;_test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.parquet&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_cuking_output_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_cuking_output_path">[docs]</a><span class="k">def</span> <span class="nf">get_cuking_output_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the path containing the output files written by cuKING.</span>
+
+<span class="sd">    Those files correspond to Parquet tables containing relatedness results.</span>
+
+<span class="sd">    :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).</span>
+<span class="sd">    :param test: Whether to return a path corresponding to a test subset. Default is False.</span>
+<span class="sd">    :param environment: Compute environment, either &#39;dataproc&#39; or &#39;rwb&#39;. Default is &#39;rwb&#39;.</span>
+<span class="sd">    :return: Temporary path to hold Parquet output tables for running cuKING.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># cuKING outputs can be easily regenerated, so use a temp location.</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">cuking_output</span><span class="si">{</span><span class="s1">&#39;_test&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">test</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.parquet&quot;</span></div>
+
+
+<div class="viewcode-block" id="relatedness"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.relatedness">[docs]</a><span class="k">def</span> <span class="nf">relatedness</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">raw</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedTableResource for relatedness results.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param raw: Whether to return the raw cuKING output in Hail Table format. If False,</span>
+<span class="sd">        returns the processed relatedness table. Default is False.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">suffix</span> <span class="o">=</span> <span class="s2">&quot;.raw&quot;</span> <span class="k">if</span> <span class="n">raw</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.relatedness</span><span class="si">{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="related_samples_to_drop"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.related_samples_to_drop">[docs]</a><span class="k">def</span> <span class="nf">related_samples_to_drop</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">release</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedTableResource for samples to drop for genetic ancestry PCA.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param release: Whether to determine related samples to drop for the release based</span>
+<span class="sd">        on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.related_samples_to_drop.</span><span class="si">{</span><span class="s1">&#39;release&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">release</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;pca&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="sample_rankings"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.sample_rankings">[docs]</a><span class="k">def</span> <span class="nf">sample_rankings</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">release</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedTableResource for sample rankings for genetic ancestry PCA or release.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param release: Whether to return resource for ranking of all samples based on</span>
+<span class="sd">        outlier filtering of sample QC metrics. Used to determine related samples to</span>
+<span class="sd">        drop for the release.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.samples_ranking.</span><span class="si">{</span><span class="s1">&#39;release&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">release</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;pca&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Genetic ancestry inference resources</span>
+<span class="c1">######################################################################</span>
+
+
+<span class="k">def</span> <span class="nf">_get_genetic_ancestry_pca_ht_path</span><span class="p">(</span>
+    <span class="n">part</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">include_unreleasable_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get path to files related to genetic ancestry PCA.</span>
+
+<span class="sd">    :param part: String indicating the type of PCA file to return (loadings,</span>
+<span class="sd">        eigenvalues, or scores).</span>
+<span class="sd">    :param version: Version of sample QC path to return.</span>
+<span class="sd">    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :return: Path to requested genetic ancestry PCA file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/genetic_ancestry_inference/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.pca_</span><span class="si">{</span><span class="n">part</span><span class="si">}{</span><span class="s1">&#39;_with_unreleasable_samples&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">include_unreleasable_samples</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+
+
+<div class="viewcode-block" id="genetic_ancestry_pca_loadings"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_loadings">[docs]</a><span class="k">def</span> <span class="nf">genetic_ancestry_pca_loadings</span><span class="p">(</span>
+    <span class="n">include_unreleasable_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the genetic ancestry PCA loadings VersionedTableResource.</span>
+
+<span class="sd">    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA</span>
+<span class="sd">        that used unreleasable samples.</span>
+<span class="sd">    :param test: Whether to use a temp path.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :return: Genetic ancestry PCA loadings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">_get_genetic_ancestry_pca_ht_path</span><span class="p">(</span>
+                    <span class="s2">&quot;loadings&quot;</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">include_unreleasable_samples</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">data_type</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="genetic_ancestry_pca_scores"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_scores">[docs]</a><span class="k">def</span> <span class="nf">genetic_ancestry_pca_scores</span><span class="p">(</span>
+    <span class="n">include_unreleasable_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+    <span class="n">projection</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the genetic ancestry PCA scores VersionedTableResource.</span>
+
+<span class="sd">    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA</span>
+<span class="sd">        that used unreleasable samples.</span>
+<span class="sd">    :param test: Whether to use a temp path.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :param projection: Whether the scores ht includes projection scores instead of just original scores.</span>
+<span class="sd">    :return: Genetic ancestry PCA scores.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">_get_genetic_ancestry_pca_ht_path</span><span class="p">(</span>
+                    <span class="s2">&quot;scores&quot;</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">include_unreleasable_samples</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">data_type</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.ht&quot;</span><span class="p">,</span> <span class="s2">&quot;.projection.ht&quot;</span> <span class="k">if</span> <span class="n">projection</span> <span class="k">else</span> <span class="s2">&quot;.ht&quot;</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="genetic_ancestry_pca_eigenvalues"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.genetic_ancestry_pca_eigenvalues">[docs]</a><span class="k">def</span> <span class="nf">genetic_ancestry_pca_eigenvalues</span><span class="p">(</span>
+    <span class="n">include_unreleasable_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the genetic ancestry PCA eigenvalues VersionedTableResource.</span>
+
+<span class="sd">    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the</span>
+<span class="sd">        PCA that used unreleasable samples.</span>
+<span class="sd">    :param test: Whether to use a temp path.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :return: Genetic ancestry PCA eigenvalues.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">_get_genetic_ancestry_pca_ht_path</span><span class="p">(</span>
+                    <span class="s2">&quot;eigenvalues&quot;</span><span class="p">,</span>
+                    <span class="n">version</span><span class="p">,</span>
+                    <span class="n">include_unreleasable_samples</span><span class="p">,</span>
+                    <span class="n">test</span><span class="p">,</span>
+                    <span class="n">data_type</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="gen_anc_rf_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.gen_anc_rf_path">[docs]</a><span class="k">def</span> <span class="nf">gen_anc_rf_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Path to RF model used for inferring genetic ancestry groups.</span>
+
+<span class="sd">    :param version: gnomAD Version.</span>
+<span class="sd">    :param test: Whether the RF assignment was from a test dataset.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :return: String path to sample genetic ancestry group RF model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/genetic_ancestry_inference/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.gen_anc.RF_fit.pickle&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_gen_anc_ht"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_gen_anc_ht">[docs]</a><span class="k">def</span> <span class="nf">get_gen_anc_ht</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+    <span class="n">projection_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the TableResource of samples&#39; inferred genetic ancestry group for the indicated gnomAD version.</span>
+
+<span class="sd">    :param version: Version of gen anc group TableResource to return.</span>
+<span class="sd">    :param test: Whether to use the test version of the genetic ancestry TableResource.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :param projection_only: Whether the inference results consist of just the results for the projected samples. When set to False, probability scores will not be included as they cannot be obtained for all samples.</span>
+<span class="sd">    :return: TableResource of sample gen anc groups.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">TableResource</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/genetic_ancestry_inference/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.gen_anc</span><span class="si">{</span><span class="s1">&#39;_projection_only&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">projection_only</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_gen_anc_pr_ht"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_gen_anc_pr_ht">[docs]</a><span class="k">def</span> <span class="nf">get_gen_anc_pr_ht</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;joint&quot;</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the TableResource of genetic ancestry inference precision and recall values.</span>
+
+<span class="sd">    :param version: Version of gen anc group PR TableResource to return.</span>
+<span class="sd">    :param test: Whether to use the test version of the gen anc group PR TableResource.</span>
+<span class="sd">    :param data_type: Data type used in sample QC, e.g. &quot;exomes&quot; or &quot;joint&quot;.</span>
+<span class="sd">    :return: TableResource of genetic ancestry inference PR values.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">TableResource</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/genetic_ancestry_inference/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.gen_anc_pr.ht&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="per_grp_min_rf_probs_json_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.per_grp_min_rf_probs_json_path">[docs]</a><span class="k">def</span> <span class="nf">per_grp_min_rf_probs_json_path</span><span class="p">(</span><span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get path to JSON file containing per genetic ancestry group minimum RF probabilities.</span>
+
+<span class="sd">    :param version: Version of the JSON to return.</span>
+<span class="sd">    :return: Path to per genetic ancestry group minimum RF probabilities JSON.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/genetic_ancestry_inference/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.gen_anc_min_probs.json&quot;</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Outlier detection resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_outlier_detection_sample_qc"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.get_outlier_detection_sample_qc">[docs]</a><span class="k">def</span> <span class="nf">get_outlier_detection_sample_qc</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get modified sample QC Table for sample outlier detection.</span>
+
+<span class="sd">    This table has the following modifications:</span>
+<span class="sd">        - Remove hard filtered samples</span>
+<span class="sd">        - Add project prefix to sample collisions</span>
+<span class="sd">        - Add &#39;r_snp_indel&#39; metric</span>
+<span class="sd">        - Sample 1% of the dataset if `test` is True</span>
+
+<span class="sd">    :param test: Whether to use the test version of the sample QC TableResource.</span>
+<span class="sd">    :return: Modified sample QC Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/outlier_detection/gnomad.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.outlier_detection_sample_qc.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="stratified_filtering"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.stratified_filtering">[docs]</a><span class="k">def</span> <span class="nf">stratified_filtering</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/outlier_detection/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.stratified_filtering.gen_anc_stratified.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="regressed_filtering"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.regressed_filtering">[docs]</a><span class="k">def</span> <span class="nf">regressed_filtering</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_unreleasable_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get VersionedTableResource for regression genetic ancestry-based metrics filtering.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param include_unreleasable_samples: Whether to get resource that included</span>
+<span class="sd">        unreleasable samples in regression.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">postfix</span> <span class="o">=</span> <span class="s2">&quot;.include_unreleasable_samples&quot;</span> <span class="k">if</span> <span class="n">include_unreleasable_samples</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/outlier_detection/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.regressed_filtering.gen_anc_pc_regressed</span><span class="si">{</span><span class="n">postfix</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="nearest_neighbors"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.nearest_neighbors">[docs]</a><span class="k">def</span> <span class="nf">nearest_neighbors</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">approximation</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_unreleasable_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get VersionedTableResource for genetic ancestry group PCA nearest neighbors.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param approximation: Whether to get resource that is approximate nearest</span>
+<span class="sd">        neighbors.</span>
+<span class="sd">    :param include_unreleasable_samples: Whether to get resource that included</span>
+<span class="sd">        unreleasable samples in nearest neighbors determination.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">postfix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">approximation</span><span class="p">:</span>
+        <span class="n">postfix</span> <span class="o">+=</span> <span class="s2">&quot;.approximation&quot;</span>
+    <span class="k">if</span> <span class="n">include_unreleasable_samples</span><span class="p">:</span>
+        <span class="n">postfix</span> <span class="o">+=</span> <span class="s2">&quot;.include_unreleasable_samples&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/outlier_detection/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.nearest_neighbors</span><span class="si">{</span><span class="n">postfix</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="nearest_neighbors_filtering"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.nearest_neighbors_filtering">[docs]</a><span class="k">def</span> <span class="nf">nearest_neighbors_filtering</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/outlier_detection/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.nearest_neighbors_filtering.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="finalized_outlier_filtering"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.finalized_outlier_filtering">[docs]</a><span class="k">def</span> <span class="nf">finalized_outlier_filtering</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get VersionedTableResource for the finalized outlier filtering.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :return: VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/outlier_detection/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.final_outlier_filtering.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Trio identification resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="duplicates"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.duplicates">[docs]</a><span class="k">def</span> <span class="nf">duplicates</span><span class="p">(</span><span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedTableResource for duplicated (or twin) samples.</span>
+
+<span class="sd">    :return: VersionedTableResource of duplicate samples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/trios/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.duplicates.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="pedigree"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.pedigree">[docs]</a><span class="k">def</span> <span class="nf">pedigree</span><span class="p">(</span>
+    <span class="n">finalized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">fake</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedPedigreeResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedPedigreeResource for the trio pedigree including multiple trios per family.</span>
+
+<span class="sd">    :param finalized: Whether to return the finalized pedigree resource.</span>
+<span class="sd">    :param fake: Whether to return the fake pedigree resource.</span>
+<span class="sd">    :param test: Whether to use a tmp path for a test resource. This is only an option</span>
+<span class="sd">        for the finalized pedigree, which depends on `ped_mendel_errors`.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;rwb&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: VersionedPedigreeResource of trio pedigree including multiple trios per</span>
+<span class="sd">        family.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">finalized</span> <span class="ow">and</span> <span class="n">fake</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Only one of &#39;finalized&#39; or &#39;fake&#39; can be True!&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">test</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">finalized</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;The test Pedigree is only available for the finalized Pedigree because it &quot;</span>
+            <span class="s2">&quot;depends on filtering using `ped_mendel_errors` which has a test option!&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">VersionedPedigreeResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">PedigreeResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/trios/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.families</span><span class="si">{</span><span class="s1">&#39;&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">finalized</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;.raw&#39;</span><span class="si">}{</span><span class="s1">&#39;.fake&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">fake</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.fam&quot;</span><span class="p">,</span>
+                <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ped_mendel_errors"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.ped_mendel_errors">[docs]</a><span class="k">def</span> <span class="nf">ped_mendel_errors</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedTableResource for the number of mendel errors per trio.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;rwb&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: VersionedTableResource of number of mendel errors per trio.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/trios/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.mendel_errors.samples.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ped_filter_param_json_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.ped_filter_param_json_path">[docs]</a><span class="k">def</span> <span class="nf">ped_filter_param_json_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.</span>
+
+<span class="sd">    :param version: Version of the JSON to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;rwb&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: Path to Pedigree filter JSON.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/trios/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.ped_filters.json&quot;</span></div>
+
+
+<div class="viewcode-block" id="trios"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.trios">[docs]</a><span class="k">def</span> <span class="nf">trios</span><span class="p">(</span>
+    <span class="n">fake</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedPedigreeResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedPedigreeResource for finalized trio samples.</span>
+
+<span class="sd">    :param fake: Whether to return the fake trio resource.</span>
+<span class="sd">    :param test: Whether to use a tmp path for a test resource. This is only an option</span>
+<span class="sd">        for the finalized Pedigree, which depends on `ped_mendel_errors`.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;rwb&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: VersionedPedigreeResource of trio samples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedPedigreeResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">PedigreeResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/relatedness/trios/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.trios</span><span class="si">{</span><span class="s1">&#39;.fake&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">fake</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.fam&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="dense_trios"><a class="viewcode-back" href="../../../../api_reference/v5/resources/sample_qc.html#gnomad_qc.v5.resources.sample_qc.dense_trios">[docs]</a><span class="k">def</span> <span class="nf">dense_trios</span><span class="p">(</span>
+    <span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedMatrixTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the VersionedMatrixTableResource for the dense trio MatrixTable.</span>
+
+<span class="sd">    :param split: Whether to get the resource for the split trio MatrixTable.</span>
+<span class="sd">    :param test: Whether to use a tmp path for a test resource.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;rwb&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: VersionedMatrixTableResource of dense trio MatrixTable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedMatrixTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">get_sample_qc_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;/relatedness/trios/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.trios.dense&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;.split&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">split</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.mt&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">SAMPLE_QC_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

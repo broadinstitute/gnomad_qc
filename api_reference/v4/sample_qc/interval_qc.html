@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.interval_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.outlier_filtering" href="outlier_filtering.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.identify_trios" href="identify_trios.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.interval_qc</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/interval_qc.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-interval-qc">
+<h1>gnomad_qc.v4.sample_qc.interval_qc<a class="headerlink" href="#gnomad-qc-v4-sample-qc-interval-qc" title="Permalink to this heading"></a></h1>
+<p>Script to define high quality intervals based on per interval aggregate statistics over samples.</p>
+<p>Two methods are available for defining high quality intervals:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>mean fraction of bases over DP 0 to determine high quality intervals.</p></li>
+<li><p>fraction of samples with a mean interval coverage over a specified coverage that
+is different for autosomes and sex chromosomes.</p></li>
+</ul>
+</div></blockquote>
+<p>Aggregate statistics over samples can also be stratified by platform to determine
+per-platform high quality intervals.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">interval_qc</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">sex</span><span class="o">-</span><span class="nb">chr</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">coverage</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">name</span> <span class="p">{</span><span class="n">ukb</span><span class="p">,</span><span class="n">broad</span><span class="p">,</span><span class="n">intersection</span><span class="p">}]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">padding</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="mi">50</span><span class="p">}]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">mean</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="n">thresholds</span> <span class="n">MEAN_DP_THRESHOLDS</span> <span class="p">[</span><span class="n">MEAN_DP_THRESHOLDS</span> <span class="o">...</span><span class="p">]]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="k">pass</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">per</span><span class="o">-</span><span class="n">platform</span> <span class="o">|</span> <span class="o">--</span><span class="nb">all</span><span class="o">-</span><span class="n">platforms</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">platform</span><span class="o">-</span><span class="n">size</span> <span class="n">MIN_PLATFORM_SIZE</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">by</span><span class="o">-</span><span class="n">mean</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="mi">0</span> <span class="o">|</span> <span class="o">--</span><span class="n">by</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">cov</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">mean</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="mi">0</span> <span class="n">MEAN_FRACTION_OVER_DP_0</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">autosome</span><span class="o">-</span><span class="n">par</span><span class="o">-</span><span class="n">xx</span><span class="o">-</span><span class="n">cov</span> <span class="n">AUTOSOME_PAR_XX_COV</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">xy</span><span class="o">-</span><span class="n">nonpar</span><span class="o">-</span><span class="n">cov</span> <span class="n">XY_NONPAR_COV</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">fraction</span><span class="o">-</span><span class="n">samples</span> <span class="n">FRACTION_SAMPLES</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Test using only 10 partitions on chr1 and chrX, and all of chrY.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="sex-chromosome-interval-coverage">
+<h2>Sex chromosome interval coverage<a class="headerlink" href="#sex-chromosome-interval-coverage" title="Permalink to this heading"></a></h2>
+<p>Arguments used for computing interval coverage on sex chromosomes.</p>
+<dl class="option-list">
+<dt><kbd>--sex-chr-interval-coverage</kbd></dt>
+<dd><p>Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR regions.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--calling-interval-name</kbd></dt>
+<dd><p>Possible choices: ukb, broad, intersection</p>
+<p>Name of calling intervals to use for interval coverage. One of: ‘ukb’, ‘broad’, or ‘intersection’.</p>
+<p>Default: “intersection”</p>
+</dd>
+<dt><kbd>--calling-interval-padding</kbd></dt>
+<dd><p>Possible choices: 0, 50</p>
+<p>Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.</p>
+<p>Default: 50</p>
+</dd>
+</dl>
+</section>
+<section id="compute-aggregate-interval-stats-for-interval-qc">
+<h2>Compute aggregate interval stats for interval QC<a class="headerlink" href="#compute-aggregate-interval-stats-for-interval-qc" title="Permalink to this heading"></a></h2>
+<p>Arguments used for computing interval QC stats.</p>
+<dl class="option-list">
+<dt><kbd>--generate-interval-qc-ht</kbd></dt>
+<dd><p>Compute aggregate interval stats for interval QC from coverage MatrixTables.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--mean-dp-thresholds</kbd></dt>
+<dd><p>List of mean DP cutoffs to determine the fraction of samples with mean coverage &gt;= the cutoff for each interval.</p>
+<p>Default: [5, 10, 15, 20, 25]</p>
+</dd>
+</dl>
+</section>
+<section id="generate-interval-qc-pass-annotation">
+<h2>Generate interval QC pass annotation<a class="headerlink" href="#generate-interval-qc-pass-annotation" title="Permalink to this heading"></a></h2>
+<p>Arguments used for determining intervals that pass QC.</p>
+<dl class="option-list">
+<dt><kbd>--generate-interval-qc-pass-ht</kbd></dt>
+<dd><p>Create Table that contains an ‘interval_qc_pass’ annotation indicating whether the interval passes high-quality criteria.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--per-platform</kbd></dt>
+<dd><p>Whether to make the interval QC pass annotation a DictionaryExpression with interval QC pass per platform.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--all-platforms</kbd></dt>
+<dd><p>Whether to consider an interval as passing QC only if it passes interval QC per platform across all platforms (with a sample size above ‘–min-platform-size’).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--min-platform-size</kbd></dt>
+<dd><p>Required size of a platform to be considered in ‘–all-platforms’. Only platforms that have # of samples &gt; ‘min_platform_size’ are used to determine intervals that are high quality across all platforms.</p>
+<p>Default: 100</p>
+</dd>
+<dt><kbd>--by-mean-fraction-over-dp-0</kbd></dt>
+<dd><p>Whether to use the mean fraction of bases over DP 0 to determine high quality intervals. Can’t be set at the same time as ‘–by-prop-samples-over-cov’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--by-fraction-samples-over-cov</kbd></dt>
+<dd><p>Whether to determine high quality intervals using the fraction of samples (–fraction-samples) with a mean interval coverage over a specified coverage for intervals on the the autosomes/sex chromosome PAR/chrX in XX individuals (–autosome-par-xx-cov) and intervals on non-PAR chrX and non-PAR chrY in XY individuals (–xy-nonpar-cov). Can’t be set at the same time as ‘–by-mean-fraction-over-dp-0’</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--mean-fraction-over-dp-0</kbd></dt>
+<dd><p>Mean fraction of bases over DP 0 used to define high quality intervals.</p>
+<p>Default: 0.99</p>
+</dd>
+<dt><kbd>--autosome-par-xx-cov</kbd></dt>
+<dd><p>Mean coverage level used to define high coverage intervals on the the autosomes, sex chromosome PAR, and chrX in XX individuals. This field must be in the interval coverage MatrixTables!</p>
+<p>Default: 20</p>
+</dd>
+<dt><kbd>--xy-nonpar-cov</kbd></dt>
+<dd><p>Mean coverage level used to define high coverage intervals on non-PAR chrX and non-PAR chrY in XY individuals. This field must be in the interval coverage MatrixTables!</p>
+<p>Default: 10</p>
+</dd>
+<dt><kbd>--fraction-samples</kbd></dt>
+<dd><p>Fraction of samples with mean coverage greater than ‘–autosome-par-xx-cov’/’–xy-nonpar-cov’ over the interval to determine high coverage intervals.</p>
+<p>Default: 0.85</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.generate_sex_chr_interval_coverage_mt" title="gnomad_qc.v4.sample_qc.interval_qc.generate_sex_chr_interval_coverage_mt"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.generate_sex_chr_interval_coverage_mt</span></code></a>(...)</p></td>
+<td><p>Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR regions.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.filter_to_test" title="gnomad_qc.v4.sample_qc.interval_qc.filter_to_test"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.filter_to_test</span></code></a>(mt, ...)</p></td>
+<td><p>Filter <cite>mt</cite> to <cite>num_partitions</cite> partitions on chr1 and <cite>sex_mt</cite> to <cite>num_partitions</cite> partitions on chrX and all of chrY.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.compute_interval_qc" title="gnomad_qc.v4.sample_qc.interval_qc.compute_interval_qc"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.compute_interval_qc</span></code></a>(mt, ...)</p></td>
+<td><p>Compute interval QC aggregate statistics per interval, per platform, and optionally split by sex karyotype.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.get_high_qual_cutoff_dict" title="gnomad_qc.v4.sample_qc.interval_qc.get_high_qual_cutoff_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.get_high_qual_cutoff_dict</span></code></a>(...)</p></td>
+<td><p>Create a dictionary specifying annotations and cutoffs to use for determining high quality intervals.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.get_interval_qc_pass" title="gnomad_qc.v4.sample_qc.interval_qc.get_interval_qc_pass"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.get_interval_qc_pass</span></code></a>(...)</p></td>
+<td><p>Add <cite>interval_qc_pass</cite> annotation to indicate whether the interval is high quality.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.annotate_interval_qc_filter" title="gnomad_qc.v4.sample_qc.interval_qc.annotate_interval_qc_filter"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.annotate_interval_qc_filter</span></code></a>(t, ...)</p></td>
+<td><p>Annotate a Table/MatrixTable with 'pass_interval_qc' using <cite>get_interval_qc_pass</cite>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.interval_qc.main" title="gnomad_qc.v4.sample_qc.interval_qc.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.main</span></code></a>(args)</p></td>
+<td><p>Define high quality intervals based on aggregate statistics over samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.interval_qc"></span><p>Script to define high quality intervals based on per interval aggregate statistics over samples.</p>
+<p>Two methods are available for defining high quality intervals:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>mean fraction of bases over DP 0 to determine high quality intervals.</p></li>
+<li><p>fraction of samples with a mean interval coverage over a specified coverage that
+is different for autosomes and sex chromosomes.</p></li>
+</ul>
+</div></blockquote>
+<p>Aggregate statistics over samples can also be stratified by platform to determine
+per-platform high quality intervals.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.generate_sex_chr_interval_coverage_mt">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">generate_sex_chr_interval_coverage_mt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_intervals_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#generate_sex_chr_interval_coverage_mt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.generate_sex_chr_interval_coverage_mt" title="Permalink to this definition"></a></dt>
+<dd><p>Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR regions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VariantDataset.</p></li>
+<li><p><strong>calling_intervals_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Calling interval Table.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable with interval coverage per sample on sex chromosomes.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.filter_to_test">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">filter_to_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#filter_to_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.filter_to_test" title="Permalink to this definition"></a></dt>
+<dd><p>Filter <cite>mt</cite> to <cite>num_partitions</cite> partitions on chr1 and <cite>sex_mt</cite> to <cite>num_partitions</cite> partitions on chrX and all of chrY.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This returns the first <cite>num_partitions</cite> in <cite>mt</cite>, the first <cite>num_partitions</cite> in
+<cite>sex_mt</cite>, and all of chrY. It makes the assumption that the first
+<cite>num_partitions</cite> in <cite>mt</cite> are on chr1 and that the first <cite>num_partitions</cite> in
+<cite>sex_mt</cite> are on chrY. If <cite>num_partitions</cite> is too high this may not hold true.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable to filter to specified number of partitions on chr1.</p></li>
+<li><p><strong>sex_mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable to filter to specified number of partitions on
+chrX and all of chrY.</p></li>
+<li><p><strong>num_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to grab from mt.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Input MatrixTables filtered to <cite>num_partitions</cite> on chr1, chrX, and all
+of chrY.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.compute_interval_qc">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">compute_interval_qc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_dp_thresholds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[5,</span> <span class="pre">10,</span> <span class="pre">15,</span> <span class="pre">20,</span> <span class="pre">25]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sex</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#compute_interval_qc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.compute_interval_qc" title="Permalink to this definition"></a></dt>
+<dd><p>Compute interval QC aggregate statistics per interval, per platform, and optionally split by sex karyotype.</p>
+<p>The following annotations must be on <cite>mt</cite> (interval-by-sample MT output from
+<cite>hl.vds.interval_coverage</cite>):</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>interval - Genomic interval of interest.</p></li>
+<li><p>mean_dp - Mean depth of bases across the interval.</p></li>
+<li><p>fraction_over_dp_threshold - Fraction of interval (in bases) above each DP
+threshold. Second element must be dp &gt;= 1 (dp &gt; 0).</p></li>
+</ul>
+<p>If <cite>split_by_sex</cite>:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>sex_karyotype - StringExpression annotation with sex karyotype
+information including ‘XX’ and ‘XY’ values.</p></li>
+</ul>
+</div></blockquote>
+</div></blockquote>
+<p>The <cite>platform_ht</cite> must have a ‘qc_platform’ annotation indicating the platform each
+sample was assigned.</p>
+<p>Returns a Table with the following annotations:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>interval_mean_dp - Mean DP of the interval across ‘all’ samples and
+optionally split by ‘XX’ and ‘XY’.</p></li>
+<li><p>fraction_over_{dp}x - for all ‘dp’ in <cite>mean_dp_thresholds</cite>, which is the
+fraction of samples with mean DP over ‘dp’. Computed across ‘all’ samples and
+optionally split by ‘XX’ and ‘XY’.</p></li>
+<li><p>mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases)
+that is dp &gt; 0. Computed across ‘all’ samples and optionally split by ‘XX’
+and ‘XY’.</p></li>
+<li><p>platform_interval_mean_dp - Same as ‘interval_mean_dp’, but instead of
+containing a single value, ‘all’ (and ‘XX’ and ‘XY’ if <cite>split_by_sex</cite> is
+True) contains a dictionary of per platform values.</p></li>
+<li><p>platform_fraction_over_{dp}x  - Same as ‘fraction_over_{dp}x’, but instead of
+containing a single value, ‘all’ (and ‘XX’ and ‘XY’ if <cite>split_by_sex</cite> is
+True) contains a dictionary of per platform values.</p></li>
+<li><p>platform_mean_fraction_over_dp_0 - Same as ‘mean_fraction_over_dp_0’, but
+instead of containing a single value, ‘all’ (and ‘XX’ and ‘XY’ if
+<cite>split_by_sex</cite> is True) contains a dictionary of per platform values.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input interval coverage MatrixTable.</p></li>
+<li><p><strong>platform_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input platform assignment Table.</p></li>
+<li><p><strong>mean_dp_thresholds</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – List of mean DP thresholds to use for computing the
+fraction of samples with mean interval DP &gt;= the threshold.</p></li>
+<li><p><strong>split_by_sex</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the interval QC should be stratified by sex. If True,
+<cite>mt</cite> must be annotated with ‘sex_karyotype’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with interval QC annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.get_high_qual_cutoff_dict">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">get_high_qual_cutoff_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">autosome_par_cutoff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_nonpar_cutoff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_nonpar_cutoff</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">autosome_par_qc_ann</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_nonpar_qc_ann</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_nonpar_qc_ann</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_by_sex</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#get_high_qual_cutoff_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.get_high_qual_cutoff_dict" title="Permalink to this definition"></a></dt>
+<dd><p>Create a dictionary specifying annotations and cutoffs to use for determining high quality intervals.</p>
+<p>This Dictionary is meant to be used as input to <cite>get_interval_qc_pass</cite>.</p>
+<p>If <cite>split_by_sex</cite> is True, the ‘x_non_par’ dictionary value will contain a cutoff
+for both ‘XX’ and ‘XY’, and ‘y_non_par’ will contain a cutoff for only ‘XY’.</p>
+<p>The returned dictionary will be in this form if <cite>split_by_sex</cite> is False:</p>
+<blockquote>
+<div><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s1">&#39;autosome_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="n">autosome_par_qc_ann</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="n">autosome_par_cutoff</span><span class="p">)],</span>
+    <span class="s1">&#39;x_non_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="n">x_nonpar_qc_ann</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="n">x_nonpar_cutoff</span><span class="p">)],</span>
+    <span class="s1">&#39;y_non_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="n">y_nonpar_qc_ann</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="n">y_nonpar_cutoff</span><span class="p">)]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>The returned dictionary will be in this form if <cite>split_by_sex</cite> is True:</p>
+<blockquote>
+<div><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s1">&#39;autosome_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="n">autosome_par_qc_ann</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="n">autosome_par_cutoff</span><span class="p">)],</span>
+    <span class="s1">&#39;x_non_par&#39;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">(</span><span class="n">x_nonpar_qc_ann</span><span class="p">,</span> <span class="s1">&#39;XX&#39;</span><span class="p">,</span> <span class="n">x_nonpar_cutoff</span><span class="p">),</span>
+        <span class="p">(</span><span class="n">y_nonpar_qc_ann</span><span class="p">,</span> <span class="s1">&#39;XY&#39;</span><span class="p">,</span> <span class="n">y_nonpar_cutoff</span><span class="p">)</span>
+    <span class="p">],</span>
+    <span class="s1">&#39;y_non_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="n">y_nonpar_qc_ann</span><span class="p">,</span> <span class="s1">&#39;XY&#39;</span><span class="p">,</span> <span class="n">y_nonpar_cutoff</span><span class="p">)]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>autosome_par_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Cutoff to define high coverage intervals for autosome
+and PAR intervals. Intervals with <cite>autosome_par_qc_ann</cite> &gt; <cite>autosome_par_cutoff</cite>
+are considered high coverage.</p></li>
+<li><p><strong>x_nonpar_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Cutoff to define high coverage intervals for chromosome X
+non-PAR intervals (for XX individuals if <cite>split_by_sex</cite> is True). Intervals
+with <cite>x_nonpar_qc_ann</cite> &gt; <cite>x_nonpar_cutoff</cite> are considered high coverage.</p></li>
+<li><p><strong>y_nonpar_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Cutoff to define high coverage intervals for chromosome Y
+non-PAR intervals (for XY individuals if <cite>split_by_sex</cite> is True). Intervals
+with <cite>y_nonpar_qc_ann</cite> &gt; <cite>y_nonpar_cutoff</cite> are considered high coverage. Also
+used to define high coverage X non-PAR intervals if <cite>split_by_sex</cite> is True.</p></li>
+<li><p><strong>autosome_par_qc_ann</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Annotation in an interval QC HT that will be used to
+filter high coverage intervals for autosomes and PAR regions.</p></li>
+<li><p><strong>x_nonpar_qc_ann</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Annotation in an interval QC HT that will be used to filter
+high coverage intervals for chromosome X non-PAR regions.</p></li>
+<li><p><strong>y_nonpar_qc_ann</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Annotation in an interval QC HT that will be used to filter
+high coverage intervals for chromosome Y non-PAR regions. Also used for
+chromosome X non-PAR regions if <cite>split_by_sex</cite> is True.</p></li>
+<li><p><strong>split_by_sex</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to split ‘x_non_par’ and ‘y_non_par’ cutoffs based on
+sex karyotype. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of annotations and cutoffs to use to define high quality
+intervals.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.get_interval_qc_pass">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">get_interval_qc_pass</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">interval_qc_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">high_qual_cutoffs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_platform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_platforms</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_platform_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#get_interval_qc_pass"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.get_interval_qc_pass" title="Permalink to this definition"></a></dt>
+<dd><p>Add <cite>interval_qc_pass</cite> annotation to indicate whether the interval is high quality.</p>
+<p><cite>interval_qc_ht</cite> is the output of <cite>compute_interval_qc</cite> and contains annotations
+that can be used in the <cite>high_qual_cutoffs</cite> dictionary to indicate intervals that
+are considered high quality.</p>
+<p>The <cite>high_qual_cutoffs</cite> dictionary can be created using
+<cite>get_high_qual_cutoff_dict</cite>. It specifies annotations and cutoffs  to use for
+determining high quality intervals. Annotations in the <cite>high_qual_cutoffs</cite>
+dictionary must exist in  the <cite>interval_qc_ht</cite> Table. The <cite>high_qual_cutoffs</cite>
+dictionary must have the following keys: ‘autosome_par’, ‘x_non_par’ and
+‘y_non_par’. Each Key specifies a list of annotations and cutoffs to use for
+filtering.</p>
+<p>Example of <cite>high_qual_cutoffs</cite> dictionary using annotations for the proportion of
+samples over a specified coverage:</p>
+<blockquote>
+<div><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s1">&#39;autosome_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="s1">&#39;fraction_over_20x&#39;</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">)],</span>
+    <span class="s1">&#39;x_non_par&#39;</span><span class="p">:</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s1">&#39;fraction_over_20x&#39;</span><span class="p">,</span> <span class="s1">&#39;XX&#39;</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">),</span> <span class="p">(</span><span class="s1">&#39;fraction_over_10x&#39;</span><span class="p">,</span> <span class="s1">&#39;XY&#39;</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">)</span>
+    <span class="p">],</span>
+    <span class="s1">&#39;y_non_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="s1">&#39;fraction_over_10x&#39;</span><span class="p">,</span> <span class="s1">&#39;XY&#39;</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">)]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>Example of <cite>high_qual_cutoffs</cite> dictionary using annotations for the proportion of
+samples over a specified coverage and specifying differences by sex karyotype:</p>
+<blockquote>
+<div><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s1">&#39;autosome_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="s1">&#39;fraction_over_20x&#39;</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="mf">0.85</span><span class="p">)],</span>
+    <span class="s1">&#39;x_non_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="s1">&#39;fraction_over_10x&#39;</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="mf">0.80</span><span class="p">)],</span>
+    <span class="s1">&#39;y_non_par&#39;</span><span class="p">:</span> <span class="p">[(</span><span class="s1">&#39;fraction_over_5x&#39;</span><span class="p">,</span> <span class="s1">&#39;all&#39;</span><span class="p">,</span> <span class="mf">0.35</span><span class="p">)]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>Only one of ‘per_platform’ and ‘all_platforms’ can be True, and if <cite>per_platform</cite>
+or <cite>all_platforms</cite> is True, a prefix of “platform_” is added before the annotation
+in the <cite>high_qual_cutoffs</cite> dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>interval_qc_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input interval QC Table.</p></li>
+<li><p><strong>high_qual_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]]) – Dictionary containing annotations and cutoffs to use for
+filtering to high coverage intervals.</p></li>
+<li><p><strong>per_platform</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to make the interval QC pass annotation a
+DictionaryExpression with interval QC pass per platform.</p></li>
+<li><p><strong>all_platforms</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to consider an interval as passing QC only if it
+passes interval QC per platform across all platforms (with a sample size above
+<cite>min_platform_size</cite>).</p></li>
+<li><p><strong>min_platform_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Required size of a platform to be considered in
+<cite>all_platforms</cite>. Only platforms that have # of samples &gt; ‘min_platform_size’
+are used to determine intervals that have a high coverage across all platforms.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable or Table with samples removed.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.annotate_interval_qc_filter">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">annotate_interval_qc_filter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#annotate_interval_qc_filter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.annotate_interval_qc_filter" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate a Table/MatrixTable with ‘pass_interval_qc’ using <cite>get_interval_qc_pass</cite>.</p>
+<p>Passes the interval QC Table resource and kwargs to <cite>get_interval_qc_pass</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>t</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Input Table or MatrixTable.</p></li>
+<li><p><strong>kwargs</strong> – Optional keyword arguments to pass to <cite>get_interval_qc_pass</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Input Table or MatrixTable annotated with ‘pass_interval_qc’.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.interval_qc.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.interval_qc.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/interval_qc.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.interval_qc.main" title="Permalink to this definition"></a></dt>
+<dd><p>Define high quality intervals based on aggregate statistics over samples.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="identify_trios.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.identify_trios" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="outlier_filtering.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.outlier_filtering" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

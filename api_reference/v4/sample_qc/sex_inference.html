@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.sex_inference &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.subset" href="../subset.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.relatedness" href="relatedness.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.sex_inference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/sex_inference.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-sex-inference">
+<h1>gnomad_qc.v4.sample_qc.sex_inference<a class="headerlink" href="#gnomad-qc-v4-sample-qc-sex-inference" title="Permalink to this heading"></a></h1>
+<p>Script to impute chromosomal sex karyotype annotation.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">sex_inference</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">determine</span><span class="o">-</span><span class="n">fstat</span><span class="o">-</span><span class="n">sites</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">callrate</span> <span class="n">MIN_CALLRATE</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">approx</span><span class="o">-</span><span class="n">af</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">no</span><span class="o">-</span><span class="n">callrate</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">fstat</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">FSTAT_N_PARTITIONS</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">sex</span><span class="o">-</span><span class="n">imputation</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">read</span><span class="o">-</span><span class="n">sex</span><span class="o">-</span><span class="n">imputation</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">mt</span><span class="o">-</span><span class="k">if</span><span class="o">-</span><span class="n">exists</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">normalization</span><span class="o">-</span><span class="n">contig</span> <span class="n">NORMALIZATION_CONTIG</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">mean</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="n">thresholds</span> <span class="n">MEAN_DP_THRESHOLDS</span> <span class="p">[</span><span class="n">MEAN_DP_THRESHOLDS</span> <span class="o">...</span><span class="p">]]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">INTERVAL_QC_N_PARTITIONS</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">impute</span><span class="o">-</span><span class="n">sex</span><span class="o">-</span><span class="n">ploidy</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">f</span><span class="o">-</span><span class="n">stat</span><span class="o">-</span><span class="n">ukb</span><span class="o">-</span><span class="n">var</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">af</span> <span class="n">MIN_AF</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">f</span><span class="o">-</span><span class="n">stat</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">F_STAT_CUTOFF</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">high</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">intervals</span> <span class="o">|</span> <span class="o">--</span><span class="n">high</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">platform</span> <span class="o">|</span> <span class="o">--</span><span class="n">high</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">platforms</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">platform</span><span class="o">-</span><span class="n">size</span> <span class="n">MIN_PLATFORM_SIZE</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">variant</span><span class="o">-</span><span class="n">depth</span><span class="o">-</span><span class="n">only</span><span class="o">-</span><span class="n">x</span><span class="o">-</span><span class="n">ploidy</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">variant</span><span class="o">-</span><span class="n">depth</span><span class="o">-</span><span class="n">only</span><span class="o">-</span><span class="n">y</span><span class="o">-</span><span class="n">ploidy</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">omit</span><span class="o">-</span><span class="n">variant</span><span class="o">-</span><span class="n">depth</span><span class="o">-</span><span class="n">ploidy</span><span class="o">-</span><span class="n">lcr</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">omit</span><span class="o">-</span><span class="n">variant</span><span class="o">-</span><span class="n">depth</span><span class="o">-</span><span class="n">ploidy</span><span class="o">-</span><span class="n">segdup</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">variant</span><span class="o">-</span><span class="n">depth</span><span class="o">-</span><span class="n">ploidy</span><span class="o">-</span><span class="n">snv</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">omit</span><span class="o">-</span><span class="n">compute</span><span class="o">-</span><span class="n">x</span><span class="o">-</span><span class="n">frac</span><span class="o">-</span><span class="n">variants</span><span class="o">-</span><span class="n">hom</span><span class="o">-</span><span class="n">alt</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">high</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">by</span><span class="o">-</span><span class="n">mean</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="mi">0</span> <span class="o">|</span> <span class="o">--</span><span class="n">high</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">by</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">cov</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">sex</span><span class="o">-</span><span class="n">mean</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="mi">0</span> <span class="n">SEX_MEAN_FRACTION_OVER_DP_0</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">norm</span><span class="o">-</span><span class="n">mean</span><span class="o">-</span><span class="n">fraction</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="mi">0</span> <span class="n">NORM_MEAN_FRACTION_OVER_DP_0</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">x</span><span class="o">-</span><span class="n">cov</span> <span class="n">X_COV</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">y</span><span class="o">-</span><span class="n">cov</span> <span class="n">Y_COV</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">norm</span><span class="o">-</span><span class="n">cov</span> <span class="n">NORM_COV</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">fraction</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="n">x</span> <span class="n">FRACTION_SAMPLES_X</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">fraction</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="n">y</span> <span class="n">FRACTION_SAMPLES_Y</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">fraction</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="n">norm</span> <span class="n">FRACTION_SAMPLES_NORM</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">annotate</span><span class="o">-</span><span class="n">sex</span><span class="o">-</span><span class="n">karyotype</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">gmm</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">ploidy</span><span class="o">-</span><span class="n">cutoffs</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">x</span><span class="o">-</span><span class="n">frac</span><span class="o">-</span><span class="n">hom</span><span class="o">-</span><span class="n">alt</span><span class="o">-</span><span class="n">cutoffs</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">per</span><span class="o">-</span><span class="n">platform</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">sex</span><span class="o">-</span><span class="n">karyotype</span><span class="o">-</span><span class="n">cutoffs</span> <span class="n">SEX_KARYOTYPE_CUTOFFS</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Test the pipeline using the gnomAD v4 test dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="determine-f-stat-sites">
+<h2>Determine f-stat sites<a class="headerlink" href="#determine-f-stat-sites" title="Permalink to this heading"></a></h2>
+<p>Arguments used for determining sites to use for f-stat calculations.</p>
+<dl class="option-list">
+<dt><kbd>--determine-fstat-sites</kbd></dt>
+<dd><p>Create Table of common (&gt; value specified by ‘–min-af’), bi-allelic SNPs on chromosome X for f-stat calculations. Additionally filter to high callrate (&gt; value specified by ‘–min-callrate’) variants if ‘–approx-af-and-no-callrate’ is not used. NOTE: This requires a densify of chrX!</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--min-callrate</kbd></dt>
+<dd><p>Minimum variant callrate.</p>
+<p>Default: 0.99</p>
+</dd>
+<dt><kbd>--approx-af-and-no-callrate</kbd></dt>
+<dd><p>Whether to approximate allele frequency with AC/(n_samples * 2) and use no callrate cutoff for determination of f-stat sites.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--fstat-n-partitions</kbd></dt>
+<dd><p>Number of desired partitions for the f-stat sites output Table.</p>
+<p>Default: 1000</p>
+</dd>
+</dl>
+</section>
+<section id="sex-chromosome-interval-qc">
+<h2>Sex chromosome interval QC<a class="headerlink" href="#sex-chromosome-interval-qc" title="Permalink to this heading"></a></h2>
+<p>Arguments used for making an interval QC HT from the sex imputation interval coverage MT.</p>
+<dl class="option-list">
+<dt><kbd>--sex-imputation-interval-qc</kbd></dt>
+<dd><p>Create a Table of the fraction of samples per interval and per platform with mean DP over thresholds specified by ‘–mean-dp-thresholds’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--read-sex-imputation-coverage-mt-if-exists</kbd></dt>
+<dd><p>Whether to use the sex imputation coverage MT if it already exists rather than remaking this intermediate temporary file.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--normalization-contig</kbd></dt>
+<dd><p>Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.</p>
+<p>Default: “chr20”</p>
+</dd>
+<dt><kbd>--mean-dp-thresholds</kbd></dt>
+<dd><p>List of mean DP cutoffs to determining the fraction of samples with mean coverage &gt;= the cutoff for each interval.</p>
+<p>Default: [5, 10, 15, 20, 25]</p>
+</dd>
+<dt><kbd>--interval-qc-n-partitions</kbd></dt>
+<dd><p>Number of desired partitions for the sex imputation interval QC output Table.</p>
+<p>Default: 500</p>
+</dd>
+</dl>
+</section>
+<section id="impute-sex-ploidy">
+<h2>Impute sex ploidy<a class="headerlink" href="#impute-sex-ploidy" title="Permalink to this heading"></a></h2>
+<p>Arguments used for imputing sex chromosome ploidy.</p>
+<dl class="option-list">
+<dt><kbd>--impute-sex-ploidy</kbd></dt>
+<dd><p>Run sex chromosome ploidy imputation.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--normalization-contig</kbd></dt>
+<dd><p>Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.</p>
+<p>Default: “chr20”</p>
+</dd>
+<dt><kbd>--read-sex-imputation-coverage-mt-if-exists</kbd></dt>
+<dd><p>Whether to use the sex imputation coverage MT if it already exists rather than remaking this intermediate temporary file.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--f-stat-ukb-var</kbd></dt>
+<dd><p>Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency &gt; value specified by ‘–min-af’) for f-stat computation instead of the sites determined by ‘–determine-fstat-sites’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--min-af</kbd></dt>
+<dd><p>Minimum variant allele frequency to retain variant.</p>
+<p>Default: 0.001</p>
+</dd>
+<dt><kbd>--f-stat-cutoff</kbd></dt>
+<dd><p>Cutoff for f-stat to roughly divide ‘XX’ from ‘XY’ samples. Assumes XX samples are below cutoff and XY are above cutoff.</p>
+<p>Default: -1.0</p>
+</dd>
+<dt><kbd>--high-qual-intervals</kbd></dt>
+<dd><p>Whether to filter to high quality intervals for the sex ploidy imputation. Can’t be used at the same time as ‘–high-qual-per-platform’ or ‘–high-qual-all-platforms’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--high-qual-per-platform</kbd></dt>
+<dd><p>Whether to filter to per platform high quality intervals for the sex ploidy imputation. Can’t be used at the same time as ‘–high-qual-intervals’ or ‘–high-qual-all-platforms’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--high-qual-all-platforms</kbd></dt>
+<dd><p>Whether to filter to high quality intervals for the sex ploidy imputation. Use only intervals that are considered high quality across all platforms. Can’t be used at the same time as ‘–high-qual-intervals’ or ‘–high-qual-per-platform’</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--min-platform-size</kbd></dt>
+<dd><p>Required size of a platform to be considered in ‘–high-qual-all-platforms’. Only platforms that have # of samples &gt; ‘min_platform_size’ are used to determine intervals that have a high quality across all platforms.</p>
+<p>Default: 100</p>
+</dd>
+<dt><kbd>--variant-depth-only-x-ploidy</kbd></dt>
+<dd><p>Whether to use depth of variant data for the x ploidy estimation instead of the default behavior that will use reference blocks.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--variant-depth-only-y-ploidy</kbd></dt>
+<dd><p>Whether to use depth of variant data for the y ploidy estimation instead of the default behavior that will use reference blocks.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--omit-variant-depth-ploidy-lcr-filter</kbd></dt>
+<dd><p>Whether to omit filtering out variants in LCR regions for the variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--omit-variant-depth-ploidy-segdup-filter</kbd></dt>
+<dd><p>Whether to omit filtering out variants in segdup regions for the variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--variant-depth-ploidy-snv-only</kbd></dt>
+<dd><p>Whether to filter to only single nucleotide variants for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--omit-compute-x-frac-variants-hom-alt</kbd></dt>
+<dd><p>Whether to omit the computation of the fraction of homozygous alternate variants on chromosome X.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--high-qual-by-mean-fraction-over-dp-0</kbd></dt>
+<dd><p>Whether to use the mean fraction of bases over DP 0 to determine high quality intervals. Can’t be set at the same time as ‘–high-qual-by-fraction-samples-over-cov’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--high-qual-by-fraction-samples-over-cov</kbd></dt>
+<dd><p>Whether to determine high quality intervals using the fraction of samples with a mean interval quality over a specified quality for chrX (–x-cov), chrY (–y-cov), and the normalization contig (–norm-cov). Can’t be set at the same time as ‘–high-qual-by-mean-fraction-over-dp-0’.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sex-mean-fraction-over-dp-0</kbd></dt>
+<dd><p>Mean fraction of bases over DP 0 used to define high quality intervals on sex chromosomes.</p>
+<p>Default: 0.4</p>
+</dd>
+<dt><kbd>--norm-mean-fraction-over-dp-0</kbd></dt>
+<dd><p>Mean fraction of bases over DP 0 used to define high quality intervals on the normalization chromosome.</p>
+<p>Default: 0.99</p>
+</dd>
+<dt><kbd>--x-cov</kbd></dt>
+<dd><p>Mean coverage level used to define high quality intervals on chromosome X. Aggregate mean for this coverage level must be in the sex chromosome interval QC HT (must be value in ‘–mean-dp-thresholds’ list used to create the QC HT)!</p>
+<p>Default: 10</p>
+</dd>
+<dt><kbd>--y-cov</kbd></dt>
+<dd><p>Mean coverage level used to define high quality intervals on chromosome Y. Aggregate mean for this coverage level must be in the sex chromosome interval QC HT (must be value in ‘–mean-dp-thresholds’ list used to create the QC HT)!</p>
+<p>Default: 5</p>
+</dd>
+<dt><kbd>--norm-cov</kbd></dt>
+<dd><p>Mean coverage level used to define high quality intervals on the normalization autosome. Aggregate mean for this coverage level must be in the sex chromosome interval QC HT (must be value in ‘–mean-dp-thresholds’ list used to create the QC HT)!</p>
+<p>Default: 20</p>
+</dd>
+<dt><kbd>--fraction-samples-x</kbd></dt>
+<dd><p>Fraction samples at specified coverage ‘–x-cov’ to determine high quality intervals on chromosome X.</p>
+<p>Default: 0.8</p>
+</dd>
+<dt><kbd>--fraction-samples-y</kbd></dt>
+<dd><p>Fraction samples at specified coverage ‘–y-cov’ to determine high quality intervals on chromosome Y.</p>
+<p>Default: 0.35</p>
+</dd>
+<dt><kbd>--fraction-samples-norm</kbd></dt>
+<dd><p>Fraction samples at specified coverage ‘–norm-cov’ to determine high quality intervals on the normalization chromosome specified by ‘–normalization-contig’.</p>
+<p>Default: 0.85</p>
+</dd>
+</dl>
+</section>
+<section id="annotate-sex-karyotype">
+<h2>Annotate sex karyotype<a class="headerlink" href="#annotate-sex-karyotype" title="Permalink to this heading"></a></h2>
+<p>Arguments used for annotating sex karyotype.</p>
+<dl class="option-list">
+<dt><kbd>--annotate-sex-karyotype</kbd></dt>
+<dd><p>Run sex karyotype inference.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--use-gmm-for-ploidy-cutoffs</kbd></dt>
+<dd><p>Whether to use Gaussian mixture model to roughly split samples into ‘XX’ and ‘XY’ instead of f-stat.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--apply-x-frac-hom-alt-cutoffs</kbd></dt>
+<dd><p>Whether to apply ‘XX’ and ‘XY’ cutoffs for the fraction of homozygous alternate genotypes on chromosome X and use them to infer sex karyotype.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--per-platform</kbd></dt>
+<dd><p>Whether to run the karyotype inference per platform.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sex-karyotype-cutoffs</kbd></dt>
+<dd><p>Optional path to JSON file containing sex karyotype X and Y ploidy cutoffs to use for karyotype annotation instead of inferring cutoffs. If ‘–apply-x-frac-hom-alt-cutoffs’ is used, this file mustalso include cutoffs for the fraction of homozygous alternate genotypes on chromosome X.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.determine_fstat_sites" title="gnomad_qc.v4.sample_qc.sex_inference.determine_fstat_sites"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.determine_fstat_sites</span></code></a>(vds)</p></td>
+<td><p>Write a Table with chromosome X SNPs that are bi-allelic, common, and high callrate by default.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.load_platform_ht" title="gnomad_qc.v4.sample_qc.sex_inference.load_platform_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.load_platform_ht</span></code></a>([...])</p></td>
+<td><p>Load platform assignment Table or test Table and return an error if requested Table does not exist.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.prepare_sex_imputation_coverage_mt" title="gnomad_qc.v4.sample_qc.sex_inference.prepare_sex_imputation_coverage_mt"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.prepare_sex_imputation_coverage_mt</span></code></a>([...])</p></td>
+<td><p>Prepare the sex imputation coverage MT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.compute_sex_ploidy" title="gnomad_qc.v4.sample_qc.sex_inference.compute_sex_ploidy"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.compute_sex_ploidy</span></code></a>(...)</p></td>
+<td><p>Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.annotate_sex_karyotype_from_ploidy_cutoffs" title="gnomad_qc.v4.sample_qc.sex_inference.annotate_sex_karyotype_from_ploidy_cutoffs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.annotate_sex_karyotype_from_ploidy_cutoffs</span></code></a>(...)</p></td>
+<td><p>Determine sex karyotype annotation based on chromosome X and chromosome Y ploidy estimates and ploidy cutoffs.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.infer_sex_karyotype_from_ploidy" title="gnomad_qc.v4.sample_qc.sex_inference.infer_sex_karyotype_from_ploidy"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.infer_sex_karyotype_from_ploidy</span></code></a>(...)</p></td>
+<td><p>Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.reformat_ploidy_cutoffs_for_json" title="gnomad_qc.v4.sample_qc.sex_inference.reformat_ploidy_cutoffs_for_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.reformat_ploidy_cutoffs_for_json</span></code></a>(ht)</p></td>
+<td><p>Format x_ploidy_cutoffs and y_ploidy_cutoffs global annotations for JSON export.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.sex_inference.main" title="gnomad_qc.v4.sample_qc.sex_inference.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.main</span></code></a>(args)</p></td>
+<td><p>Impute chromosomal sex karyotype annotation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.sex_inference"></span><p>Script to impute chromosomal sex karyotype annotation.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.determine_fstat_sites">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">determine_fstat_sites</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">approx_af_and_no_callrate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_af</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_callrate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.99</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#determine_fstat_sites"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.determine_fstat_sites" title="Permalink to this definition"></a></dt>
+<dd><p>Write a Table with chromosome X SNPs that are bi-allelic, common, and high callrate by default.</p>
+<p>This Table is designed to be used as a variant filter in sex imputation for f-stat
+computation.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>By default <cite>approx_af_and_no_callrate</cite> is False and the final Table will be
+filtered to high callrate (&gt; value specified by <cite>min_callrate</cite>) variants. This
+requires a densify of chrX!”</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If <cite>approx_af_and_no_callrate</cite> is True, allele frequency is approximated with
+AC/(n_samples * 2) and no callrate filter is used.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VariantDataset.</p></li>
+<li><p><strong>approx_af_and_no_callrate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to approximate allele frequency with
+AC/(n_samples * 2) and use no callrate cutoff to filter sites.</p></li>
+<li><p><strong>min_af</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum alternate allele frequency cutoff used to filter sites.</p></li>
+<li><p><strong>min_callrate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum callrate cutoff used to filter sites.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of chromosome X sites to be used for f-stat computation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.load_platform_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">load_platform_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_interval_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'intersection'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_interval_padding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#load_platform_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.load_platform_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Load platform assignment Table or test Table and return an error if requested Table does not exist.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If <cite>test</cite> is True and the test platform assignment Table does not exist, the
+function will load the final platform assignment Table instead if it already
+exists.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether a test platform assignment Table should be loaded.</p></li>
+<li><p><strong>calling_interval_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of calling intervals to use for interval
+coverage. One of: ‘ukb’, ‘broad’, or ‘intersection’. Only used if <cite>test</cite> is
+True.</p></li>
+<li><p><strong>calling_interval_padding</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of base pair padding to use on the calling
+intervals. One of 0 or 50 bp. Only used if <cite>test</cite> is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Platform assignment Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.prepare_sex_imputation_coverage_mt">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">prepare_sex_imputation_coverage_mt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">normalization_contig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'chr20'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">read_if_exists</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#prepare_sex_imputation_coverage_mt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.prepare_sex_imputation_coverage_mt" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare the sex imputation coverage MT.</p>
+<p>Filter the full interval coverage MatrixTable to the specified normalization contig
+and hard filtered samples (before sex hard filter) and union it with the sex
+coverage MatrixTable after excluding intervals that overlap PAR regions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>normalization_contig</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Which autosomal chromosome to use for normalizing the
+coverage of chromosomes X and Y. Default is ‘chr20’.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use gnomAD v4 test dataset. Default is False.</p></li>
+<li><p><strong>read_if_exists</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the sex imputation coverage MT if it already
+exists rather than remaking this intermediate temporary file. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Interval coverage MatrixTable for sex imputation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.compute_sex_ploidy">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">compute_sex_ploidy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_qc_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">high_qual_per_platform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalization_contig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'chr20'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_depth_only_x_ploidy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_depth_only_y_ploidy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_depth_only_ploidy_filter_lcr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_depth_only_ploidy_filter_segdup</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_depth_only_ploidy_snv_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compute_x_frac_variants_hom_alt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_af</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f_stat_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#compute_sex_ploidy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.compute_sex_ploidy" title="Permalink to this definition"></a></dt>
+<dd><p>Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.</p>
+<p>This function imputes sex chromosome ploidy from a VDS and a sex inference specific
+coverage MT (created by <cite>prepare_sex_imputation_coverage_mt</cite>).</p>
+<p>With no additional parameters passed, chrX and chrY ploidy will be imputed using
+Hail’s <cite>hail.vds.impute_sex_chromosome_ploidy</cite> method which computes chromosome
+ploidy using reference block DP per calling interval (using intervals in
+<cite>coverage_mt</cite>). This method breaks up the reference blocks at the calling interval
+boundaries, maintaining all reference block END information for the mean DP per
+interval computation.</p>
+<p>There is also the option to impute ploidy using mean variant depth within the
+specified calling intervals instead of using reference block depths. This can be
+defined differently for chrX and chrY using <cite>variant_depth_only_x_ploidy</cite> and
+<cite>variant_depth_only_y_ploidy</cite>.</p>
+<p>If an <cite>interval_qc_ht</cite> Table is supplied, only high quality intervals will be used
+in sex chromosome ploidy imputation. High quality intervals are defined by
+‘interval_qc_ht.pass_interval_qc’.</p>
+<p>If <cite>high_qual_per_platform</cite> is True, <cite>interval_qc_ht</cite> and <cite>platform_ht</cite> must be
+supplied, and ‘interval_qc_ht.pass_interval_qc’ should be a Struct with one
+BooleanExpression per platform.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VDS for use in sex inference.</p></li>
+<li><p><strong>coverage_mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input sex inference specific interval coverage MatrixTable.</p></li>
+<li><p><strong>interval_qc_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional interval QC Table to use for filtering to high
+quality intervals before sex ploidy imputation.</p></li>
+<li><p><strong>high_qual_per_platform</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to per platform high quality
+intervals for the sex ploidy imputation. Default is False.</p></li>
+<li><p><strong>platform_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Input platform assignment Table. This is only needed if
+<cite>high_qual_per_platform</cite> is True.</p></li>
+<li><p><strong>normalization_contig</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Which autosomal chromosome to use for normalizing the
+coverage of chromosomes X and Y. Default is ‘chr20’.</p></li>
+<li><p><strong>variant_depth_only_x_ploidy</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use depth of variant data within
+calling intervals instead of reference data for chrX ploidy estimation. Default
+will only use reference data.</p></li>
+<li><p><strong>variant_depth_only_y_ploidy</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use depth of variant data within
+calling intervals instead of reference data for chrY ploidy estimation. Default
+will only use reference data.</p></li>
+<li><p><strong>variant_depth_only_ploidy_filter_lcr</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter out variants in LCR
+regions for variants only ploidy estimation and fraction of homozygous
+alternate variants on chromosome X. Default is True.</p></li>
+<li><p><strong>variant_depth_only_ploidy_filter_segdup</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter out variants in
+segdup regions for variants only ploidy estimation and fraction of homozygous
+alternate variants on chromosome X. Default is True.</p></li>
+<li><p><strong>variant_depth_only_ploidy_snv_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to only single
+nucleotide variants for variants only ploidy estimation and fraction of
+homozygous alternate variants on chromosome X. Default is False.</p></li>
+<li><p><strong>compute_x_frac_variants_hom_alt</strong> – Whether to return an annotation for the
+fraction of homozygous alternate variants on chromosome X. Default is True.</p></li>
+<li><p><strong>freq_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table to use for f-stat allele frequency cutoff. The input
+VDS is filtered to sites in this Table prior to running Hail’s <cite>impute_sex</cite>
+module, and alternate allele frequency is used from this Table with a <cite>min_af</cite>
+cutoff.</p></li>
+<li><p><strong>min_af</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum alternate allele frequency to be used in f-stat calculations.
+Default is 0.001.</p></li>
+<li><p><strong>f_stat_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – f-stat to roughly divide ‘XX’ from ‘XY’ samples. Assumes XX
+samples are below cutoff and XY are above cutoff. Default is -1.0.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with imputed ploidies.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.annotate_sex_karyotype_from_ploidy_cutoffs">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">annotate_sex_karyotype_from_ploidy_cutoffs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ploidy_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_karyotype_ploidy_cutoffs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_platform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_x_frac_hom_alt_cutoffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#annotate_sex_karyotype_from_ploidy_cutoffs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.annotate_sex_karyotype_from_ploidy_cutoffs" title="Permalink to this definition"></a></dt>
+<dd><p>Determine sex karyotype annotation based on chromosome X and chromosome Y ploidy estimates and ploidy cutoffs.</p>
+<p><cite>ploidy_ht</cite> must include the following annotations:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>chrX_ploidy: chromosome X ploidy estimate</p></li>
+<li><p>chrY_ploidy: chromosome X ploidy estimate</p></li>
+</ul>
+</div></blockquote>
+<p>The expected format of <cite>sex_karyotype_ploidy_cutoffs</cite> is one of:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>If <cite>per_platform</cite> is False:</p></li>
+</ul>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;x_ploidy_cutoffs&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;upper_cutoff_X&quot;</span><span class="p">:</span> <span class="mf">2.6</span><span class="p">,</span>
+        <span class="s2">&quot;lower_cutoff_XX&quot;</span><span class="p">:</span> <span class="mf">1.9</span><span class="p">,</span>
+        <span class="s2">&quot;upper_cutoff_XX&quot;</span><span class="p">:</span> <span class="mf">6.8</span><span class="p">,</span>
+        <span class="s2">&quot;lower_cutoff_XXX&quot;</span><span class="p">:</span> <span class="mf">6.6</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;y_ploidy_cutoffs&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;lower_cutoff_Y&quot;</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span>
+        <span class="s2">&quot;upper_cutoff_Y&quot;</span><span class="p">:</span> <span class="mf">1.3</span><span class="p">,</span>
+        <span class="s2">&quot;lower_cutoff_YY&quot;</span><span class="p">:</span> <span class="mf">1.4</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p>If <cite>per_platform</cite> is True:</p></li>
+</ul>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;x_ploidy_cutoffs&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;platform_1&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;upper_cutoff_X&quot;</span><span class="p">:</span> <span class="mf">2.6</span><span class="p">,</span>
+            <span class="s2">&quot;lower_cutoff_XX&quot;</span><span class="p">:</span> <span class="mf">1.9</span><span class="p">,</span>
+            <span class="s2">&quot;upper_cutoff_XX&quot;</span><span class="p">:</span> <span class="mf">6.2</span><span class="p">,</span>
+            <span class="s2">&quot;lower_cutoff_XXX&quot;</span><span class="p">:</span> <span class="mf">6.6</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;platform_0&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;upper_cutoff_X&quot;</span><span class="p">:</span> <span class="mf">1.6</span><span class="p">,</span>
+            <span class="s2">&quot;lower_cutoff_XX&quot;</span><span class="p">:</span> <span class="mf">1.5</span><span class="p">,</span>
+            <span class="s2">&quot;upper_cutoff_XX&quot;</span><span class="p">:</span> <span class="mf">3.3</span><span class="p">,</span>
+            <span class="s2">&quot;lower_cutoff_XXX&quot;</span><span class="p">:</span> <span class="mf">3.5</span>
+        <span class="p">},</span>
+        <span class="o">...</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;y_ploidy_cutoffs&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;platform_1&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;lower_cutoff_Y&quot;</span><span class="p">:</span> <span class="mf">0.2</span><span class="p">,</span>
+            <span class="s2">&quot;upper_cutoff_Y&quot;</span><span class="p">:</span> <span class="mf">1.3</span><span class="p">,</span>
+            <span class="s2">&quot;lower_cutoff_YY&quot;</span><span class="p">:</span> <span class="mf">1.4</span>
+        <span class="p">},</span>
+        <span class="s2">&quot;platform_0&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;lower_cutoff_Y&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">,</span>
+            <span class="s2">&quot;upper_cutoff_Y&quot;</span><span class="p">:</span> <span class="mf">1.2</span><span class="p">,</span>
+            <span class="s2">&quot;lower_cutoff_YY&quot;</span><span class="p">:</span> <span class="mf">1.1</span>
+        <span class="p">},</span>
+        <span class="o">...</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>Returns a Table with the following annotations:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>X_karyotype: Sample assigned X karyotype.</p></li>
+<li><p>Y_karyotype: Sample assigned Y karyotype.</p></li>
+<li><p>sex_karyotype: Combination of X_karyotype and Y_karyotype.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ploidy_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with chromosome X and chromosome Y ploidies.</p></li>
+<li><p><strong>sex_karyotype_ploidy_cutoffs</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]], <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]]) – Dictionary of sex karyotype ploidy cutoffs.</p></li>
+<li><p><strong>per_platform</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the <cite>sex_karyotype_ploidy_cutoffs</cite> should be applied
+per platform.</p></li>
+<li><p><strong>apply_x_frac_hom_alt_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to apply cutoffs for the fraction
+homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sex karyotype Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.infer_sex_karyotype_from_ploidy">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">infer_sex_karyotype_from_ploidy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ploidy_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_platform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f_stat_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_gmm_for_ploidy_cutoffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_x_frac_hom_alt_cutoffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#infer_sex_karyotype_from_ploidy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.infer_sex_karyotype_from_ploidy" title="Permalink to this definition"></a></dt>
+<dd><p>Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ploidy_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with chromosome X and chromosome Y ploidies, and f-stat if
+not <cite>use_gmm_for_ploidy_cutoffs</cite>.</p></li>
+<li><p><strong>per_platform</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the sex karyotype ploidy cutoff inference should be
+applied per platform.</p></li>
+<li><p><strong>f_stat_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – f-stat to roughly divide ‘XX’ from ‘XY’ samples. Assumes XX
+samples are below cutoff and XY are above cutoff.</p></li>
+<li><p><strong>use_gmm_for_ploidy_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Use Gaussian mixture model to split samples into
+‘XX’ and ‘XY’ instead of f-stat.</p></li>
+<li><p><strong>apply_x_frac_hom_alt_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to apply cutoffs for the fraction
+homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of imputed sex karyotypes.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.reformat_ploidy_cutoffs_for_json">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">reformat_ploidy_cutoffs_for_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_platform</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_x_frac_hom_alt_cutoffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#reformat_ploidy_cutoffs_for_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.reformat_ploidy_cutoffs_for_json" title="Permalink to this definition"></a></dt>
+<dd><p>Format x_ploidy_cutoffs and y_ploidy_cutoffs global annotations for JSON export.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table including globals for x_ploidy_cutoffs and y_ploidy_cutoffs.</p></li>
+<li><p><strong>per_platform</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the ploidy global cutoffs are per platform.</p></li>
+<li><p><strong>include_x_frac_hom_alt_cutoffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include cutoffs for the fraction
+homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of X and Y ploidy cutoffs for JSON export.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.sex_inference.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.sex_inference.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/sex_inference.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.sex_inference.main" title="Permalink to this definition"></a></dt>
+<dd><p>Impute chromosomal sex karyotype annotation.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="relatedness.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.relatedness" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../subset.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.subset" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
