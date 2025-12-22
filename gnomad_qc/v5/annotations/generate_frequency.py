@@ -224,7 +224,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         freq=hl.map(
             lambda AC, hom_alt, AN: hl.struct(
                 AC=hl.int32(AC),
-                AF=hl.if_else(AN > 0, AC / AN, 0.0),
+                AF=hl.if_else(AN > 0, AC / AN, hl.missing(hl.tfloat64)),
                 AN=hl.int32(AN),
                 homozygote_count=hl.int32(hom_alt),
             ),
