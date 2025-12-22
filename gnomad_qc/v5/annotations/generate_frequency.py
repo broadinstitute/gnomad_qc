@@ -723,6 +723,8 @@ def merge_gnomad_and_aou_frequencies(
     joined_freq_ht = joined_freq_ht.annotate_globals(
         aou_freq_meta=aou_freq_ht.index_globals().freq_meta,
         aou_freq_meta_sample_count=aou_freq_ht.index_globals().freq_meta_sample_count,
+        aou_age_distribution=aou_freq_ht.index_globals().age_distribution,
+        aou_downsamplings=aou_freq_ht.index_globals().downsamplings,
     )
 
     merged_freq, merged_meta, sample_counts = merge_freq_arrays(
@@ -736,7 +738,11 @@ def merge_gnomad_and_aou_frequencies(
             "counts": [
                 joined_freq_ht.index_globals().freq_meta_sample_count,
                 joined_freq_ht.index_globals().aou_freq_meta_sample_count,
-            ]
+            ],
+            "age_distribution": [
+                joined_freq_ht.index_globals().age_distribution,
+                joined_freq_ht.index_globals().aou_age_distribution,
+            ],
         },
     )
     # Rename the 'downsampling' group in freq meta list to 'aou_downsampling' as aou
@@ -757,7 +763,9 @@ def merge_gnomad_and_aou_frequencies(
         freq_meta_sample_count=sample_counts["counts"],
         freq_index_dict=make_freq_index_dict_from_meta(hl.literal(renamed_freq_meta)),
     )
-
+    joined_freq_ht.describe()
+    hl.eval(joined_freq_ht.freq_meta)
+    joined_freq_ht.show()
     # Merge all histograms (qual_hists, raw_qual_hists, and age_hists)
     logger.info("Merging quality histograms and age histograms from both datasets...")
 
