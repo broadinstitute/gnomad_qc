@@ -751,6 +751,12 @@ def merge_gnomad_and_aou_frequencies(
         },
     )
 
+    joined_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
+        freq_meta=merged_meta,
+        freq_meta_sample_count=sample_counts["counts"],
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
+    )
+
     # Rename the 'downsampling' group in freq meta list to 'aou_downsampling' as aou
     # is the source dataset for downsampling group. gnomAD downsamplings can
     # be retrieved from v3
@@ -763,11 +769,8 @@ def merge_gnomad_and_aou_frequencies(
             for m in hl.eval(merged_meta)
         ]
     )
-
-    joined_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
+    joined_freq_ht = joined_freq_ht.annotate_globals(
         freq_meta=renamed_freq_meta,
-        freq_meta_sample_count=sample_counts["counts"],
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(renamed_freq_meta)),
     )
     joined_freq_ht.describe()
     hl.eval(joined_freq_ht.freq_meta)
