@@ -418,6 +418,14 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
+            ht = create_variant_qc_annotation_ht(
+                hl.read_table(info_ht_path),
+                hl.read_table(trio_stats_ht_path),
+                hl.read_table(sib_stats_ht_path),
+                impute_features=args.impute_features,
+                n_partitions=args.n_partitions,
+            )
+            ht.write(variant_qc_annotation_ht_path, overwrite=overwrite)
 
     finally:
         logger.info("Copying log to logging bucket...")
