@@ -4,11 +4,19 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import GROUPS
+from gnomad.resources.grch38.reference_data import get_truth_ht
 from gnomad.utils.annotations import annotate_allele_info, get_lowqual_expr
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
+from gnomad.variant_qc.random_forest import median_impute_features
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
+    INFO_FEATURES,
+    NON_INFO_FEATURES,
+    TRUTH_DATA,
+)
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     aou_annotated_sites_only_vcf,
@@ -201,6 +209,126 @@ def run_generate_sib_stats(
     mt = annotate_adj_no_dp(mt)
     mt = hl.experimental.sparse_split_multi(mt)
     return generate_sib_stats(mt, relatedness_ht)
+
+
+def create_variant_qc_annotation_ht(
+    info_ht: hl.Table,
+    trio_stats_ht: hl.Table,
+    sib_stats_ht: hl.Table,
+    impute_features: bool = True,
+    n_partitions: int = 5000,
+) -> hl.Table:
+    """
+    Create a Table with all necessary annotations for variant QC.
+
+    Annotations that are included:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param info_ht: Info Table with split multi-allelics.
+    :param trio_stats_ht: Table with trio statistics.
+    :param sib_stats_ht: Table with sibling statistics.
+    :param impute_features: Whether to impute features using feature medians (this is
+        done by variant type).
+    :param n_partitions: Number of partitions to use for final annotated Table.
+    :return: Hail Table with all annotations needed for variant QC.
+    """
+    truth_data_ht = get_truth_ht()
+
+    ht = info_ht.transmute(
+        **info_ht.AC_info, **info_ht.allele_info, **info_ht.site_info
+    )
+    ht = ht.annotate(info=ht.info.select(*INFO_FEATURES))
+
+    if impute_features:
+        impute_ht = ht.select("variant_type", **ht.info)
+        impute_ht = median_impute_features(
+            impute_ht, {"variant_type": impute_ht.variant_type}
+        ).checkpoint(hl.utils.new_temp_file("median_impute", "ht"))
+
+        impute_result = impute_ht[ht.key]
+        ht = ht.annotate(
+            info=impute_result.drop("feature_imputed", "variant_type"),
+            feature_imputed=impute_result.feature_imputed,
+        )
+        ht = ht.annotate_globals(feature_medians=hl.eval(impute_ht.feature_medians))
+
+    logger.info("Annotating Table with trio and sibling stats and reference truth data")
+    trio_stats_ht = trio_stats_ht.select(
+        *[f"{a}_{group}" for a in ["n_transmitted", "ac_children"] for group in GROUPS]
+    )
+    ht = ht.annotate(
+        **trio_stats_ht[ht.key],
+        **sib_stats_ht[ht.key],
+        **truth_data_ht[ht.key],
+    )
+    tp_map = {
+        "transmitted_singleton": "n_transmitted",
+        "sibling_singleton": "n_sib_shared_variants",
+    }
+
+    # Filter to only variants found in high quality samples and are not lowqual.
+    ht = ht.filter((ht.AC_high_quality_raw > 0) & ~ht.AS_lowqual)
+
+    select_dict = {tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA}
+    select_dict.update(
+        {
+            f"{tp}_{group}": hl.or_else(
+                (ht[f"{n}_{group}"] == 1)
+                & (ht[f"AC_high_quality{'' if group == 'adj' else f'_raw'}"] == 2),
+                False,
+            )
+            for tp, n in tp_map.items()
+            for group in GROUPS
+        }
+    )
+    select_dict.update(
+        {
+            "fail_hard_filters": (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
+            "singleton": ht.AC_release_raw == 1,
+            "ac_raw": ht.AC_high_quality_raw,
+            "ac": ht.AC_release,
+            "ac_unrelated_raw": ht.AC_unrelated_raw,
+        }
+    )
+
+    if impute_features:
+        select_dict["feature_imputed"] = ht.feature_imputed
+
+    ht = ht.select(
+        "a_index",
+        "was_split",
+        *NON_INFO_FEATURES,
+        "info",
+        **select_dict,
+    )
+
+    temp_path = hl.utils.new_temp_file("variant_qc_annotations", "ht")
+    ht.write(temp_path)
+    ht = hl.read_table(temp_path, _n_partitions=n_partitions)
+    ht.describe()
+
+    summary = ht.group_by(
+        *TRUTH_DATA, *[f"{tp}_{group}" for tp in tp_map for group in GROUPS]
+    ).aggregate(n=hl.agg.count())
+    logger.info("Summary of truth data annotations:")
+    summary.show(-1)
+
+    return ht
 
 
 def main(args):
