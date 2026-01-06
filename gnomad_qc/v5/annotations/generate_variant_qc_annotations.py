@@ -16,6 +16,7 @@ from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
     INFO_FEATURES,
     NON_INFO_FEATURES,
     TRUTH_DATA,
+    get_tp_ht_for_vcf_export,
 )
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
