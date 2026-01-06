@@ -120,6 +120,45 @@ aou_annotated_sites_only_vcf = (
 )
 
 
+def get_variant_qc_annotations(
+    test: bool = False, environment: str = "rwb"
+) -> VersionedTableResource:
+    """
+    Return the VersionedTableResource to the variant QC annotation Table.
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: Table with variant QC annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Frequency, coverage, and AN annotation resources
 ######################################################################
