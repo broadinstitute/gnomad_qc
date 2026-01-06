@@ -24,6 +24,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
+    get_true_positive_vcf_path,
     get_variant_qc_annotations,
 )
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
@@ -427,6 +428,16 @@ def main(args):
             )
             ht.write(variant_qc_annotation_ht_path, overwrite=overwrite)
 
+        if args.export_true_positive_vcfs:
+            logger.info("Exporting true positive VCFs...")
+            tp_vcf_path = get_true_positive_vcf_path(test=test, environment=environment)
+            check_resource_existence(
+                output_step_resources={
+                    "true_positive_vcf_path": [tp_vcf_path],
+                },
+                overwrite=overwrite,
+            )
+
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(
@@ -499,6 +510,35 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Desired number of partitions for variant QC annotation HT .",
         type=int,
         default=5000,
+    )
+
+    tp_vcf_args = parser.add_argument_group(
+        "Export true positive VCFs",
+        "Arguments used to define true positive variant set.",
+    )
+    tp_vcf_args.add_argument(
+        "--export-true-positive-vcfs",
+        help=(
+            "Exports true positive variants (--transmitted-singletons and/or"
+            " --sibling-singletons) to VCF files."
+        ),
+        action="store_true",
+    )
+    tp_vcf_args.add_argument(
+        "--transmitted-singletons",
+        help=(
+            "Include transmitted singletons in the exports of true positive variants to"
+            " VCF files."
+        ),
+        action="store_true",
+    )
+    tp_vcf_args.add_argument(
+        "--sibling-singletons",
+        help=(
+            "Include sibling singletons in the exports of true positive variants to VCF"
+            " files."
+        ),
+        action="store_true",
     )
 
     return parser
