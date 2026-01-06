@@ -438,6 +438,13 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
+            tp_hts = get_tp_ht_for_vcf_export(
+                hl.read_table(variant_qc_annotation_ht_path),
+                transmitted_singletons=args.transmitted_singletons,
+                sibling_singletons=args.sibling_singletons,
+            )
+            hl.export_vcf(tp_hts["raw"], tp_vcf_path, tabix=True)
+            hl.export_vcf(tp_hts["adj"], tp_vcf_path, tabix=True)
 
     finally:
         logger.info("Copying log to logging bucket...")
