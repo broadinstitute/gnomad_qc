@@ -16,6 +16,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
+    get_variant_qc_annotations,
 )
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
@@ -223,6 +224,10 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     test = args.test or test_n_partitions is not None
 
+    info_ht_path = get_info_ht(test=test, environment=environment).path
+    trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
+    sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
+
     # NOTE: VDS will have 'aou_' prefix on sample IDs.
     vds = get_aou_vds(
         high_quality_only=True,
@@ -235,7 +240,6 @@ def main(args):
 
     try:
         if args.create_info_ht:
-            info_ht_path = get_info_ht(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={
                     "info_ht": [info_ht_path],
@@ -254,7 +258,6 @@ def main(args):
 
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
-            trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
@@ -268,7 +271,6 @@ def main(args):
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
-            sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
             check_resource_existence(
                 output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
@@ -276,6 +278,18 @@ def main(args):
             # Note: Checked sibling IDs; none of them have sample ID collisions.
             ht = run_generate_sib_stats(vds.variant_data, relatedness().ht())
             ht.write(sib_stats_ht_path, overwrite=overwrite)
+
+        if args.create_variant_qc_annotation_ht:
+            logger.info("Creating variant QC annotation HT...")
+            variant_qc_annotation_ht_path = get_variant_qc_annotations(
+                test=test, environment=environment
+            ).path
+            check_resource_existence(
+                output_step_resources={
+                    "variant_qc_annotation_ht": [variant_qc_annotation_ht_path]
+                },
+                overwrite=overwrite,
+            )
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -329,6 +343,26 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.",
         default=40,
         type=int,
+    )
+
+    variant_qc_annotation_args = parser.add_argument_group(
+        "Variant QC annotation HT parameters"
+    )
+    variant_qc_annotation_args.add_argument(
+        "--create-variant-qc-annotation-ht",
+        help="Creates an annotated HT with features for variant QC.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--impute-features",
+        help="If set, imputation is performed for variant QC features.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--n-partitions",
+        help="Desired number of partitions for variant QC annotation HT .",
+        type=int,
+        default=5000,
     )
 
     return parser
