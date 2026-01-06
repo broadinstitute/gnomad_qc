@@ -355,6 +355,9 @@ def main(args):
     info_ht_path = get_info_ht(test=test, environment=environment).path
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
     sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
+    variant_qc_annotation_ht_path = get_variant_qc_annotations(
+        test=test, environment=environment
+    ).path
 
     # NOTE: VDS will have 'aou_' prefix on sample IDs.
     vds = get_aou_vds(
@@ -409,9 +412,6 @@ def main(args):
 
         if args.create_variant_qc_annotation_ht:
             logger.info("Creating variant QC annotation HT...")
-            variant_qc_annotation_ht_path = get_variant_qc_annotations(
-                test=test, environment=environment
-            ).path
             check_resource_existence(
                 output_step_resources={
                     "variant_qc_annotation_ht": [variant_qc_annotation_ht_path]
