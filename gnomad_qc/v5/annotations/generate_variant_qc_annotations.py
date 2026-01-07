@@ -263,9 +263,7 @@ def create_variant_qc_annotation_ht(
     """
     truth_data_ht = get_truth_ht()
 
-    ht = info_ht.transmute(
-        **info_ht.AC_info, **info_ht.allele_info, **info_ht.site_info
-    )
+    ht = info_ht.transmute(**info_ht.AC_info, **info_ht.allele_info)
     ht = ht.annotate(info=ht.info.select(*INFO_FEATURES))
 
     if impute_features:
