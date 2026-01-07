@@ -6,7 +6,11 @@ import logging
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import get_truth_ht
-from gnomad.utils.annotations import annotate_allele_info, get_lowqual_expr
+from gnomad.utils.annotations import (
+    annotate_allele_info,
+    get_lowqual_expr,
+    pab_max_expr,
+)
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad.variant_qc.random_forest import median_impute_features
@@ -40,6 +44,8 @@ logger.setLevel(logging.INFO)
 def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
     """
     Compute AC and AC_raw annotations for each allele count filter group.
+
+    Function also adds `AS_pab_max` and `allele_info` annotations.
 
     :param vds: VariantDataset to use for computing AC and AC_raw annotations.
     :return: Table with AC and AC_raw annotations split by high quality, release, and unrelated.
@@ -89,6 +95,10 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
             f"AC{'_' + f if f else f}": grp.map(lambda i: hl.int32(i.get(True, 0)))
             for f, grp in grp_ac_expr.items()
         },
+    )
+
+    ac_info_expr = ac_info_expr.annotate(
+        AS_pab_max=pab_max_expr(mt.LGT, mt.LAD, mt.LA, hl.len(mt.alleles))
     )
 
     ac_info_ht = mt.select_rows(AC_info=ac_info_expr).rows()
