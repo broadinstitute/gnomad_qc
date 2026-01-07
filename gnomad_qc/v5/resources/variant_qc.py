@@ -52,7 +52,7 @@ NA12878 = "ASC-4Set-1573S_NA12878@1075619236"
 """
 String representation for NA12878 truth sample.
 """
-# Is this present ? Likely not but check.
+# TODO: Is this present ? Likely not but check.
 UKB_NA12878 = "Coriell_NA12878_NA12878"
 """
 String representation for the UKB Regeneron generated NA12878 truth sample.
@@ -103,38 +103,29 @@ def _variant_qc_root(
     )
 
 
-def get_callset_truth_data(
-    truth_sample: str, mt: bool = True, test: bool = False
-) -> Union[VersionedMatrixTableResource, VersionedTableResource]:
-    """
-    Get resources for the truth sample data that is subset from the full callset.
+def get_variant_qc_result(
+    model_id: str, test: bool = False, split: bool = True
+) -> VersionedTableResource:
+    r"""
+    Get the results of variant QC filtering for a given run.
 
-    If `mt` this will return the truth sample MatrixTable (subset from callset);
-    otherwise it returns the merged truth sample Table that includes both the truth
-    data and the data from the callset.
-
-    :param str truth_sample: Name of the truth sample.
-    :param bool mt: Whether path is for a MatrixTable, default is True.
+    :param model_id: Model ID of variant QC run to load. Must start with 'rf\_',
+        'vqsr\_', or 'if\_'.
     :param test: Whether to use a tmp path for variant QC tests.
-    :return: Path to callset truth sample MT.
+    :param split: Whether to return the split or unsplit variant QC result.
+    :return: VersionedTableResource for variant QC results.
     """
-    if mt:
-        return VersionedMatrixTableResource(
-            CURRENT_VARIANT_QC_VERSION,
-            {
-                version: MatrixTableResource(
-                    f"{_variant_qc_root(version, test=test)}/truth_samples/gnomad.genomes.v{version}.{truth_sample}.mt"
-                )
-                for version in VARIANT_QC_VERSIONS
-            },
+    model_type = model_id.split("_")[0]
+    if model_type not in ["rf", "vqsr", "if"]:
+        raise ValueError(
+            f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but found {model_id}"
         )
-    else:
-        return VersionedTableResource(
-            CURRENT_VARIANT_QC_VERSION,
-            {
-                version: TableResource(
-                    f"{_variant_qc_root(version, test=test)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
-                )
-                for version in VARIANT_QC_VERSIONS
-            },
-        )
+    return VersionedTableResource(
+        CURRENT_VARIANT_QC_RESULT_VERSION,
+        {
+            version: TableResource(
+                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.genomes.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
+            )
+            for version in VARIANT_QC_RESULT_VERSIONS
+        },
+    )

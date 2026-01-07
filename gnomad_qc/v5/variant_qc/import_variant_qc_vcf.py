@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Union
 import hail as hl
 from gnomad.utils.sparse_mt import split_info_annotation
 
-from gnomad_qc.v4.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
+from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")

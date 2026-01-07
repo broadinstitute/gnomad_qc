@@ -9,8 +9,10 @@ import hail as hl
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 
-from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
-from gnomad_qc.v5.resources.basics import calling_intervals
+from gnomad_qc.v5.resources.annotations import (
+    get_info_vcf_path,
+    get_true_positive_vcf_path,
+)
 from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
 from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import (
     import_variant_qc_vcf as import_vqsr,
@@ -56,11 +58,9 @@ INDEL_RECALIBRATION_TRANCHE_VALUES = [
 def split_intervals(
     b: hb.Batch,
     utils: Dict,
-    calling_interval_path: str,
     gcp_billing_project: str,
     gatk_image: str,
     scatter_count: int = 100,
-    interval_padding: int = 150,
 ) -> Job:
     """
     Split genome into intervals to parallelize VQSR for large sample sizes.
@@ -68,11 +68,9 @@ def split_intervals(
     :param b: Batch object to add jobs to.
     :param utils: Dictionary containing resources (file paths and arguments) to be
         used to split genome.
-    :param calling_interval_path: Path to the calling interval list with no padding.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :param gatk_image: GATK docker image.
     :param scatter_count: Number of intervals to split the dataset into for scattering.
-    :param interval_padding: Number of bases to pad each interval by.
     :return: Job object with a single output j.intervals of type ResourceGroup.
     """
     j = b.new_job(f"""Make {scatter_count} intervals""")
@@ -93,8 +91,7 @@ def split_intervals(
     j.command(
         f"""set -e
     gatk --java-options "-Xms{java_mem}g" SplitIntervals \\
-      -L {calling_interval_path} \\
-      --interval-padding {interval_padding} \\
+      -L {utils['unpadded_intervals_file']} \\
       -O {j.intervals} \\
       -scatter {scatter_count} \\
       -R {utils['ref_fasta']} \\
@@ -115,7 +112,6 @@ def snps_variant_recalibrator_create_model(
     gatk_image: str,
     features: List[str],
     singletons_resource_vcf: Optional[str] = None,
-    evaluation_interval_path: Optional[str] = None,
     out_bucket: str = None,
     is_small_callset: bool = False,
     is_large_callset: bool = False,
@@ -149,7 +145,6 @@ def snps_variant_recalibrator_create_model(
     :param features: List of features to be used in the SNP VQSR model.
     :param singletons_resource_vcf: Optional singletons VCF to be used in
         building the model.
-    :param evaluation_interval_path: Optional path to the evaluation interval list.
     :param out_bucket: Full path to output bucket to write model and plots to.
     :param is_small_callset: Whether the dataset is small. Used to set number of CPUs
         for the job.
@@ -180,7 +175,6 @@ def snps_variant_recalibrator_create_model(
           VariantRecalibrator \\
           -V {sites_only_vcf} \\
           -O {j.recalibration} \\
-          -L {evaluation_interval_path} \\
           --tranches-file {j.tranches} \\
           --trust-all-polymorphic \\
           {tranche_cmdl} \\
@@ -333,7 +327,6 @@ def indels_variant_recalibrator_create_model(
     gatk_image: str,
     features: List[str],
     singletons_resource_vcf: str = None,
-    evaluation_interval_path: Optional[str] = None,
     out_bucket: str = None,
     is_small_callset: bool = False,
     max_gaussians: int = 4,
@@ -366,7 +359,6 @@ def indels_variant_recalibrator_create_model(
     :param features: List of features to be used in the INDEL VQSR model.
     :param singletons_resource_vcf: Optional singletons VCF to be used in building the
         model.
-    :param evaluation_interval_path: Optional path to the evaluation interval list.
     :param out_bucket: Full path to output bucket to write model and plots to.
     :param is_small_callset: Whether the dataset is small. Used to set number of CPUs
         for the job.
@@ -399,7 +391,6 @@ def indels_variant_recalibrator_create_model(
           --gcs-project-for-requester-pays {gcp_billing_project} \\
           -V {sites_only_vcf} \\
           -O {j.recalibration} \\
-          -L {evaluation_interval_path} \\
           --tranches-file {j.tranches} \\
           --trust-all-polymorphic \\
           {tranche_cmdl} \\
@@ -838,7 +829,6 @@ def make_vqsr_jobs(
     indel_hard_filter: float,
     scatter_count: int = 100,
     singleton_vcf_path: Optional[str] = None,
-    evaluation_interval_path: Optional[str] = None,
     overlap_skip: bool = False,
 ) -> None:
     """
@@ -865,7 +855,6 @@ def make_vqsr_jobs(
     :param scatter_count: Number of intervals to scatter over.
     :param singleton_vcf_path: Full path to transmitted and/or sibling singletons VCF
         file and its index.
-    :param evaluation_interval_path: Optional full path to evaluation intervals file.
     :return: None.
     """
     # Scale resources for jobs as appropriate.
@@ -901,7 +890,6 @@ def make_vqsr_jobs(
                 b=b,
                 sites_only_vcf=sites_only_vcf,
                 singletons_resource_vcf=singleton_vcf_path,
-                evaluation_interval_path=evaluation_interval_path,
                 utils=utils,
                 use_as_annotations=use_as_annotations,
                 gcp_billing_project=gcp_billing_project,
@@ -956,7 +944,6 @@ def make_vqsr_jobs(
                 b=b,
                 sites_only_vcf=sites_only_vcf,
                 singletons_resource_vcf=singleton_vcf_path,
-                evaluation_interval_path=evaluation_interval_path,
                 utils=utils,
                 use_as_annotations=use_as_annotations,
                 gcp_billing_project=gcp_billing_project,
@@ -1121,60 +1108,17 @@ def main(args):
         remote_tmpdir="gs://gnomad-tmp-4day/",
     )
 
-    calling_interval_ht = calling_intervals(
-        interval_name="union",
-        calling_interval_padding=0,
-    ).ht()
-
-    if args.calling_interval_filter:
-        evaluation_interval_ht = calling_intervals(
-            interval_name="intersection",
-            calling_interval_padding=50,
-        ).ht()
-    else:
-        evaluation_interval_ht = None
+    logger.info(f"Loading resource json from {args.resources}")
+    with open(args.resources, "r") as f:
+        utils = json.load(f)
 
     if test:
         n_partitions = 10
         scatter_count = 10
         snp_hard_filter = 90.0
         indel_hard_filter = 90.0
-        calling_interval_ht = calling_interval_ht.filter(
-            calling_interval_ht.interval.start.contig == "chr22"
-        )
-        if evaluation_interval_ht is not None:
-            evaluation_interval_ht = evaluation_interval_ht.filter(
-                evaluation_interval_ht.interval.start.contig == "chr22"
-            )
 
     # Write out intervals to a temp text file.
-    calling_interval_path = hl.utils.new_temp_file("calling_intervals", "intervals")
-    int_expr = calling_interval_ht.interval
-    calling_interval_ht = calling_interval_ht.key_by(
-        interval=int_expr.start.contig
-        + ":"
-        + hl.str(int_expr.start.position)
-        + "-"
-        + hl.str(int_expr.end.position)
-    ).select()
-    calling_interval_ht.export(calling_interval_path, header=False)
-
-    if evaluation_interval_ht is not None:
-        evaluation_interval_path = hl.utils.new_temp_file(
-            "evaluation_intervals", "intervals"
-        )
-        int_expr = evaluation_interval_ht.interval
-        evaluation_interval_ht = evaluation_interval_ht.key_by(
-            interval=int_expr.start.contig
-            + ":"
-            + hl.str(int_expr.start.position)
-            + "-"
-            + hl.str(int_expr.end.position)
-        ).select()
-        evaluation_interval_ht.export(evaluation_interval_path, header=False)
-    else:
-        evaluation_interval_path = calling_interval_path
-
     if transmitted_singletons and sibling_singletons:
         true_positive_type = "transmitted_singleton.sibling_singleton"
     elif transmitted_singletons:
@@ -1192,25 +1136,20 @@ def main(args):
         backend=backend,
     )
 
-    with open(args.resources, "r") as f:
-        utils = json.load(f)
-
     # Split passed intervals into value specified in resources json.
     # These are used for scattered jobs, if required.
     intervals_j = split_intervals(
         b=b,
         utils=utils,
-        calling_interval_path=calling_interval_path,
         gcp_billing_project=gcp_billing_project,
         gatk_image=args.gatk_image,
         scatter_count=scatter_count,
-        interval_padding=150,
     )
 
     # Configure all VQSR jobs.
     make_vqsr_jobs(
         b=b,
-        sites_only_vcf=info_vcf_path(info_method=args.compute_info_method),
+        sites_only_vcf=get_info_vcf_path(info_method=args.compute_info_method),
         is_small_callset=args.run_mode == "small",
         is_large_callset=args.run_mode == "large",
         output_vcf_name=args.out_vcf_name,
@@ -1226,7 +1165,6 @@ def main(args):
         snp_hard_filter=snp_hard_filter,
         indel_hard_filter=indel_hard_filter,
         singleton_vcf_path=singleton_vcf_path,
-        evaluation_interval_path=evaluation_interval_path,
         overlap_skip=overlap_skip,
     )
     # Run all jobs, as loaded into the Batch b.
@@ -1255,8 +1193,6 @@ def main(args):
                 transmitted_singletons=args.transmitted_singletons,
                 sibling_singletons=args.sibling_singletons,
                 adj=args.adj,
-                interval_qc_filter=args.interval_qc_filter,
-                calling_interval_filter=args.calling_interval_filter,
                 compute_info_method=args.compute_info_method,
                 indel_features=args.indel_features,
                 snp_features=args.snp_features,
@@ -1392,14 +1328,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sibling-singletons",
         help="Include sibling singletons in training.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--calling-interval-filter",
-        help=(
-            "Whether to filter to the intersection of Broad/DSP calling intervals with "
-            "50 bp of padding for training."
-        ),
         action="store_true",
     )
     parser.add_argument(
