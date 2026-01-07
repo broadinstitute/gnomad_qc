@@ -183,6 +183,8 @@ def create_info_ht(
     logger.info("Adding AC info annotations to info ht...")
     ac_info_ht = generate_ac_info_ht(vds)
     ht = ht.annotate(**ac_info_ht[ht.key])
+    ht = ht.annotate(info=ht.info.annotate(AS_pab_max=ht.AC_info.AS_pab_max))
+    ht = ht.annotate(AC_info=ht.AC_info.drop("AS_pab_max"))
     return ht
 
 
