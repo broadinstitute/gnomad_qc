@@ -65,6 +65,7 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources import meta
+from gnomad_qc.v4.resources.annotations import get_downsampling
 from gnomad_qc.v4.resources.assessment import (
     get_per_sample_counts,
     get_summary_stats_filtering_groups,
@@ -952,6 +953,13 @@ def create_per_sample_counts_from_intermediate_ht(ht: hl.Table) -> hl.Table:
         n_rand_groups,
     )
 
+    # For any value in filter group that is NA, set it to False.
+    ht = ht.annotate(
+        filter_groups=ht.filter_groups.map(
+            lambda x: x.annotate(**{k: hl.or_else(v, False) for k, v in x.items()})
+        )
+    )
+
     # Group by filter groups and the random group to get the count of variants matching
     # the filter group and random group for each sample.
     ht = ht.annotate(_rand_group=hl.rand_int32(n_rand_groups))
@@ -1075,6 +1083,8 @@ def compute_agg_sample_stats(
     meta_ht: Optional[hl.Table] = None,
     by_ancestry: bool = False,
     by_subset: bool = False,
+    by_downsampling: bool = False,
+    ds_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Compute aggregate statistics for per-sample QC metrics.
@@ -1085,15 +1095,21 @@ def compute_agg_sample_stats(
     :param by_ancestry: Boolean indicating whether to stratify by ancestry.
     :param by_subset: Boolean indicating whether to stratify by subset. This is only
          working on "exomes" data.
+    :param by_downsampling: Boolean indicating whether to stratify by downsampling.
+    :param ds_ht: Optional Table containing downsampling annotations. Required if
+        `by_downsampling` is True.
     :return: Struct of aggregate statistics for per-sample QC metrics.
     """
     if meta_ht is None and by_ancestry:
         raise ValueError("If `by_ancestry` is True, `meta_ht` is required.")
     if meta_ht is None and by_subset:
         raise ValueError("If `by_subset` is True, `meta_ht` is required.")
+    if by_downsampling and ds_ht is None:
+        raise ValueError("If `by_downsampling` is True, `ds_ht` is required.")
 
     subset = ["gnomad"]
     gen_anc = ["global"]
+    downsampling = ["global"]
     if meta_ht is not None:
         meta_s = meta_ht[ht.s]
         if by_subset:
@@ -1101,15 +1117,38 @@ def compute_agg_sample_stats(
             subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
+    if by_downsampling:
+        # Use the provided downsampling table to get downsampling annotation.
+        ds_struct = ds_ht[ht.s].downsampling
+        ds_pop = ds_ht[ht.s].pop
+        downsamplings = hl.eval(ds_ht.downsamplings)
+        # Create a list of downsampling group names that this sample belongs to
+        # A sample belongs to a downsampling group if their global_idx < downsampling_size
+        # or if their pop_idx < downsampling_size for their population
+        downsampling_groups = (
+            hl.array(downsamplings)
+            .filter(
+                lambda ds_size: (ds_struct.global_idx < ds_size)
+                | (
+                    (ds_struct.pop_idx < ds_size)
+                    & (meta_s.population_inference.pop == ds_pop)
+                )
+            )
+            .map(lambda ds_size: hl.str(ds_size))
+        )
+        downsampling += downsampling_groups
+
     ht = (
         ht.annotate(
             subset=subset,
             gen_anc=gen_anc,
+            downsampling=downsampling,
             summary_stats=hl.zip(ht.summary_stats_meta, ht.summary_stats),
         )
         .select_globals()
         .explode("gen_anc")
         .explode("subset")
+        .explode("downsampling")
         .explode("summary_stats")
     )
     ht = ht.annotate(
@@ -1121,7 +1160,7 @@ def compute_agg_sample_stats(
     # the quantiles aggregation into a separate aggregation, which will allow the
     # aggregation to work on the full dataset.
     grouped_ht = ht.group_by(
-        "subset", "gen_anc", "sex_chr_nonpar_group", "filter_group_meta"
+        "subset", "gen_anc", "downsampling", "sex_chr_nonpar_group", "filter_group_meta"
     )
     ht1 = grouped_ht.aggregate(
         **{
@@ -1152,6 +1191,7 @@ def get_pipeline_resources(
     use_intermediate_mt_for_sample_counts: bool,
     by_ancestry: bool,
     by_subset: bool,
+    by_downsampling: bool,
     overwrite: bool,
     custom_suffix: Optional[str] = None,
 ) -> PipelineResourceCollection:
@@ -1169,6 +1209,8 @@ def get_pipeline_resources(
         ancestry.
     :param by_subset: Whether to return resource for aggregate stats stratified by
         subset.
+    :param by_downsampling: Whether to return resource for aggregate stats stratified by
+        downsampling.
     :param overwrite: Whether to overwrite resources if they exist.
     :param custom_suffix: Optional custom suffix to add to the resource names.
     :return: PipelineResourceCollection containing resources for all steps of the
@@ -1211,12 +1253,13 @@ def get_pipeline_resources(
         },
         output_resources={
             "temp_intermediate_ht": TableResource(
-                get_checkpoint_path(
-                    "per_sample_summary_stats_intermediate"
-                    + (".test" if test else "")
-                    + (".autosomes" if autosomes_only else "")
-                    + (".sex_chr" if sex_chr_only else "")
-                )
+                "gs://gnomad/v4.1/assessment/exomes/temp/per_sample_summary_stats_intermediate.ht"
+                # get_checkpoint_path(
+                #    "per_sample_summary_stats_intermediate"
+                #    + (".test" if test else "")
+                #    + (".autosomes" if autosomes_only else "")
+                #    + (".sex_chr" if sex_chr_only else "")
+                # )
             )
         },
     )
@@ -1259,6 +1302,7 @@ def get_pipeline_resources(
                 aggregated=True,
                 by_ancestry=by_ancestry,
                 by_subset=by_subset,
+                by_downsampling=by_downsampling,
             )
         },
     )
@@ -1305,13 +1349,6 @@ def main(args):
         custom_suffix = ("rare_variants" if run_rare_variant_mode else "") + (
             f".{custom_suffix}" if custom_suffix else ""
         )
-    if run_rare_variant_mode and (
-        create_per_sample_counts or combine_chr_stats or aggregate_stats
-    ):
-        raise NotImplementedError(
-            "Running rare variant mode with create_per_sample_counts, "
-            "combine_chr_stats, or aggregate_stats is not implemented yet."
-        )
 
     if autosomes_only and sex_chr_only:
         raise ValueError(
@@ -1355,6 +1392,7 @@ def main(args):
         use_intermediate_mt_for_sample_counts=use_intermediate,
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
+        by_downsampling=args.by_downsampling,
         overwrite=overwrite,
         custom_suffix=custom_suffix,
     )
@@ -1473,11 +1511,17 @@ def main(args):
             res = per_sample_stats_resources.aggregate_stats
             res.check_resource_existence()
 
+            ds_ht = None
+            if args.by_downsampling:
+                ds_ht = get_downsampling().ht()
+
             compute_agg_sample_stats(
                 res.per_sample_ht.ht(),
                 meta_ht,
                 by_ancestry=args.by_ancestry,
                 by_subset=args.by_subset,
+                by_downsampling=args.by_downsampling,
+                ds_ht=ds_ht,
             ).write(res.per_sample_agg_ht.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
@@ -1646,6 +1690,14 @@ if __name__ == "__main__":
         help=(
             "Get aggregate statistics for the whole dataset and for ukb and non-ukb "
             "subsets. This is only working on exomes data type."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--by-downsampling",
+        help=(
+            "Get aggregate statistics stratified by downsampling groups. Only relevant "
+            "when using --compute-aggregate-sample-stats."
         ),
         action="store_true",
     )
