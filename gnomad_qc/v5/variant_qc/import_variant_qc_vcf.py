@@ -138,8 +138,6 @@ def main(args):
             transmitted_singletons=args.transmitted_singletons,
             sibling_singletons=args.sibling_singletons,
             adj=args.adj,
-            interval_qc_filter=args.interval_qc_filter,
-            calling_interval_filter=args.calling_interval_filter,
             compute_info_method=args.compute_info_method,
             indel_features=args.indel_features,
             snp_features=args.snp_features,
@@ -203,24 +201,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument(
-        "--interval-qc-filter",
-        help=(
-            "Whether only variants in intervals passing interval QC were used in "
-            "training the model."
-        ),
-        type=bool,
-        required=True,
-    )
-    parser.add_argument(
-        "--calling-interval-filter",
-        help=(
-            "Whether only variants in the intersection of Broad/DSP calling intervals "
-            "with 50 bp of padding were used for training."
-        ),
-        type=bool,
-        required=True,
-    )
-    parser.add_argument(
         "--n-partitions",
         help="Number of desired partitions for output Table.",
         default=5000,
@@ -252,14 +232,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--snp-features",
         help="Features used in the SNP VQSR model.",
-        default=VQSR_FEATURES["exomes"]["snv"],
+        default=VQSR_FEATURES["genomes"]["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
         help="Features used in the indel VQSR model.",
-        default=VQSR_FEATURES["exomes"]["indel"],
+        default=VQSR_FEATURES["genomes"]["indel"],
         type=str,
         nargs="+",
     )
