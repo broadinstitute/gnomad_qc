@@ -60,7 +60,7 @@ def split_intervals(
     utils: Dict,
     gcp_billing_project: str,
     gatk_image: str,
-    scatter_count: int = 100,
+    scatter_count: int = 500,
 ) -> Job:
     """
     Split genome into intervals to parallelize VQSR for large sample sizes.
@@ -827,7 +827,7 @@ def make_vqsr_jobs(
     indel_features: List[str],
     snp_hard_filter: float,
     indel_hard_filter: float,
-    scatter_count: int = 100,
+    scatter_count: int = 500,
     singleton_vcf_path: Optional[str] = None,
     overlap_skip: bool = False,
 ) -> None:
@@ -1267,7 +1267,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scatter-count",
         type=int,
-        default=100,
+        default=500,
         help="Number of intervals to scatter across.",
     )
     parser.add_argument(
