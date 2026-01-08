@@ -1127,7 +1127,7 @@ def main(args):
         else:
             outpath = f"{tmp_vqsr_bucket}{args.out_vcf_name}_vqsr_recalibrated.vcf.gz"
 
-        hts = import_vqsr(
+        ht = import_vqsr(
             outpath,
             args.model_id,
             n_partitions,
@@ -1137,18 +1137,17 @@ def main(args):
             deduplicate_check=True,
         )
 
-        for ht, split in zip(hts, [True, False]):
-            ht = ht.annotate_globals(
-                transmitted_singletons=args.transmitted_singletons,
-                sibling_singletons=args.sibling_singletons,
-                adj=args.adj,
-                indel_features=args.indel_features,
-                snp_features=args.snp_features,
-            )
-            ht.checkpoint(
-                get_variant_qc_result(args.model_id).path,
-                overwrite=args.overwrite,
-            )
+        ht = ht.annotate_globals(
+            transmitted_singletons=args.transmitted_singletons,
+            sibling_singletons=args.sibling_singletons,
+            adj=args.adj,
+            indel_features=args.indel_features,
+            snp_features=args.snp_features,
+        )
+        ht.write(
+            get_variant_qc_result(args.model_id).path,
+            overwrite=args.overwrite,
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
