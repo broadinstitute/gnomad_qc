@@ -60,7 +60,7 @@ def split_intervals(
     utils: Dict,
     gcp_billing_project: str,
     gatk_image: str,
-    scatter_count: int = 500,
+    scatter_count: int = 1000,
 ) -> Job:
     """
     Split genome into intervals to parallelize VQSR for large sample sizes.
@@ -553,7 +553,8 @@ def gather_tranches(
     :param b: Batch object to add jobs to.
     :param tranches: Index for the tranches file.
     :param mode: Recalibration mode to employ, either SNP or INDEL.
-    :param disk_size: Disk size to be used for the job.
+    :param disk_size: Disk size to be used for the job.'
+    :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :return: Job object with one output j.out_tranches.
     """
     j = b.new_job(f"VQSR: {mode}GatherTranches")
@@ -576,61 +577,6 @@ def gather_tranches(
           --output {j.out_tranches}"""
     )
 
-    return j
-
-
-def gather_vcfs(
-    b: hb.Batch,
-    input_vcfs: List[hb.ResourceGroup],
-    out_vcf_name: str,
-    disk_size: int,
-    gcp_billing_project: str,
-    gatk_image: str,
-    out_bucket: str = None,
-) -> Job:
-    """
-    Combine recalibrated VCFs into a single VCF & saves the output VCF to a bucket `out_bucket`.
-
-    :param b: Batch object to add jobs to.
-    :param input_vcfs: List of VCFs to be gathered.
-    :param out_vcf_name: Output vcf filename.
-    :param disk_size: Disk size to be used for the job.
-    :param gcp_billing_project: GCP billing project for requester-pays buckets.
-    :param gatk_image: GATK docker image.
-    :param out_bucket: Full path to output bucket to write the gathered VCF to.
-    :return: Job object with one ResourceGroup output j.output_vcf.
-    """
-    filename = f"{out_vcf_name}_vqsr_recalibrated"
-    j = b.new_job("VQSR: FinalGatherVcf")
-    j.image(gatk_image)
-    j.memory(f"16G")
-    j.storage(f"{disk_size}G")
-
-    j.declare_resource_group(
-        output_vcf={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"}
-    )
-
-    input_cmdl = " ".join([f'--input {v["vcf.gz"]}' for v in input_vcfs])
-    j.command(
-        f"""set -euo pipefail
-        # --ignore-safety-checks makes a big performance difference so we include it in our invocation.
-        # This argument disables expensive checks that the file headers contain the same set of
-        # genotyped samples and that files are in order by position of first record.
-        cd /io
-        mkdir tmp/
-        gatk --java-options "-Xms6g -Djava.io.tmpdir=`pwd`/tmp" \\
-          GatherVcfsCloud \\
-          --gcs-project-for-requester-pays {gcp_billing_project} \\
-          --ignore-safety-checks \\
-          --gather-type BLOCK \\
-          {input_cmdl} \\
-          --output {j.output_vcf['vcf.gz']} \\
-          --tmp-dir `pwd`/tmp
-
-        tabix {j.output_vcf['vcf.gz']}"""
-    )
-    if out_bucket:
-        b.write_output(j.output_vcf, f"{out_bucket}{filename}")
     return j
 
 
@@ -697,7 +643,8 @@ def apply_recalibration(
 
     j = b.new_job("VQSR: ApplyRecalibration")
     # Custom image from Lindo Nkambule with GATK and BCFtools installed
-    # TODO: follow up on what version and how maintained
+    # TODO: follow up on what version and how maintained -- MW reached out on
+    # 2026-01-08, waiting for response.
     j.image("docker.io/lindonkambule/vqsr_gatk_bcftools_img:latest")
     j.memory("8G")
     j.storage(f"{disk_size}G")
@@ -827,7 +774,7 @@ def make_vqsr_jobs(
     indel_features: List[str],
     snp_hard_filter: float,
     indel_hard_filter: float,
-    scatter_count: int = 500,
+    scatter_count: int = 1000,
     singleton_vcf_path: Optional[str] = None,
     overlap_skip: bool = False,
 ) -> None:
@@ -1108,7 +1055,7 @@ def main(args):
         remote_tmpdir="gs://gnomad-tmp-4day/",
     )
 
-    logger.info(f"Loading resource json from {args.resources}")
+    logger.info("Loading resource json from %s", args.resources)
     with open(args.resources, "r") as f:
         utils = json.load(f)
 
@@ -1126,10 +1073,13 @@ def main(args):
     elif sibling_singletons:
         true_positive_type = "sibling_singleton"
 
-    singleton_vcf_path = get_true_positive_vcf_path(
-        adj=args.adj,
-        true_positive_type=true_positive_type,
-    )
+    if true_positive_type is not None:
+        singleton_vcf_path = get_true_positive_vcf_path(
+            adj=args.adj,
+            true_positive_type=true_positive_type,
+        )
+    else:
+        singleton_vcf_path = None
 
     b = hb.Batch(
         f"VQSR pipeline {args.batch_suffix}",
@@ -1149,7 +1099,7 @@ def main(args):
     # Configure all VQSR jobs.
     make_vqsr_jobs(
         b=b,
-        sites_only_vcf=get_info_vcf_path(info_method=args.compute_info_method),
+        sites_only_vcf=get_info_vcf_path(),
         is_small_callset=args.run_mode == "small",
         is_large_callset=args.run_mode == "large",
         output_vcf_name=args.out_vcf_name,
@@ -1172,7 +1122,7 @@ def main(args):
 
     logger.info("VQSR Batch jobs executed successfully")
 
-    if args.load_vqsr:
+    if args.load_vqsr_results:
         if args.run_mode == "large" and overlap_skip:
             outpath = f"{tmp_vqsr_bucket}apply_recalibration/scatter/{args.out_vcf_name}_vqsr_recalibrated_*.vcf.gz"
         else:
@@ -1193,7 +1143,6 @@ def main(args):
                 transmitted_singletons=args.transmitted_singletons,
                 sibling_singletons=args.sibling_singletons,
                 adj=args.adj,
-                compute_info_method=args.compute_info_method,
                 indel_features=args.indel_features,
                 snp_features=args.snp_features,
             )
@@ -1267,8 +1216,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scatter-count",
         type=int,
-        default=500,
-        help="Number of intervals to scatter across.",
+        default=1000,
+        help="Number of intervals to scatter across, default is 1000.",
     )
     parser.add_argument(
         "--snp-hard-filter",

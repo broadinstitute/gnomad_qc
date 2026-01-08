@@ -5,10 +5,8 @@ import logging
 from typing import Optional, Tuple, Union
 
 import hail as hl
-from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
 
-from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -162,10 +160,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to.",
-    )
-    parser.add_argument(
         "--vcf-path",
         help="Path to variant QC result VCF. Can be specified as Hadoop glob patterns.",
         required=True,
@@ -272,9 +266,4 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
-
-    if args.slack_channel:
-        with slack_notifications(slack_token, args.slack_channel):
-            main(args)
-    else:
-        main(args)
+    main(args)

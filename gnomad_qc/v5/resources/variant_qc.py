@@ -1,25 +1,17 @@
 """Script containing variant QC related resources."""
 
-from typing import Union
-
 from gnomad.resources.grch38 import (
     na12878_giab,
     na12878_giab_hc_intervals,
     syndip,
     syndip_hc_intervals,
 )
-from gnomad.resources.resource_utils import (
-    MatrixTableResource,
-    TableResource,
-    VersionedMatrixTableResource,
-    VersionedTableResource,
-)
+from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.v5.resources.constants import (
     CURRENT_VARIANT_QC_RESULT_VERSION,
     CURRENT_VARIANT_QC_VERSION,
     VARIANT_QC_RESULT_VERSIONS,
-    VARIANT_QC_VERSIONS,
 )
 
 VQSR_FEATURES = {
@@ -93,7 +85,7 @@ def _variant_qc_root(
 
     :param version: Version of variant QC path to return.
     :param test: Whether to use a tmp path for variant QC tests.
-    :param data_type: Whether to return 'exomes' or 'genomes' data. Default is exomes.
+    :param data_type: Whether to return 'exomes' or 'genomes' data. Default is genomes.
     :return: Root to variant QC path.
     """
     return (
@@ -104,7 +96,8 @@ def _variant_qc_root(
 
 
 def get_variant_qc_result(
-    model_id: str, test: bool = False, split: bool = True
+    model_id: str,
+    test: bool = False,
 ) -> VersionedTableResource:
     r"""
     Get the results of variant QC filtering for a given run.
@@ -112,7 +105,6 @@ def get_variant_qc_result(
     :param model_id: Model ID of variant QC run to load. Must start with 'rf\_',
         'vqsr\_', or 'if\_'.
     :param test: Whether to use a tmp path for variant QC tests.
-    :param split: Whether to return the split or unsplit variant QC result.
     :return: VersionedTableResource for variant QC results.
     """
     model_type = model_id.split("_")[0]
@@ -124,7 +116,7 @@ def get_variant_qc_result(
         CURRENT_VARIANT_QC_RESULT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.genomes.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
+                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/aou.genomes.v{version}.{model_type}_result.ht"
             )
             for version in VARIANT_QC_RESULT_VERSIONS
         },

@@ -123,7 +123,7 @@ def main(args):
 
     logger.info(f"passed array elements required as: {args.array_elements_required}")
 
-    hts = import_variant_qc_vcf(
+    result = import_variant_qc_vcf(
         args.vcf_path,
         args.model_id,
         args.n_partitions,
@@ -133,12 +133,18 @@ def main(args):
         args.deduplication_check,
     )
 
-    for ht, split in zip(hts, [True, False]):
+    # Handle both single Table (is_split=True) and tuple (is_split=False) returns.
+    if isinstance(result, tuple):
+        split_ht, unsplit_ht = result
+        hts_and_splits = [(split_ht, True), (unsplit_ht, False)]
+    else:
+        hts_and_splits = [(result, True)]
+
+    for ht, split in hts_and_splits:
         ht = ht.annotate_globals(
             transmitted_singletons=args.transmitted_singletons,
             sibling_singletons=args.sibling_singletons,
             adj=args.adj,
-            compute_info_method=args.compute_info_method,
             indel_features=args.indel_features,
             snp_features=args.snp_features,
         )
@@ -173,32 +179,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument(
-        "--compute-info-method",
-        help=(
-            "Compute info method used to generate the variant QC results. Options are"
-            " 'AS', 'quasi' or 'set_long_AS_missing_info'."
-        ),
-        type=str,
-        required=True,
-        choices=["AS", "quasi", "set_long_AS_missing_info"],
-    )
-    parser.add_argument(
         "--transmitted-singletons",
         help="Whether transmitted singletons were used in training the model.",
-        type=bool,
-        required=True,
+        action="store_true",
     )
     parser.add_argument(
         "--sibling-singletons",
         help="Whether sibling singletons were used in training the model.",
-        type=bool,
-        required=True,
+        action="store_true",
     )
     parser.add_argument(
         "--adj",
         help="Whether adj filtered singletons were used in training the model.",
-        type=bool,
-        required=True,
+        action="store_true",
     )
     parser.add_argument(
         "--n-partitions",

@@ -233,7 +233,7 @@ def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableR
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}.info.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -275,7 +275,7 @@ def get_true_positive_vcf_path(
     test: bool = False,
     adj: bool = False,
     true_positive_type: str = "transmitted_singleton",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Provide the path to the transmitted singleton VCF used as input to VQSR.
