@@ -218,7 +218,7 @@ def snps_variant_recalibrator(
     utils: Dict,
     out_bucket: str,
     use_as_annotations: bool,
-    gcp_billing_project,
+    gcp_billing_project: str,
     gatk_image: str,
     features: List[str],
     interval: Optional[hb.ResourceGroup] = None,
@@ -553,7 +553,7 @@ def gather_tranches(
     :param b: Batch object to add jobs to.
     :param tranches: Index for the tranches file.
     :param mode: Recalibration mode to employ, either SNP or INDEL.
-    :param disk_size: Disk size to be used for the job.'
+    :param disk_size: Disk size to be used for the job.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :return: Job object with one output j.out_tranches.
     """
@@ -1065,22 +1065,6 @@ def main(args):
         snp_hard_filter = 90.0
         indel_hard_filter = 90.0
 
-    # Write out intervals to a temp text file.
-    if transmitted_singletons and sibling_singletons:
-        true_positive_type = "transmitted_singleton.sibling_singleton"
-    elif transmitted_singletons:
-        true_positive_type = "transmitted_singleton"
-    elif sibling_singletons:
-        true_positive_type = "sibling_singleton"
-
-    if true_positive_type is not None:
-        singleton_vcf_path = get_true_positive_vcf_path(
-            adj=args.adj,
-            true_positive_type=true_positive_type,
-        )
-    else:
-        singleton_vcf_path = None
-
     b = hb.Batch(
         f"VQSR pipeline {args.batch_suffix}",
         backend=backend,
@@ -1095,6 +1079,21 @@ def main(args):
         gatk_image=args.gatk_image,
         scatter_count=scatter_count,
     )
+
+    if transmitted_singletons and sibling_singletons:
+        true_positive_type = "transmitted_singleton.sibling_singleton"
+    elif transmitted_singletons:
+        true_positive_type = "transmitted_singleton"
+    elif sibling_singletons:
+        true_positive_type = "sibling_singleton"
+
+    if true_positive_type is not None:
+        singleton_vcf_path = get_true_positive_vcf_path(
+            adj=args.adj,
+            true_positive_type=true_positive_type,
+        )
+    else:
+        singleton_vcf_path = None
 
     # Configure all VQSR jobs.
     make_vqsr_jobs(
@@ -1134,7 +1133,7 @@ def main(args):
             n_partitions,
             args.header_path,
             args.array_elements_required,
-            is_split=False,
+            is_split=True,
             deduplicate_check=True,
         )
 
@@ -1147,7 +1146,7 @@ def main(args):
                 snp_features=args.snp_features,
             )
             ht.checkpoint(
-                get_variant_qc_result(args.model_id, split=split).path,
+                get_variant_qc_result(args.model_id).path,
                 overwrite=args.overwrite,
             )
 
