@@ -182,12 +182,12 @@ def create_info_ht(
 
     logger.info("Adding AC info annotations to info ht...")
     ac_info_ht = generate_ac_info_ht(vds)
-    ht = ht.annotate(**ac_info_ht[ht.key])
-    ht = ht.annotate(
-        info=ht.info.annotate(AS_pab_max=ht.AC_info.AS_pab_max),
-        AC_info=ht.AC_info.drop("AS_pab_max"),
+    info_ht = ac_info_ht.annotate(**ht[ac_info_ht.key])
+    info_ht = info_ht.annotate(
+        info=info_ht.info.annotate(AS_pab_max=info_ht.AC_info.AS_pab_max),
+        AC_info=info_ht.AC_info.drop("AS_pab_max"),
     )
-    return ht
+    return info_ht
 
 
 def run_generate_trio_stats(
