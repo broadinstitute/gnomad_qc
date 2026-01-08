@@ -643,8 +643,8 @@ def apply_recalibration(
 
     j = b.new_job("VQSR: ApplyRecalibration")
     # Custom image from Lindo Nkambule with GATK and BCFtools installed
-    # TODO: follow up on what version and how maintained -- MW reached out on
-    # 2026-01-08, waiting for response.
+    # TODO: Only in docker and used GATK v4.2.6.1 and bcftools 1.10.2  -- need
+    # to make our own image for this since lindo's is only in docker.
     j.image("docker.io/lindonkambule/vqsr_gatk_bcftools_img:latest")
     j.memory("8G")
     j.storage(f"{disk_size}G")
