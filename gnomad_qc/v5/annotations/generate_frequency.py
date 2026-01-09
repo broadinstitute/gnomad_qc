@@ -850,16 +850,6 @@ def calculate_faf_and_grpmax_annotations(
 
     updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
 
-    final_freq_meta = hl.literal(
-        [
-            {("gen_anc" if k == "pop" else k): m[k] for k in m}
-            for m in hl.eval(updated_freq_ht.freq_meta)
-        ]
-    )
-    final_faf_meta = hl.literal(
-        [{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in faf_meta]
-    )
-
     updated_freq_ht = updated_freq_ht.annotate_globals(
         freq_meta=final_freq_meta,
         faf_meta=final_faf_meta,
