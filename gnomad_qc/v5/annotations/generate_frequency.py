@@ -850,11 +850,16 @@ def calculate_faf_and_grpmax_annotations(
 
     updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
 
-    updated_freq_ht = updated_freq_ht.annotate_globals(
-        freq_meta=final_freq_meta,
-        faf_meta=final_faf_meta,
-        faf_index_dict=make_freq_index_dict_from_meta(hl.literal(final_faf_meta)),
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(final_freq_meta)),
+    updated_freq_ht = updated_freq_ht.select_globals(
+        freq_meta=updated_freq_ht.freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(
+            hl.literal(updated_freq_ht.freq_meta)
+        ),
+        freq_meta_sample_count=updated_freq_ht.freq_meta_sample_count,
+        faf_meta=faf_meta,
+        faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
+        age_distribution=updated_freq_ht.age_distribution,
+        aou_downsamplings=updated_freq_ht.aou_downsamplings,
     )
 
     return updated_freq_ht
