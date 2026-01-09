@@ -20,6 +20,10 @@ AoU (--process-aou):
 AN values) or Densify approach (standard, more resource intensive)
 4. Generate age histograms during frequency calculation
 
+Merged dataset (--merge-datasets):
+1. Merge frequency data and histograms from both gnomAD and AoU datasets.
+2. Calculate FAF, grpmax, and other post-processing annotations on merged dataset.
+
 Usage Examples:
 ---------------
 # Process AoU dataset using all-sites ANs.
@@ -33,22 +37,33 @@ python generate_frequency.py --process-gnomad --environment dataproc
 
 # Run gnomAD in test mode
 python generate_frequency.py --process-gnomad --test --test-partitions 2
+
+# Merge both datasets
+python generate_frequency.py --merge-datasets --environment batch --app-name "merged_freq" --driver-cores 8 --worker-memory highmem
 """
 
 import argparse
+import copy
 import logging
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     agg_by_strata,
+    bi_allelic_site_inbreeding_expr,
     compute_freq_by_strata,
+    faf_expr,
+    gen_anc_faf_max_expr,
     get_adj_expr,
+    grpmax_expr,
     merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
 )
+from gnomad.utils.release import make_freq_index_dict_from_meta
+from gnomad.utils.vcf import SORT_ORDER
 from hail.utils import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -691,6 +706,170 @@ def _merge_updated_frequency_fields(
     return final_freq_ht
 
 
+def merge_gnomad_and_aou_frequencies(
+    gnomad_freq_ht: hl.Table,
+    aou_freq_ht: hl.Table,
+) -> hl.Table:
+    """
+    Merge frequency data and histograms from gnomAD and All of Us datasets.
+
+    :param gnomad_freq_ht: Frequency Table for gnomAD.
+    :param aou_freq_ht: Frequency Table for AoU.
+    :return: Merged frequency Table with combined frequencies and histograms.
+    """
+    joined_freq_ht = gnomad_freq_ht.annotate(
+        aou_freq=aou_freq_ht[gnomad_freq_ht.key].freq
+    )
+
+    joined_freq_ht = joined_freq_ht.annotate_globals(
+        aou_freq_meta=aou_freq_ht.index_globals().freq_meta,
+        aou_freq_meta_sample_count=aou_freq_ht.index_globals().freq_meta_sample_count,
+        aou_age_distribution=aou_freq_ht.index_globals().age_distribution,
+        aou_downsamplings=aou_freq_ht.index_globals().downsamplings,
+    )
+
+    merged_freq, merged_meta, sample_counts = merge_freq_arrays(
+        [joined_freq_ht.freq, joined_freq_ht.aou_freq],
+        [
+            joined_freq_ht.index_globals().freq_meta,
+            joined_freq_ht.index_globals().aou_freq_meta,
+        ],
+        operation="sum",
+        count_arrays={
+            "counts": [
+                joined_freq_ht.index_globals().freq_meta_sample_count,
+                joined_freq_ht.index_globals().aou_freq_meta_sample_count,
+            ],
+        },
+    )
+
+    joined_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
+        freq_meta=merged_meta,
+        freq_meta_sample_count=sample_counts["counts"],
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
+    )
+
+    # Rename the 'downsampling' group in freq meta list to 'aou_downsampling' as aou
+    # is the source dataset for downsampling group. gnomAD downsamplings can
+    # be retrieved from v3.
+    logger.info(
+        "Renaming 'downsampling' group in freq meta list to 'aou_downsampling'..."
+    )
+    renamed_freq_meta = hl.literal(
+        [
+            {("aou-downsampling" if k == "downsampling" else k): m[k] for k in m}
+            for m in hl.eval(merged_meta)
+        ]
+    )
+    joined_freq_ht = joined_freq_ht.annotate_globals(
+        freq_meta=renamed_freq_meta,
+    )
+
+    logger.info("Merging quality histograms and age histograms from both datasets...")
+    joined_freq_ht = joined_freq_ht.annotate(
+        aou_histograms=aou_freq_ht[joined_freq_ht.key].histograms,
+    )
+
+    def _merge_hist_struct(hist1, hist2, operation="sum"):
+        """Merge all fields of two histogram structs."""
+        return hl.struct(
+            **{
+                field: merge_histograms(
+                    [hist1[field], hist2[field]], operation=operation
+                )
+                for field in hist1.dtype.fields
+            }
+        )
+
+    merged_histograms = hl.struct(
+        qual_hists=_merge_hist_struct(
+            joined_freq_ht.histograms.qual_hists,
+            joined_freq_ht.aou_histograms.qual_hists,
+        ),
+        raw_qual_hists=_merge_hist_struct(
+            joined_freq_ht.histograms.raw_qual_hists,
+            joined_freq_ht.aou_histograms.raw_qual_hists,
+        ),
+        age_hists=_merge_hist_struct(
+            joined_freq_ht.histograms.age_hists,
+            joined_freq_ht.aou_histograms.age_hists,
+        ),
+    )
+
+    joined_freq_ht = joined_freq_ht.annotate(histograms=merged_histograms)
+
+    # Merge age_distribution global histograms (single histogram per dataset, not
+    # per-strata like freq_meta_sample_count).
+    merged_age_distribution = merge_histograms(
+        [
+            joined_freq_ht.index_globals().age_distribution,
+            joined_freq_ht.index_globals().aou_age_distribution,
+        ],
+        operation="sum",
+    )
+    joined_freq_ht = joined_freq_ht.annotate_globals(
+        age_distribution=merged_age_distribution
+    )
+
+    return joined_freq_ht
+
+
+def calculate_faf_and_grpmax_annotations(
+    updated_freq_ht: hl.Table,
+) -> hl.Table:
+    """
+    Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.
+
+    This function handles the complex post-processing annotations that are added
+    to frequency tables after the core frequency calculations are complete.
+
+    :param updated_freq_ht: Merged frequency table for AoU and gnomAD (after consent withdrawal subtraction) data.
+    :return: Updated frequency table with FAF/grpmax annotations.
+    """
+    logger.info("Computing FAF, grpmax, gen_anc_faf_max, and InbreedingCoeff...")
+
+    faf, faf_meta = faf_expr(
+        updated_freq_ht.freq,
+        updated_freq_ht.freq_meta,
+        updated_freq_ht.locus,
+        GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
+    )
+
+    grpmax = grpmax_expr(
+        updated_freq_ht.freq,
+        updated_freq_ht.freq_meta,
+        GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
+    )
+
+    updated_freq_ht = updated_freq_ht.annotate(
+        faf=faf,
+        grpmax=grpmax,
+        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta, gen_anc_label="gen_anc"),
+        inbreeding_coeff=bi_allelic_site_inbreeding_expr(
+            callstats_expr=updated_freq_ht.freq[1]
+        ),
+    )
+
+    updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
+
+    sort_order = copy.deepcopy(SORT_ORDER) + ["aou-downsampling"]
+    updated_freq_ht = updated_freq_ht.select_globals(
+        freq_meta=updated_freq_ht.freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(
+            updated_freq_ht.freq_meta, sort_order=sort_order
+        ),
+        freq_meta_sample_count=updated_freq_ht.freq_meta_sample_count,
+        faf_meta=faf_meta,
+        faf_index_dict=make_freq_index_dict_from_meta(
+            hl.literal(faf_meta), sort_order=sort_order
+        ),
+        age_distribution=updated_freq_ht.age_distribution,
+        aou_downsamplings=updated_freq_ht.aou_downsamplings,
+    )
+
+    return updated_freq_ht
+
+
 def _initialize_hail(args) -> None:
     """
     Initialize Hail with appropriate configuration for the environment.
@@ -798,6 +977,45 @@ def main(args):
             logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
             aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
 
+        if args.merge_datasets:
+            logger.info(
+                "Merging frequency data and age histograms from both datasets..."
+            )
+
+            merged_freq = get_freq(test=test, data_type="genomes", data_set="merged")
+
+            check_resource_existence(
+                output_step_resources={"merge-datasets": [merged_freq]},
+                overwrite=overwrite,
+            )
+
+            gnomad_freq_ht = get_freq(data_type="genomes", test=test, data_set="gnomad")
+            aou_freq_ht = get_freq(data_type="genomes", test=test, data_set="aou")
+
+            check_resource_existence(
+                input_step_resources={
+                    "process-gnomad": [gnomad_freq_ht],
+                    "process-aou": [aou_freq_ht],
+                }
+            )
+            merged_freq_ht = merge_gnomad_and_aou_frequencies(
+                gnomad_freq_ht.ht(),
+                aou_freq_ht.ht(),
+            )
+            merged_freq_ht = merged_freq_ht.checkpoint(
+                new_temp_file("merged_freq", "ht")
+            )
+
+            # Calculate FAF, grpmax, and other post-processing annotations on merged
+            # dataset.
+            logger.info(
+                "Calculating FAF, grpmax, and other annotations on merged dataset..."
+            )
+            merged_freq_ht = calculate_faf_and_grpmax_annotations(merged_freq_ht)
+
+            logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
+            merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
+
     finally:
         hl.copy_log(
             get_logging_path(
@@ -846,6 +1064,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     processing_group.add_argument(
         "--use-all-sites-ans",
         help="Use all sites ANs in frequency calculations to avoid a densify.",
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--merge-datasets",
+        help="Merge frequency data from both gnomAD and AoU datasets.",
         action="store_true",
     )
 
