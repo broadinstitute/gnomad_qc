@@ -856,7 +856,7 @@ def calculate_faf_and_grpmax_annotations(
     updated_freq_ht = updated_freq_ht.select_globals(
         freq_meta=updated_freq_ht.freq_meta,
         freq_index_dict=make_freq_index_dict_from_meta(
-            hl.literal(updated_freq_ht.freq_meta), sort_order=sort_order
+            updated_freq_ht.freq_meta, sort_order=sort_order
         ),
         freq_meta_sample_count=updated_freq_ht.freq_meta_sample_count,
         faf_meta=faf_meta,
