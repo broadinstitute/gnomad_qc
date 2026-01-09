@@ -459,7 +459,8 @@ def main(args):
             )
             check_resource_existence(
                 output_step_resources={
-                    "true_positive_vcf_path": [tp_vcf_path],
+                    "raw_true_positive_vcf_path": [raw_tp_vcf_path],
+                    "adj_true_positive_vcf_path": [adj_tp_vcf_path],
                 },
                 overwrite=overwrite,
             )
