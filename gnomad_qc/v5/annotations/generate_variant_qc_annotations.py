@@ -441,11 +441,21 @@ def main(args):
 
         if args.export_true_positive_vcfs:
             logger.info("Exporting true positive VCFs...")
+            if args.transmitted_singletons:
+                tp_type = "transmitted_singleton"
+                if args.sibling_singletons:
+                    tp_type = "transmitted_singleton.sibling_singleton"
+            elif args.sibling_singletons:
+                tp_type = "sibling_singleton"
+
             raw_tp_vcf_path = get_true_positive_vcf_path(
-                test=test, environment=environment, adj=False
+                test=test,
+                environment=environment,
+                adj=False,
+                true_positive_type=tp_type,
             )
             adj_tp_vcf_path = get_true_positive_vcf_path(
-                test=test, environment=environment, adj=True
+                test=test, environment=environment, adj=True, true_positive_type=tp_type
             )
             check_resource_existence(
                 output_step_resources={
