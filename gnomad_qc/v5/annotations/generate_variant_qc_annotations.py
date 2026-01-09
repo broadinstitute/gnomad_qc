@@ -441,7 +441,12 @@ def main(args):
 
         if args.export_true_positive_vcfs:
             logger.info("Exporting true positive VCFs...")
-            tp_vcf_path = get_true_positive_vcf_path(test=test, environment=environment)
+            raw_tp_vcf_path = get_true_positive_vcf_path(
+                test=test, environment=environment, adj=False
+            )
+            adj_tp_vcf_path = get_true_positive_vcf_path(
+                test=test, environment=environment, adj=True
+            )
             check_resource_existence(
                 output_step_resources={
                     "true_positive_vcf_path": [tp_vcf_path],
@@ -453,8 +458,8 @@ def main(args):
                 transmitted_singletons=args.transmitted_singletons,
                 sibling_singletons=args.sibling_singletons,
             )
-            hl.export_vcf(tp_hts["raw"], tp_vcf_path, tabix=True)
-            hl.export_vcf(tp_hts["adj"], tp_vcf_path, tabix=True)
+            hl.export_vcf(tp_hts["raw"], raw_tp_vcf_path, tabix=True)
+            hl.export_vcf(tp_hts["adj"], adj_tp_vcf_path, tabix=True)
 
     finally:
         logger.info("Copying log to logging bucket...")
