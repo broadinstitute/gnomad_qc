@@ -183,6 +183,8 @@ def create_info_ht(
     logger.info("Adding AC info annotations to info ht...")
     ac_info_ht = generate_ac_info_ht(vds)
     ac_info_ht = ac_info_ht.checkpoint(hl.utils.new_temp_file("ac_info_ht", "ht"))
+    # Annotate ac_info_ht with info annotations because info VCF
+    # provided by AoU has variants not present in samples we consider high quality.
     info_ht = ac_info_ht.annotate(**ht[ac_info_ht.key])
     info_ht = info_ht.annotate(
         info=info_ht.info.annotate(AS_pab_max=info_ht.AC_info.AS_pab_max),
