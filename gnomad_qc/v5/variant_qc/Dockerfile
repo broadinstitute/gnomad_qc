@@ -3,8 +3,9 @@ FROM us.gcr.io/broad-gatk/gatk:4.2.6.1
 LABEL maintainer="gnomAD Team"
 LABEL description="GATK 4.2.6.1 with BCFtools 1.10.2 for VQSR ApplyRecalibration"
 
-# Install dependencies for BCFtools
-RUN apt-get update && apt-get install -y \
+# Fix expired Google Cloud SDK GPG key, then install dependencies for BCFtools
+RUN rm -f /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && apt-get update && apt-get install -y \
     autoconf \
     automake \
     make \
