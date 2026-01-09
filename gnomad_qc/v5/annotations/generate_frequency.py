@@ -21,7 +21,7 @@ AN values) or Densify approach (standard, more resource intensive)
 4. Generate age histograms during frequency calculation
 
 Merged dataset (--merge-datasets):
-1. Merge frequency data and age histograms from both gnomAD and AoU datasets.
+1. Merge frequency data and histograms from both gnomAD and AoU datasets.
 2. Calculate FAF, grpmax, and other post-processing annotations on merged dataset.
 
 Usage Examples:
@@ -709,10 +709,10 @@ def merge_gnomad_and_aou_frequencies(
     aou_freq_ht: hl.Table,
 ) -> hl.Table:
     """
-    Merge frequency data and age histograms from gnomAD and All of Us datasets.
+    Merge frequency data and histograms from gnomAD and All of Us datasets.
 
-    :param gnomad_freq_ht: Frequency Table for gnomAD (already loaded).
-    :param aou_freq_ht: Frequency Table for AoU (already loaded).
+    :param gnomad_freq_ht: Frequency Table for gnomAD.
+    :param aou_freq_ht: Frequency Table for AoU.
     :return: Merged frequency Table with combined frequencies and histograms.
     """
     joined_freq_ht = gnomad_freq_ht.annotate(
@@ -821,8 +821,8 @@ def calculate_faf_and_grpmax_annotations(
     This function handles the complex post-processing annotations that are added
     to frequency tables after the core frequency calculations are complete.
 
-    :param updated_freq_ht: Frequency table after consent withdrawal subtraction
-    :return: Updated frequency table with FAF/grpmax annotations
+    :param updated_freq_ht: Merged frequency table for AoU and gnomAD (after consent withdrawal subtraction) data.
+    :return: Updated frequency table with FAF/grpmax annotations.
     """
     logger.info("Computing FAF, grpmax, gen_anc_faf_max, and InbreedingCoeff...")
 
@@ -837,12 +837,6 @@ def calculate_faf_and_grpmax_annotations(
         updated_freq_ht.freq,
         updated_freq_ht.freq_meta,
         GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
-    )
-
-    grpmax = grpmax.annotate(
-        faf95=faf[
-            hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.gen_anc])
-        ].faf95,
     )
 
     updated_freq_ht = updated_freq_ht.annotate(
@@ -1013,7 +1007,7 @@ def main(args):
             )
 
             # Calculate FAF, grpmax, and other post-processing annotations on merged
-            # dataset
+            # dataset.
             logger.info(
                 "Calculating FAF, grpmax, and other annotations on merged dataset..."
             )
