@@ -571,4 +571,12 @@ if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
 
+    if args.export_true_positive_vcfs and not (
+        args.transmitted_singletons or args.sibling_singletons
+    ):
+        parser.error(
+            "--export-true-positive-vcfs requires at least one of"
+            " --transmitted-singletons or --sibling-singletons"
+        )
+
     main(args)
