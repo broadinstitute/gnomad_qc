@@ -878,7 +878,7 @@ def calculate_faf_and_grpmax_annotations(
         inbreeding_coeff=bi_allelic_site_inbreeding_expr(
             callstats_expr=updated_freq_ht.freq[1]
         ),
-    )
+    ).annotate_globals(faf_meta=faf_meta)
 
     updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
 
