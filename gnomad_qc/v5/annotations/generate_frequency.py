@@ -584,7 +584,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
                 ht.freq_meta, sort_order=sort_order
             ),
             faf_index_dict=make_freq_index_dict_from_meta(
-                hl.literal(ht.faf_meta), sort_order=sort_order
+                ht.faf_meta, sort_order=sort_order
             ),
         )
         final_globals = [
