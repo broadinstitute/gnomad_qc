@@ -549,31 +549,61 @@ def _subtract_consent_frequencies_and_age_histograms(
 
 def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Table:
     """
-    Create final freq Table with only desired annotations.
+    Create final datasetfreq Table with only desired annotations.
 
     :param ht: Hail Table containing all annotations.
-    :param dataset: Dataset to select final fields, either "gnomad" or "aou".
+    :param dataset: Dataset to select final fields, either "gnomad", "aou" or "merged".
     :return: Hail Table with final annotations.
     """
-    if dataset not in ["gnomad", "aou"]:
+    if dataset not in ["gnomad", "aou", "merged"]:
         raise ValueError(f"Invalid dataset: {dataset}")
 
-    final_globals = ["freq_meta", "freq_meta_sample_count", "age_distribution"]
-    final_fields = ["freq", "histograms"]
+    if dataset in ["gnomad", "aou"]:
+        final_globals = ["freq_meta", "freq_meta_sample_count", "age_distribution"]
+        final_fields = ["freq", "histograms"]
 
-    if dataset == "aou":
-        # AoU has one extra 'downsamplings' global field that is not present in gnomAD.
-        final_globals.append("downsamplings")
+        if dataset == "aou":
+            # AoU has one extra 'downsamplings' global field that is not present in
+            # gnomAD.
+            final_globals.append("downsamplings")
 
-    # Convert all int64 annotations in the freq struct to int32s for merging type
-    # compatibility.
-    ht = ht.annotate(
-        freq=ht.freq.map(
-            lambda x: x.annotate(
-                **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
+        # Convert all int64 annotations in the freq struct to int32s for merging type
+        # compatibility.
+        ht = ht.annotate(
+            freq=ht.freq.map(
+                lambda x: x.annotate(
+                    **{k: hl.int32(v) for k, v in x.items() if v.dtype == hl.tint64}
+                )
             )
         )
-    )
+    else:
+        sort_order = copy.deepcopy(SORT_ORDER) + ["aou-downsampling"]
+
+        ht = ht.annotate_globals(
+            freq_index_dict=make_freq_index_dict_from_meta(
+                ht.freq_meta, sort_order=sort_order
+            ),
+            faf_index_dict=make_freq_index_dict_from_meta(
+                hl.literal(ht.faf_meta), sort_order=sort_order
+            ),
+        )
+        final_globals = [
+            "freq_meta",
+            "freq_index_dict",
+            "freq_meta_sample_count",
+            "faf_meta",
+            "faf_index_dict",
+            "age_distribution",
+            "aou_downsamplings",
+        ]
+        final_fields = [
+            "freq",
+            "faf",
+            "grpmax",
+            "fafmax",
+            "inbreeding_coeff",
+            "histograms",
+        ]
 
     return ht.select(*final_fields).select_globals(*final_globals)
 
@@ -652,7 +682,7 @@ def process_gnomad_dataset(
 
     # Select only the fields that were updated as FAF/grpmax/inbreeding_coeff annotations
     # will be calculated on the final merged dataset.
-    logger.info("Selecting final dataset fields...")
+    logger.info("Selecting gnomAD freq HT final fields...")
     final_freq_ht = select_final_dataset_fields(freq_ht, dataset="gnomad")
 
     return final_freq_ht
@@ -844,28 +874,13 @@ def calculate_faf_and_grpmax_annotations(
     updated_freq_ht = updated_freq_ht.annotate(
         faf=faf,
         grpmax=grpmax,
-        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta, gen_anc_label="gen_anc"),
+        fafmax=gen_anc_faf_max_expr(faf, faf_meta, gen_anc_label="gen_anc"),
         inbreeding_coeff=bi_allelic_site_inbreeding_expr(
             callstats_expr=updated_freq_ht.freq[1]
         ),
     )
 
     updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
-
-    sort_order = copy.deepcopy(SORT_ORDER) + ["aou-downsampling"]
-    updated_freq_ht = updated_freq_ht.select_globals(
-        freq_meta=updated_freq_ht.freq_meta,
-        freq_index_dict=make_freq_index_dict_from_meta(
-            updated_freq_ht.freq_meta, sort_order=sort_order
-        ),
-        freq_meta_sample_count=updated_freq_ht.freq_meta_sample_count,
-        faf_meta=faf_meta,
-        faf_index_dict=make_freq_index_dict_from_meta(
-            hl.literal(faf_meta), sort_order=sort_order
-        ),
-        age_distribution=updated_freq_ht.age_distribution,
-        aou_downsamplings=updated_freq_ht.aou_downsamplings,
-    )
 
     return updated_freq_ht
 
@@ -1012,6 +1027,10 @@ def main(args):
                 "Calculating FAF, grpmax, and other annotations on merged dataset..."
             )
             merged_freq_ht = calculate_faf_and_grpmax_annotations(merged_freq_ht)
+
+            merged_freq_ht = select_final_dataset_fields(
+                merged_freq_ht, dataset="merged"
+            )
 
             logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
