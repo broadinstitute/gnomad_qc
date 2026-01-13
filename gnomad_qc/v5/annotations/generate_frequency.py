@@ -62,6 +62,7 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.vcf import SORT_ORDER
 from hail.utils import new_temp_file
@@ -633,6 +634,41 @@ def _fix_v4_global_age_distribution(freq_ht: hl.Table) -> hl.Table:
     return freq_ht
 
 
+def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
+    """
+    Add non-AOU subset entries to the frequency table.
+
+    :param freq_ht: Frequency table to add non-AOU subset entries to.
+    :return: Frequency table with non-AOU subset entries added.
+    """
+    freq_ht = freq_ht.annotate_globals(
+        freq_meta=freq_ht.freq_meta.extend([{"subset": "non_aou"}])
+    )
+    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific
+    # freqs to main array.
+    # NOTE: This is duplicated data here, but it's necessary to merge split vds strata
+    #  properly and still retain the subset freq data.
+    logger.info("Filtering to non_ukb subset strata...")
+    non_aou_ht = _filter_freq_arrays_for_non_aou_subset(
+        freq_ht,
+        items_to_filter=["downsampling", "subset"],
+        keep=False,
+        combine_operator="or",
+    )
+    # Only get the raw, adj, gen_anc, sex, and gen_ac-sex freq array entries
+    # in filter_array_by_meta, filter out subset entries
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        freq_ht.freq_meta,
+        {
+            "freq": freq_ht.freq,
+            "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
+        },
+        items_to_filter=["subset"],
+        keep=False,
+    )
+    return freq_ht
+
+
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
@@ -679,6 +715,11 @@ def process_gnomad_dataset(
 
     logger.info("Reannotating gnomAD's age distribution global annotation...")
     freq_ht = _fix_v4_global_age_distribution(freq_ht)
+
+    logger.info(
+        "Duplicating gnomd raw, adj, gen_anc and sex array entries and added 'subset:'non_aou' entry in the freq meta"
+    )
+    freq_ht = _add_non_aou_subset_entries(freq_ht)
 
     # Select only the fields that were updated as FAF/grpmax/inbreeding_coeff annotations
     # will be calculated on the final merged dataset.
