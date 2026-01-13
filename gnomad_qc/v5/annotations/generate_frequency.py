@@ -638,34 +638,44 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
     """
     Add non-AOU subset entries to the frequency table.
 
+    Duplicates gnomAD freq array entries (adj, raw, gen_anc, sex, gen_anc-sex) and adds
+    "subset": "non_aou" to freq_meta for downstream non-AoU subset frequency reporting.
+
     :param freq_ht: Frequency table to add non-AOU subset entries to.
     :return: Frequency table with non-AOU subset entries added.
     """
-    freq_ht = freq_ht.annotate_globals(
-        freq_meta=freq_ht.freq_meta.extend([{"subset": "non_aou"}])
+    logger.info(
+        "Filtering to non-AoU subset strata (adj, raw, gen_anc, sex, gen_anc-sex)..."
     )
-    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific
-    # freqs to main array.
-    # NOTE: This is duplicated data here, but it's necessary to merge split vds strata
-    #  properly and still retain the subset freq data.
-    logger.info("Filtering to non_ukb subset strata...")
-    non_aou_ht = _filter_freq_arrays_for_non_aou_subset(
-        freq_ht,
-        items_to_filter=["downsampling", "subset"],
-        keep=False,
-        combine_operator="or",
-    )
-    # Only get the raw, adj, gen_anc, sex, and gen_ac-sex freq array entries
-    # in filter_array_by_meta, filter out subset entries
-    freq_meta, array_exprs = filter_arrays_by_meta(
+    # Filter to only adj, raw, gen_anc, sex, and gen_anc-sex strata by excluding
+    # entries with downsampling or subset keys.
+    non_aou_freq_meta, non_aou_array_exprs = filter_arrays_by_meta(
         freq_ht.freq_meta,
         {
             "freq": freq_ht.freq,
             "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
         },
-        items_to_filter=["subset"],
+        items_to_filter=["downsampling", "subset"],
         keep=False,
+        combine_operator="or",
     )
+
+    # Add "subset": "non_aou" to each filtered freq_meta entry.
+    non_aou_freq_meta = non_aou_freq_meta.map(
+        lambda d: hl.dict(d.items().append(("subset", "non_aou")))
+    )
+
+    # Append filtered arrays to the original arrays.
+    freq_ht = freq_ht.annotate(
+        freq=freq_ht.freq.extend(non_aou_array_exprs["freq"]),
+    )
+    freq_ht = freq_ht.annotate_globals(
+        freq_meta=freq_ht.freq_meta.extend(non_aou_freq_meta),
+        freq_meta_sample_count=freq_ht.freq_meta_sample_count.extend(
+            non_aou_array_exprs["freq_meta_sample_count"]
+        ),
+    )
+
     return freq_ht
 
 
@@ -717,7 +727,8 @@ def process_gnomad_dataset(
     freq_ht = _fix_v4_global_age_distribution(freq_ht)
 
     logger.info(
-        "Duplicating gnomd raw, adj, gen_anc and sex array entries and added 'subset:'non_aou' entry in the freq meta"
+        "Duplicating gnomAD adj, raw, gen_anc, sex, and gen_anc-sex array entries with"
+        " 'subset': 'non_aou' in freq_meta..."
     )
     freq_ht = _add_non_aou_subset_entries(freq_ht)
 
