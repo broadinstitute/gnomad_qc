@@ -313,8 +313,9 @@ def create_variant_qc_annotation_ht(
     )
     select_dict.update(
         {
-            # TODO: Revisit hard filter annotation.
-            # "fail_hard_filters": (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
+            # NOTE: Previous versions used QD < 2, but we decided this was too
+            # stringent based on the distribution of this metric in AoU.
+            "fail_hard_filters": (ht.QD < 0.5) | (ht.FS > 60) | (ht.MQ < 30),
             "singleton": ht.AC_release_raw == 1,
             "ac_raw": ht.AC_high_quality_raw,
             "ac": ht.AC_release,
