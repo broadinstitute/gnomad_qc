@@ -660,12 +660,12 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
         combine_operator="or",
     )
 
-    # Add "subset": "non_aou" to each filtered freq_meta entry.
+    logger.info("Adding non-aou subset data to freq and freq_meta...")
     non_aou_freq_meta = non_aou_freq_meta.map(
         lambda d: hl.dict(d.items().append(("subset", "non_aou")))
     )
 
-    # Append filtered arrays to the original arrays.
+    # Can extend freq and freq_meta_sample_count because there are no overlap of strata.
     freq_ht = freq_ht.annotate(
         freq=freq_ht.freq.extend(non_aou_array_exprs["freq"]),
     )
