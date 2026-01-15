@@ -897,44 +897,90 @@ def merge_gnomad_and_aou_frequencies(
 
 
 def calculate_faf_and_grpmax_annotations(
-    updated_freq_ht: hl.Table,
+    ht: hl.Table,
 ) -> hl.Table:
     """
     Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.
 
-    This function handles the complex post-processing annotations that are added
-    to frequency tables after the core frequency calculations are complete.
+    Computes filtering allele frequencies and grpmax for both the full dataset
+    (gnomad) and the non-AoU subset, similar to v4's non-UKB subset handling.
 
-    :param updated_freq_ht: Merged frequency table for AoU and gnomAD (after consent withdrawal subtraction) data.
-    :return: Updated frequency table with FAF/grpmax annotations.
+    :param ht: Merged frequency table for AoU and gnomAD data containing 'freq' and
+        'freq_meta' annotations.
+    :return: Table with 'faf', 'grpmax', 'gen_anc_faf_max', and 'inbreeding_coeff'.
     """
-    logger.info("Computing FAF, grpmax, gen_anc_faf_max, and InbreedingCoeff...")
-
-    faf, faf_meta = faf_expr(
-        updated_freq_ht.freq,
-        updated_freq_ht.freq_meta,
-        updated_freq_ht.locus,
-        GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
+    logger.info(
+        "Filtering frequencies to just 'non_aou' subset entries for 'faf' "
+        "calculations..."
     )
-
-    grpmax = grpmax_expr(
-        updated_freq_ht.freq,
-        updated_freq_ht.freq_meta,
-        GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"],
+    # Filter to non_aou subset and remove the "subset" key from freq_meta so faf_expr
+    # pulls the correct indices.
+    non_aou_freq_meta, non_aou_array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {"freq": ht.freq},
+        items_to_filter={"subset": ["non_aou"]},
+        keep=True,
+        combine_operator="or",
     )
+    non_aou_freq_meta = non_aou_freq_meta.map(
+        lambda d: hl.dict(d.items().filter(lambda x: x[0] != "subset"))
+    )
+    non_aou_ht = ht.annotate(freq=non_aou_array_exprs["freq"])
+    non_aou_ht = non_aou_ht.annotate_globals(freq_meta=non_aou_freq_meta)
 
-    updated_freq_ht = updated_freq_ht.annotate(
-        faf=faf,
-        grpmax=grpmax,
-        fafmax=gen_anc_faf_max_expr(faf, faf_meta, gen_anc_label="gen_anc"),
-        inbreeding_coeff=bi_allelic_site_inbreeding_expr(
-            callstats_expr=updated_freq_ht.freq[1]
+    freq_metas = {
+        "gnomad": (ht.freq, ht.index_globals().freq_meta),
+        "non_aou": (
+            non_aou_ht[ht.key].freq,
+            non_aou_ht.index_globals().freq_meta,
         ),
-    ).annotate_globals(faf_meta=faf_meta)
+    }
 
-    updated_freq_ht = updated_freq_ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
+    faf_exprs = []
+    faf_meta_exprs = []
+    grpmax_exprs = {}
+    gen_anc_faf_max_exprs = {}
 
-    return updated_freq_ht
+    for dataset, (freq, meta) in freq_metas.items():
+        faf, faf_meta = faf_expr(
+            freq, meta, ht.locus, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"]
+        )
+        grpmax = grpmax_expr(freq, meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"])
+        grpmax = grpmax.annotate(
+            gen_anc=grpmax.pop,
+            faf95=faf[
+                hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
+            ].faf95,
+        ).drop("pop")
+        gen_anc_faf_max = gen_anc_faf_max_expr(faf, faf_meta)
+
+        # Add subset back to non_aou faf meta.
+        if dataset == "non_aou":
+            faf_meta = [{**x, **{"subset": "non_aou"}} for x in faf_meta]
+
+        faf_exprs.append(faf)
+        faf_meta_exprs.append(faf_meta)
+        grpmax_exprs[dataset] = grpmax
+        gen_anc_faf_max_exprs[dataset] = gen_anc_faf_max
+
+    logger.info(
+        "Annotating 'faf', 'grpmax', 'gen_anc_faf_max', and 'inbreeding_coeff'..."
+    )
+    ht = ht.annotate(
+        faf=hl.flatten(faf_exprs),
+        grpmax=hl.struct(**grpmax_exprs),
+        fafmax=hl.struct(**gen_anc_faf_max_exprs),
+        inbreeding_coeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1]),
+    )
+    faf_meta_exprs = hl.flatten(faf_meta_exprs)
+    ht = ht.annotate_globals(
+        faf_meta=faf_meta_exprs,
+        faf_index_dict=make_freq_index_dict_from_meta(faf_meta_exprs),
+    )
+
+    ht = ht.checkpoint(new_temp_file("freq_with_faf", "ht"))
+
+    return ht
 
 
 def _initialize_hail(args) -> None:
@@ -1073,8 +1119,6 @@ def main(args):
                 new_temp_file("merged_freq", "ht")
             )
 
-            # Calculate FAF, grpmax, and other post-processing annotations on merged
-            # dataset.
             logger.info(
                 "Calculating FAF, grpmax, and other annotations on merged dataset..."
             )
