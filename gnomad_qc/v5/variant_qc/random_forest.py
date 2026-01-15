@@ -57,9 +57,9 @@ def load_variant_qc_annotations_ht(
 
     This Table is created by the generate_variant_qc_annotations.py script and contains
     all annotations needed for RF training:
-    - Info features (in `info` struct): AS_QD, AS_MQRankSum, AS_SOR, AS_ReadPosRankSum,
-      AS_pab_max
-    - Non-info features: variant_type, allele_type, n_alt_alleles, has_star
+    - Info features (in `info` struct): AS_MQRankSum, AS_pab_max, AS_MQ, AS_QD,
+      AS_ReadPosRankSum, AS_SOR, AS_FS
+    - Non-info features: variant_type, allele_type, n_alt_alleles, was_mixed, has_star
     - Truth data: hapmap, omni, mills, kgp_phase1_hc
     - Training labels: transmitted_singleton_raw, transmitted_singleton_adj,
       sibling_singleton_raw, sibling_singleton_adj, fail_hard_filters
@@ -72,8 +72,6 @@ def load_variant_qc_annotations_ht(
     ht = get_variant_qc_annotations(test=test, environment=environment).ht()
 
     # Extract info features from the info struct for RF training.
-    # The info struct contains AS_QD, AS_MQRankSum, AS_SOR, AS_ReadPosRankSum,
-    # AS_pab_max.
     ht = ht.transmute(**{f: ht.info[f] for f in INFO_FEATURES})
 
     return ht
@@ -96,7 +94,7 @@ def train_rf(
     Train random forest model using `train_rf_model`.
 
     :param ht: Table containing annotations needed for RF training.
-    :param test: Whether to filter the input Table to chr20 and `test_intervals` for
+    :param test: Whether to filter the input Table to chr22 and `test_intervals` for
         test purposes. Default is False.
     :param features: List of features to use in the random forests model. When no
         `features` list is provided, the global FEATURES is used.
@@ -200,7 +198,6 @@ def add_model_to_run_list(
     :param rf_run_path: Path to RF run list.
     :return: None
     """
-    logger.info("Adding run to RF run list")
     ht = ht.annotate_globals(test_intervals=hl.str(ht.test_intervals))
     ht_globals = hl.eval(ht.globals)
     input_args = [
