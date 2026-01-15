@@ -3,15 +3,11 @@
 import argparse
 import json
 import logging
-import sys
 import uuid
 from typing import Any, Dict, List, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.reference_data import (
-    get_truth_ht,
-    telomeres_and_centromeres,
-)
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
@@ -22,15 +18,12 @@ from gnomad.variant_qc.random_forest import (
     save_model,
 )
 
-from gnomad_qc.resource_utils import (
-    PipelineResourceCollection,
-    PipelineStepResourceCollection,
+from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
+    INFO_FEATURES,
+    NON_INFO_FEATURES,
 )
-from gnomad_qc.v5.resources.annotations import (
-    get_info_ht,
-    get_sib_stats,
-    get_trio_stats,
-)
+from gnomad_qc.v5.resources.annotations import get_variant_qc_annotations
 from gnomad_qc.v5.resources.basics import get_logging_path, qc_temp_prefix
 from gnomad_qc.v5.resources.variant_qc import (
     get_rf_model_path,
@@ -43,140 +36,45 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_random_forest")
 logger.setLevel(logging.INFO)
 
-INFO_FEATURES = [
-    "AS_MQRankSum",
-    "AS_QD",
-    "AS_ReadPosRankSum",
-    "AS_SOR",
-]
-"""List of info features to be used for variant QC."""
-
-NON_INFO_FEATURES = [
-    "variant_type",
-    "allele_type",
-    "n_alt_alleles",
-    "has_star",
-]
-"""List of features to be used for variant QC that are not in the info field."""
-
 FEATURES = INFO_FEATURES + NON_INFO_FEATURES
 """Combined list of all features used in the RF model."""
 
-TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
-"""List of truth datasets to be used for variant QC."""
+RF_COLS = {
+    "label": "rf_label",
+    "prediction": "rf_prediction",
+    "probability": "rf_probability",
+    "train": "rf_train",
+}
+"""RF column names for training labels, predictions, probabilities, and train/test split."""
 
-LABEL_COL = "rf_label"
-PREDICTION_COL = "rf_prediction"
-PROBABILITY_COL = "rf_probability"
-TRAIN_COL = "rf_train"
 
-
-def get_variant_qc_annotations_ht(
+def load_variant_qc_annotations_ht(
     test: bool = False,
     environment: str = "rwb",
 ) -> hl.Table:
     """
-    Get the variant QC annotations Table for RF training.
+    Load the pre-computed variant QC annotations Table for RF training.
 
-    Combines info HT with trio stats, sibling stats, and truth data to create the full
-    set of annotations needed for RF training.
+    This Table is created by the generate_variant_qc_annotations.py script and contains
+    all annotations needed for RF training:
+    - Info features (in `info` struct): AS_QD, AS_MQRankSum, AS_SOR, AS_ReadPosRankSum,
+      AS_pab_max
+    - Non-info features: variant_type, allele_type, n_alt_alleles, has_star
+    - Truth data: hapmap, omni, mills, kgp_phase1_hc
+    - Training labels: transmitted_singleton_raw, transmitted_singleton_adj,
+      sibling_singleton_raw, sibling_singleton_adj, fail_hard_filters
 
     :param test: Whether to use test resources.
     :param environment: Environment to use. Default is "rwb".
     :return: Table with variant QC annotations for RF training.
     """
-    logger.info("Loading info HT...")
-    info_ht = get_info_ht(test=test, environment=environment).ht()
+    logger.info("Loading variant QC annotations HT...")
+    ht = get_variant_qc_annotations(test=test, environment=environment).ht()
 
-    logger.info("Loading trio stats HT...")
-    trio_stats_ht = get_trio_stats(test=test, environment=environment).ht()
-
-    logger.info("Loading sibling stats HT...")
-    sib_stats_ht = get_sib_stats(test=test, environment=environment).ht()
-
-    logger.info("Loading truth data HT...")
-    truth_data_ht = get_truth_ht()
-
-    # Select relevant fields from trio stats.
-    # gnomad library's generate_trio_stats returns n_transmitted_{group} and
-    # ac_children_{group} where group is 'raw' or 'adj'.
-    trio_stats_ht = trio_stats_ht.select(
-        "n_transmitted_raw",
-        "n_transmitted_adj",
-        "ac_children_raw",
-        "ac_children_adj",
-    )
-
-    # Join all annotations into a single table.
-    ht = info_ht.annotate(
-        trio_stats=trio_stats_ht[info_ht.key],
-        sib_stats=sib_stats_ht[info_ht.key],
-        truth_data=truth_data_ht[info_ht.key],
-    )
-
-    # Extract info annotations.
-    ht = ht.transmute(
-        AS_MQRankSum=ht.info.AS_MQRankSum,
-        AS_QD=ht.info.AS_QD,
-        AS_ReadPosRankSum=ht.info.AS_ReadPosRankSum,
-        AS_SOR=ht.info.AS_SOR,
-        AS_FS=ht.info.AS_FS,
-        AS_MQ=ht.info.AS_MQ,
-    )
-
-    # Compute transmitted singletons from trio stats.
-    # A transmitted singleton is when exactly one allele was transmitted (n_transmitted == 1)
-    # and the allele count in children is 2 (one from each of two children, or two from one).
-    # We use AC from the info HT for the AC filter.
-    ac_raw = ht.AC_info.AC_high_quality_raw
-    ac_adj = ht.AC_info.AC_high_quality
-
-    ht = ht.annotate(
-        # Transmitted singletons.
-        transmitted_singleton_raw=hl.or_else(
-            (ht.trio_stats.n_transmitted_raw == 1) & (ac_raw == 2), False
-        ),
-        transmitted_singleton_adj=hl.or_else(
-            (ht.trio_stats.n_transmitted_adj == 1) & (ac_adj == 2), False
-        ),
-        # Sibling singletons - gnomad library's generate_sib_stats returns
-        # n_sib_shared_variants_{group}.
-        sibling_singleton_raw=hl.or_else(
-            (ht.sib_stats.n_sib_shared_variants_raw == 1) & (ac_raw == 2), False
-        ),
-        sibling_singleton_adj=hl.or_else(
-            (ht.sib_stats.n_sib_shared_variants_adj == 1) & (ac_adj == 2), False
-        ),
-        # Truth data annotations.
-        **{td: hl.or_else(ht.truth_data[td], False) for td in TRUTH_DATA},
-        # Hard filters - using QD, FS, and MQ thresholds consistent with v4.
-        fail_hard_filters=(ht.AS_QD < 2) | (ht.AS_FS > 60) | (ht.AS_MQ < 30),
-    )
-
-    # Annotate with allele info needed for features.
-    ht = ht.annotate(
-        allele_type=hl.if_else(
-            hl.is_snp(ht.alleles[0], ht.alleles[1]),
-            "snv",
-            hl.if_else(
-                hl.is_insertion(ht.alleles[0], ht.alleles[1]),
-                "ins",
-                hl.if_else(
-                    hl.is_deletion(ht.alleles[0], ht.alleles[1]),
-                    "del",
-                    "complex",
-                ),
-            ),
-        ),
-        variant_type=hl.if_else(
-            hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv", "indel"
-        ),
-        has_star=ht.alleles.any(lambda a: a == "*"),
-        n_alt_alleles=hl.len(ht.alleles) - 1,
-    )
-
-    # Drop intermediate structs.
-    ht = ht.drop("trio_stats", "sib_stats", "truth_data", "AC_info")
+    # Extract info features from the info struct for RF training.
+    # The info struct contains AS_QD, AS_MQRankSum, AS_SOR, AS_ReadPosRankSum,
+    # AS_pab_max.
+    ht = ht.transmute(**{f: ht.info[f] for f in INFO_FEATURES})
 
     return ht
 
@@ -321,95 +219,100 @@ def add_model_to_run_list(
         json.dump(rf_runs, f)
 
 
-def get_variant_qc_resources(
-    test: bool,
-    overwrite: bool,
+def get_or_create_model_id(
     model_id: str = None,
+    test: bool = False,
     environment: str = "rwb",
-) -> PipelineResourceCollection:
+) -> Tuple[str, str]:
     """
-    Get PipelineResourceCollection for all resources needed in the variant QC pipeline.
+    Get or create a unique model ID for the RF run.
 
-    :param test: Whether to gather all resources for testing.
-    :param overwrite: Whether to overwrite resources if they exist.
-    :param model_id: Model ID to use for RF model. If not provided, a new model ID will
-        be generated.
+    :param model_id: Existing model ID to use. If None, generates a new unique ID.
+    :param test: Whether to use test resources.
     :param environment: Environment to use. Default is "rwb".
-    :return: PipelineResourceCollection containing resources for all steps of the
-        variant QC pipeline.
+    :return: Tuple of (model_id, rf_run_path).
     """
-    # If no model ID is supplied, generate one and make sure it doesn't already exist.
     rf_run_path = get_rf_run_path(test=test, environment=environment)
     rf_runs = get_rf_runs(rf_run_path)
+
     if model_id is None:
         model_id = f"rf_{str(uuid.uuid4())[:8]}"
         while model_id in rf_runs:
             model_id = f"rf_{str(uuid.uuid4())[:8]}"
 
-    # Initialize variant QC pipeline resource collection.
-    variant_qc_pipeline = PipelineResourceCollection(
-        pipeline_name="variant_qc",
-        overwrite=overwrite,
-        pipeline_resources={
-            "RF models": {
-                "rf_run_path": rf_run_path,
-                "model_id": model_id,
-            },
-        },
-    )
-    # Create resource collection for each step of the variant QC pipeline.
-    train_random_forest = PipelineStepResourceCollection(
-        "--train-rf",
-        output_resources={
-            "rf_training_ht": get_rf_training(
-                model_id=model_id, test=test, environment=environment
-            ),
-            "rf_model_path": get_rf_model_path(
-                model_id=model_id, test=test, environment=environment
-            ),
-        },
-    )
-    apply_random_forest = PipelineStepResourceCollection(
-        "--apply-rf",
-        output_resources={
-            "rf_result_ht": get_variant_qc_result(
-                model_id=model_id, test=test, environment=environment
-            )
-        },
-        pipeline_input_steps=[train_random_forest],
-    )
+    return model_id, rf_run_path
 
-    # Add all steps to the variant QC pipeline resource collection.
-    variant_qc_pipeline.add_steps(
-        {
-            "train_rf": train_random_forest,
-            "apply_rf": apply_random_forest,
+
+def _initialize_hail(args) -> None:
+    """
+    Initialize Hail with appropriate configuration for the environment.
+
+    :param args: Parsed command-line arguments.
+    """
+    environment = args.environment
+    tmp_dir_days = args.tmp_dir_days
+
+    if environment == "batch":
+        batch_kwargs = {
+            "backend": "batch",
+            "log": get_logging_path("v5_random_forest", environment="batch"),
+            "tmp_dir": (
+                f"{qc_temp_prefix(environment='batch', days=tmp_dir_days)}random_forest"
+            ),
+            "gcs_requester_pays_configuration": args.gcp_billing_project,
+            "regions": ["us-central1"],
         }
-    )
+        # Add optional batch configuration parameters.
+        for param in [
+            "app_name",
+            "driver_cores",
+            "driver_memory",
+            "worker_cores",
+            "worker_memory",
+        ]:
+            value = getattr(args, param, None)
+            if value is not None:
+                batch_kwargs[param] = value
 
-    return variant_qc_pipeline
+        hl.init(**batch_kwargs)
+    else:
+        hl.init(
+            log=get_logging_path(
+                "v5_random_forest",
+                environment=environment,
+            ),
+            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}random_forest",
+        )
+    hl.default_reference("GRCh38")
 
 
 def main(args):
     """Run random forest variant QC pipeline."""
-    hl.init(
-        default_reference="GRCh38",
-        log="/variant_qc_random_forest.log",
-        tmp_dir=qc_temp_prefix(environment=args.environment),
-    )
+    _initialize_hail(args)
 
     overwrite = args.overwrite
     test = args.test
     environment = args.environment
 
-    variant_qc_resources = get_variant_qc_resources(
-        test=test,
-        overwrite=overwrite,
+    model_id, rf_run_path = get_or_create_model_id(
         model_id=args.model_id,
+        test=test,
         environment=environment,
     )
-    rf_run_path = variant_qc_resources.rf_run_path
-    model_id = variant_qc_resources.model_id
+
+    # Get resource paths.
+    vqc_annotations_ht_resource = get_variant_qc_annotations(
+        test=test, environment=environment
+    )
+    rf_training_ht_resource = get_rf_training(
+        model_id=model_id, test=test, environment=environment
+    )
+    rf_model_path = get_rf_model_path(
+        model_id=model_id, test=test, environment=environment
+    )
+    rf_result_ht_resource = get_variant_qc_result(
+        model_id=model_id, test=test, environment=environment
+    )
 
     try:
         if args.list_rf_runs:
@@ -417,14 +320,21 @@ def main(args):
             pretty_print_runs(get_rf_runs(rf_run_path))
 
         if args.train_rf:
-            res = variant_qc_resources.train_rf
-            res.check_resource_existence()
+            # Check input exists.
+            check_resource_existence(
+                input_resources={
+                    "variant_qc_annotations_ht": vqc_annotations_ht_resource
+                },
+                output_resources={"rf_training_ht": rf_training_ht_resource},
+                overwrite=overwrite,
+            )
 
             logger.info("Loading variant QC annotations...")
-            vqc_annotation_ht = get_variant_qc_annotations_ht(
+            vqc_annotation_ht = load_variant_qc_annotations_ht(
                 test=test, environment=environment
             )
 
+            logger.info("Training RF model...")
             ht, rf_model = train_rf(
                 vqc_annotation_ht,
                 test=test,
@@ -438,37 +348,48 @@ def main(args):
                 filter_centromere_telomere=args.filter_centromere_telomere,
                 test_intervals=args.test_intervals,
             )
-            ht = ht.checkpoint(res.rf_training_ht.path, overwrite=overwrite)
+            ht = ht.checkpoint(rf_training_ht_resource.path, overwrite=overwrite)
 
             logger.info("Adding run to RF run list")
             add_model_to_run_list(ht, model_id, get_rf_runs(rf_run_path), rf_run_path)
 
             logger.info("Saving RF model")
-            save_model(rf_model, res.rf_model_path, overwrite=overwrite)
+            save_model(rf_model, rf_model_path, overwrite=overwrite)
 
         if args.apply_rf:
-            res = variant_qc_resources.apply_rf
-            res.check_resource_existence()
+            # Check inputs exist.
+            check_resource_existence(
+                input_resources={"rf_training_ht": rf_training_ht_resource},
+                output_resources={"rf_result_ht": rf_result_ht_resource},
+                overwrite=overwrite,
+            )
+
             logger.info("Applying RF model %s...", model_id)
-            rf_ht = res.rf_training_ht.ht()
+            rf_ht = rf_training_ht_resource.ht()
             rf_features = hl.eval(rf_ht.features)
 
             logger.info("Loading variant QC annotations...")
-            vqc_annotation_ht = get_variant_qc_annotations_ht(
+            vqc_annotation_ht = load_variant_qc_annotations_ht(
                 test=test, environment=environment
             )
             ht = rf_ht.annotate(**vqc_annotation_ht[rf_ht.key].select(*rf_features))
             ht = apply_rf_model(
                 ht,
-                rf_model=load_model(res.rf_model_path),
+                rf_model=load_model(rf_model_path),
                 features=rf_features,
             )
 
             logger.info("Finished applying RF model...")
-            summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
-            ht = ht.select(*summary_cols, PROBABILITY_COL)
+            summary_cols = [
+                "tp",
+                "fp",
+                RF_COLS["train"],
+                RF_COLS["label"],
+                RF_COLS["prediction"],
+            ]
+            ht = ht.select(*summary_cols, RF_COLS["probability"])
             ht = ht.annotate_globals(rf_model_id=model_id)
-            ht = ht.checkpoint(res.rf_result_ht.path, overwrite=overwrite)
+            ht = ht.checkpoint(rf_result_ht_resource.path, overwrite=overwrite)
             ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
     finally:
@@ -507,6 +428,52 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment to run in.",
         choices=["rwb", "batch", "dataproc"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--tmp-dir-days",
+        help="Number of days to keep temporary files.",
+        default=4,
+        type=int,
+    )
+    batch_args = parser.add_argument_group(
+        "batch configuration",
+        "Optional parameters for batch/QoB backend (only used when --environment=batch).",
+    )
+
+    batch_args.add_argument(
+        "--gcp-billing-project",
+        help="GCP billing project to use for requester pays buckets (required for --environment=batch).",
+        default=None,
+    )
+    batch_args.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    batch_args.add_argument(
+        "--driver-cores",
+        type=int,
+        default=None,
+        help="Number of cores for driver node.",
+    )
+    batch_args.add_argument(
+        "--driver-memory",
+        type=str,
+        default=None,
+        help="Memory type for driver node (e.g., 'highmem').",
+    )
+    batch_args.add_argument(
+        "--worker-cores",
+        type=int,
+        default=None,
+        help="Number of cores for worker nodes.",
+    )
+    batch_args.add_argument(
+        "--worker-memory",
+        type=str,
+        default=None,
+        help="Memory type for worker nodes (e.g., 'highmem').",
     )
 
     actions = parser.add_argument_group("Actions")
@@ -592,15 +559,32 @@ if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
 
+    batch_args = [
+        "app_name",
+        "driver_cores",
+        "driver_memory",
+        "worker_cores",
+        "worker_memory",
+    ]
+    provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
+    if provided_batch_args and args.environment != "batch":
+        parser.error(
+            f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
+            f"require --environment=batch"
+        )
+
+    if args.environment == "batch" and args.gcp_billing_project is None:
+        parser.error("--gcp-billing-project is required when --environment=batch")
+
     if not args.model_id and not args.train_rf and args.apply_rf:
-        sys.exit(
-            "Error: --model_id is required when running --apply-rf without running"
+        parser.error(
+            "Error: --model-id is required when running --apply-rf without running"
             " --train-rf too."
         )
 
     if args.model_id and args.train_rf:
-        sys.exit(
-            "Error: --model_id and --train-rf are mutually exclusive. --train-rf will"
+        parser.error(
+            "Error: --model-id and --train-rf are mutually exclusive. --train-rf will"
             " generate a run model ID."
         )
 
