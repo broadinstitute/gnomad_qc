@@ -943,13 +943,15 @@ def calculate_faf_and_grpmax_annotations(
 
     for dataset, (freq, meta) in freq_metas.items():
         faf, faf_meta = faf_expr(
-            freq, meta, ht.locus, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"]
+            freq, meta, ht.locus, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v5"]
         )
-        grpmax = grpmax_expr(freq, meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v4"])
+        grpmax = grpmax_expr(freq, meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v5"])
         grpmax = grpmax.annotate(
-            gen_anc=grpmax.pop,
+            gen_anc=grpmax.gen_anc,
             faf95=faf[
-                hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
+                hl.literal(faf_meta).index(
+                    lambda y: y.values() == ["adj", grpmax.gen_anc]
+                )
             ].faf95,
         ).drop("pop")
         gen_anc_faf_max = gen_anc_faf_max_expr(faf, faf_meta)
