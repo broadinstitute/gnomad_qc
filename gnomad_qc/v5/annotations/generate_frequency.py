@@ -550,7 +550,7 @@ def _subtract_consent_frequencies_and_age_histograms(
 
 def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Table:
     """
-    Create final datasetfreq Table with only desired annotations.
+    Create final dataset freq Table with only desired annotations.
 
     :param ht: Hail Table containing all annotations.
     :param dataset: Dataset to select final fields, either "gnomad", "aou" or "merged".
@@ -636,13 +636,13 @@ def _fix_v4_global_age_distribution(freq_ht: hl.Table) -> hl.Table:
 
 def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
     """
-    Add non-AOU subset entries to the frequency table.
+    Add non-AoU subset fields to the frequency table.
 
-    Duplicates gnomAD freq array entries (adj, raw, gen_anc, sex, gen_anc-sex) and adds
+    Duplicates gnomAD freq array fields (adj, raw, gen_anc, sex, gen_anc-sex) and adds
     "subset": "non_aou" to freq_meta for downstream non-AoU subset frequency reporting.
 
-    :param freq_ht: Frequency table to add non-AOU subset entries to.
-    :return: Frequency table with non-AOU subset entries added.
+    :param freq_ht: Frequency table to add non-AoU subset fields to.
+    :return: Frequency table with non-AoU subset fields added.
     """
     logger.info(
         "Filtering to non-AoU subset strata (adj, raw, gen_anc, sex, gen_anc-sex)..."
