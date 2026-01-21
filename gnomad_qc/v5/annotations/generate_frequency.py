@@ -931,7 +931,7 @@ def calculate_faf_and_grpmax_annotations(
     freq_metas = {
         "gnomad": (ht.freq, ht.index_globals().freq_meta),
         "non_aou": (
-            non_aou_ht.freq,
+            non_aou_ht[ht.key].freq,
             non_aou_ht.index_globals().freq_meta,
         ),
     }
@@ -946,6 +946,13 @@ def calculate_faf_and_grpmax_annotations(
             freq, meta, ht.locus, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v5"]
         )
         grpmax = grpmax_expr(freq, meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v5"])
+        grpmax = grpmax.annotate(
+            faf95=faf[
+                hl.literal(faf_meta).index(
+                    lambda y: y.values() == ["adj", grpmax.gen_anc]
+                )
+            ].faf95,
+        )
         gen_anc_faf_max = gen_anc_faf_max_expr(faf, faf_meta)
 
         # Add subset back to non_aou faf meta.
