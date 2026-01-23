@@ -394,9 +394,10 @@ def custom_freq_globals_select(_ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     logger.info("Recomputing age_distribution for genomes from meta table...")
 
-    # Load genomes meta table and compute age histogram using age or age_alt.
+    # Load genomes meta table and filter to release samples.
     meta_ht = meta(data_type="genomes").ht()
     meta_ht = meta_ht.filter(meta_ht.release)
+
     age_distribution = meta_ht.aggregate(
         hl.agg.hist(
             hl.if_else(
