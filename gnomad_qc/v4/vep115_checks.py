@@ -21,6 +21,7 @@ Debug Checks:
 - debug_mane: MANE field value inspection
 - debug_regulatory_motif: Regulatory/motif feature inspection
 - debug_sift_polyphen: SIFT/PolyPhen category transitions
+- debug_field_completeness: Check for 100% missing VEP fields
 
 Usage:
     # Run all checks
@@ -1288,6 +1289,112 @@ def debug_regulatory_motif(ht115: hl.Table, n_samples: int = 1000) -> None:
         )
 
 
+def check_vep_field_completeness(ht115: hl.Table) -> Dict[str, Any]:
+    """
+    Check if any field in the VEP struct is 100% missing across the entire table.
+
+    Aggregates per-contig for progress logging, then reports any fields that have
+    no data anywhere in the table.
+
+    :param ht115: VEP 115 table.
+    :return: Dict with fields that are 100% missing and coverage stats.
+    """
+    logger.info("Checking VEP field completeness (identifying 100% missing fields)...")
+
+    vep_schema = ht115.vep.dtype
+
+    # Build aggregation expressions for each top-level VEP field.
+    def get_field_checks(
+        schema: hl.dtype, prefix: str, expr: hl.Expression
+    ) -> Dict[str, hl.Expression]:
+        """Recursively build field presence checks."""
+        checks = {}
+
+        if isinstance(schema, hl.tstruct):
+            for field_name in schema.fields:
+                field_type = schema[field_name]
+                field_expr = expr[field_name]
+                field_path = f"{prefix}.{field_name}" if prefix else field_name
+
+                if isinstance(field_type, hl.tarray):
+                    # For arrays, check if defined and non-empty.
+                    checks[field_path] = hl.is_defined(field_expr) & (
+                        hl.len(field_expr) > 0
+                    )
+                    # Also check fields within array elements (if struct array).
+                    elem_type = field_type.element_type
+                    if isinstance(elem_type, hl.tstruct):
+                        for elem_field in elem_type.fields:
+                            elem_field_type = elem_type[elem_field]
+                            elem_path = f"{field_path}[].{elem_field}"
+                            # Check if ANY element has this field defined.
+                            checks[elem_path] = hl.is_defined(field_expr) & hl.any(
+                                lambda x: hl.is_defined(x[elem_field]), field_expr
+                            )
+                elif isinstance(field_type, hl.tstruct):
+                    # Recurse into nested structs.
+                    checks.update(get_field_checks(field_type, field_path, field_expr))
+                else:
+                    # Scalar field - just check if defined.
+                    checks[field_path] = hl.is_defined(field_expr)
+
+        return checks
+
+    field_checks = get_field_checks(vep_schema, "", ht115.vep)
+
+    logger.info(f"  Checking {len(field_checks)} VEP fields...")
+
+    # Aggregate: for each field, count how many variants have it defined.
+    agg_expr = {
+        f"has_{k.replace('.', '_').replace('[]', '_arr')}": hl.agg.count_where(v)
+        for k, v in field_checks.items()
+    }
+    agg_expr["total"] = hl.agg.count()
+
+    stats = ht115.aggregate(hl.struct(**agg_expr))
+
+    # Find fields that are 100% missing.
+    total = stats.total
+    missing_fields = []
+    partial_fields = []
+
+    logger.info("=" * 70)
+    logger.info("VEP FIELD COMPLETENESS RESULTS")
+    logger.info("=" * 70)
+    logger.info(f"Total variants: {total:,}")
+    logger.info("")
+
+    for field_path in sorted(field_checks.keys()):
+        key = f"has_{field_path.replace('.', '_').replace('[]', '_arr')}"
+        count = getattr(stats, key)
+        pct = count / total * 100 if total > 0 else 0
+
+        if count == 0:
+            missing_fields.append(field_path)
+        elif pct < 1:
+            partial_fields.append((field_path, count, pct))
+
+    if missing_fields:
+        logger.warning(f"Fields that are 100% MISSING ({len(missing_fields)}):")
+        for f in missing_fields:
+            logger.warning(f"  - {f}")
+    else:
+        logger.info("No fields are 100% missing!")
+
+    logger.info("")
+    if partial_fields:
+        logger.info(f"Fields with very low coverage (<1%) ({len(partial_fields)}):")
+        for f, count, pct in partial_fields:
+            logger.info(f"  - {f}: {count:,} ({pct:.4f}%)")
+
+    return {
+        "total_variants": total,
+        "total_fields_checked": len(field_checks),
+        "missing_fields": missing_fields,
+        "partial_fields": [(f, c, p) for f, c, p in partial_fields],
+    }
+
+
 def check_sift_polyphen_category_changes_from_sample(sampled_ht: hl.Table) -> None:
     """
     Debug SIFT/PolyPhen category changes despite score correlation using pre-sampled table.
@@ -1364,6 +1471,7 @@ DEBUG_CHECKS = {
     "debug_mane": "MANE field value inspection",
     "debug_regulatory_motif": "Regulatory/motif feature inspection",
     "debug_sift_polyphen": "SIFT/PolyPhen category transitions",
+    "debug_field_completeness": "Check for 100% missing VEP fields",
 }
 
 
@@ -1568,6 +1676,11 @@ def run_check(
         logger.info("=" * 60)
         check_sift_polyphen_category_changes_from_sample(global_sample)
 
+    elif name == "debug_field_completeness":
+        logger.info("VEP FIELD COMPLETENESS CHECK")
+        logger.info("=" * 60)
+        results["field_completeness"] = check_vep_field_completeness(ht115)
+
 
 def print_summary(results: dict) -> None:
     """Print summary of results."""
@@ -1629,7 +1742,7 @@ def main(args: argparse.Namespace) -> None:
         return
 
     hl.init(
-        quiet=True,
+        # quiet=True,
         log="/vep_comparison.log",
         tmp_dir=args.tmp_dir,
     )
