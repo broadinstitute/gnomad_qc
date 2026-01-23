@@ -247,9 +247,12 @@ def get_config(
                     "freq_meta_sample_count",
                     "faf_meta",
                     "faf_index_dict",
-                    "age_distribution",
                 ]
-                + (["downsamplings"] if data_type == "exomes" else [])
+                + (
+                    ["age_distribution", "downsamplings"]
+                    if data_type == "exomes"
+                    else []
+                )
             ),
         },
         "vep": {
@@ -379,20 +382,21 @@ def custom_freq_select(
     return selects
 
 
-def custom_freq_globals_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_freq_globals_select(_ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Select freq table globals for genomes.
 
     Recomputes age_distribution from meta table to ensure age_alt data is included
     for samples where age is stored as a bin range.
 
-    :param ht: Freq Hail Table.
+    :param _ht: Freq Hail Table (unused, but required by interface).
     :return: Global select expression dict.
     """
     logger.info("Recomputing age_distribution for genomes from meta table...")
 
     # Load genomes meta table and compute age histogram using age or age_alt.
     meta_ht = meta(data_type="genomes").ht()
+    meta_ht = meta_ht.filter(meta_ht.release)
     age_distribution = meta_ht.aggregate(
         hl.agg.hist(
             hl.if_else(
