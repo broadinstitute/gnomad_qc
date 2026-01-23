@@ -46,6 +46,7 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import (
     get_freq_array_readme,
     included_datasets_json_path,
@@ -154,6 +155,7 @@ def get_config(
             'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
             'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
             'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
+            'custom_globals_select': '<Optional function name of custom globals select function that is needed for more advanced logic>',
             'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
         },
 
@@ -235,15 +237,23 @@ def get_config(
                 "histograms",
             ],
             "custom_select": custom_freq_select,
-            "select_globals": [
-                "freq_meta",
-                "freq_index_dict",
-                "freq_meta_sample_count",
-                "faf_meta",
-                "faf_index_dict",
-                "age_distribution",
-            ]
-            + (["downsamplings"] if data_type == "exomes" else []),
+            "custom_globals_select": (
+                custom_freq_globals_select if data_type == "genomes" else None
+            ),
+            "select_globals": (
+                [
+                    "freq_meta",
+                    "freq_index_dict",
+                    "freq_meta_sample_count",
+                    "faf_meta",
+                    "faf_index_dict",
+                ]
+                + (
+                    ["age_distribution", "downsamplings"]
+                    if data_type == "exomes"
+                    else []
+                )
+            ),
         },
         "vep": {
             "ht": get_vep(data_type=data_type).ht(),
@@ -370,6 +380,39 @@ def custom_freq_select(
     }
 
     return selects
+
+
+def custom_freq_globals_select(_ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Select freq table globals for genomes.
+
+    Recomputes age_distribution from meta table to ensure age_alt data is included
+    for samples where age is stored as a bin range.
+
+    :param _ht: Freq Hail Table (unused, but required by interface).
+    :return: Global select expression dict.
+    """
+    logger.info("Recomputing age_distribution for genomes from meta table...")
+
+    # Load genomes meta table and filter to release samples.
+    meta_ht = meta(data_type="genomes").ht()
+    meta_ht = meta_ht.filter(meta_ht.release)
+
+    age_distribution = meta_ht.aggregate(
+        hl.agg.hist(
+            hl.if_else(
+                hl.is_defined(meta_ht.project_meta.age),
+                meta_ht.project_meta.age,
+                meta_ht.project_meta.age_alt,
+            ),
+            30,
+            80,
+            10,
+        )
+    )
+    logger.info(f"Recomputed age_distribution: {age_distribution}")
+
+    return {"age_distribution": hl.literal(age_distribution)}
 
 
 def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
@@ -605,7 +648,7 @@ def get_select_global_fields(
         t_config = config.get(t)
         if "select_globals" in t_config:
             select_globals = get_select_fields(t_config["select_globals"], ht)
-        if "custom_globals_select" in t_config:
+        if t_config.get("custom_globals_select"):
             custom_globals_select_fn = t_config["custom_globals_select"]
             select_globals = {
                 **select_globals,
