@@ -8,9 +8,9 @@ MANE_SELECT_VERSION = "v0.95"
 DBSNP_VERSION = "b156"
 SIFT_VERSION = "5.2.2"
 POLYPHEN_VERSION = "2.2.2"
-VRS_SCHEMA_VERSION = "1.3.0"
-VRS_PYTHON_VERSION = "0.8.4"
-SEQREPO_VERSION = "2018-11-26"
+VRS_SCHEMA_VERSION = "2.0.1"
+VRS_PYTHON_VERSION = "2.2.0"
+SEQREPO_VERSION = "2024-12-20"
 
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
