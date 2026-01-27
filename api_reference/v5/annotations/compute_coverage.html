@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.compute_coverage &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.annotations.generate_frequency" href="generate_frequency.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations.annotation_utils" href="annotation_utils.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../configs/index.html">configs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../data_ingestion/index.html">data_ingestion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.compute_coverage</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/compute_coverage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-compute-coverage">
+<h1>gnomad_qc.v5.annotations.compute_coverage<a class="headerlink" href="#gnomad-qc-v5-annotations-compute-coverage" title="Permalink to this heading"></a></h1>
+<p>Script to compute coverage, allele number, and quality histograms on all gnomAD v5 genomes (AoU v8 + updated gnomAD v4).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v5</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">compute_coverage</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">project</span><span class="o">-</span><span class="n">name</span> <span class="p">{</span><span class="n">aou</span><span class="p">,</span><span class="n">gnomad</span><span class="p">}]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="mi">2</span><span class="o">-</span><span class="n">partitions</span> <span class="o">|</span> <span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">chr22</span><span class="o">-</span><span class="n">chrx</span><span class="o">-</span><span class="n">chry</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">group</span><span class="o">-</span><span class="n">membership</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">aou</span><span class="o">-</span><span class="n">downsampling</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">cov</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">stats</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">coverage</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">coverage</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">gnomad</span><span class="o">-</span><span class="n">an</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">an</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">files</span><span class="p">]</span>
+                                                    <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">qual</span><span class="o">-</span><span class="n">hists</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--project-name</kbd></dt>
+<dd><p>Possible choices: aou, gnomad</p>
+<p>Project name. Determines environment where script will run.</p>
+<p>Default: “aou”</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite existing hail Tables.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Number of partitions to use for the output Table.</p>
+<p>Default: 5000</p>
+</dd>
+<dt><kbd>--test-2-partitions</kbd></dt>
+<dd><p>Whether to run a test using only the first 2 partitions of the VDS test dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-chr22-chrx-chry</kbd></dt>
+<dd><p>Whether to run a test using only the chr22, chrX, and chrY chromosomes of the VDS test dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--write-aou-downsampling-ht</kbd></dt>
+<dd><p>Write v5 downsampling HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--compute-all-cov-release-stats-ht</kbd></dt>
+<dd><p>Compute the all sites coverage, allele number, and quality histogram HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--merge-qual-hists</kbd></dt>
+<dd><p>Merge variant quality histograms from AoU v8 and gnomAD v4 genomes.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="get-gnomad-genomes-group-membership-ht.">
+<h2>Get gnomAD genomes group membership HT.<a class="headerlink" href="#get-gnomad-genomes-group-membership-ht." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--write-group-membership-ht</kbd></dt>
+<dd><p>Write group membership HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Write test group membership HT to test path.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="compute-coverage-release-stats-ht.">
+<h2>Compute coverage release stats HT.<a class="headerlink" href="#compute-coverage-release-stats-ht." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--merge-gnomad-coverage</kbd></dt>
+<dd><p>Subtract consent drop samples from v4 release HT to create gnomAD v5 genomes coverage HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-coverage-release-files</kbd></dt>
+<dd><p>Join and export AoU + gnomAD v4 coverage release HT and TSV file.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="compute-an-release-stats-ht.">
+<h2>Compute AN release stats HT.<a class="headerlink" href="#compute-an-release-stats-ht." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--merge-gnomad-an</kbd></dt>
+<dd><p>Subtract consent drop samples from v4 release HT to create gnomAD v5 genomes AN HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-an-release-files</kbd></dt>
+<dd><p>Exports joint AoU + gnomAD v4 AN release HT and TSV file.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht" title="gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht</span></code></a>(ht)</p></td>
+<td><p>Get Table with downsampling groups for all samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht" title="gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht</span></code></a>(...)</p></td>
+<td><p>Get genomes group membership HT for all sites allele number stratification.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.validate_vds" title="gnomad_qc.v5.annotations.compute_coverage.validate_vds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.validate_vds</span></code></a>(vds)</p></td>
+<td><p>Validate VDS before densify.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site" title="gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site</span></code></a>(...)</p></td>
+<td><p>Compute coverage, allele number, and quality histograms per reference site.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts" title="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts</span></code></a>(...)</p></td>
+<td><p>Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes coverage HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_coverage_ht" title="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_coverage_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_coverage_ht</span></code></a>(...)</p></td>
+<td><p>Join AoU and gnomAD coverage HTs for release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts" title="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts</span></code></a>(...)</p></td>
+<td><p>Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes AN HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht" title="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht</span></code></a>(...)</p></td>
+<td><p>Join AoU and gnomAD AN HTs for release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht" title="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht</span></code></a>(...)</p></td>
+<td><p>Join AoU and gnomAD qual hists HTs for release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.compute_coverage.main" title="gnomad_qc.v5.annotations.compute_coverage.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.main</span></code></a>(args)</p></td>
+<td><p>Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.compute_coverage"></span><p>Script to compute coverage, allele number, and quality histograms on all gnomAD v5 genomes (AoU v8 + updated gnomAD v4).</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">get_downsampling_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#get_downsampling_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.get_downsampling_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get Table with downsampling groups for all samples.</p>
+<p>v5 downsampling is only applied to the AoU dataset.
+Desired groups:
+- 10,000
+- 100,000
+- Genetic ancestry group sizes for AFR, AMR, NFE
+Note that the only desired genetic ancestry group sizes are AFR, AMR, and NFE,
+but code will also generate downsamplings for all other groups.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with downsampling groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">get_group_membership_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#get_group_membership_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.get_group_membership_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get genomes group membership HT for all sites allele number stratification.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Meta HT.</p></li>
+<li><p><strong>project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Project name. Must be “aou” or “gnomad”. If “gnomad”, function will filter meta HT to only consent drop samples.</p></li>
+<li><p><strong>ds_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional downsampling HT. Only used for AoU.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Group membership HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.validate_vds">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">validate_vds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#validate_vds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.validate_vds" title="Permalink to this definition"></a></dt>
+<dd><p>Validate VDS before densify.</p>
+<p>Code is taken from <a class="reference external" href="https://github.com/hail-is/hail/blob/858f3ab30c2bcc46d6e57fdbfe408284b4b3de53/hail/python/hail/vds/variant_dataset.py#L271">https://github.com/hail-is/hail/blob/858f3ab30c2bcc46d6e57fdbfe408284b4b3de53/hail/python/hail/vds/variant_dataset.py#L271</a>
+at suggestion from Chris Vittal.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VDS.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None; raises ValueError if VDS is not valid.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">compute_all_release_stats_per_ref_site</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ref_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_karyotype_field</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_over_x_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[1,</span> <span class="pre">5,</span> <span class="pre">10,</span> <span class="pre">15,</span> <span class="pre">20,</span> <span class="pre">25,</span> <span class="pre">30,</span> <span class="pre">50,</span> <span class="pre">100]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_membership_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#compute_all_release_stats_per_ref_site"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.compute_all_release_stats_per_ref_site" title="Permalink to this definition"></a></dt>
+<dd><p>Compute coverage, allele number, and quality histograms per reference site.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Running this function prior to calculating frequencies removes the need for an additional
+densify for frequency calculations.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VDS.</p></li>
+<li><p><strong>ref_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Reference HT.</p></li>
+<li><p><strong>sex_karyotype_field</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Field name for sex karyotype.</p></li>
+<li><p><strong>project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Project name.</p></li>
+<li><p><strong>coverage_over_x_bins</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – List of boundaries for computing samples over X depth.</p></li>
+<li><p><strong>interval_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Interval HT.</p></li>
+<li><p><strong>group_membership_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Group membership HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>HT with allele number and quality histograms per reference site.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">merge_gnomad_coverage_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_release_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_over_x_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[1,</span> <span class="pre">5,</span> <span class="pre">10,</span> <span class="pre">15,</span> <span class="pre">20,</span> <span class="pre">25,</span> <span class="pre">30,</span> <span class="pre">50,</span> <span class="pre">100]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v4_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">76215</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">consent_drop_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">866</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#merge_gnomad_coverage_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_coverage_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes coverage HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD coverage HT (contains coverage for consent drop samples only).</p></li>
+<li><p><strong>gnomad_release_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v4 genomes coverage release HT.</p></li>
+<li><p><strong>coverage_over_x_bins</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – List of boundaries for computing samples over X.
+Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].</p></li>
+<li><p><strong>v4_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of release gnomAD v4 genome samples. Default is 76215.</p></li>
+<li><p><strong>consent_drop_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of consent drop gnomAD v4 genome samples. Default is 866.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v5 genomes coverage HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_coverage_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">join_aou_and_gnomad_coverage_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aou_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_over_x_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[1,</span> <span class="pre">5,</span> <span class="pre">10,</span> <span class="pre">15,</span> <span class="pre">20,</span> <span class="pre">25,</span> <span class="pre">30,</span> <span class="pre">50,</span> <span class="pre">100]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_v5_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">75349</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#join_aou_and_gnomad_coverage_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_coverage_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Join AoU and gnomAD coverage HTs for release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aou_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – AoU coverage HT.</p></li>
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v5 genomes coverage HT.</p></li>
+<li><p><strong>coverage_over_x_bins</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – List of boundaries for computing samples over X.
+Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].</p></li>
+<li><p><strong>gnomad_v5_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of release gnomAD v5 genome samples. Default is 76215 - 866.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joined HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">merge_gnomad_an_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_release_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#merge_gnomad_an_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.merge_gnomad_an_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes AN HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD AN HT (contains AN for consent drop samples only).</p></li>
+<li><p><strong>gnomad_release_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v4 genomes release AN HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v5 genomes AN HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">join_aou_and_gnomad_an_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aou_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#join_aou_and_gnomad_an_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_an_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Join AoU and gnomAD AN HTs for release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aou_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – AoU AN HT.</p></li>
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v5 genomes AN HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joined HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">join_aou_and_gnomad_qual_hists_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">aou_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnomad_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#join_aou_and_gnomad_qual_hists_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.join_aou_and_gnomad_qual_hists_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Join AoU and gnomAD qual hists HTs for release.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>We did not compute qual hists for the gnomAD v4 genomes release
+(<a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/blob/e65bdbb5768113c0129199a875d845da245690e2/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1139">https://github.com/broadinstitute/gnomad_qc/blob/e65bdbb5768113c0129199a875d845da245690e2/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1139</a>).
+This means we will not also not recompute hists on the gnomAD v4 genomes for v5,
+which also means we will not subtract values from the samples to drop for consent reasons.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>aou_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – AoU qual hists HT.</p></li>
+<li><p><strong>gnomad_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD qual hists HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joined HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.compute_coverage.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.compute_coverage.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/compute_coverage.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.compute_coverage.main" title="Permalink to this definition"></a></dt>
+<dd><p>Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4).</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="annotation_utils.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations.annotation_utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_frequency.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.annotations.generate_frequency" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

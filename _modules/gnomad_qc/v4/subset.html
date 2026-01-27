@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.subset &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.subset</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.subset</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Script to filter the gnomAD v4 VariantDataset to a subset of specified samples.</span>
+
+<span class="sd">Run this script on Hail version 0.2.120. Higher versions of hail greatly</span>
+<span class="sd">increase runtime and cost and thus we enforce this version.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">copy</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">dataclasses</span> <span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">FORMAT_DICT</span><span class="p">,</span> <span class="n">adjust_vcf_incompatible_types</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">get_gnomad_v4_genomes_vds</span><span class="p">,</span> <span class="n">get_gnomad_v4_vds</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="n">release_sites</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;subset&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="ProcessingConfig"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.ProcessingConfig">[docs]</a><span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">ProcessingConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for data processing operations.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Processing options</span>
+    <span class="n">split_multi</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">pass_only</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">add_variant_qc</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="n">variant_qc_annotations</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span>
+
+    <span class="c1"># Output options</span>
+    <span class="n">output_vcf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">output_vds</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">export_meta</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">keep_data_paths</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">output_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># Data loading options</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">rep_on_read_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># File paths and names</span>
+    <span class="n">output_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">output_filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;subset&quot;</span>
+    <span class="n">subset_samples</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">subset_workspaces</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">tmp_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_variant_qc</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">split_multi</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Variant QC annotations require split_multi=True.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">pass_only</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">split_multi</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;PASS-only filtering requires split_multi=True.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_vcf</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">split_multi</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;VCF export without split multi is not supported at this time.&quot;</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="ProcessingConfig.from_args"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.ProcessingConfig.from_args">[docs]</a>    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_args</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;ProcessingConfig&quot;</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create ProcessingConfig from argparse arguments.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+            <span class="n">split_multi</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">split_multi</span><span class="p">,</span>
+            <span class="n">add_variant_qc</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">add_variant_qc</span><span class="p">,</span>
+            <span class="n">pass_only</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">pass_only</span><span class="p">,</span>
+            <span class="n">variant_qc_annotations</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">variant_qc_annotations</span><span class="p">,</span>
+            <span class="n">data_type</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">data_type</span><span class="p">,</span>
+            <span class="n">output_vcf</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">,</span>
+            <span class="n">output_vds</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_vds</span><span class="p">,</span>
+            <span class="n">export_meta</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">export_meta</span><span class="p">,</span>
+            <span class="n">keep_data_paths</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">keep_data_paths</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span>
+            <span class="n">rep_on_read_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">rep_on_read_partitions</span><span class="p">,</span>
+            <span class="n">output_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_partitions</span><span class="p">,</span>
+            <span class="n">output_path</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_path</span><span class="p">,</span>
+            <span class="n">output_filename</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_filename</span><span class="p">,</span>
+            <span class="n">subset_samples</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">subset_samples</span><span class="p">,</span>
+            <span class="n">subset_workspaces</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">subset_workspaces</span><span class="p">,</span>
+            <span class="n">tmp_dir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">tmp_dir</span><span class="p">,</span>
+        <span class="p">)</span></div></div>
+
+
+<div class="viewcode-block" id="get_gnomad_datasets"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.get_gnomad_datasets">[docs]</a><span class="k">def</span> <span class="nf">get_gnomad_datasets</span><span class="p">(</span><span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">n_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get requested data type&#39;s v4 VariantDataset.</span>
+
+<span class="sd">    :param data_type: Type of data to subset.</span>
+<span class="sd">    :param n_partitions: Number of desired partitions for the VDS, repartitioned on read.</span>
+<span class="sd">    :param test: Whether to filter to the first 2 partitions for testing.</span>
+<span class="sd">    :return: The gnomAD v4 VariantDataset and metadata Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_vds</span><span class="p">(</span>
+            <span class="n">n_partitions</span><span class="o">=</span><span class="n">n_partitions</span><span class="p">,</span> <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v4_genomes_vds</span><span class="p">(</span>
+            <span class="n">n_partitions</span><span class="o">=</span><span class="n">n_partitions</span><span class="p">,</span> <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">)),</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">)),</span>
+        <span class="p">)</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">vds</span><span class="p">,</span> <span class="n">meta_ht</span></div>
+
+
+<div class="viewcode-block" id="get_subset_ht"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.get_subset_ht">[docs]</a><span class="k">def</span> <span class="nf">get_subset_ht</span><span class="p">(</span>
+    <span class="n">subset_samples</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">subset_workspaces</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">meta_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the subset HT.</span>
+
+<span class="sd">    :param subset_samples: Path to a text file with sample IDs for subsetting and a header: &#39;s&#39;.</span>
+<span class="sd">    :param subset_workspaces: Path to a text file with Terra workspaces that should be included in the subset and a header: &#39;terra_workspace&#39;.</span>
+<span class="sd">    :param meta_ht: The meta HT.</span>
+<span class="sd">    :return: The subset HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">subset_workspaces</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">meta_ht</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;A meta HT must be provided if subsetting by workspaces.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">subset_workspaces</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Subsetting by workspaces...&quot;</span><span class="p">)</span>
+        <span class="n">subset_workspaces_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span><span class="n">subset_workspaces</span><span class="p">)</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span>
+            <span class="s2">&quot;terra_workspace&quot;</span>
+        <span class="p">)</span>
+        <span class="n">terra_workspaces</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span>
+            <span class="n">subset_workspaces_ht</span><span class="o">.</span><span class="n">terra_workspace</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="n">subset_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">terra_workspaces</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">terra_workspace</span><span class="o">.</span><span class="n">lower</span><span class="p">())</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">subset_samples</span><span class="p">:</span>
+        <span class="n">subset_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span><span class="n">subset_samples</span><span class="p">)</span>
+        <span class="n">subset_ht</span> <span class="o">=</span> <span class="n">subset_ht</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;s&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">subset_ht</span></div>
+
+
+<div class="viewcode-block" id="check_subset_ht"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.check_subset_ht">[docs]</a><span class="k">def</span> <span class="nf">check_subset_ht</span><span class="p">(</span><span class="n">subset_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">vmt_cols</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Check that the subset HT is valid.</span>
+
+<span class="sd">    :param subset_ht: The subset HT.</span>
+<span class="sd">    :param vmt_cols: The variant data MatrixTable samples.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">requested_sample_count</span> <span class="o">=</span> <span class="n">subset_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Subset request has </span><span class="si">%d</span><span class="s2"> samples...&quot;</span><span class="p">,</span> <span class="n">requested_sample_count</span><span class="p">)</span>
+    <span class="n">anti_join_ht</span> <span class="o">=</span> <span class="n">subset_ht</span><span class="o">.</span><span class="n">anti_join</span><span class="p">(</span><span class="n">vmt_cols</span><span class="p">)</span>
+    <span class="n">anti_join_ht_count</span> <span class="o">=</span> <span class="n">anti_join_ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">anti_join_ht_count</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">missing_samples</span> <span class="o">=</span> <span class="n">anti_join_ht</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="n">message</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Only </span><span class="si">{</span><span class="n">requested_sample_count</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">anti_join_ht_count</span><span class="si">}</span><span class="s2"> out of </span><span class="si">{</span><span class="n">requested_sample_count</span><span class="si">}</span><span class="s2"> &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;subsetting-table IDs matched IDs in the dataset.</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;IDs that aren&#39;t in the callset: </span><span class="si">{</span><span class="n">missing_samples</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;All subsetting-table IDs are in the callset...&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="apply_split_multi_logic"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.apply_split_multi_logic">[docs]</a><span class="k">def</span> <span class="nf">apply_split_multi_logic</span><span class="p">(</span>
+    <span class="n">mtds</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">],</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ProcessingConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply split multi logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).</span>
+
+<span class="sd">    :param mtds: MatrixTable or VariantDataset to process.</span>
+<span class="sd">    :param config: Processing configuration.</span>
+<span class="sd">    :return: MatrixTable or VariantDataset with multi-allelic sites split.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">_add_split_annotations</span><span class="p">(</span><span class="n">mtds</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Add annotations needed for split multi processing.&quot;&quot;&quot;</span>
+        <span class="n">ds</span> <span class="o">=</span> <span class="n">mtds</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span> <span class="k">else</span> <span class="n">mtds</span><span class="o">.</span><span class="n">variant_data</span>
+        <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span>
+            <span class="n">n_unsplit_alleles</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">),</span>
+            <span class="n">mixed_site</span><span class="o">=</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_indel</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a</span><span class="p">),</span> <span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+            <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a</span><span class="p">),</span> <span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">:]),</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">ds</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span> <span class="k">else</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">mtds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">ds</span><span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">mtds</span> <span class="o">=</span> <span class="n">_add_split_annotations</span><span class="p">(</span><span class="n">mtds</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">:</span>
+        <span class="n">mtds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">sparse_split_multi</span><span class="p">(</span><span class="n">mtds</span><span class="p">,</span> <span class="n">filter_changed_loci</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">mtds</span> <span class="o">=</span> <span class="n">mtds</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">mtds</span><span class="o">.</span><span class="n">GT</span><span class="p">)))</span>
+        <span class="c1"># Used during splitting multiallelics but no longer needed after.</span>
+        <span class="n">mtds</span> <span class="o">=</span> <span class="n">mtds</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;RGQ&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">mtds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">split_multi</span><span class="p">(</span>
+            <span class="n">mtds</span><span class="p">,</span>
+            <span class="n">filter_changed_loci</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">mtds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">mtds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">mtds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;RGQ&quot;</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">mtds</span></div>
+
+
+<div class="viewcode-block" id="apply_min_rep_logic"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.apply_min_rep_logic">[docs]</a><span class="k">def</span> <span class="nf">apply_min_rep_logic</span><span class="p">(</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply min_rep logic to an unsplit VariantDataset.</span>
+
+<span class="sd">    :param vds: VariantDataset to process.</span>
+<span class="sd">    :param config: Processing configuration.</span>
+<span class="sd">    :return: VariantDataset with rows keyed by minimum representation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">key_rows_by</span><span class="p">(</span><span class="o">**</span><span class="n">hl</span><span class="o">.</span><span class="n">min_rep</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">ds</span><span class="o">.</span><span class="n">alleles</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">ds</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="apply_variant_qc_annotations"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.apply_variant_qc_annotations">[docs]</a><span class="k">def</span> <span class="nf">apply_variant_qc_annotations</span><span class="p">(</span>
+    <span class="n">mtds</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">],</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ProcessingConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply variant QC annotations and filtering to either a MatrixTable or VariantDataset.</span>
+
+<span class="sd">    .. note::</span>
+<span class="sd">        If the variant QC annotations are not specified, all annotations will be added.</span>
+
+<span class="sd">    :param mtds: MatrixTable or VariantDataset to process.</span>
+<span class="sd">    :param config: Processing configuration.</span>
+<span class="sd">    :return: MatrixTable or VariantDataset with variant QC annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">mtds</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span> <span class="k">else</span> <span class="n">mtds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">selected_variant_qc_annotations</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">variant_qc_annotations</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">vqc_annotations</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">row_value</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">vqc_annotations</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;a_index&quot;</span><span class="p">)</span>
+        <span class="n">vqc_annotations</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;was_split&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">vqc_annotations</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">variant_qc_annotations</span>
+
+    <span class="k">for</span> <span class="n">ann</span> <span class="ow">in</span> <span class="n">vqc_annotations</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">ann</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">row</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ann</span><span class="si">}</span><span class="s2"> is not a valid variant QC annotation.&quot;</span><span class="p">)</span>
+        <span class="n">selected_variant_qc_annotations</span><span class="o">.</span><span class="n">update</span><span class="p">([(</span><span class="n">ann</span><span class="p">,</span> <span class="n">ht</span><span class="p">[</span><span class="n">ds</span><span class="o">.</span><span class="n">row_key</span><span class="p">][</span><span class="n">ann</span><span class="p">])])</span>
+
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="o">**</span><span class="n">selected_variant_qc_annotations</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ds</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span> <span class="k">else</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">mtds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">ds</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="filter_to_pass_only"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.filter_to_pass_only">[docs]</a><span class="k">def</span> <span class="nf">filter_to_pass_only</span><span class="p">(</span>
+    <span class="n">mtds</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">],</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ProcessingConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Filter to variants that passed variant QC.</span>
+
+<span class="sd">    :param mtds: MatrixTable or VariantDataset to filter.</span>
+<span class="sd">    :param config: Processing configuration.</span>
+<span class="sd">    :return: MatrixTable or VariantDataset containing only variants that passed variant QC.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">release_ht</span> <span class="o">=</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">mtds</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span> <span class="k">else</span> <span class="n">mtds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">ds</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">release_ht</span><span class="p">[</span><span class="n">ds</span><span class="o">.</span><span class="n">row_key</span><span class="p">]</span><span class="o">.</span><span class="n">filters</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ds</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span> <span class="k">else</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">mtds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">ds</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="format_vcf_info_fields"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.format_vcf_info_fields">[docs]</a><span class="k">def</span> <span class="nf">format_vcf_info_fields</span><span class="p">(</span><span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply VCF-specific formatting to info fields for export.</span>
+
+<span class="sd">    :param mt: MatrixTable to format.</span>
+<span class="sd">    :return: MatrixTable with fields formatted for VCF export.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Note: AS_SB_TABLE should be an array of arrays of int32s.</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span>
+        <span class="n">info</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">AS_SB_TABLE</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mt</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_SB_TABLE</span><span class="p">[:</span><span class="mi">2</span><span class="p">],</span> <span class="n">mt</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_SB_TABLE</span><span class="p">[</span><span class="mi">2</span><span class="p">:]]),</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">mt</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">vrs</span><span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;vrs&quot;</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">adjust_vcf_incompatible_types</span><span class="p">(</span>
+        <span class="n">mt</span><span class="o">.</span><span class="n">select_rows</span><span class="p">(</span><span class="s2">&quot;info&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">(),</span> <span class="n">pipe_delimited_annotations</span><span class="o">=</span><span class="p">[]</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">row_key</span><span class="p">]</span><span class="o">.</span><span class="n">info</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;gvcf_info&quot;</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">transmute_rows</span><span class="p">(</span><span class="n">rsid</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="s2">&quot;;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">rsid</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">mt</span></div>
+
+
+<div class="viewcode-block" id="process_metadata_export"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.process_metadata_export">[docs]</a><span class="k">def</span> <span class="nf">process_metadata_export</span><span class="p">(</span>
+    <span class="n">meta_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">vmt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">ProcessingConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Process metadata and return the processed metadata Table.</span>
+
+<span class="sd">    :param meta_ht: The metadata Table to process.</span>
+<span class="sd">    :param vmt: The dataset&#39;s subsetted  matrixTable containing the samples to keep.</span>
+<span class="sd">    :param config: Processing configuration.</span>
+<span class="sd">    :return: The subsetted metadata Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">semi_join</span><span class="p">(</span><span class="n">vmt</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+    <span class="n">data_to_drop</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">data_to_drop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;ukb_meta&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">config</span><span class="o">.</span><span class="n">keep_data_paths</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+            <span class="n">data_to_drop</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;cram&quot;</span><span class="p">,</span> <span class="s2">&quot;gvcf&quot;</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">data_to_drop</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;cram_path&quot;</span><span class="p">)</span>
+
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">project_meta</span><span class="o">=</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="o">*</span><span class="n">data_to_drop</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">meta_ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../api_reference/v4/subset.html#gnomad_qc.v4.subset.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Filter the gnomAD v4 VariantDataset to a subset of specified samples.&quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Running gnomAD v4 subset script.&quot;</span><span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">ProcessingConfig</span><span class="o">.</span><span class="n">from_args</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/v4_subset.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">tmp_dir</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">hl</span><span class="o">.</span><span class="n">version</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;0.2.120&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;This script must be run on Hail version 0.2.120. Higher versions of hail &quot;</span>
+            <span class="s2">&quot;greatly increase runtime and cost and thus we enforce this version.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Getting the v4 </span><span class="si">%s</span><span class="s2"> dataset...&quot;</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">data_type</span><span class="p">)</span>
+        <span class="n">vds</span><span class="p">,</span> <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">get_gnomad_datasets</span><span class="p">(</span>
+            <span class="n">data_type</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">data_type</span><span class="p">,</span>
+            <span class="n">n_partitions</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">rep_on_read_partitions</span><span class="p">,</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">test</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading the HT with sample IDs to subset...&quot;</span><span class="p">)</span>
+        <span class="n">subset_ht</span> <span class="o">=</span> <span class="n">get_subset_ht</span><span class="p">(</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">subset_samples</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">subset_workspaces</span><span class="p">,</span> <span class="n">meta_ht</span>
+        <span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Checking that all requested sample IDs are in the dataset...&quot;</span><span class="p">)</span>
+        <span class="n">check_subset_ht</span><span class="p">(</span><span class="n">subset_ht</span><span class="p">,</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">cols</span><span class="p">())</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering the VDS to requested samples...&quot;</span><span class="p">)</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span>
+            <span class="n">vds</span><span class="p">,</span> <span class="n">subset_ht</span><span class="p">,</span> <span class="n">remove_dead_alleles</span><span class="o">=</span><span class="kc">False</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">split_multi</span> <span class="k">else</span> <span class="kc">True</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Densifying VDS for VCF export...&quot;</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">to_dense_mt</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">mtds</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;subset&quot;</span><span class="p">,</span> <span class="s2">&quot;mt&quot;</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">vds</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">split_multi</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Splitting multi-allelics...&quot;</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">apply_split_multi_logic</span><span class="p">(</span><span class="n">mtds</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Applying min_rep to the variant data MT because remove_dead_alleles in&quot;</span>
+                <span class="s2">&quot; hl.vds.filter_samples may result in variants that do not have the &quot;</span>
+                <span class="s2">&quot;minimum representation in an unsplit VDS...&quot;</span>
+            <span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">apply_min_rep_logic</span><span class="p">(</span><span class="n">mtds</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">add_variant_qc</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding variant QC annotations...&quot;</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">apply_variant_qc_annotations</span><span class="p">(</span><span class="n">mtds</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">pass_only</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to variants that passed variant QC...&quot;</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">filter_to_pass_only</span><span class="p">(</span><span class="n">mtds</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vds</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_partitions</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                    <span class="s2">&quot;Generating VDS with </span><span class="si">%d</span><span class="s2"> partitions...&quot;</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">output_partitions</span>
+                <span class="p">)</span>
+                <span class="n">temp_vds_path</span> <span class="o">=</span> <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;subset&quot;</span><span class="p">,</span> <span class="s2">&quot;vds&quot;</span><span class="p">)</span>
+                <span class="n">mtds</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">temp_vds_path</span><span class="p">)</span>
+                <span class="n">mtds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">read_vds</span><span class="p">(</span>
+                    <span class="n">temp_vds_path</span><span class="p">,</span> <span class="n">n_partitions</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">output_partitions</span>
+                <span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing VDS subset...&quot;</span><span class="p">)</span>
+            <span class="n">mtds</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_filename</span><span class="si">}</span><span class="s2">.vds&quot;</span><span class="p">,</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_vcf</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Formatting VCF info fields for export...&quot;</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">format_vcf_info_fields</span><span class="p">(</span><span class="n">mtds</span><span class="p">)</span>
+            <span class="n">mtds</span> <span class="o">=</span> <span class="n">mtds</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span>
+                <span class="n">config</span><span class="o">.</span><span class="n">output_partitions</span>
+                <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">output_partitions</span>
+                <span class="k">else</span> <span class="n">mtds</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">()</span>
+            <span class="p">)</span>
+            <span class="n">format_dict</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">FORMAT_DICT</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">split_multi</span><span class="p">:</span>
+                <span class="n">format_dict</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;RGQ&quot;</span><span class="p">)</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exporting VCF subset...&quot;</span><span class="p">)</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span>
+                <span class="n">mtds</span><span class="p">,</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_filename</span><span class="si">}</span><span class="s2">.vcf.bgz&quot;</span><span class="p">,</span>
+                <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="n">format_dict</span><span class="p">},</span>
+                <span class="n">parallel</span><span class="o">=</span><span class="s2">&quot;header_per_shard&quot;</span><span class="p">,</span>
+                <span class="n">tabix</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">export_meta</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Subsetting and exporting metadata...&quot;</span><span class="p">)</span>
+            <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">process_metadata_export</span><span class="p">(</span><span class="n">meta_ht</span><span class="p">,</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+            <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/metadata.ht&quot;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">overwrite</span>
+            <span class="p">)</span>
+            <span class="n">meta_ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/metadata.tsv.bgz&quot;</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Subset operation completed successfully!&quot;</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">config</span><span class="o">.</span><span class="n">output_path</span><span class="si">}</span><span class="s2">/v4_subset.log&quot;</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">arg_parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span>
+        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;This script subsets gnomAD using a list of samples or terra workspaces.&quot;</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Filter to the first 2 partitions for testing.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">subset_id_parser</span> <span class="o">=</span> <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">subset_id_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--subset-samples&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Path to a text file with sample IDs for subsetting and a header: s.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">subset_id_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--subset-workspaces&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Path to a text file with Terra workspaces that should be included in the&quot;</span>
+            <span class="s2">&quot; subset, must use a header of &#39;terra_workspace&#39;.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--data-type&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Type of data to subset.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Make output options mutually exclusive</span>
+    <span class="n">output_group</span> <span class="o">=</span> <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-vds&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to output a subset VDS.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">output_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-vcf&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to output a subset VCF.&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--split-multi&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to split multi-allelic variants.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--rep-on-read-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of partitions to pass when reading in the VDS. If passed, and the &quot;</span>
+            <span class="s2">&quot;--output-partitions is not, this will be the number of output &quot;</span>
+            <span class="s2">&quot;partitions. By default, there will be no change in partitioning.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--add-variant-qc&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Annotate exported file with gnomAD&#39;s variant QC annotations. Defaults to&quot;</span>
+            <span class="s2">&quot; all annotations if a subset of annotations are not specified using the&quot;</span>
+            <span class="s2">&quot; --variant-qc-annotations arg&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--pass-only&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Keep only the variants that passed variant QC, i.e. the filter field is&quot;</span>
+            <span class="s2">&quot; PASS.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--variant-qc-annotations&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Variant QC annotations to add to the output file. Defaults to all&quot;</span>
+            <span class="s2">&quot; annotations.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--export-meta&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Pull sample subset metadata and export to a HT and .tsv.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--keep-data-paths&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Keep CRAM and gVCF paths in the project metadata export.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Output file path for subsetted VDS/VCF/MT, do not include file name or file extension.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-filename&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Name of the output file, do not include file extension.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;subset&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of desired partitions for the output file.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite all data from this subset (default: False).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">arg_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--tmp-dir&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Temporary directory for Hail to write files to.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">arg_parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

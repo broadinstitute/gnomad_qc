@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.final_filter &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.variant_qc.final_filter_genomes" href="final_filter_genomes.html" />
+    <link rel="prev" title="gnomad_qc.v4.variant_qc.evaluation" href="evaluation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">variant_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="evaluation.html">evaluation</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">final_filter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="final_filter_genomes.html">final_filter_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="import_variant_qc_vcf.html">import_variant_qc_vcf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="random_forest.html">random_forest</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vqsr.html">vqsr</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.variant_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.final_filter</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/variant_qc/final_filter.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-variant-qc-final-filter">
+<h1>gnomad_qc.v4.variant_qc.final_filter<a class="headerlink" href="#gnomad-qc-v4-variant-qc-final-filter" title="Permalink to this heading"></a></h1>
+<p>Script to create final filter Table for release.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">final_filter</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">model</span><span class="o">-</span><span class="nb">id</span> <span class="n">MODEL_ID</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">inbreeding</span><span class="o">-</span><span class="n">coeff</span><span class="o">-</span><span class="n">threshold</span> <span class="n">INBREEDING_COEFF_THRESHOLD</span><span class="p">]</span>
+                                               <span class="p">(</span><span class="o">--</span><span class="n">snv</span><span class="o">-</span><span class="nb">bin</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">SNV_BIN_CUTOFF</span> <span class="o">|</span> <span class="o">--</span><span class="n">snv</span><span class="o">-</span><span class="n">score</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">SNV_SCORE_CUTOFF</span><span class="p">)</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">snv</span><span class="o">-</span><span class="n">use</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="nb">bin</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">snv</span><span class="o">-</span><span class="n">use</span><span class="o">-</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="nb">bin</span><span class="p">]</span>
+                                               <span class="p">(</span><span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="nb">bin</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">INDEL_BIN_CUTOFF</span> <span class="o">|</span> <span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="n">score</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">INDEL_SCORE_CUTOFF</span><span class="p">)</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="n">use</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="nb">bin</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="n">use</span><span class="o">-</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="nb">bin</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="nb">all</span><span class="o">-</span><span class="n">variants</span><span class="p">]</span>
+                                               <span class="p">[</span><span class="o">--</span><span class="n">only</span><span class="o">-</span><span class="n">filters</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset (default: False).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Whether to run a test using only the first 2 partitions of the variant QC Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--model-id</kbd></dt>
+<dd><p>Filtering model ID to use.</p>
+</dd>
+<dt><kbd>--inbreeding-coeff-threshold</kbd></dt>
+<dd><p>InbreedingCoeff hard filter to use for variants.</p>
+<p>Default: -0.3</p>
+</dd>
+<dt><kbd>--snv-bin-cutoff</kbd></dt>
+<dd><p>RF or VQSR score bin to use as cutoff for SNVs. Value should be between 1 and 100.</p>
+</dd>
+<dt><kbd>--snv-score-cutoff</kbd></dt>
+<dd><p>RF or VQSR score to use as cutoff for SNVs.</p>
+</dd>
+<dt><kbd>--snv-use-interval-qc-bin</kbd></dt>
+<dd><p>Whether the ‘–snv-bin-cutoff’ should be applied to the interval QC bin instead of overall bin.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--snv-use-calling-interval-bin</kbd></dt>
+<dd><p>Whether the ‘–snv-bin-cutoff’ should be applied to the calling interval bin instead of overall bin.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--indel-bin-cutoff</kbd></dt>
+<dd><p>RF or VQSR score bin to use as cutoff for indels. Value should be between 1 and 100.</p>
+</dd>
+<dt><kbd>--indel-score-cutoff</kbd></dt>
+<dd><p>RF or VQSR score to use as cutoff for indels.</p>
+</dd>
+<dt><kbd>--indel-use-interval-qc-bin</kbd></dt>
+<dd><p>Whether the ‘–indel-bin-cutoff’ should be applied to the interval QC bin instead of overall bin.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--indel-use-calling-interval-bin</kbd></dt>
+<dd><p>Whether the ‘–indel-bin-cutoff’ should be applied to the calling interval bin instead of overall bin.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--all-variants</kbd></dt>
+<dd><p>Whether to write out a version of the final filter Table with all variants, including those not in the release.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--only-filters</kbd></dt>
+<dd><p>Whether to write out a version of the final filter Table with only the ‘filters’ field.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.REGION_INFO_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter.REGION_INFO_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.REGION_INFO_FIELDS</span></code></a></p></td>
+<td><p>Annotations to keep in the 'region_info' field of the final filter Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.TRUTH_SET_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter.TRUTH_SET_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.TRUTH_SET_FIELDS</span></code></a></p></td>
+<td><p>Annotations to keep in the 'truth_sets' field of the final filter Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.TRAINING_INFO_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter.TRAINING_INFO_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.TRAINING_INFO_FIELDS</span></code></a></p></td>
+<td><p>Annotations to keep in the 'training_info' field of the final filter Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_RESULT_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_RESULT_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_RESULT_FIELDS</span></code></a></p></td>
+<td><p>Annotations to keep in the 'results' field of the final filter Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.FINAL_FILTER_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter.FINAL_FILTER_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.FINAL_FILTER_FIELDS</span></code></a></p></td>
+<td><p>Top level annotations to keep in the final filter Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_GLOBAL_FIELDS" title="gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_GLOBAL_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_GLOBAL_FIELDS</span></code></a></p></td>
+<td><p>Variant QC global annotations to keep in the final filter Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.IF_FEATURES" title="gnomad_qc.v4.variant_qc.final_filter.IF_FEATURES"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.IF_FEATURES</span></code></a></p></td>
+<td><p>List of features used in the isolation forest model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.process_score_cutoffs" title="gnomad_qc.v4.variant_qc.final_filter.process_score_cutoffs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.process_score_cutoffs</span></code></a>(ht)</p></td>
+<td><p>Determine SNP and indel score cutoffs if given bin instead of score.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.generate_final_filter_ht" title="gnomad_qc.v4.variant_qc.final_filter.generate_final_filter_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.generate_final_filter_ht</span></code></a>(ht, ...)</p></td>
+<td><p>Prepare finalized filtering model given a filtering HT and cutoffs for filtering.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.get_final_variant_qc_resources" title="gnomad_qc.v4.variant_qc.final_filter.get_final_variant_qc_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.get_final_variant_qc_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.final_filter.main" title="gnomad_qc.v4.variant_qc.final_filter.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.main</span></code></a>(args)</p></td>
+<td><p>Create final filter Table for release.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.variant_qc.final_filter"></span><p>Script to create final filter Table for release.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.REGION_INFO_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">REGION_INFO_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['non_lcr',</span> <span class="pre">'in_calling_intervals',</span> <span class="pre">'pass_interval_qc']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.REGION_INFO_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations to keep in the ‘region_info’ field of the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.TRUTH_SET_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">TRUTH_SET_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['hapmap',</span> <span class="pre">'omni',</span> <span class="pre">'mills',</span> <span class="pre">'kgp_phase1_hc',</span> <span class="pre">'transmitted_singleton_raw',</span> <span class="pre">'transmitted_singleton_adj',</span> <span class="pre">'sibling_singleton_adj',</span> <span class="pre">'sibling_singleton_raw']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.TRUTH_SET_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations to keep in the ‘truth_sets’ field of the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.TRAINING_INFO_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">TRAINING_INFO_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'AS_VQSR':</span> <span class="pre">['positive_train_site',</span> <span class="pre">'negative_train_site'],</span> <span class="pre">'IF':</span> <span class="pre">['positive_train_site',</span> <span class="pre">'training',</span> <span class="pre">'calibration',</span> <span class="pre">'extracted'],</span> <span class="pre">'RF':</span> <span class="pre">['tp',</span> <span class="pre">'fp',</span> <span class="pre">'rf_train',</span> <span class="pre">'rf_label',</span> <span class="pre">'positive_train_site',</span> <span class="pre">'negative_train_site']}</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.TRAINING_INFO_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations to keep in the ‘training_info’ field of the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_RESULT_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">VARIANT_QC_RESULT_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'AS_VQSR':</span> <span class="pre">['AS_VQSLOD',</span> <span class="pre">'AS_culprit'],</span> <span class="pre">'IF':</span> <span class="pre">['SCORE',</span> <span class="pre">'CALIBRATION_SENSITIVITY'],</span> <span class="pre">'RF':</span> <span class="pre">['rf_tp_probability',</span> <span class="pre">'rf_prediction']}</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_RESULT_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Annotations to keep in the ‘results’ field of the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.FINAL_FILTER_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">FINAL_FILTER_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['a_index',</span> <span class="pre">'was_split',</span> <span class="pre">'region_info',</span> <span class="pre">'features',</span> <span class="pre">'fail_hard_filters',</span> <span class="pre">'truth_sets',</span> <span class="pre">'training_info',</span> <span class="pre">'results',</span> <span class="pre">'evaluation_score_bins',</span> <span class="pre">'singleton',</span> <span class="pre">'transmitted_singleton',</span> <span class="pre">'sibling_singleton',</span> <span class="pre">'monoallelic',</span> <span class="pre">'only_het',</span> <span class="pre">'filters']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.FINAL_FILTER_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Top level annotations to keep in the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_GLOBAL_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">VARIANT_QC_GLOBAL_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'AS_VQSR':</span> <span class="pre">['transmitted_singletons',</span> <span class="pre">'sibling_singletons',</span> <span class="pre">'adj',</span> <span class="pre">'interval_qc_filter',</span> <span class="pre">'compute_info_method'],</span> <span class="pre">'IF':</span> <span class="pre">['transmitted_singletons',</span> <span class="pre">'sibling_singletons',</span> <span class="pre">'adj',</span> <span class="pre">'interval_qc_filter',</span> <span class="pre">'compute_info_method'],</span> <span class="pre">'RF':</span> <span class="pre">['transmitted_singletons',</span> <span class="pre">'sibling_singletons',</span> <span class="pre">'adj',</span> <span class="pre">'interval_qc_filter',</span> <span class="pre">'compute_info_method',</span> <span class="pre">'feature_medians',</span> <span class="pre">'features_importance',</span> <span class="pre">'test_results',</span> <span class="pre">'fp_to_tp',</span> <span class="pre">'num_trees',</span> <span class="pre">'max_depth',</span> <span class="pre">'test_intervals'],</span> <span class="pre">'standard':</span> <span class="pre">['transmitted_singletons',</span> <span class="pre">'sibling_singletons',</span> <span class="pre">'adj',</span> <span class="pre">'interval_qc_filter',</span> <span class="pre">'compute_info_method']}</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.VARIANT_QC_GLOBAL_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>Variant QC global annotations to keep in the final filter Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.IF_FEATURES">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">IF_FEATURES</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['AS_MQRankSum',</span> <span class="pre">'AS_pab_max',</span> <span class="pre">'AS_MQ',</span> <span class="pre">'AS_QD',</span> <span class="pre">'AS_ReadPosRankSum',</span> <span class="pre">'AS_FS',</span> <span class="pre">'AS_SOR']</span></em><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.IF_FEATURES" title="Permalink to this definition"></a></dt>
+<dd><p>List of features used in the isolation forest model.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.process_score_cutoffs">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">process_score_cutoffs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snv_bin_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indel_bin_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snv_score_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indel_score_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregated_bin_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snv_bin_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indel_bin_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/final_filter.html#process_score_cutoffs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.process_score_cutoffs" title="Permalink to this definition"></a></dt>
+<dd><p>Determine SNP and indel score cutoffs if given bin instead of score.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p><cite>snv_bin_cutoff</cite> and <cite>snv_score_cutoff</cite> are mutually exclusive, and one must
+be supplied.</p></li>
+<li><p><cite>indel_bin_cutoff</cite> and <cite>indel_score_cutoff</cite> are mutually exclusive, and one
+must be supplied.</p></li>
+<li><p>If a <cite>snv_bin_cutoff</cite> or <cite>indel_bin_cutoff</cite> cutoff is supplied then an
+<cite>aggregated_bin_ht</cite> and <cite>bin_id</cite> must also be supplied to determine the SNP
+and indel scores to use as cutoffs from an aggregated bin Table like one
+created by <cite>compute_grouped_binned_ht</cite> in combination with <cite>score_bin_agg</cite>.</p></li>
+</ul>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Filtering Table to prepare as the final filter Table.</p></li>
+<li><p><strong>snv_bin_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Bin cutoff to use for SNP variant QC filter. Can’t be used
+with <cite>snv_score_cutoff</cite>.</p></li>
+<li><p><strong>indel_bin_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Bin cutoff to use for indel variant QC filter. Can’t be
+used with <cite>indel_score_cutoff</cite>.</p></li>
+<li><p><strong>snv_score_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Score cutoff (e.g. RF probability or AS_VQSLOD) to use
+for SNP variant QC filter. Can’t be used with <cite>snv_bin_cutoff</cite>.</p></li>
+<li><p><strong>indel_score_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Score cutoff (e.g. RF probability or AS_VQSLOD) to use
+for indel variant QC filter. Can’t be used with <cite>indel_bin_cutoff</cite>.</p></li>
+<li><p><strong>aggregated_bin_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Table with aggregate counts of variants based on bins</p></li>
+<li><p><strong>snv_bin_id</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Name of bin to use in ‘bin_id’ column of <cite>aggregated_bin_ht</cite> to
+determine the SNP score cutoff.</p></li>
+<li><p><strong>indel_bin_id</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Name of bin to use in ‘bin_id’ column of <cite>aggregated_bin_ht</cite> to
+determine the indel score cutoff.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Finalized random forest Table annotated with variant filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.generate_final_filter_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">generate_final_filter_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score_cutoff_globals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mono_allelic_flag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">only_het_flag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inbreeding_coeff_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-0.3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/final_filter.html#generate_final_filter_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.generate_final_filter_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare finalized filtering model given a filtering HT and cutoffs for filtering.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Filtering Table to prepare as the final filter Table.</p></li>
+<li><p><strong>filter_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Filtering model name to use in the ‘filters’ field (AS_VQSR or
+RF).</p></li>
+<li><p><strong>score_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name to use for the filtering score annotation. This will be
+used in place of ‘score’ in the release HT info struct and the INFO field of
+the VCF (e.g. RF or AS_VQSLOD).</p></li>
+<li><p><strong>freq_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Expression for frequency information to use for flags and filters.</p></li>
+<li><p><strong>score_cutoff_globals</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>]) – Dictionary of score cutoffs to use for filtering.</p></li>
+<li><p><strong>mono_allelic_flag</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to add a flag indicating that a variant is
+mono-allelic.</p></li>
+<li><p><strong>only_het_flag</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to add a flag indicating that all carriers of a
+variant are het.</p></li>
+<li><p><strong>inbreeding_coeff_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – InbreedingCoeff hard filter to use for variants.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Finalized random forest Table annotated with variant filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.get_final_variant_qc_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">get_final_variant_qc_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_variants</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">only_filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/final_filter.html#get_final_variant_qc_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.get_final_variant_qc_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather all resources for testing.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite resources if they exist.</p></li>
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Model ID to use for final variant QC.</p></li>
+<li><p><strong>all_variants</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the final filter resource for all variants.</p></li>
+<li><p><strong>only_filters</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the final filter resource with only the
+‘filters’ field.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of finalizing
+variant QC pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.final_filter.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.final_filter.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/final_filter.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.final_filter.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create final filter Table for release.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="evaluation.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.variant_qc.evaluation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="final_filter_genomes.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.variant_qc.final_filter_genomes" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

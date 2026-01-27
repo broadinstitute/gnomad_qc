@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.vrs_annotation_batch &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.assessment" href="../assessment/index.html" />
+    <link rel="prev" title="gnomad_qc.v4.annotations.vep_context_ht" href="vep_context_ht.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fix_freq_an.html">fix_freq_an</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq.html">generate_freq</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq_genomes.html">generate_freq_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="insilico_predictors.html">insilico_predictors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recover_and_complete_vep115.html">recover_and_complete_vep115</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vep_context_ht.html">vep_context_ht</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">vrs_annotation_batch</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.vrs_annotation_batch</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/annotations/vrs_annotation_batch.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-annotations-vrs-annotation-batch">
+<h1>gnomad_qc.v4.annotations.vrs_annotation_batch<a class="headerlink" href="#gnomad-qc-v4-annotations-vrs-annotation-batch" title="Permalink to this heading"></a></h1>
+<p>This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.</p>
+<dl class="simple">
+<dt>Advise to run from a backend (eg. hailctl batch submit) to avoid losing progress</dt><dd><p>in case of disconnection.</p>
+</dd>
+</dl>
+<p>Example command to use:</p>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hailctl<span class="w"> </span>batch<span class="w"> </span>submit<span class="w">             </span>--image-name<span class="w"> </span>us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084<span class="w">             </span>gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py<span class="w">             </span>--<span class="w">             </span>--billing-project<span class="w"> </span>gnomad-annot<span class="w">             </span>--working-bucket<span class="w"> </span>gnomad-tmp-4day<span class="w">             </span>--image<span class="w"> </span>us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084<span class="w">             </span>--header-path<span class="w"> </span>gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt<span class="w">             </span>--run-vrs<span class="w">             </span>--annotate-original<span class="w">             </span>--overwrite<span class="w">             </span>--backend-mode<span class="w"> </span>batch<span class="w">             </span>--data-type<span class="w"> </span>exomes<span class="w">             </span>--test
+</pre></div>
+</div>
+</div></blockquote>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">vrs_annotation_batch</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span> <span class="n">BILLING_PROJECT</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">image</span> <span class="n">IMAGE</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">working</span><span class="o">-</span><span class="n">bucket</span> <span class="n">WORKING_BUCKET</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">partitions</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">vcf</span><span class="o">-</span><span class="n">export</span> <span class="n">PARTITIONS_FOR_VCF_EXPORT</span><span class="p">]</span>
+                                                        <span class="p">(</span><span class="o">--</span><span class="n">data</span><span class="o">-</span><span class="nb">type</span> <span class="p">{</span><span class="n">exomes</span><span class="p">,</span><span class="n">genomes</span><span class="p">}</span> <span class="o">|</span> <span class="o">--</span><span class="nb">input</span><span class="o">-</span><span class="n">path</span> <span class="n">INPUT_PATH</span><span class="p">)</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">vrs</span><span class="o">-</span><span class="n">path</span> <span class="n">OUTPUT_VRS_PATH</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">vrs</span><span class="o">-</span><span class="n">anno</span><span class="o">-</span><span class="n">ori</span><span class="o">-</span><span class="n">path</span> <span class="n">OUTPUT_VRS_ANNO_ORI_PATH</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">header</span><span class="o">-</span><span class="n">path</span> <span class="n">HEADER_PATH</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">downsample</span> <span class="n">DOWNSAMPLE</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">disk</span><span class="o">-</span><span class="n">size</span> <span class="n">DISK_SIZE</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">memory</span> <span class="n">MEMORY</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">seqrepo</span><span class="o">-</span><span class="n">mount</span> <span class="n">SEQREPO_MOUNT</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">vrs</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">annotate</span><span class="o">-</span><span class="n">original</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">hail</span><span class="o">-</span><span class="n">rand</span><span class="o">-</span><span class="n">seed</span> <span class="n">HAIL_RAND_SEED</span><span class="p">]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">backend</span><span class="o">-</span><span class="n">mode</span> <span class="p">{</span><span class="n">spark</span><span class="p">,</span><span class="n">batch</span><span class="p">}]</span>
+                                                        <span class="p">[</span><span class="o">--</span><span class="n">tmp</span><span class="o">-</span><span class="nb">dir</span><span class="o">-</span><span class="n">hail</span> <span class="n">TMP_DIR_HAIL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--billing-project</kbd></dt>
+<dd><p>Project to bill.</p>
+</dd>
+<dt><kbd>--image</kbd></dt>
+<dd><p>Image in a GCP Artifact Registry repository.</p>
+<p>Default: “us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084”</p>
+</dd>
+<dt><kbd>--working-bucket</kbd></dt>
+<dd><p>Name of GCP Bucket to output intermediate files (sharded VCFs and checkpointed HTs) to.</p>
+<p>Default: “gnomad-tmp-4day”</p>
+</dd>
+<dt><kbd>--partitions-for-vcf-export</kbd></dt>
+<dd><p>Number of partitions to use when exporting the Table to a sharded VCF (each partition is exported to a separate VCF). This value determines the breakdown of jobs that will be ran (the VRS annotation script is ran in parallel on the VCFs).</p>
+</dd>
+<dt><kbd>--data-type</kbd></dt>
+<dd><p>Possible choices: exomes, genomes</p>
+<p>Data type to annotate (exomes or genomes).</p>
+</dd>
+<dt><kbd>--input-path</kbd></dt>
+<dd><p>Full path of Hail Table to annotate.</p>
+</dd>
+<dt><kbd>--output-vrs-path</kbd></dt>
+<dd><p>Full path of Hail Table to write VRS annotations to.</p>
+</dd>
+<dt><kbd>--output-vrs-anno-ori-path</kbd></dt>
+<dd><p>Full path of Hail Table to write VRS annotations with the original annotations added back.</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Fiter to only 200 partitions for testing purposes.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--header-path</kbd></dt>
+<dd><p>Full path of txt file containing lines to append to VCF headers for fields that maybe be missing when exporting the Table to VCF.</p>
+</dd>
+<dt><kbd>--downsample</kbd></dt>
+<dd><p>Proportion to which to downsample the original Hail Table input.</p>
+<p>Default: 1.0</p>
+</dd>
+<dt><kbd>--disk-size</kbd></dt>
+<dd><p>Amount of disk (GB) to allocate to each Hail Batch job.</p>
+</dd>
+<dt><kbd>--memory</kbd></dt>
+<dd><p>Amount of memory (GB) to allocate to each Hail Batch job.</p>
+</dd>
+<dt><kbd>--seqrepo-mount</kbd></dt>
+<dd><p>Bucket to mount and read from using Hail Batch’s CloudFuse for access to seqrepo: PLEASE note this DOES have performance implications.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Boolean to pass to ht.write(overwrite=_____) determining whether or not to overwrite existing output for the final Table and checkpointed files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--run-vrs</kbd></dt>
+<dd><p>Pass argument to run VRS annotation on dataset of choice. Specifying ‘–run-vrs’ also requires setting ‘backend-mode’ to ‘batch’, which is the default.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--annotate-original</kbd></dt>
+<dd><p>Pass argument to add VRS annotations back to original dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--hail-rand-seed</kbd></dt>
+<dd><p>Random seed for hail. Default is 5.</p>
+<p>Default: 5</p>
+</dd>
+<dt><kbd>--backend-mode</kbd></dt>
+<dd><p>Possible choices: spark, batch</p>
+<p>Mode in which to run Hail - either ‘spark’ or ‘batch’ (for QoB)</p>
+<p>Default: “batch”</p>
+</dd>
+<dt><kbd>--tmp-dir-hail</kbd></dt>
+<dd><p>Directory for temporary files to set when initializing Hail.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.vrs_annotation_batch.init_job" title="gnomad_qc.v4.annotations.vrs_annotation_batch.init_job"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.init_job</span></code></a>(batch)</p></td>
+<td><p>Initialize a hail batch job with some default parameters.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.vrs_annotation_batch.init_job_with_gcloud" title="gnomad_qc.v4.annotations.vrs_annotation_batch.init_job_with_gcloud"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.init_job_with_gcloud</span></code></a>(batch)</p></td>
+<td><p>Create job and initialize glcoud authentication and gsutil commands.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.vrs_annotation_batch.main" title="gnomad_qc.v4.annotations.vrs_annotation_batch.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.main</span></code></a>(args)</p></td>
+<td><p>Generate VRS annotations for a Hail Table of variants.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.annotations.vrs_annotation_batch"></span><p>This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.</p>
+<dl class="simple">
+<dt>Advise to run from a backend (eg. hailctl batch submit) to avoid losing progress</dt><dd><p>in case of disconnection.</p>
+</dd>
+</dl>
+<p>Example command to use:</p>
+<blockquote>
+<div><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hailctl<span class="w"> </span>batch<span class="w"> </span>submit<span class="w">             </span>--image-name<span class="w"> </span>us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084<span class="w">             </span>gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py<span class="w">             </span>--<span class="w">             </span>--billing-project<span class="w"> </span>gnomad-annot<span class="w">             </span>--working-bucket<span class="w"> </span>gnomad-tmp-4day<span class="w">             </span>--image<span class="w"> </span>us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084<span class="w">             </span>--header-path<span class="w"> </span>gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt<span class="w">             </span>--run-vrs<span class="w">             </span>--annotate-original<span class="w">             </span>--overwrite<span class="w">             </span>--backend-mode<span class="w"> </span>batch<span class="w">             </span>--data-type<span class="w"> </span>exomes<span class="w">             </span>--test
+</pre></div>
+</div>
+</div></blockquote>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.vrs_annotation_batch.init_job">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.</span></span><span class="sig-name descname"><span class="pre">init_job</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">image</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cpu</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">memory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disk_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/vrs_annotation_batch.html#init_job"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.vrs_annotation_batch.init_job" title="Permalink to this definition"></a></dt>
+<dd><p>Initialize a hail batch job with some default parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>batch</strong> – Batch object</p></li>
+<li><p><strong>name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – job label which will show up in the Batch web UI</p></li>
+<li><p><strong>image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – docker image name (eg. “<a class="reference external" href="mailto:weisburd/image-name&#37;&#52;&#48;sha256">weisburd/image-name<span>&#64;</span>sha256</a>:aa19845da5”)</p></li>
+<li><p><strong>cpu</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – number of CPUs (between 0.25 to 16)</p></li>
+<li><p><strong>memory</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – amount of RAM in Gb (eg. 3.75)</p></li>
+<li><p><strong>disk_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – amount of disk in Gb (eg. 50)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>new job object</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.vrs_annotation_batch.init_job_with_gcloud">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.</span></span><span class="sig-name descname"><span class="pre">init_job_with_gcloud</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">image</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cpu</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">memory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disk_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mount</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/vrs_annotation_batch.html#init_job_with_gcloud"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.vrs_annotation_batch.init_job_with_gcloud" title="Permalink to this definition"></a></dt>
+<dd><p>Create job and initialize glcoud authentication and gsutil commands.</p>
+<p>Wraps Ben Weisburd’s init_job (<a class="reference external" href="https://github.com/broadinstitute/tgg_methods/blob/master/tgg/batch/batch_utils.py#L160">https://github.com/broadinstitute/tgg_methods/blob/master/tgg/batch/batch_utils.py#L160</a>) with additional gcloud steps.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>batch</strong> – Batch object.</p></li>
+<li><p><strong>name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Job label which will show up in the Batch web UI.</p></li>
+<li><p><strong>image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Docker image name (eg. “us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4”).</p></li>
+<li><p><strong>cpu</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Number of CPUs (between 0.25 to 16).</p></li>
+<li><p><strong>memory</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Amount of RAM in Gb (eg. 3.75).</p></li>
+<li><p><strong>disk_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Amount of disk in Gb (eg. 50).</p></li>
+<li><p><strong>mount</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of GCP Bucket to mount using cloudfuse.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>New job object.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.vrs_annotation_batch.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.vrs_annotation_batch.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/vrs_annotation_batch.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.vrs_annotation_batch.main" title="Permalink to this definition"></a></dt>
+<dd><p>Generate VRS annotations for a Hail Table of variants.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="vep_context_ht.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.annotations.vep_context_ht" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../assessment/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.assessment" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

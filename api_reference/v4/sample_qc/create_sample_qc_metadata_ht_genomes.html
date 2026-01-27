@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.generate_qc_mt" href="generate_qc_mt.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht" href="create_sample_qc_metadata_ht.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/create_sample_qc_metadata_ht_genomes.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-create-sample-qc-metadata-ht-genomes">
+<h1>gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes<a class="headerlink" href="#gnomad-qc-v4-sample-qc-create-sample-qc-metadata-ht-genomes" title="Permalink to this heading"></a></h1>
+<p>Script to create sample QC metadata HT for genomes.</p>
+<p>The main updates from v3.1 to v4.0 are due to the following updates in the HGDP + TGP
+subset meta:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>169 samples added</p></li>
+<li><p>110 samples removed</p></li>
+</ul>
+</div></blockquote>
+<p>The 169 samples added were diverse HGDP/TGP samples in v3.1 that were unintentionally
+removed during sample outlier detection.</p>
+<p>The 110 samples were removed due to the following reasons:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Contamination flagged by CHARR (CHARR score stored in <cite>freemix</cite> column).</p></li>
+<li><p>Subcontinental PCA outliers within the subset.</p></li>
+<li><p>Updated relatedness results within the subset, re-evaluation of relatedness
+inference of the subset to the rest of gnomAD release samples, and removal of any
+samples that are duplicates of v4.0 exomes release samples.</p></li>
+</ul>
+</div></blockquote>
+<p>All samples impacted (169 added, 110 released) are releasable; the updates we made here
+were to their sample QC status (high quality vs filtered).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">create_sample_qc_metadata_ht_genomes</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite the existing meta HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.N_DIFF_SAMPLES" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.N_DIFF_SAMPLES"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.N_DIFF_SAMPLES</span></code></a></p></td>
+<td><p>The number of samples that have been updated between v3.1 and v4.0.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.import_updated_annotations" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.import_updated_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.import_updated_annotations</span></code></a>(ht, ...)</p></td>
+<td><p>Import updated annotations from HGDP/TGP subset meta HT and annotate full meta HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.main" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.main</span></code></a>(args)</p></td>
+<td><p>Create updated v4 genomes sample QC metadata HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes"></span><p>Script to create sample QC metadata HT for genomes.</p>
+<p>The main updates from v3.1 to v4.0 are due to the following updates in the HGDP + TGP
+subset meta:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>169 samples added</p></li>
+<li><p>110 samples removed</p></li>
+</ul>
+</div></blockquote>
+<p>The 169 samples added were diverse HGDP/TGP samples in v3.1 that were unintentionally
+removed during sample outlier detection.</p>
+<p>The 110 samples were removed due to the following reasons:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Contamination flagged by CHARR (CHARR score stored in <cite>freemix</cite> column).</p></li>
+<li><p>Subcontinental PCA outliers within the subset.</p></li>
+<li><p>Updated relatedness results within the subset, re-evaluation of relatedness
+inference of the subset to the rest of gnomAD release samples, and removal of any
+samples that are duplicates of v4.0 exomes release samples.</p></li>
+</ul>
+</div></blockquote>
+<p>All samples impacted (169 added, 110 released) are releasable; the updates we made here
+were to their sample QC status (high quality vs filtered).</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.N_DIFF_SAMPLES">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.</span></span><span class="sig-name descname"><span class="pre">N_DIFF_SAMPLES</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">59</span></em><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.N_DIFF_SAMPLES" title="Permalink to this definition"></a></dt>
+<dd><p>The number of samples that have been updated between v3.1 and v4.0.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.import_updated_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.</span></span><span class="sig-name descname"><span class="pre">import_updated_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht_genomes.html#import_updated_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.import_updated_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Import updated annotations from HGDP/TGP subset meta HT and annotate full meta HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – v3.1 genomes meta HT</p></li>
+<li><p><strong>subset_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Updated HGDP + TGP subset meta HT</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Updated v4.0 genomes meta HT</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht_genomes.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create updated v4 genomes sample QC metadata HT.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_sample_qc_metadata_ht.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_qc_mt.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.generate_qc_mt" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
