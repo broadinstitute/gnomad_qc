@@ -22,7 +22,7 @@ CURRENT_PROJECT_META_VERSION = "4.0"
 SAMPLE_QC_VERSIONS = ["4.0"]
 CURRENT_SAMPLE_QC_VERSION = "4.0"
 
-# NOTE: There were no changes to most variant annotation files for v4.0 except for
+# NOTE: There were no changes to most variant annotation files after v4.0 except for
 # VEP 115 annotations which were added in v4.1.1.
 ANNOTATION_VERSIONS = ["4.0"]
 CURRENT_ANNOTATION_VERSION = "4.0"
@@ -34,7 +34,7 @@ CURRENT_VEP_ANNOTATION_VERSION = {"105": "4.0", "115": "4.1.1"}
 # NOTE: The default VEP version is VEP 105.
 DEFAULT_VEP_VERSION = "105"
 
-# NOTE: There were no changes to most variant QC files for v4.1.
+# NOTE: There were no changes to most variant QC files after v4.0.
 VARIANT_QC_VERSIONS = ["4.0"]
 CURRENT_VARIANT_QC_VERSION = "4.0"
 
