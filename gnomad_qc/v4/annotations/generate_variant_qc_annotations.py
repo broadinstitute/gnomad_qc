@@ -964,10 +964,7 @@ def main(args):
                 ht = ht._filter_partitions(range(test_n_partitions))
 
             ht = hl.split_multi(ht)
-            ht = vep_or_lookup_vep(
-                ht,
-                vep_version=vep_version,
-            )
+            ht = vep_or_lookup_vep(ht, vep_version=vep_version)
             ht.write(res.vep_ht.path, overwrite=overwrite)
 
         if args.validate_vep:
