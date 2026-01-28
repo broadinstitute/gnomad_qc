@@ -967,9 +967,6 @@ def main(args):
             ht = vep_or_lookup_vep(
                 ht,
                 vep_version=vep_version,
-                reference_vep_ht=hl.read_table(
-                    "gs://gnomad-tmp-30day/completed_vep_context.ht"
-                ),
             )
             ht.write(res.vep_ht.path, overwrite=overwrite)
 
