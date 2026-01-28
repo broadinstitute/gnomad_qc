@@ -6,7 +6,7 @@ RELEASE_DATA_TYPES = DATA_TYPES + ["joint"]
 VERSIONS = ["4.0", "4.1", "4.1.1"]
 CURRENT_VERSION = "4.1.1"
 
-# NOTE: There were no changes to the genomes frequency data for v4.1.
+# NOTE: There were no changes to the genomes frequency data after v4.0.
 FREQ_VERSIONS = {"exomes": ["4.0", "4.1"], "genomes": ["4.0"], "joint": ["4.0", "4.1"]}
 CURRENT_FREQ_VERSION = {"exomes": "4.1", "genomes": "4.0", "joint": "4.1"}
 
