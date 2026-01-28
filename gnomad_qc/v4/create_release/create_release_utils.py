@@ -15,7 +15,7 @@ SEQREPO_VERSION = "2018-11-26"
 # GENCODE versions by VEP version.
 GENCODE_VERSIONS = {
     "105": "Release 39",
-    "115": "Release 46",
+    "115": "Release 49",
 }
 # MANE Select versions by VEP version.
 MANE_SELECT_VERSIONS = {
