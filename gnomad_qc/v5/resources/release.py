@@ -8,7 +8,6 @@ from gnomad.resources.resource_utils import (
     TableResource,
     VersionedTableResource,
 )
-
 from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
