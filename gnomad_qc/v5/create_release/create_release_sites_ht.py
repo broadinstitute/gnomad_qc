@@ -276,7 +276,7 @@ def get_config(
 
 def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
-    Get in silico predictors from VEP for release.
+    Get in silico predictors from the VEP resource for the given table.
 
     This function currently selects only SIFT and Polyphen from VEP.
 
@@ -398,7 +398,7 @@ def custom_info_select(
     freq_info_dict = {"InbreedingCoeff": freq_ht[ht.key]["InbreedingCoeff"]}
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
-    vrs_ht = get_vrs(data_type=data_type).ht()
+    vrs_ht = get_vrs(data_type="genomes").ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
@@ -808,7 +808,7 @@ def add_global_annotations(ht: hl.Table, version: str) -> hl.Table:
         ),
         date=datetime.now().isoformat(),
         version=version,
-        frequency_README=FREQUENCY_README.format(""),
+        frequency_README=FREQUENCY_README,
     )
 
 
