@@ -42,7 +42,11 @@ from gnomad_qc.v5.resources.constants import (
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
 )
-from gnomad_qc.v5.resources.release import included_datasets_json_path, release_sites
+from gnomad_qc.v5.resources.release import (
+    FREQUENCY_README,
+    included_datasets_json_path,
+    release_sites,
+)
 from gnomad_qc.v5.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -105,7 +109,7 @@ FINALIZED_SCHEMA = {
 
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
-    release_exists: bool = False, environment: srt = "rwb"
+    release_exists: bool = False, test: bool = False, environment: str = "rwb"
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary for specified data type.
@@ -136,6 +140,7 @@ def get_config(
         with or without 'alleles' before using this logic.
 
     :param release_exists: Whether the release HT already exists.
+    :param test: Whether or not to use the test versions of the datasets when available.
     :param environment: Environment to use. Default is "rwb".
     :return: Dict of dataset's configs.
     """
@@ -825,11 +830,14 @@ def main(args):
         # TODO: Add machine configurations for Batch.
     hl.default_reference("GRCh38")
     overwrite = args.overwrite
+    test = args.test
 
     logger.info(
         "Getting config for release HT to check Tables for duplicate variants..."
     )
-    config = get_config(release_exists=args.release_exists)
+    config = get_config(
+        release_exists=args.release_exists, test=test, environment=environment
+    )
     check_duplicate_rows_in_config_hts(config)
 
     logger.info(f"Creating release HT...")
@@ -840,7 +848,7 @@ def main(args):
         args.version,
         new_partition_percent=args.new_partition_percent,
         track_included_datasets=True,
-        test=args.test,
+        test=test,
     )
 
     # TODO: Check if this filter is still needed.
@@ -860,7 +868,7 @@ def main(args):
 
     output_path = (
         f"{qc_temp_prefix(data_type='genomes', environment=environment)}release/gnomad.genomes.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
-        if args.test
+        if test
         else release_sites(environment=environment).path
     )
 
@@ -879,6 +887,11 @@ def main(args):
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--rwb",
+        help="Run the script in RWB environment.",
+        action="store_true",
+    )
     parser.add_argument(
         "--new-partition-percent",
         help=(

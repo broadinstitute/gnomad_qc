@@ -2,12 +2,14 @@
 
 import logging
 
-from gnomad.resources.grch38.gnomad import all_sites_an, coverage
+from gnomad.resources.grch38.gnomad import all_sites_an, coverage, public_release
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
     VersionedTableResource,
 )
+
+from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
@@ -17,6 +19,7 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     GNOMAD_BUCKET,
+    RELEASES,
     WORKSPACE_BUCKET,
 )
 
@@ -268,8 +271,10 @@ def release_ht_path(
     :return: File path for desired release Hail Table.
     """
     if public:
-        if file_exists(public_release(data_type).versions[release_version].path):
-            return public_release(data_type).versions[release_version].path
+        if file_exists(
+            public_release(data_type="genomes").versions[release_version].path
+        ):
+            return public_release(data_type="genomes").versions[release_version].path
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/genomes/gnomad.genomes.v{release_version}.sites.ht"
     else:
