@@ -13,7 +13,6 @@ from gnomad.resources.grch38.reference_data import (
     lcr_intervals,
     seg_dup_intervals,
 )
-
 from gnomad.utils.annotations import region_flag_expr
 from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, AS_FIELDS, SITE_FIELDS
 from hail.utils import new_temp_file
@@ -30,7 +29,6 @@ from gnomad_qc.v5.create_release.create_release_utils import (
     VRS_SCHEMA_VERSION,
     remove_missing_vep_fields,
 )
-
 from gnomad_qc.v5.resources.annotations import (
     get_freq,
     get_info_ht,
@@ -44,10 +42,7 @@ from gnomad_qc.v5.resources.constants import (
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
 )
-from gnomad_qc.v5.resources.release import (
-    included_datasets_json_path,
-    release_sites,
-)
+from gnomad_qc.v5.resources.release import included_datasets_json_path, release_sites
 from gnomad_qc.v5.resources.variant_qc import final_filter
 
 logging.basicConfig(
