@@ -404,7 +404,7 @@ def custom_info_select(
     # Create a dict of the fields from the info HT that we want keep in the info.
     # v3 info HT has no SOR or AS_SOR fields. They are computed by VQSR, so we can
     # grab them from the filters HT.
-    # TODO: Check back on v4 logc, AS_SOR is alread on info ht, is SOR needed?
+    # TODO: Check back on v4 logic, AS_SOR is already on info ht, is SOR needed?
     info_struct = hl.struct(**ht.info, SOR=filters.SOR)
 
     info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
