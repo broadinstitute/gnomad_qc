@@ -24,6 +24,45 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("release_resources")
 logger.setLevel(logging.INFO)
 
+FREQUENCY_README = """
+The 'freq' row annotation is an array that contains allele frequency information. Each element of the array is a struct that contains the alternate allele count (AC), alternate allele frequency (AF), total number of alleles (AN), and number of homozygous alternate individuals (homozygote_count) for a specific sample grouping.
+
+Use the 'freq_index_dict' global annotation to retrieve frequency information for a specific group of samples from the 'freq' array. This global annotation is a dictionary keyed by sample
+grouping combinations whose values are the combination's index in the 'freq' array.
+
+The available keys combinations for the 'freq_index_dict' are as follows:
+
+group, e.g. “adj”, “raw”
+sex_group, e.g. “XX_adj”
+subset_group, e.g. “non_aou_raw”
+gen-anc_group, e.g. “afr_adj”
+gen-anc_sex_group, e.g. “ami_XX_adj”
+subset_gen-anc_group, e.g. “non_aou_sas_adj”
+subset_gen-anc_group, e.g. “non_aou_XY_adj”
+subset_gen-anc_sex_group, e.g. “non_aou_mid_XX_adj”,
+downsampling_group_gen-anc, e.g. “1373_afr_adj”
+
+The example below shows how to access the entry of the high quality genotypes
+(group: adj) of XX individuals (sex: XX) labeled as AFR (gen_anc: AFR)
+in the HT:
+
+    # Use the key 'afr-XX-adj' to retrieve the index of this groups frequency data in 'freq'
+    ht = ht.annotate(afr_XX_freq=ht.freq[ht.freq_index_dict['afr-XX-adj']])
+
+The above example will retrieve the entire frequency struct for each variant. To grab a
+certain statistic, such as AC, specify the statistic after the value:
+
+    ht = ht.annotate(afr_XX_AC=ht.freq[ht.freq_index_dict['afr-XX-adj']].AC)
+
+This same approach can be applied to the filtering allele frequency (FAF) array, 'faf',
+by using the 'faf_index_dict'. For more information, please visit the FAQ page:
+https://gnomad.broadinstitute.org/help#technical-details:~:text=How%20do%20I%20access%20the%20gnomAD%20Hail%20Table%20frequency%20annotation%3F
+"""
+
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("release_resources")
+logger.setLevel(logging.INFO)
+
 
 def _release_root(
     version: str = CURRENT_RELEASE,
@@ -192,5 +231,78 @@ def release_all_sites_an(
                 )
             )
             for release in ALL_SITES_AN_RELEASES["genomes"]
+        },
+    )
+
+
+def included_datasets_json_path(
+    test: bool = False,
+    release_version: str = CURRENT_RELEASE,
+    environment: str = "rwb",
+) -> str:
+    """
+    Fetch filepath for the JSON containing all datasets used in the release.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param release_version: Release version. Default is CURRENT RELEASE.
+    :param environment: Environment to use. Default is "rwb".
+    :return: File path for release versions included datasets JSON
+    """
+    return f"{_release_root(release_version, test=test, data_type='genomes', extension='json', environment=environment)}/gnomad.genomes.v{release_version}.included_datasets.json"
+
+
+def release_ht_path(
+    release_version: str = CURRENT_RELEASE,
+    public: bool = True,
+    test: bool = False,
+    environment: str = "rwb",
+) -> str:
+    """
+    Fetch filepath for release (variant-only) Hail Tables.
+
+    :param release_version: Release version. Default is CURRENT_RELEASE.
+    :param public: Whether release sites Table path returned is from public instead of private
+        bucket. Default is True.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param environment: Environment to use. Default is "rwb".
+    :return: File path for desired release Hail Table.
+    """
+    if public:
+        if file_exists(public_release(data_type).versions[release_version].path):
+            return public_release(data_type).versions[release_version].path
+        else:
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/genomes/gnomad.genomes.v{release_version}.sites.ht"
+    else:
+        # Note: This function was not used to write out the v4.0 joint release HT. That
+        # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
+        return f"{_release_root(version=release_version, test=test, data_type='genomes', environment=environment)}/gnomad.genomes.v{release_version}.sites.ht"
+
+
+def release_sites(
+    public: bool = True,
+    test: bool = False,
+    environment: str = "rwb",
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for sites-only release Table.
+
+    :param public: Whether release sites Table path returned is from public or private
+        bucket. Default is True.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param environment: Environment to use. Default is "rwb".
+    :return: Sites-only release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_RELEASE,
+        versions={
+            release: TableResource(
+                path=release_ht_path(
+                    release_version=release,
+                    public=public,
+                    test=test,
+                    environment=environment,
+                )
+            )
+            for release in RELEASES
         },
     )
