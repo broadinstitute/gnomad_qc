@@ -839,7 +839,7 @@ def main(args):
     )
     check_duplicate_rows_in_config_hts(config)
 
-    logger.info(f"Creating release HT...")
+    logger.info("Creating release HT...")
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
