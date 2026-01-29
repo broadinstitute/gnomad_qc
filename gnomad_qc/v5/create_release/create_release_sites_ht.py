@@ -360,7 +360,7 @@ def custom_filters_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]
 
 
 def custom_info_select(
-    ht: hl.Table, data_type: str, config
+    ht: hl.Table, data_type: str, config: Dict[str, Dict[str, Any]]
 ) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
