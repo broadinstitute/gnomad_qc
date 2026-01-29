@@ -219,7 +219,6 @@ def get_config(
                 "grpmax",
                 "fafmax",
             ],
-            "custom_select": custom_freq_select,
             "select_globals": [
                 "freq_meta",
                 "freq_index_dict",
@@ -231,8 +230,8 @@ def get_config(
             ],
         },
         "vep": {
-            "ht": get_vep(data_type=data_type).ht(),
-            "path": get_vep(data_type=data_type).path,
+            "ht": get_vep(data_type="genomes").ht(),
+            "path": get_vep(data_type="genomes").path,
             "select": ["vep"],
             "custom_select": custom_vep_select,
             "select_globals": [
@@ -778,7 +777,7 @@ def check_duplicate_rows_in_config_hts(
         raise ValueError("\n".join(dup_errors))
 
 
-def add_global_annotations(ht: hl.Table) -> hl.Table:
+def add_global_annotations(ht: hl.Table, version: str) -> hl.Table:
     """
     Add global version annotations to the release HT.
 
@@ -867,7 +866,7 @@ def main(args):
     ht = ht.select(*final_fields["rows"]).select_globals(*final_fields["globals"])
 
     output_path = (
-        f"{qc_temp_prefix(data_type='genomes', environment=environment)}release/gnomad.genomes.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
+        f"{qc_temp_prefix(environment=environment)}release/gnomad.genomes.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
         if test
         else release_sites(environment=environment).path
     )
