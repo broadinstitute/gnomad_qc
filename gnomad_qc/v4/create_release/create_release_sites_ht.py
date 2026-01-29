@@ -21,7 +21,6 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, AS_FIELDS, SITE_FIELDS
 from gnomad.utils.vep import update_loftee_end_trunc_filter
-from hail.typecheck import anytype, nullable, sequenceof
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
@@ -350,12 +349,16 @@ def get_config(
             vep_table_name = f"vep{vep_version}"
             if vep_table_name in tables_for_join:
                 config[vep_table_name] = {
-                    "ht": get_vep(
-                        data_type=data_type, vep_version=vep_version, test=test
-                    ).ht(),
-                    "path": get_vep(
-                        data_type=data_type, vep_version=vep_version, test=test
-                    ).path,
+                    "ht": (
+                        get_vep(
+                            data_type=data_type, vep_version=vep_version, test=test
+                        ).ht()
+                    ),
+                    "path": (
+                        get_vep(
+                            data_type=data_type, vep_version=vep_version, test=test
+                        ).path
+                    ),
                     "select": ["vep"],
                     "custom_select": get_custom_vep_select(vep_version),
                     "select_globals": [
