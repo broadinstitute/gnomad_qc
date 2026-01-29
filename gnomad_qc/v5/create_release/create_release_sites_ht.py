@@ -125,7 +125,7 @@ def get_config(
             'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
             'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
             'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
-            'custom_globals_select': '<Optional function name of custom globalsselect function that is needed for more advanced logic>'
+            'custom_globals_select': '<Optional function name of custom globals select function that is needed for more advanced logic>'
 
         },
 
