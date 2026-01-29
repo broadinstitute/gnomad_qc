@@ -61,11 +61,6 @@ by using the 'faf_index_dict'. For more information, please visit the FAQ page:
 https://gnomad.broadinstitute.org/help#technical-details:~:text=How%20do%20I%20access%20the%20gnomAD%20Hail%20Table%20frequency%20annotation%3F
 """
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("release_resources")
-logger.setLevel(logging.INFO)
-
-
 def _release_root(
     version: str = CURRENT_RELEASE,
     test: bool = False,
