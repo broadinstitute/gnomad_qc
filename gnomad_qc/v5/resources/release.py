@@ -241,7 +241,7 @@ def included_datasets_json_path(
     Fetch filepath for the JSON containing all datasets used in the release.
 
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param release_version: Release version. Default is CURRENT RELEASE.
+    :param release_version: Release version. Default is CURRENT_RELEASE.
     :param environment: Environment to use. Default is "rwb".
     :return: File path for release versions included datasets JSON
     """
