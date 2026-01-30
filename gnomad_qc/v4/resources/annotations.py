@@ -17,9 +17,12 @@ from gnomad_qc.v4.resources.constants import (
     CURRENT_ANNOTATION_VERSION,
     CURRENT_FREQ_VERSION,
     CURRENT_HGDP_TGP_RELEASE,
+    CURRENT_VEP_ANNOTATION_VERSION,
     CURRENT_VERSION,
+    DEFAULT_VEP_VERSION,
     FREQ_VERSIONS,
     HGDP_TGP_RELEASES,
+    VEP_ANNOTATION_VERSIONS,
     VERSIONS,
 )
 
@@ -69,7 +72,11 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableResource:
+def get_vep(
+    test: bool = False,
+    data_type: str = "exomes",
+    vep_version: str = DEFAULT_VEP_VERSION,
+) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
@@ -77,23 +84,27 @@ def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableReso
         the full v4 Table.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "exomes".
+    :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
     :return: gnomAD v4 VEP VersionedTableResource.
     """
+    vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
     return VersionedTableResource(
-        CURRENT_ANNOTATION_VERSION,
+        CURRENT_VEP_ANNOTATION_VERSION[vep_version],
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.ht"
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep{vep_version_postfix}.ht"
                 )
             )
-            for version in ANNOTATION_VERSIONS
+            for version in VEP_ANNOTATION_VERSIONS[vep_version]
         },
     )
 
 
 def validate_vep_path(
-    test: bool = False, data_type: str = "exomes"
+    test: bool = False,
+    data_type: str = "exomes",
+    vep_version: str = DEFAULT_VEP_VERSION,
 ) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
@@ -102,17 +113,19 @@ def validate_vep_path(
         full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "exomes".
+    :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
     """
+    vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
     return VersionedTableResource(
-        CURRENT_ANNOTATION_VERSION,
+        CURRENT_VEP_ANNOTATION_VERSION[vep_version],
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.validate.ht"
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep{vep_version_postfix}.validate.ht"
                 )
             )
-            for version in ANNOTATION_VERSIONS
+            for version in VEP_ANNOTATION_VERSIONS[vep_version]
         },
     )
 
