@@ -1100,7 +1100,7 @@ def main(args):
         base_release_version=args.base_release_version,
     )
     dup_errors = []
-    if not args.test:
+    if not args.test and not args.no_dup_check:
         for c in config:
             if "ht" in config[c]:
                 ht = config[c]["ht"]
@@ -1188,7 +1188,7 @@ def main(args):
     output_path = (
         f"{qc_temp_prefix(data_type=data_type)}release/gnomad.{data_type}.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
         if args.test
-        else release_sites(data_type=data_type).path
+        else release_sites(data_type=data_type, public=False).path
     )
     logger.info(f"Writing out {data_type} release HT to %s", output_path)
     ht = ht.naive_coalesce(args.n_partitions).checkpoint(
@@ -1278,6 +1278,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to naive coalesce the release Table to.",
         type=int,
         default=10000,
+    )
+    parser.add_argument(
+        "--no-dup-check",
+        help="Skip duplicate check.",
+        action="store_true",
     )
 
     return parser
