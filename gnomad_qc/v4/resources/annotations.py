@@ -19,11 +19,13 @@ from gnomad_qc.v4.resources.constants import (
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_VEP_ANNOTATION_VERSION,
     CURRENT_VERSION,
+    CURRENT_VRS_ANNOTATION_VERSION,
     DEFAULT_VEP_VERSION,
     FREQ_VERSIONS,
     HGDP_TGP_RELEASES,
     VEP_ANNOTATION_VERSIONS,
     VERSIONS,
+    VRS_ANNOTATION_VERSIONS,
 )
 
 SUBSETS = SUBSETS["v4"]
@@ -466,7 +468,7 @@ def get_vrs(
     :return: gnomAD v4 VRS VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_ANNOTATION_VERSION,
+        CURRENT_VRS_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
@@ -477,7 +479,7 @@ def get_vrs(
                     )
                 )
             )
-            for version in ANNOTATION_VERSIONS
+            for version in VRS_ANNOTATION_VERSIONS
         },
     )
 
