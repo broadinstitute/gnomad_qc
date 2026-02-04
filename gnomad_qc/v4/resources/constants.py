@@ -25,6 +25,7 @@ CURRENT_SAMPLE_QC_VERSION = "4.0"
 # NOTE: There were no changes to most variant annotation files for v4.1.
 ANNOTATION_VERSIONS = ["4.0"]
 CURRENT_ANNOTATION_VERSION = "4.0"
+CURRENT_VRS_ANNOTATION_VERSION = "4.1.1"
 
 # NOTE: There were no changes to most variant QC files for v4.1.
 VARIANT_QC_VERSIONS = ["4.0"]
