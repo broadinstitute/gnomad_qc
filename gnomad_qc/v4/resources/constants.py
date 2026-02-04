@@ -22,9 +22,11 @@ CURRENT_PROJECT_META_VERSION = "4.0"
 SAMPLE_QC_VERSIONS = ["4.0"]
 CURRENT_SAMPLE_QC_VERSION = "4.0"
 
-# NOTE: There were no changes to most variant annotation files for v4.1.
+# NOTE: There were no changes to most variant annotation files for v4.1,
+# but we updated VRS as part of v4.1.1.
 ANNOTATION_VERSIONS = ["4.0"]
 CURRENT_ANNOTATION_VERSION = "4.0"
+VRS_ANNOTATION_VERSIONS = ["4.0", "4.1.1"]
 CURRENT_VRS_ANNOTATION_VERSION = "4.1.1"
 
 # NOTE: There were no changes to most variant QC files for v4.1.
