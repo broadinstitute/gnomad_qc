@@ -190,7 +190,6 @@ def get_config(
     release_exists: bool = False,
     version: str = CURRENT_RELEASE,
     base_release_version: Optional[str] = None,
-    test: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary for specified data type.
@@ -228,7 +227,6 @@ def get_config(
     :param base_release_version: Specific release version to use as the base HT
         (e.g., "4.1"). When provided, loads that version's release HT as the base.
         Mutually exclusive with `release_exists`.
-    :param test: Whether this is for a test run. Default is False.
     :return: Dict of dataset's configs.
     """
     if base_release_version is not None and release_exists:
@@ -246,7 +244,7 @@ def get_config(
             "select": ["rsid"],
         }
 
-    if "filters" in tables_for_join:
+    if "filters" in tables_for_join or "info" in tables_for_join:
         config["filters"] = {
             "ht": final_filter(data_type=data_type).ht(),
             "path": final_filter(data_type=data_type).path,
@@ -301,7 +299,7 @@ def get_config(
             "custom_select": custom_info_select,
         }
 
-    if "freq" in tables_for_join:
+    if "freq" in tables_for_join or "info" in tables_for_join:
         config["freq"] = {
             "ht": get_freq(data_type=data_type).ht(),
             "path": get_freq(data_type=data_type).path,
@@ -349,17 +347,11 @@ def get_config(
             vep_table_name = f"vep{vep_version}"
             if vep_table_name in tables_for_join:
                 config[vep_table_name] = {
-                    "ht": (
-                        get_vep(
-                            data_type=data_type, vep_version=vep_version, test=test
-                        ).ht()
-                    ),
+                    "ht": (get_vep(data_type=data_type, vep_version=vep_version).ht()),
                     "path": (
-                        get_vep(
-                            data_type=data_type, vep_version=vep_version, test=test
-                        ).path
+                        get_vep(data_type=data_type, vep_version=vep_version).path
                     ),
-                    "select": ["vep"],
+                    "select": [],
                     "custom_select": get_custom_vep_select(vep_version),
                     "select_globals": [
                         "vep_version",
@@ -1033,9 +1025,7 @@ def join_hts(
 
     if use_annotate:
         joined_ht = reduce(
-            lambda joined_ht, ht: joined_ht.annotate(
-                **ht.index([*[joined_ht[k] for k in list(ht.key)]])
-            ),
+            lambda joined_ht, ht: joined_ht.annotate(**ht[joined_ht.key]),
             hts,
         )
         hts = [g_ht.index_globals() for g_ht in hts]
@@ -1108,7 +1098,6 @@ def main(args):
         release_exists=args.release_exists,
         version=args.version,
         base_release_version=args.base_release_version,
-        test=args.test,
     )
     dup_errors = []
     if not args.test:
@@ -1135,6 +1124,9 @@ def main(args):
         args.version,
         new_partition_percent=args.new_partition_percent,
         track_included_datasets=True,
+        # Use annotate if the release exists or the base release version is specified
+        # because we want to replace the annotations instead of joining them.
+        use_annotate=args.release_exists or args.base_release_version,
         test=args.test,
     )
 
