@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.generate_frequency &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations" href="generate_variant_qc_annotations.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations.compute_coverage" href="compute_coverage.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">generate_frequency</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../configs/index.html">configs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../data_ingestion/index.html">data_ingestion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.generate_frequency</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/generate_frequency.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-generate-frequency">
+<h1>gnomad_qc.v5.annotations.generate_frequency<a class="headerlink" href="#gnomad-qc-v5-annotations-generate-frequency" title="Permalink to this heading"></a></h1>
+<p>Script to generate frequency data for gnomAD v5.</p>
+<p>This script calculates variant frequencies and histograms for:
+1. gnomAD dataset - updating v4 frequencies by subtracting consent withdrawal samples
+2. AoU dataset - using either pre-computed allele numbers or a densify approach</p>
+<section id="processing-workflow">
+<h2>Processing Workflow:<a class="headerlink" href="#processing-workflow" title="Permalink to this heading"></a></h2>
+<p>gnomAD (–process-gnomad):
+1. Load v4 frequency table (contains frequencies and age histograms)
+2. Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
+3. Calculate frequencies and age histograms for consent samples
+4. Subtract from v4 frequencies to get updated gnomAD v5 frequencies</p>
+<p>AoU (–process-aou):
+1. Load AoU VDS with metadata
+2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
+3. Calculate frequencies using either: All sites ANs (efficient, requires pre-computed
+AN values) or Densify approach (standard, more resource intensive)
+4. Generate age histograms during frequency calculation</p>
+<p>Merged dataset (–merge-datasets):
+1. Merge frequency data and histograms from both gnomAD and AoU datasets.
+2. Calculate FAF, grpmax, and other post-processing annotations on merged dataset.</p>
+</section>
+<section id="usage-examples">
+<h2>Usage Examples:<a class="headerlink" href="#usage-examples" title="Permalink to this heading"></a></h2>
+<p># Process AoU dataset using all-sites ANs.
+python generate_frequency.py –process-aou –use-all-sites-ans –environment rwb</p>
+<p># Process AoU on batch/QoB with custom resources.
+python generate_frequency.py –process-aou –environment batch –app-name “aou_freq” –driver-cores 8 –worker-memory highmem</p>
+<p># Process gnomAD consent withdrawals
+python generate_frequency.py –process-gnomad –environment dataproc</p>
+<p># Run gnomAD in test mode
+python generate_frequency.py –process-gnomad –test –test-partitions 2</p>
+<p># Merge both datasets
+python generate_frequency.py –merge-datasets –environment batch –app-name “merged_freq” –driver-cores 8 –worker-memory highmem</p>
+<p><p>Generate frequency data for gnomAD v5.</p>
+</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v5</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">generate_frequency</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">partitions</span> <span class="n">TEST_PARTITIONS</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">process</span><span class="o">-</span><span class="n">gnomad</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">process</span><span class="o">-</span><span class="n">aou</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="n">sites</span><span class="o">-</span><span class="n">ans</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">merge</span><span class="o">-</span><span class="n">datasets</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">environment</span> <span class="p">{</span><span class="n">rwb</span><span class="p">,</span><span class="n">batch</span><span class="p">,</span><span class="n">dataproc</span><span class="p">}]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">tmp</span><span class="o">-</span><span class="nb">dir</span><span class="o">-</span><span class="n">days</span> <span class="n">TMP_DIR_DAYS</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">gcp</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span> <span class="n">GCP_BILLING_PROJECT</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">app</span><span class="o">-</span><span class="n">name</span> <span class="n">APP_NAME</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">cores</span> <span class="n">DRIVER_CORES</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">memory</span> <span class="n">DRIVER_MEMORY</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">cores</span> <span class="n">WORKER_CORES</span><span class="p">]</span>
+                                                      <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">memory</span> <span class="n">WORKER_MEMORY</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h3>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h3>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite existing hail Tables.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="testing-options">
+<h3>testing options<a class="headerlink" href="#testing-options" title="Permalink to this heading"></a></h3>
+<dl class="option-list">
+<dt><kbd>--test</kbd></dt>
+<dd><p>Filter to the first N partitions of full VDS for testing (N controlled by –test-partitions).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-partitions</kbd></dt>
+<dd><p>Number of partitions to use in test mode. Default is 2.</p>
+<p>Default: 2</p>
+</dd>
+</dl>
+</section>
+<section id="processing-steps">
+<h3>processing steps<a class="headerlink" href="#processing-steps" title="Permalink to this heading"></a></h3>
+<dl class="option-list">
+<dt><kbd>--process-gnomad</kbd></dt>
+<dd><p>Process gnomAD dataset for frequency calculations.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--process-aou</kbd></dt>
+<dd><p>Process All of Us dataset for frequency calculations.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--use-all-sites-ans</kbd></dt>
+<dd><p>Use all sites ANs in frequency calculations to avoid a densify.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--merge-datasets</kbd></dt>
+<dd><p>Merge frequency data from both gnomAD and AoU datasets.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="environment-configuration">
+<h3>environment configuration<a class="headerlink" href="#environment-configuration" title="Permalink to this heading"></a></h3>
+<dl class="option-list">
+<dt><kbd>--environment</kbd></dt>
+<dd><p>Possible choices: rwb, batch, dataproc</p>
+<p>Environment to run in.</p>
+<p>Default: “rwb”</p>
+</dd>
+<dt><kbd>--tmp-dir-days</kbd></dt>
+<dd><p>Number of days for temp directory retention. Default is 4.</p>
+<p>Default: 4</p>
+</dd>
+<dt><kbd>--gcp-billing-project</kbd></dt>
+<dd><p>Google Cloud billing project for reading requester pays buckets.</p>
+<p>Default: “broad-mpg-gnomad”</p>
+</dd>
+</dl>
+</section>
+<section id="batch-configuration">
+<h3>batch configuration<a class="headerlink" href="#batch-configuration" title="Permalink to this heading"></a></h3>
+<p>Optional parameters for batch/QoB backend (only used when –environment=batch).</p>
+<dl class="option-list">
+<dt><kbd>--app-name</kbd></dt>
+<dd><p>Job name for batch/QoB backend.</p>
+</dd>
+<dt><kbd>--driver-cores</kbd></dt>
+<dd><p>Number of cores for driver node.</p>
+</dd>
+<dt><kbd>--driver-memory</kbd></dt>
+<dd><p>Memory type for driver node (e.g., ‘highmem’).</p>
+</dd>
+<dt><kbd>--worker-cores</kbd></dt>
+<dd><p>Number of cores for worker nodes.</p>
+</dd>
+<dt><kbd>--worker-memory</kbd></dt>
+<dd><p>Memory type for worker nodes (e.g., ‘highmem’).</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h3>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h3>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.mt_hist_fields" title="gnomad_qc.v5.annotations.generate_frequency.mt_hist_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.mt_hist_fields</span></code></a>(mt)</p></td>
+<td><p>Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.process_aou_dataset" title="gnomad_qc.v5.annotations.generate_frequency.process_aou_dataset"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.process_aou_dataset</span></code></a>([...])</p></td>
+<td><p>Process All of Us dataset for frequency calculations and age histograms.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.select_final_dataset_fields" title="gnomad_qc.v5.annotations.generate_frequency.select_final_dataset_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.select_final_dataset_fields</span></code></a>(ht)</p></td>
+<td><p>Create final dataset freq Table with only desired annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.process_gnomad_dataset" title="gnomad_qc.v5.annotations.generate_frequency.process_gnomad_dataset"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.process_gnomad_dataset</span></code></a>([...])</p></td>
+<td><p>Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.merge_gnomad_and_aou_frequencies" title="gnomad_qc.v5.annotations.generate_frequency.merge_gnomad_and_aou_frequencies"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.merge_gnomad_and_aou_frequencies</span></code></a>(...)</p></td>
+<td><p>Merge frequency data and histograms from gnomAD and All of Us datasets.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.calculate_faf_and_grpmax_annotations" title="gnomad_qc.v5.annotations.generate_frequency.calculate_faf_and_grpmax_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.calculate_faf_and_grpmax_annotations</span></code></a>(ht)</p></td>
+<td><p>Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_frequency.main" title="gnomad_qc.v5.annotations.generate_frequency.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.main</span></code></a>(args)</p></td>
+<td><p>Generate v5 frequency data.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.generate_frequency"></span><p>Script to generate frequency data for gnomAD v5.</p>
+<p>This script calculates variant frequencies and histograms for:
+1. gnomAD dataset - updating v4 frequencies by subtracting consent withdrawal samples
+2. AoU dataset - using either pre-computed allele numbers or a densify approach</p>
+<section id="id1">
+<h4>Processing Workflow:<a class="headerlink" href="#id1" title="Permalink to this heading"></a></h4>
+<p>gnomAD (–process-gnomad):
+1. Load v4 frequency table (contains frequencies and age histograms)
+2. Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
+3. Calculate frequencies and age histograms for consent samples
+4. Subtract from v4 frequencies to get updated gnomAD v5 frequencies</p>
+<p>AoU (–process-aou):
+1. Load AoU VDS with metadata
+2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
+3. Calculate frequencies using either: All sites ANs (efficient, requires pre-computed
+AN values) or Densify approach (standard, more resource intensive)
+4. Generate age histograms during frequency calculation</p>
+<p>Merged dataset (–merge-datasets):
+1. Merge frequency data and histograms from both gnomAD and AoU datasets.
+2. Calculate FAF, grpmax, and other post-processing annotations on merged dataset.</p>
+</section>
+<section id="id2">
+<h4>Usage Examples:<a class="headerlink" href="#id2" title="Permalink to this heading"></a></h4>
+<p># Process AoU dataset using all-sites ANs.
+python generate_frequency.py –process-aou –use-all-sites-ans –environment rwb</p>
+<p># Process AoU on batch/QoB with custom resources.
+python generate_frequency.py –process-aou –environment batch –app-name “aou_freq” –driver-cores 8 –worker-memory highmem</p>
+<p># Process gnomAD consent withdrawals
+python generate_frequency.py –process-gnomad –environment dataproc</p>
+<p># Run gnomAD in test mode
+python generate_frequency.py –process-gnomad –test –test-partitions 2</p>
+<p># Merge both datasets
+python generate_frequency.py –merge-datasets –environment batch –app-name “merged_freq” –driver-cores 8 –worker-memory highmem</p>
+</section>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.mt_hist_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">mt_hist_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#mt_hist_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.mt_hist_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Struct with allele balance, quality metrics histograms, and age histograms.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.process_aou_dataset">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">process_aou_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_all_sites_ans</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'rwb'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#process_aou_dataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.process_aou_dataset" title="Permalink to this definition"></a></dt>
+<dd><p>Process All of Us dataset for frequency calculations and age histograms.</p>
+<p>This function efficiently processes the AoU VDS by:
+1. Computing complete frequency struct (uses imported AN from AoU all site ANs if requested)
+2. Generating age histograms within the frequency calculation</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to run in test mode.</p></li>
+<li><p><strong>use_all_sites_ans</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use all sites ANs for frequency calculations.</p></li>
+<li><p><strong>environment</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Environment to use. Default is “rwb”. Must be one of “rwb”, “batch”, or “dataproc”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with freq and age_hists annotations for AoU dataset.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.select_final_dataset_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">select_final_dataset_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'gnomad'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#select_final_dataset_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.select_final_dataset_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Create final dataset freq Table with only desired annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table containing all annotations.</p></li>
+<li><p><strong>dataset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset to select final fields, either “gnomad”, “aou” or “merged”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with final annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.process_gnomad_dataset">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">process_gnomad_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#process_gnomad_dataset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.process_gnomad_dataset" title="Permalink to this definition"></a></dt>
+<dd><p>Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.</p>
+<p>This function performs frequency adjustment by:
+1. Loading v4 frequency HT (contains both frequencies and age histograms)
+2. Loading consent withdrawal VDS
+3. Filtering to sites present in BOTH consent VDS AND v4 frequency table
+4. Calculating frequencies and age histograms for consent withdrawal samples
+5. Subtracting both frequencies and age histograms from v4 frequency HT
+6. Only overwriting fields that were actually updated in the final output</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).</p></li>
+<li><p><strong>test_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to use in test mode. Default is 2.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.merge_gnomad_and_aou_frequencies">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">merge_gnomad_and_aou_frequencies</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gnomad_freq_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aou_freq_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#merge_gnomad_and_aou_frequencies"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.merge_gnomad_and_aou_frequencies" title="Permalink to this definition"></a></dt>
+<dd><p>Merge frequency data and histograms from gnomAD and All of Us datasets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gnomad_freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Frequency Table for gnomAD.</p></li>
+<li><p><strong>aou_freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Frequency Table for AoU.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Merged frequency Table with combined frequencies and histograms.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.calculate_faf_and_grpmax_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">calculate_faf_and_grpmax_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#calculate_faf_and_grpmax_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.calculate_faf_and_grpmax_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.</p>
+<p>Computes filtering allele frequencies and grpmax for both the full dataset
+(gnomad) and the non-AoU subset, similar to v4’s non-UKB subset handling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Merged frequency table for AoU and gnomAD data containing ‘freq’ and
+‘freq_meta’ annotations.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with ‘faf’, ‘grpmax’, ‘gen_anc_faf_max’, and ‘inbreeding_coeff’.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_frequency.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_frequency.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_frequency.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_frequency.main" title="Permalink to this definition"></a></dt>
+<dd><p>Generate v5 frequency data.</p>
+</dd></dl>
+
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="compute_coverage.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations.compute_coverage" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_variant_qc_annotations.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.validate_and_export_vcf &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.resources" href="../resources/index.html" />
+    <link rel="prev" title="gnomad_qc.v4.create_release.make_var_annot_hists" href="make_var_annot_hists.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">create_release</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_combined_faf_release_ht.html">create_combined_faf_release_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_de_novo_release.html">create_de_novo_release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_false_dup_liftover.html">create_false_dup_liftover</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_sites_ht.html">create_release_sites_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_utils.html">create_release_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="make_var_annot_hists.html">make_var_annot_hists</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">validate_and_export_vcf</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.create_release</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.validate_and_export_vcf</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/create_release/validate_and_export_vcf.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-create-release-validate-and-export-vcf">
+<h1>gnomad_qc.v4.create_release.validate_and_export_vcf<a class="headerlink" href="#gnomad-qc-v4-create-release-validate-and-export-vcf" title="Permalink to this heading"></a></h1>
+<p>Script to validate and export gnomAD VCFs.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">create_release</span><span class="o">.</span><span class="n">validate_and_export_vcf</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">validate</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">verbose</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">d</span> <span class="p">{</span><span class="n">exomes</span><span class="p">,</span><span class="n">genomes</span><span class="p">,</span><span class="n">joint</span><span class="p">}]</span> <span class="p">[</span><span class="o">--</span><span class="n">prepare</span><span class="o">-</span><span class="n">vcf</span><span class="o">-</span><span class="n">header</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">vcf</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">contig</span> <span class="n">CONTIG</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">joint</span><span class="o">-</span><span class="n">included</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--validate-release-ht</kbd></dt>
+<dd><p>Run release HT validation</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--verbose</kbd></dt>
+<dd><p>Log successes in addition to failures during validation</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all data and start from raw inputs</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>For validation, test will run on chr20, chrX, and chrY. For VCF export, test runs on PCSK9 region. Outputs to test bucket.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>-d, --data-type</kbd></dt>
+<dd><p>Possible choices: exomes, genomes, joint</p>
+<p>Data type to run validity checks on.</p>
+<p>Default: “exomes”</p>
+</dd>
+<dt><kbd>--prepare-vcf-header</kbd></dt>
+<dd><p>Prepare VCF header dict.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--export-vcf</kbd></dt>
+<dd><p>Export VCF.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--contig</kbd></dt>
+<dd><p>Contig to export VCF for.</p>
+</dd>
+<dt><kbd>--joint-included</kbd></dt>
+<dd><p>Whether joint frequency data is included in the release HT.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.get_export_resources" title="gnomad_qc.v4.create_release.validate_and_export_vcf.get_export_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.get_export_resources</span></code></a>([...])</p></td>
+<td><p>Get export resources.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.filter_to_test" title="gnomad_qc.v4.create_release.validate_and_export_vcf.filter_to_test"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.filter_to_test</span></code></a>(ht)</p></td>
+<td><p>Filter Table to <cite>num_partitions</cite> partitions on chr20, chrX, and chrY for testing.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.select_type_from_joint_ht" title="gnomad_qc.v4.create_release.validate_and_export_vcf.select_type_from_joint_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.select_type_from_joint_ht</span></code></a>(ht, ...)</p></td>
+<td><p>Select all fields from the joint HT that are relevant to <cite>data_type</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.unfurl_nested_annotations" title="gnomad_qc.v4.create_release.validate_and_export_vcf.unfurl_nested_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.unfurl_nested_annotations</span></code></a>(ht)</p></td>
+<td><p>Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.make_info_expr" title="gnomad_qc.v4.create_release.validate_and_export_vcf.make_info_expr"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.make_info_expr</span></code></a>(t)</p></td>
+<td><p>Make Hail expression for variant annotations to be included in VCF INFO field.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_ht_for_validation" title="gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_ht_for_validation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_ht_for_validation</span></code></a>(ht)</p></td>
+<td><p>Prepare HT for validity checks and export.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.populate_subset_info_dict" title="gnomad_qc.v4.create_release.validate_and_export_vcf.populate_subset_info_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.populate_subset_info_dict</span></code></a>(...)</p></td>
+<td><p>Call <cite>make_info_dict</cite> to populate INFO dictionary for the requested <cite>subset</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.populate_info_dict" title="gnomad_qc.v4.create_release.validate_and_export_vcf.populate_info_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.populate_info_dict</span></code></a>(...)</p></td>
+<td><p>Call <cite>make_info_dict</cite> and <cite>make_hist_dict</cite> to populate INFO dictionary.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_vcf_header_dict" title="gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_vcf_header_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_vcf_header_dict</span></code></a>(ht, ...)</p></td>
+<td><p>Prepare VCF header dictionary.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.get_downsamplings_fields" title="gnomad_qc.v4.create_release.validate_and_export_vcf.get_downsamplings_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.get_downsamplings_fields</span></code></a>(ht)</p></td>
+<td><p>Get downsampling specific annotations from info struct.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.format_validated_ht_for_export" title="gnomad_qc.v4.create_release.validate_and_export_vcf.format_validated_ht_for_export"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.format_validated_ht_for_export</span></code></a>(ht)</p></td>
+<td><p>Format validated HT for export.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.process_vep_csq_header" title="gnomad_qc.v4.create_release.validate_and_export_vcf.process_vep_csq_header"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.process_vep_csq_header</span></code></a>([...])</p></td>
+<td><p>Process VEP CSQ header string, delimited by '|', to remove polyphen and sift annotations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.check_globals_for_retired_terms" title="gnomad_qc.v4.create_release.validate_and_export_vcf.check_globals_for_retired_terms"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.check_globals_for_retired_terms</span></code></a>(ht)</p></td>
+<td><p>Check list of dictionaries to see if the keys in the dictionaries contain either 'pop and 'oth'.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.get_joint_filters" title="gnomad_qc.v4.create_release.validate_and_export_vcf.get_joint_filters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.get_joint_filters</span></code></a>(ht)</p></td>
+<td><p>Transform exomes and genomes filters to joint filters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.main" title="gnomad_qc.v4.create_release.validate_and_export_vcf.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.main</span></code></a>(args)</p></td>
+<td><p>Validate release Table and export VCFs.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.create_release.validate_and_export_vcf"></span><p>Script to validate and export gnomAD VCFs.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.get_export_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">get_export_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#get_export_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.get_export_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get export resources.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite existing files.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to get resources for. One of “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]) – Whether to use test resources.</p></li>
+<li><p><strong>contig</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Contig to get resources for. Default is None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Export resources.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.filter_to_test">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">filter_to_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#filter_to_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.filter_to_test" title="Permalink to this definition"></a></dt>
+<dd><p>Filter Table to <cite>num_partitions</cite> partitions on chr20, chrX, and chrY for testing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table to filter.</p></li>
+<li><p><strong>num_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to grab from each chromosome.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Input Table filtered to <cite>num_partitions</cite> on chr20, chrX, and chrY.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.select_type_from_joint_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">select_type_from_joint_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#select_type_from_joint_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.select_type_from_joint_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Select all fields from the joint HT that are relevant to <cite>data_type</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Joint release HT.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to select in joint HT. One of “exomes”, “genomes”, or
+“joint”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Joint HT with fields relevant to <cite>data_type</cite>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.unfurl_nested_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">unfurl_nested_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entries_to_remove</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">joint_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hist_prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_comparison_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">for_joint_validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#unfurl_nested_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.unfurl_nested_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.</p>
+<p>The values of the returned dictionary are Hail Expressions describing how to access
+the corresponding values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing the nested variant annotation arrays to be unfurled.</p></li>
+<li><p><strong>entries_to_remove</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Set</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional Set of frequency entries to remove for vcf_export.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to unfurl nested annotations for. One of “exomes”,
+“genomes”, or “joint”. Default is “exomes”.</p></li>
+<li><p><strong>joint_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether joint frequency data is included in the exome or
+genome HT. Default is False.</p></li>
+<li><p><strong>hist_prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Prefix to use for histograms. Default is “”.</p></li>
+<li><p><strong>freq_comparison_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether frequency comparison data is included in
+the HT. Default is False.</p></li>
+<li><p><strong>for_joint_validation</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to prepare HT for joint validation. Default is
+False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>[&lt;class ‘hail.expr.expressions.typed_expressions.StructExpression’&gt;, <em>Set</em>[str], <em>Dict</em>[str, str]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>StructExpression containing variant annotations and their corresponding
+expressions and updated entries, set of frequency entries to remove from the
+VCF, and a dict of fields to rename when <cite>for_joint_validation</cite> is True.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.make_info_expr">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">make_info_expr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">for_joint_validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#make_info_expr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.make_info_expr" title="Permalink to this definition"></a></dt>
+<dd><p>Make Hail expression for variant annotations to be included in VCF INFO field.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>t</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing variant annotations to be reformatted for VCF export.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to make info expression for. One of “exomes”, “genomes”,
+or “joint”. Default is “exomes”.</p></li>
+<li><p><strong>for_joint_validation</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to prepare HT for joint validation. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary containing Hail expressions for relevant INFO annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_ht_for_validation">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">prepare_ht_for_validation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_entries_to_remove</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vcf_info_reorder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">joint_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">for_joint_validation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_comparison_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#prepare_ht_for_validation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_ht_for_validation" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare HT for validity checks and export.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Release Hail Table.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to prepare HT for. One of “exomes”, “genomes”, or
+“joint”. Default is “exomes”.</p></li>
+<li><p><strong>freq_entries_to_remove</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – List of entries to remove from freq.</p></li>
+<li><p><strong>vcf_info_reorder</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Order of VCF INFO fields.</p></li>
+<li><p><strong>joint_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether joint frequency data is included in the HT. Default
+is False.</p></li>
+<li><p><strong>for_joint_validation</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to prepare HT for joint validation. Default is
+True.</p></li>
+<li><p><strong>freq_comparison_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether frequency comparison data is included in
+the HT. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table prepared for validity checks and export and a dictionary of
+fields to rename when <cite>for_joint_validation</cite> is True.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.populate_subset_info_dict">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">populate_subset_info_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">description_text</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'afr':</span> <span class="pre">'African/African-American',</span> <span class="pre">'amr':</span> <span class="pre">'Admixed</span> <span class="pre">American',</span> <span class="pre">'asj':</span> <span class="pre">'Ashkenazi</span> <span class="pre">Jewish',</span> <span class="pre">'eas':</span> <span class="pre">'East</span> <span class="pre">Asian',</span> <span class="pre">'fin':</span> <span class="pre">'Finnish',</span> <span class="pre">'mid':</span> <span class="pre">'Middle</span> <span class="pre">Eastern',</span> <span class="pre">'nfe':</span> <span class="pre">'Non-Finnish</span> <span class="pre">European',</span> <span class="pre">'remaining':</span> <span class="pre">'Remaining</span> <span class="pre">individuals',</span> <span class="pre">'sas':</span> <span class="pre">'South</span> <span class="pre">Asian'}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">faf_pops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'v3':</span> <span class="pre">['afr',</span> <span class="pre">'amr',</span> <span class="pre">'eas',</span> <span class="pre">'nfe',</span> <span class="pre">'sas'],</span> <span class="pre">'v4':</span> <span class="pre">['afr',</span> <span class="pre">'amr',</span> <span class="pre">'eas',</span> <span class="pre">'mid',</span> <span class="pre">'nfe',</span> <span class="pre">'sas']}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sexes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['XX',</span> <span class="pre">'XY']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_delimiter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'_'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_comparison_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#populate_subset_info_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.populate_subset_info_dict" title="Permalink to this definition"></a></dt>
+<dd><p>Call <cite>make_info_dict</cite> to populate INFO dictionary for the requested <cite>subset</cite>.</p>
+<dl class="simple">
+<dt>Creates:</dt><dd><ul class="simple">
+<li><dl class="simple">
+<dt>INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic</dt><dd><p>ancestry group, sex both for adj and raw data.</p>
+</dd>
+</dl>
+</li>
+<li><p>INFO fields for filtering allele frequency (faf) annotations.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>subset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sample subset in dataset. “” is used as a placeholder for the full
+dataset.</p></li>
+<li><p><strong>description_text</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Text describing the sample subset that should be added to
+the INFO description.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – One of “exomes”, “genomes”, or “joint”. Default is “exomes”.</p></li>
+<li><p><strong>pops</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Dict of sample global genetic ancestry names for the gnomAD data type.</p></li>
+<li><p><strong>faf_pops</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dict with gnomAD version (keys) and faf genentic ancestry group
+names (values). Default is FAF_GEN_ANC_GROUPS.</p></li>
+<li><p><strong>sexes</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – gnomAD sample sexes used in VCF export. Default is SEXES.</p></li>
+<li><p><strong>label_delimiter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – String to use as delimiter when making group label
+combinations. Default is ‘_’.</p></li>
+<li><p><strong>freq_comparison_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether frequency comparison data is included in the HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary containing Subset specific INFO header fields.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.populate_info_dict">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">populate_info_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">info_fields</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bin_edges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">age_hist_distribution</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">info_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'AS_SB_TABLE':</span> <span class="pre">{'Description':</span> <span class="pre">'Allele-specific</span> <span class="pre">forward/reverse</span> <span class="pre">read</span> <span class="pre">counts</span> <span class="pre">for</span> <span class="pre">strand</span> <span class="pre">bias</span> <span class="pre">tests',</span> <span class="pre">'Number':</span> <span class="pre">'.'},</span> <span class="pre">'AS_pab_max':</span> <span class="pre">{'Description':</span> <span class="pre">'Maximum</span> <span class="pre">p-value</span> <span class="pre">over</span> <span class="pre">callset</span> <span class="pre">for</span> <span class="pre">binomial</span> <span class="pre">test</span> <span class="pre">of</span> <span class="pre">observed</span> <span class="pre">allele</span> <span class="pre">balance</span> <span class="pre">for</span> <span class="pre">a</span> <span class="pre">heterozygous</span> <span class="pre">genotype,</span> <span class="pre">given</span> <span class="pre">expectation</span> <span class="pre">of</span> <span class="pre">0.5',</span> <span class="pre">'Number':</span> <span class="pre">'A'},</span> <span class="pre">'BaseQRankSum':</span> <span class="pre">{'Description':</span> <span class="pre">'Z-score</span> <span class="pre">from</span> <span class="pre">Wilcoxon</span> <span class="pre">rank</span> <span class="pre">sum</span> <span class="pre">test</span> <span class="pre">of</span> <span class="pre">alternate</span> <span class="pre">vs.</span> <span class="pre">reference</span> <span class="pre">base</span> <span class="pre">qualities'},</span> <span class="pre">'FS':</span> <span class="pre">{'Description':</span> <span class="pre">&quot;Phred-scaled</span> <span class="pre">p-value</span> <span class="pre">of</span> <span class="pre">Fisher's</span> <span class="pre">exact</span> <span class="pre">test</span> <span class="pre">for</span> <span class="pre">strand</span> <span class="pre">bias&quot;},</span> <span class="pre">'InbreedingCoeff':</span> <span class="pre">{'Description':</span> <span class="pre">'Inbreeding</span> <span class="pre">coefficient,</span> <span class="pre">the</span> <span class="pre">excess</span> <span class="pre">heterozygosity</span> <span class="pre">at</span> <span class="pre">a</span> <span class="pre">variant</span> <span class="pre">site,</span> <span class="pre">computed</span> <span class="pre">as</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">(the</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">heterozygous</span> <span class="pre">genotypes)/(the</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">heterozygous</span> <span class="pre">genotypes</span> <span class="pre">expected</span> <span class="pre">under</span> <span class="pre">Hardy-Weinberg</span> <span class="pre">equilibrium)',</span> <span class="pre">'Number':</span> <span class="pre">'A'},</span> <span class="pre">'MQ':</span> <span class="pre">{'Description':</span> <span class="pre">'Root</span> <span class="pre">mean</span> <span class="pre">square</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">mapping</span> <span class="pre">quality</span> <span class="pre">of</span> <span class="pre">reads</span> <span class="pre">across</span> <span class="pre">all</span> <span class="pre">samples'},</span> <span class="pre">'MQRankSum':</span> <span class="pre">{'Description':</span> <span class="pre">'Z-score</span> <span class="pre">from</span> <span class="pre">Wilcoxon</span> <span class="pre">rank</span> <span class="pre">sum</span> <span class="pre">test</span> <span class="pre">of</span> <span class="pre">alternate</span> <span class="pre">vs.</span> <span class="pre">reference</span> <span class="pre">read</span> <span class="pre">mapping</span> <span class="pre">qualities'},</span> <span class="pre">'NEGATIVE_TRAIN_SITE':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">used</span> <span class="pre">to</span> <span class="pre">build</span> <span class="pre">the</span> <span class="pre">negative</span> <span class="pre">training</span> <span class="pre">set</span> <span class="pre">of</span> <span class="pre">low-quality</span> <span class="pre">variants</span> <span class="pre">for</span> <span class="pre">VQSR'},</span> <span class="pre">'POSITIVE_TRAIN_SITE':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">used</span> <span class="pre">to</span> <span class="pre">build</span> <span class="pre">the</span> <span class="pre">positive</span> <span class="pre">training</span> <span class="pre">set</span> <span class="pre">of</span> <span class="pre">high-quality</span> <span class="pre">variants</span> <span class="pre">for</span> <span class="pre">VQSR'},</span> <span class="pre">'QD':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">call</span> <span class="pre">confidence</span> <span class="pre">normalized</span> <span class="pre">by</span> <span class="pre">depth</span> <span class="pre">of</span> <span class="pre">sample</span> <span class="pre">reads</span> <span class="pre">supporting</span> <span class="pre">a</span> <span class="pre">variant'},</span> <span class="pre">'QUALapprox':</span> <span class="pre">{'Description':</span> <span class="pre">'Sum</span> <span class="pre">of</span> <span class="pre">PL[0]</span> <span class="pre">values;</span> <span class="pre">used</span> <span class="pre">to</span> <span class="pre">approximate</span> <span class="pre">the</span> <span class="pre">QUAL</span> <span class="pre">score',</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'ReadPosRankSum':</span> <span class="pre">{'Description':</span> <span class="pre">'Z-score</span> <span class="pre">from</span> <span class="pre">Wilcoxon</span> <span class="pre">rank</span> <span class="pre">sum</span> <span class="pre">test</span> <span class="pre">of</span> <span class="pre">alternate</span> <span class="pre">vs.</span> <span class="pre">reference</span> <span class="pre">read</span> <span class="pre">position</span> <span class="pre">bias'},</span> <span class="pre">'SOR':</span> <span class="pre">{'Description':</span> <span class="pre">'Strand</span> <span class="pre">bias</span> <span class="pre">estimated</span> <span class="pre">by</span> <span class="pre">the</span> <span class="pre">symmetric</span> <span class="pre">odds</span> <span class="pre">ratio</span> <span class="pre">test'},</span> <span class="pre">'VQSLOD':</span> <span class="pre">{'Description':</span> <span class="pre">'Log-odds</span> <span class="pre">ratio</span> <span class="pre">of</span> <span class="pre">being</span> <span class="pre">a</span> <span class="pre">true</span> <span class="pre">variant</span> <span class="pre">versus</span> <span class="pre">being</span> <span class="pre">a</span> <span class="pre">false</span> <span class="pre">positive</span> <span class="pre">under</span> <span class="pre">the</span> <span class="pre">trained</span> <span class="pre">VQSR</span> <span class="pre">Gaussian</span> <span class="pre">mixture</span> <span class="pre">model'},</span> <span class="pre">'VarDP':</span> <span class="pre">{'Description':</span> <span class="pre">'Depth</span> <span class="pre">over</span> <span class="pre">variant</span> <span class="pre">genotypes</span> <span class="pre">(does</span> <span class="pre">not</span> <span class="pre">include</span> <span class="pre">depth</span> <span class="pre">of</span> <span class="pre">reference</span> <span class="pre">samples)'},</span> <span class="pre">'allele_type':</span> <span class="pre">{'Description':</span> <span class="pre">'Allele</span> <span class="pre">type</span> <span class="pre">(snv,</span> <span class="pre">insertion,</span> <span class="pre">deletion,</span> <span class="pre">or</span> <span class="pre">mixed)'},</span> <span class="pre">'culprit':</span> <span class="pre">{'Description':</span> <span class="pre">'Worst-performing</span> <span class="pre">annotation</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">VQSR</span> <span class="pre">Gaussian</span> <span class="pre">mixture</span> <span class="pre">model'},</span> <span class="pre">'decoy':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">falls</span> <span class="pre">within</span> <span class="pre">a</span> <span class="pre">reference</span> <span class="pre">decoy</span> <span class="pre">region'},</span> <span class="pre">'fail_interval_qc':</span> <span class="pre">{'Description':</span> <span class="pre">'Less</span> <span class="pre">than</span> <span class="pre">85</span> <span class="pre">percent</span> <span class="pre">of</span> <span class="pre">samples</span> <span class="pre">meet</span> <span class="pre">20X</span> <span class="pre">coverage</span> <span class="pre">if</span> <span class="pre">variant</span> <span class="pre">is</span> <span class="pre">in</span> <span class="pre">autosomal</span> <span class="pre">or</span> <span class="pre">PAR</span> <span class="pre">regions</span> <span class="pre">or</span> <span class="pre">10X</span> <span class="pre">coverage</span> <span class="pre">for</span> <span class="pre">non-PAR</span> <span class="pre">regions</span> <span class="pre">of</span> <span class="pre">chromosomes</span> <span class="pre">X</span> <span class="pre">and</span> <span class="pre">Y.'},</span> <span class="pre">'has_star':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">locus</span> <span class="pre">coincides</span> <span class="pre">with</span> <span class="pre">a</span> <span class="pre">spanning</span> <span class="pre">deletion</span> <span class="pre">(represented</span> <span class="pre">by</span> <span class="pre">a</span> <span class="pre">star)</span> <span class="pre">observed</span> <span class="pre">elsewhere</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">callset'},</span> <span class="pre">'inbreeding_coeff':</span> <span class="pre">{'Description':</span> <span class="pre">'Inbreeding</span> <span class="pre">coefficient,</span> <span class="pre">the</span> <span class="pre">excess</span> <span class="pre">heterozygosity</span> <span class="pre">at</span> <span class="pre">a</span> <span class="pre">variant</span> <span class="pre">site,</span> <span class="pre">computed</span> <span class="pre">as</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">(the</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">heterozygous</span> <span class="pre">genotypes)/(the</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">heterozygous</span> <span class="pre">genotypes</span> <span class="pre">expected</span> <span class="pre">under</span> <span class="pre">Hardy-Weinberg</span> <span class="pre">equilibrium)',</span> <span class="pre">'Number':</span> <span class="pre">'A'},</span> <span class="pre">'lcr':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">falls</span> <span class="pre">within</span> <span class="pre">a</span> <span class="pre">low</span> <span class="pre">complexity</span> <span class="pre">region'},</span> <span class="pre">'monoallelic':</span> <span class="pre">{'Description':</span> <span class="pre">'All</span> <span class="pre">samples</span> <span class="pre">are</span> <span class="pre">homozygous</span> <span class="pre">alternate</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">variant'},</span> <span class="pre">'n_alt_alleles':</span> <span class="pre">{'Description':</span> <span class="pre">'Total</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">alternate</span> <span class="pre">alleles</span> <span class="pre">observed</span> <span class="pre">at</span> <span class="pre">variant</span> <span class="pre">locus',</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'negative_train_site':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">used</span> <span class="pre">to</span> <span class="pre">build</span> <span class="pre">the</span> <span class="pre">negative</span> <span class="pre">training</span> <span class="pre">set</span> <span class="pre">of</span> <span class="pre">low-quality</span> <span class="pre">variants</span> <span class="pre">for</span> <span class="pre">VQSR'},</span> <span class="pre">'non_par':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">(on</span> <span class="pre">sex</span> <span class="pre">chromosome)</span> <span class="pre">falls</span> <span class="pre">outside</span> <span class="pre">a</span> <span class="pre">pseudoautosomal</span> <span class="pre">region'},</span> <span class="pre">'nonpar':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">(on</span> <span class="pre">sex</span> <span class="pre">chromosome)</span> <span class="pre">falls</span> <span class="pre">outside</span> <span class="pre">a</span> <span class="pre">pseudoautosomal</span> <span class="pre">region'},</span> <span class="pre">'only_het':</span> <span class="pre">{'Description':</span> <span class="pre">'All</span> <span class="pre">samples</span> <span class="pre">are</span> <span class="pre">heterozygous</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">variant'},</span> <span class="pre">'original_alleles':</span> <span class="pre">{'Description':</span> <span class="pre">'Alleles</span> <span class="pre">before</span> <span class="pre">splitting</span> <span class="pre">multiallelics'},</span> <span class="pre">'outside_broad_capture_region':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">falls</span> <span class="pre">outside</span> <span class="pre">of</span> <span class="pre">Broad</span> <span class="pre">exome</span> <span class="pre">capture</span> <span class="pre">regions.'},</span> <span class="pre">'outside_ukb_capture_region':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">falls</span> <span class="pre">outside</span> <span class="pre">of</span> <span class="pre">UK</span> <span class="pre">Biobank</span> <span class="pre">exome</span> <span class="pre">capture</span> <span class="pre">regions.'},</span> <span class="pre">'positive_train_site':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">used</span> <span class="pre">to</span> <span class="pre">build</span> <span class="pre">the</span> <span class="pre">positive</span> <span class="pre">training</span> <span class="pre">set</span> <span class="pre">of</span> <span class="pre">high-quality</span> <span class="pre">variants</span> <span class="pre">for</span> <span class="pre">VQSR'},</span> <span class="pre">'rf_label':</span> <span class="pre">{'Description':</span> <span class="pre">'Random</span> <span class="pre">forest</span> <span class="pre">training</span> <span class="pre">label'},</span> <span class="pre">'rf_negative_label':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">labelled</span> <span class="pre">as</span> <span class="pre">a</span> <span class="pre">negative</span> <span class="pre">example</span> <span class="pre">for</span> <span class="pre">training</span> <span class="pre">of</span> <span class="pre">random</span> <span class="pre">forest</span> <span class="pre">model'},</span> <span class="pre">'rf_positive_label':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">labelled</span> <span class="pre">as</span> <span class="pre">a</span> <span class="pre">positive</span> <span class="pre">example</span> <span class="pre">for</span> <span class="pre">training</span> <span class="pre">of</span> <span class="pre">random</span> <span class="pre">forest</span> <span class="pre">model'},</span> <span class="pre">'rf_tp_probability':</span> <span class="pre">{'Description':</span> <span class="pre">'Probability</span> <span class="pre">of</span> <span class="pre">a</span> <span class="pre">called</span> <span class="pre">variant</span> <span class="pre">being</span> <span class="pre">a</span> <span class="pre">true</span> <span class="pre">variant</span> <span class="pre">as</span> <span class="pre">determined</span> <span class="pre">by</span> <span class="pre">random</span> <span class="pre">forest</span> <span class="pre">model'},</span> <span class="pre">'rf_train':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">used</span> <span class="pre">in</span> <span class="pre">training</span> <span class="pre">random</span> <span class="pre">forest</span> <span class="pre">model'},</span> <span class="pre">'segdup':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">falls</span> <span class="pre">within</span> <span class="pre">a</span> <span class="pre">segmental</span> <span class="pre">duplication</span> <span class="pre">region'},</span> <span class="pre">'sibling_singleton':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">a</span> <span class="pre">callset-wide</span> <span class="pre">doubleton</span> <span class="pre">that</span> <span class="pre">was</span> <span class="pre">present</span> <span class="pre">only</span> <span class="pre">in</span> <span class="pre">two</span> <span class="pre">siblings</span> <span class="pre">(i.e.,</span> <span class="pre">a</span> <span class="pre">singleton</span> <span class="pre">amongst</span> <span class="pre">unrelated</span> <span class="pre">samples</span> <span class="pre">in</span> <span class="pre">cohort).'},</span> <span class="pre">'transmitted_singleton':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">was</span> <span class="pre">a</span> <span class="pre">callset-wide</span> <span class="pre">doubleton</span> <span class="pre">that</span> <span class="pre">was</span> <span class="pre">transmitted</span> <span class="pre">within</span> <span class="pre">a</span> <span class="pre">family</span> <span class="pre">from</span> <span class="pre">a</span> <span class="pre">parent</span> <span class="pre">to</span> <span class="pre">a</span> <span class="pre">child</span> <span class="pre">(i.e.,</span> <span class="pre">a</span> <span class="pre">singleton</span> <span class="pre">amongst</span> <span class="pre">unrelated</span> <span class="pre">samples</span> <span class="pre">in</span> <span class="pre">cohort)'},</span> <span class="pre">'variant_type':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">type</span> <span class="pre">(snv,</span> <span class="pre">indel,</span> <span class="pre">multi-snv,</span> <span class="pre">multi-indel,</span> <span class="pre">or</span> <span class="pre">mixed)'},</span> <span class="pre">'was_mixed':</span> <span class="pre">{'Description':</span> <span class="pre">'Variant</span> <span class="pre">type</span> <span class="pre">was</span> <span class="pre">mixed'}}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_list</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['non_ukb']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'afr':</span> <span class="pre">'African/African-American',</span> <span class="pre">'amr':</span> <span class="pre">'Admixed</span> <span class="pre">American',</span> <span class="pre">'asj':</span> <span class="pre">'Ashkenazi</span> <span class="pre">Jewish',</span> <span class="pre">'eas':</span> <span class="pre">'East</span> <span class="pre">Asian',</span> <span class="pre">'fin':</span> <span class="pre">'Finnish',</span> <span class="pre">'mid':</span> <span class="pre">'Middle</span> <span class="pre">Eastern',</span> <span class="pre">'nfe':</span> <span class="pre">'Non-Finnish</span> <span class="pre">European',</span> <span class="pre">'remaining':</span> <span class="pre">'Remaining</span> <span class="pre">individuals',</span> <span class="pre">'sas':</span> <span class="pre">'South</span> <span class="pre">Asian'}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">faf_pops</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'v3':</span> <span class="pre">['afr',</span> <span class="pre">'amr',</span> <span class="pre">'eas',</span> <span class="pre">'nfe',</span> <span class="pre">'sas'],</span> <span class="pre">'v4':</span> <span class="pre">['afr',</span> <span class="pre">'amr',</span> <span class="pre">'eas',</span> <span class="pre">'mid',</span> <span class="pre">'nfe',</span> <span class="pre">'sas']}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sexes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['XX',</span> <span class="pre">'XY']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">in_silico_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'cadd_phred':</span> <span class="pre">{'Description':</span> <span class="pre">&quot;Cadd</span> <span class="pre">Phred-like</span> <span class="pre">scores</span> <span class="pre">('scaled</span> <span class="pre">C-scores')</span> <span class="pre">ranging</span> <span class="pre">from</span> <span class="pre">1</span> <span class="pre">to</span> <span class="pre">99,</span> <span class="pre">based</span> <span class="pre">on</span> <span class="pre">the</span> <span class="pre">rank</span> <span class="pre">of</span> <span class="pre">each</span> <span class="pre">variant</span> <span class="pre">relative</span> <span class="pre">to</span> <span class="pre">all</span> <span class="pre">possible</span> <span class="pre">8.6</span> <span class="pre">billion</span> <span class="pre">substitutions</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">human</span> <span class="pre">reference</span> <span class="pre">genome.</span> <span class="pre">Larger</span> <span class="pre">values</span> <span class="pre">are</span> <span class="pre">more</span> <span class="pre">deleterious.&quot;,</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'cadd_raw_score':</span> <span class="pre">{'Description':</span> <span class="pre">&quot;Raw</span> <span class="pre">CADD</span> <span class="pre">scores</span> <span class="pre">are</span> <span class="pre">interpretable</span> <span class="pre">as</span> <span class="pre">the</span> <span class="pre">extent</span> <span class="pre">to</span> <span class="pre">which</span> <span class="pre">the</span> <span class="pre">annotation</span> <span class="pre">profile</span> <span class="pre">for</span> <span class="pre">a</span> <span class="pre">given</span> <span class="pre">variant</span> <span class="pre">suggests</span> <span class="pre">that</span> <span class="pre">the</span> <span class="pre">variant</span> <span class="pre">is</span> <span class="pre">likely</span> <span class="pre">to</span> <span class="pre">be</span> <span class="pre">'observed'</span> <span class="pre">(negative</span> <span class="pre">values)</span> <span class="pre">vs</span> <span class="pre">'simulated'</span> <span class="pre">(positive</span> <span class="pre">values).</span> <span class="pre">Larger</span> <span class="pre">values</span> <span class="pre">are</span> <span class="pre">more</span> <span class="pre">deleterious.&quot;,</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'pangolin_largest_ds':</span> <span class="pre">{'Description':</span> <span class="pre">&quot;Pangolin's</span> <span class="pre">largest</span> <span class="pre">delta</span> <span class="pre">score</span> <span class="pre">across</span> <span class="pre">2</span> <span class="pre">splicing</span> <span class="pre">consequences,</span> <span class="pre">which</span> <span class="pre">reflects</span> <span class="pre">the</span> <span class="pre">probability</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">variant</span> <span class="pre">being</span> <span class="pre">splice-altering&quot;,</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'phylop':</span> <span class="pre">{'Description':</span> <span class="pre">'Base-wise</span> <span class="pre">conservation</span> <span class="pre">score</span> <span class="pre">across</span> <span class="pre">the</span> <span class="pre">241</span> <span class="pre">placental</span> <span class="pre">mammals</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">Zoonomia</span> <span class="pre">project.</span> <span class="pre">Score</span> <span class="pre">ranges</span> <span class="pre">from</span> <span class="pre">-20</span> <span class="pre">to</span> <span class="pre">9.28,</span> <span class="pre">and</span> <span class="pre">reflects</span> <span class="pre">acceleration</span> <span class="pre">(faster</span> <span class="pre">evolution</span> <span class="pre">than</span> <span class="pre">expected</span> <span class="pre">under</span> <span class="pre">neutral</span> <span class="pre">drift,</span> <span class="pre">assigned</span> <span class="pre">negative</span> <span class="pre">scores)</span> <span class="pre">as</span> <span class="pre">well</span> <span class="pre">as</span> <span class="pre">conservation</span> <span class="pre">(slower</span> <span class="pre">than</span> <span class="pre">expected</span> <span class="pre">evolution,</span> <span class="pre">assigned</span> <span class="pre">positive</span> <span class="pre">scores).',</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'polyphen_max':</span> <span class="pre">{'Description':</span> <span class="pre">'Score</span> <span class="pre">that</span> <span class="pre">predicts</span> <span class="pre">the</span> <span class="pre">possible</span> <span class="pre">impact</span> <span class="pre">of</span> <span class="pre">an</span> <span class="pre">amino</span> <span class="pre">acid</span> <span class="pre">substitution</span> <span class="pre">on</span> <span class="pre">the</span> <span class="pre">structure</span> <span class="pre">and</span> <span class="pre">function</span> <span class="pre">of</span> <span class="pre">a</span> <span class="pre">human</span> <span class="pre">protein,</span> <span class="pre">ranging</span> <span class="pre">from</span> <span class="pre">0.0</span> <span class="pre">(tolerated)</span> <span class="pre">to</span> <span class="pre">1.0</span> <span class="pre">(deleterious).</span>&#160; <span class="pre">We</span> <span class="pre">prioritize</span> <span class="pre">max</span> <span class="pre">scores</span> <span class="pre">for</span> <span class="pre">MANE</span> <span class="pre">Select</span> <span class="pre">transcripts</span> <span class="pre">where</span> <span class="pre">possible</span> <span class="pre">and</span> <span class="pre">otherwise</span> <span class="pre">report</span> <span class="pre">a</span> <span class="pre">score</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">canonical</span> <span class="pre">transcript.',</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'revel_max':</span> <span class="pre">{'Description':</span> <span class="pre">&quot;The</span> <span class="pre">maximum</span> <span class="pre">REVEL</span> <span class="pre">score</span> <span class="pre">at</span> <span class="pre">a</span> <span class="pre">site's</span> <span class="pre">MANE</span> <span class="pre">Select</span> <span class="pre">or</span> <span class="pre">canonical</span> <span class="pre">transcript.</span> <span class="pre">It's</span> <span class="pre">an</span> <span class="pre">ensemble</span> <span class="pre">score</span> <span class="pre">for</span> <span class="pre">predicting</span> <span class="pre">the</span> <span class="pre">pathogenicity</span> <span class="pre">of</span> <span class="pre">missense</span> <span class="pre">variants</span> <span class="pre">(based</span> <span class="pre">on</span> <span class="pre">13</span> <span class="pre">other</span> <span class="pre">variant</span> <span class="pre">predictors).</span> <span class="pre">Scores</span> <span class="pre">ranges</span> <span class="pre">from</span> <span class="pre">0</span> <span class="pre">to</span> <span class="pre">1.</span> <span class="pre">Variants</span> <span class="pre">with</span> <span class="pre">higher</span> <span class="pre">scores</span> <span class="pre">are</span> <span class="pre">predicted</span> <span class="pre">to</span> <span class="pre">be</span> <span class="pre">more</span> <span class="pre">likely</span> <span class="pre">to</span> <span class="pre">be</span> <span class="pre">deleterious.&quot;,</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'sift_max':</span> <span class="pre">{'Description':</span> <span class="pre">'Score</span> <span class="pre">reflecting</span> <span class="pre">the</span> <span class="pre">scaled</span> <span class="pre">probability</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">amino</span> <span class="pre">acid</span> <span class="pre">substitution</span> <span class="pre">being</span> <span class="pre">tolerated,</span> <span class="pre">ranging</span> <span class="pre">from</span> <span class="pre">0</span> <span class="pre">to</span> <span class="pre">1.</span> <span class="pre">Scores</span> <span class="pre">below</span> <span class="pre">0.05</span> <span class="pre">are</span> <span class="pre">predicted</span> <span class="pre">to</span> <span class="pre">impact</span> <span class="pre">protein</span> <span class="pre">function.</span> <span class="pre">We</span> <span class="pre">prioritize</span> <span class="pre">max</span> <span class="pre">scores</span> <span class="pre">for</span> <span class="pre">MANE</span> <span class="pre">Select</span> <span class="pre">transcripts</span> <span class="pre">where</span> <span class="pre">possible</span> <span class="pre">and</span> <span class="pre">otherwise</span> <span class="pre">report</span> <span class="pre">a</span> <span class="pre">score</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">canonical</span> <span class="pre">transcript.',</span> <span class="pre">'Number':</span> <span class="pre">'1'},</span> <span class="pre">'spliceai_ds_max':</span> <span class="pre">{'Description':</span> <span class="pre">&quot;Illumina's</span> <span class="pre">SpliceAI</span> <span class="pre">max</span> <span class="pre">delta</span> <span class="pre">score;</span> <span class="pre">interpreted</span> <span class="pre">as</span> <span class="pre">the</span> <span class="pre">probability</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">variant</span> <span class="pre">being</span> <span class="pre">splice-altering.&quot;,</span> <span class="pre">'Number':</span> <span class="pre">'1'}}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vrs_fields_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'VRS_Allele_IDs':</span> <span class="pre">{'Description':</span> <span class="pre">'The</span> <span class="pre">computed</span> <span class="pre">identifiers</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">GA4GH</span> <span class="pre">VRS</span> <span class="pre">Alleles</span> <span class="pre">corresponding</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">GT</span> <span class="pre">indexes</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">reference</span> <span class="pre">and</span> <span class="pre">alternate</span> <span class="pre">alleles',</span> <span class="pre">'Number':</span> <span class="pre">'R'},</span> <span class="pre">'VRS_Ends':</span> <span class="pre">{'Description':</span> <span class="pre">'Interresidue</span> <span class="pre">coordinates</span> <span class="pre">used</span> <span class="pre">as</span> <span class="pre">the</span> <span class="pre">location</span> <span class="pre">ends</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">GA4GH</span> <span class="pre">VRS</span> <span class="pre">Alleles</span> <span class="pre">corresponding</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">GT</span> <span class="pre">indexes</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">reference</span> <span class="pre">and</span> <span class="pre">alternate</span> <span class="pre">alleles',</span> <span class="pre">'Number':</span> <span class="pre">'R'},</span> <span class="pre">'VRS_Lengths':</span> <span class="pre">{'Description':</span> <span class="pre">'The</span> <span class="pre">length</span> <span class="pre">values</span> <span class="pre">from</span> <span class="pre">ReferenceLengthExpression</span> <span class="pre">states</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">GA4GH</span> <span class="pre">VRS</span> <span class="pre">Alleles</span> <span class="pre">corresponding</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">GT</span> <span class="pre">indexes</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">reference</span> <span class="pre">and</span> <span class="pre">alternate</span> <span class="pre">alleles',</span> <span class="pre">'Number':</span> <span class="pre">'R'},</span> <span class="pre">'VRS_RepeatSubunitLengths':</span> <span class="pre">{'Description':</span> <span class="pre">'The</span> <span class="pre">repeatSubunitLength</span> <span class="pre">values</span> <span class="pre">from</span> <span class="pre">ReferenceLengthExpression</span> <span class="pre">states</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">GA4GH</span> <span class="pre">VRS</span> <span class="pre">Alleles</span> <span class="pre">corresponding</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">GT</span> <span class="pre">indexes</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">reference</span> <span class="pre">and</span> <span class="pre">alternate</span> <span class="pre">alleles',</span> <span class="pre">'Number':</span> <span class="pre">'R'},</span> <span class="pre">'VRS_Starts':</span> <span class="pre">{'Description':</span> <span class="pre">'Interresidue</span> <span class="pre">coordinates</span> <span class="pre">used</span> <span class="pre">as</span> <span class="pre">the</span> <span class="pre">location</span> <span class="pre">starts</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">GA4GH</span> <span class="pre">VRS</span> <span class="pre">Alleles</span> <span class="pre">corresponding</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">GT</span> <span class="pre">indexes</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">reference</span> <span class="pre">and</span> <span class="pre">alternate</span> <span class="pre">alleles',</span> <span class="pre">'Number':</span> <span class="pre">'R'},</span> <span class="pre">'VRS_States':</span> <span class="pre">{'Description':</span> <span class="pre">'The</span> <span class="pre">literal</span> <span class="pre">sequence</span> <span class="pre">states</span> <span class="pre">used</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">GA4GH</span> <span class="pre">VRS</span> <span class="pre">Alleles</span> <span class="pre">corresponding</span> <span class="pre">to</span> <span class="pre">the</span> <span class="pre">GT</span> <span class="pre">indexes</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">reference</span> <span class="pre">and</span> <span class="pre">alternate</span> <span class="pre">alleles',</span> <span class="pre">'Number':</span> <span class="pre">'.'}}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_delimiter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'_'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_comparison_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_suffix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_description_text</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#populate_info_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.populate_info_dict" title="Permalink to this definition"></a></dt>
+<dd><p>Call <cite>make_info_dict</cite> and <cite>make_hist_dict</cite> to populate INFO dictionary.</p>
+<p>Used during VCF export.</p>
+<dl class="simple">
+<dt>Creates:</dt><dd><ul class="simple">
+<li><p>INFO fields for age histograms (bin freq, n_smaller, and n_larger for
+heterozygous and homozygous variant carriers).</p></li>
+<li><p>INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group.</p></li>
+<li><p>INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+ancestry group, sex both for adj and raw data.</p></li>
+<li><p>INFO fields for filtering allele frequency (faf) annotations.</p></li>
+<li><p>INFO fields for variant histograms (hist_bin_freq for each histogram and
+hist_n_larger for DP histograms).</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>info_fields</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of info fields to add to the info dict. Default is None.</p></li>
+<li><p><strong>bin_edges</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Dictionary of variant annotation histograms and their associated
+bin edges.</p></li>
+<li><p><strong>age_hist_distribution</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Pipe-delimited string of overall age histogram bin
+frequency.</p></li>
+<li><p><strong>info_dict</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – INFO dict to be populated.</p></li>
+<li><p><strong>subset_list</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of sample subsets in dataset. Default is SUBSETS[“exomes”].</p></li>
+<li><p><strong>pops</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Dict of sample global genetic ancestry names for the gnomAD data type.</p></li>
+<li><p><strong>faf_pops</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dict with gnomAD version (keys) and faf genentic ancestry group
+names (values). Default is FAF_GEN_ANC_GROUPS.</p></li>
+<li><p><strong>sexes</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – gnomAD sample sexes used in VCF export. Default is SEXES.</p></li>
+<li><p><strong>in_silico_dict</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dictionary of in silico predictor score descriptions.</p></li>
+<li><p><strong>vrs_fields_dict</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dictionary with VRS annotations.</p></li>
+<li><p><strong>label_delimiter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – String to use as delimiter when making group label
+combinations.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to populate info dict for. One of “exomes” or
+“genomes”. Default is “exomes”.</p></li>
+<li><p><strong>freq_comparison_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether frequency comparison data is included in the HT.</p></li>
+<li><p><strong>extra_suffix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Suffix to add to INFO field.</p></li>
+<li><p><strong>extra_description_text</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Extra description text to add to INFO field.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Updated INFO dictionary for VCF export.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_vcf_header_dict">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">prepare_vcf_header_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">validated_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">info_fields</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bin_edges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">age_hist_distribution</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pops</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">joint_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_comparison_included</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_suffix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_description_text</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#prepare_vcf_header_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.prepare_vcf_header_dict" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare VCF header dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table</p></li>
+<li><p><strong>validated_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Validated HT with unfurled info fields.</p></li>
+<li><p><strong>info_fields</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of info fields to add to the info dict.</p></li>
+<li><p><strong>bin_edges</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Dictionary of variant annotation histograms and their associated
+bin edges.</p></li>
+<li><p><strong>age_hist_distribution</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Pipe-delimited string of overall age histogram bin
+frequency.</p></li>
+<li><p><strong>subset_list</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of sample subsets in dataset.</p></li>
+<li><p><strong>pops</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of sample global genetic ancestry group names for gnomAD data type.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to prepare VCF header for. One of “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>joint_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether joint frequency data is included in the HT. Default is False.</p></li>
+<li><p><strong>freq_comparison_included</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether frequency comparison data is included in the HT.</p></li>
+<li><p><strong>extra_suffix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Suffix to add to INFO field.</p></li>
+<li><p><strong>extra_description_text</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Extra description text to add to INFO field.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Prepared VCF header dictionary.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.get_downsamplings_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">get_downsamplings_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#get_downsamplings_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.get_downsamplings_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Get downsampling specific annotations from info struct.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This retrieves any annotation that contains any downsampling value in its name.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of downsampling specific annotations to drop from info struct.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.format_validated_ht_for_export">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">format_validated_ht_for_export</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vcf_info_reorder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['AC',</span> <span class="pre">'AN',</span> <span class="pre">'AF',</span> <span class="pre">'grpmax',</span> <span class="pre">'fafmax_faf95_max',</span> <span class="pre">'fafmax_faf95_max_gen_anc']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">info_fields_to_drop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#format_validated_ht_for_export"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.format_validated_ht_for_export" title="Permalink to this definition"></a></dt>
+<dd><p>Format validated HT for export.</p>
+<p>Drop downsamplings frequency stats from info, rearrange info, and make sure fields
+are VCF compatible.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Validated HT.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type to format validated HT for. One of “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>vcf_info_reorder</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Order of VCF INFO fields. These will be placed in front of
+all other fields in the order specified.</p></li>
+<li><p><strong>info_fields_to_drop</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – List of info fields to drop from the info struct.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Formatted HT and list rename row annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.process_vep_csq_header">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">process_vep_csq_header</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vep_csq_header</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Consequence</span> <span class="pre">annotations</span> <span class="pre">from</span> <span class="pre">Ensembl</span> <span class="pre">VEP.</span> <span class="pre">Format:</span> <span class="pre">Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|EXON|INTRON|HGVSc|HGVSp|cDNA_position|CDS_position|Protein_position|Amino_acids|Codons|ALLELE_NUM|DISTANCE|STRAND|FLAGS|VARIANT_CLASS|SYMBOL_SOURCE|HGNC_ID|CANONICAL|MANE_SELECT|MANE_PLUS_CLINICAL|TSL|APPRIS|CCDS|ENSP|UNIPROT_ISOFORM|SOURCE|SIFT|PolyPhen|DOMAINS|miRNA|HGVS_OFFSET|PUBMED|MOTIF_NAME|MOTIF_POS|HIGH_INF_POS|MOTIF_SCORE_CHANGE|TRANSCRIPTION_FACTORS|LoF|LoF_filter|LoF_flags|LoF_info'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#process_vep_csq_header"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.process_vep_csq_header" title="Permalink to this definition"></a></dt>
+<dd><p>Process VEP CSQ header string, delimited by ‘|’, to remove polyphen and sift annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vep_csq_header</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – VEP CSQ header.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Processed VEP CSQ header.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.check_globals_for_retired_terms">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">check_globals_for_retired_terms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#check_globals_for_retired_terms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.check_globals_for_retired_terms" title="Permalink to this definition"></a></dt>
+<dd><p>Check list of dictionaries to see if the keys in the dictionaries contain either ‘pop and ‘oth’.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.get_joint_filters">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">get_joint_filters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#get_joint_filters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.get_joint_filters" title="Permalink to this definition"></a></dt>
+<dd><p>Transform exomes and genomes filters to joint filters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with joint filters transformed from exomes and genomes filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.validate_and_export_vcf.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.validate_and_export_vcf.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/validate_and_export_vcf.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.validate_and_export_vcf.main" title="Permalink to this definition"></a></dt>
+<dd><p>Validate release Table and export VCFs.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="make_var_annot_hists.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.create_release.make_var_annot_hists" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../resources/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.resources" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

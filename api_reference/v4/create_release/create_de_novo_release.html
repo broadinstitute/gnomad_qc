@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_de_novo_release &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.create_release.create_false_dup_liftover" href="create_false_dup_liftover.html" />
+    <link rel="prev" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht" href="create_combined_faf_release_ht.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">create_release</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_combined_faf_release_ht.html">create_combined_faf_release_ht</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_de_novo_release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_false_dup_liftover.html">create_false_dup_liftover</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_sites_ht.html">create_release_sites_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_utils.html">create_release_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="make_var_annot_hists.html">make_var_annot_hists</a></li>
+<li class="toctree-l4"><a class="reference internal" href="validate_and_export_vcf.html">validate_and_export_vcf</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.create_release</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_de_novo_release</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/create_release/create_de_novo_release.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-create-release-create-de-novo-release">
+<h1>gnomad_qc.v4.create_release.create_de_novo_release<a class="headerlink" href="#gnomad-qc-v4-create-release-create-de-novo-release" title="Permalink to this heading"></a></h1>
+<p>Script to create release de novo HT for v4 exomes.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">create_release</span><span class="o">.</span><span class="n">create_de_novo_release</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">t</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">n_partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">de</span><span class="o">-</span><span class="n">novo</span><span class="o">-</span><span class="n">calls</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">final</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">final</span><span class="o">-</span><span class="n">tsv</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite data</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>-t, --test</kbd></dt>
+<dd><p>Runs a test on chr20</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n_partitions</kbd></dt>
+<dd><p>Number of partitions to use for the output Table.</p>
+<p>Default: 1000</p>
+</dd>
+<dt><kbd>--generate-de-novo-calls</kbd></dt>
+<dd><p>Generate de novo calls HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--generate-final-ht</kbd></dt>
+<dd><p>Generate the final HT for de novo release.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--generate-final-tsv</kbd></dt>
+<dd><p>Generate the final TSV for de novo release.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_de_novo_calls_ht" title="gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_de_novo_calls_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_de_novo_calls_ht</span></code></a>(mt, ...)</p></td>
+<td><p>Get de novo calls Hail Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_de_novo_release.aggregate_and_annotate_de_novos" title="gnomad_qc.v4.create_release.create_de_novo_release.aggregate_and_annotate_de_novos"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.aggregate_and_annotate_de_novos</span></code></a>(ht)</p></td>
+<td><p>Aggregate and annotate de novo calls.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv" title="gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv</span></code></a>(ht)</p></td>
+<td><p>Restructure the de novo release HT for TSV export.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_de_novo_release.main" title="gnomad_qc.v4.create_release.create_de_novo_release.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.main</span></code></a>(args)</p></td>
+<td><p>Create de novo release ht.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.create_release.create_de_novo_release"></span><p>Script to create release de novo HT for v4 exomes.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_de_novo_calls_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.</span></span><span class="sig-name descname"><span class="pre">get_releasable_de_novo_calls_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">priors_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_de_novo_release.html#get_releasable_de_novo_calls_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_de_novo_calls_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get de novo calls Hail Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Dense MatrixTable of the releasable trios.</p></li>
+<li><p><strong>priors_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with AFs used as population frequency priors in de novo calculations.</p></li>
+<li><p><strong>ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to chr20 for testing. Default is False.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to use for the output Table. Default is 1000.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with de novo calls.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_de_novo_release.aggregate_and_annotate_de_novos">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.</span></span><span class="sig-name descname"><span class="pre">aggregate_and_annotate_de_novos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_de_novo_release.html#aggregate_and_annotate_de_novos"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_de_novo_release.aggregate_and_annotate_de_novos" title="Permalink to this definition"></a></dt>
+<dd><p>Aggregate and annotate de novo calls.</p>
+<dl class="simple">
+<dt>This step produces high quality coding de novos for release. High quality is defined as variants that:</dt><dd><ul class="simple">
+<li><p>Are not in low-confidence regions</p></li>
+<li><p>Do not have a <cite>*</cite> alt allele</p></li>
+<li><p>Passed variant QC</p></li>
+<li><p>Have either HIGH (all probabilities) or MEDIUM (P-value &gt;=0.9) confidence of being a <em>de novo</em></p></li>
+<li><p>Have a coding consequence</p></li>
+<li><p>Pass gnomAD v4.1 exomes allele frequency (AF) and callset allele count (AC) filters</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – De novo calls Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Aggregated and annotated Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.</span></span><span class="sig-name descname"><span class="pre">restructure_for_tsv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_de_novo_release.html#restructure_for_tsv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv" title="Permalink to this definition"></a></dt>
+<dd><p>Restructure the de novo release HT for TSV export.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This function will only be used for the TSV of high-quality coding de novos.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – De novo release HT.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Restructured HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_de_novo_release.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_de_novo_release.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_de_novo_release.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_de_novo_release.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create de novo release ht.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_combined_faf_release_ht.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="create_false_dup_liftover.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.create_release.create_false_dup_liftover" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

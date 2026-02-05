@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.generate_qc_mt &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.hard_filters" href="hard_filters.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes" href="create_sample_qc_metadata_ht_genomes.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.generate_qc_mt</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/generate_qc_mt.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-generate-qc-mt">
+<h1>gnomad_qc.v4.sample_qc.generate_qc_mt<a class="headerlink" href="#gnomad-qc-v4-sample-qc-generate-qc-mt" title="Permalink to this heading"></a></h1>
+<p>Script to create a dense MatrixTable filtered to a diverse set of variants for relatedness/ancestry PCA using CCDG, gnomAD v3, and UK Biobank.</p>
+<p>The variant set was determined using this script:
+<a class="reference external" href="https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py">https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py</a></p>
+<p>The full gnomAD v4 VariantDataset and v4 sparse MatrixTable are filtered to these sites
+and then densified. The resulting MatrixTables are merged and additional allele
+frequency and callrate filters are applied, then LD-pruning is performed.</p>
+<p>Additionally, the script creates a joint v3 and v4 metadata file for use in
+relatedness/ancestry PCA.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">generate_qc_mt</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">v3</span><span class="o">-</span><span class="n">filtered</span><span class="o">-</span><span class="n">dense</span><span class="o">-</span><span class="n">mt</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">v4</span><span class="o">-</span><span class="n">filtered</span><span class="o">-</span><span class="n">dense</span><span class="o">-</span><span class="n">mt</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">mt</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">bi</span><span class="o">-</span><span class="n">allelic</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">af</span> <span class="n">MIN_AF</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">callrate</span> <span class="n">MIN_CALLRATE</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">inbreeding</span><span class="o">-</span><span class="n">coeff</span><span class="o">-</span><span class="n">threshold</span> <span class="n">MIN_INBREEDING_COEFF_THRESHOLD</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">ld</span><span class="o">-</span><span class="n">r2</span> <span class="n">LD_R2</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">block</span><span class="o">-</span><span class="n">size</span> <span class="n">BLOCK_SIZE</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">meta</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--test</kbd></dt>
+<dd><p>Runs a test on two partitions of the VDS.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--create-v3-filtered-dense-mt</kbd></dt>
+<dd><p>Create a dense MatrixTable from the raw gnomAD v3.1 sparse MatrixTable filtered to predetermined QC variants.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--create-v4-filtered-dense-mt</kbd></dt>
+<dd><p>Create a dense MatrixTable from the raw gnomAD v4 VariantDataset filtered to predetermined QC variants.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--generate-qc-mt</kbd></dt>
+<dd><p>Create the final merged gnomAD v3 + v4 QC MatrixTable with all specified filters and LD-pruning.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--bi-allelic-only</kbd></dt>
+<dd><p>Filter to variants that are bi-allelic.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--min-af</kbd></dt>
+<dd><p>Minimum variant allele frequency to retain variant in QC MatrixTable.</p>
+<p>Default: 0.0001</p>
+</dd>
+<dt><kbd>--min-callrate</kbd></dt>
+<dd><p>Minimum variant callrate to retain variant in QC MatrixTable.</p>
+<p>Default: 0.99</p>
+</dd>
+<dt><kbd>--min-inbreeding-coeff-threshold</kbd></dt>
+<dd><p>Minimum site inbreeding coefficient to retain variant in QC MatrixTable.</p>
+<p>Default: -0.8</p>
+</dd>
+<dt><kbd>--ld-r2</kbd></dt>
+<dd><p>LD-pruning cutoff.</p>
+<p>Default: 0.1</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Desired number of partitions for output QC MatrixTable.</p>
+<p>Default: 5000</p>
+</dd>
+<dt><kbd>--block-size</kbd></dt>
+<dd><p>Block size parameter to use for LD pruning.</p>
+<p>Default: 2048</p>
+</dd>
+<dt><kbd>--generate-qc-meta</kbd></dt>
+<dd><p>Create a merged gnomAD v3 + v4 metadata Table for QC purposes.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>-o, --overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.create_filtered_dense_mt" title="gnomad_qc.v4.sample_qc.generate_qc_mt.create_filtered_dense_mt"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.create_filtered_dense_mt</span></code></a>(mtds)</p></td>
+<td><p>Filter a sparse MatrixTable or VariantDataset to a set of predetermined QC sites and return a dense MatrixTable.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_mt" title="gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_mt"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_mt</span></code></a>(...)</p></td>
+<td><p>Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_meta_ht" title="gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_meta_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_meta_ht</span></code></a>()</p></td>
+<td><p>Combine v3 and v4 sample metadata into a single Table for relatedness and population inference.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.main" title="gnomad_qc.v4.sample_qc.generate_qc_mt.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.main</span></code></a>(args)</p></td>
+<td><p>Create a dense MT of a diverse set of variants for relatedness/ancestry PCA.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.generate_qc_mt"></span><p>Script to create a dense MatrixTable filtered to a diverse set of variants for relatedness/ancestry PCA using CCDG, gnomAD v3, and UK Biobank.</p>
+<p>The variant set was determined using this script:
+<a class="reference external" href="https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py">https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py</a></p>
+<p>The full gnomAD v4 VariantDataset and v4 sparse MatrixTable are filtered to these sites
+and then densified. The resulting MatrixTables are merged and additional allele
+frequency and callrate filters are applied, then LD-pruning is performed.</p>
+<p>Additionally, the script creates a joint v3 and v4 metadata file for use in
+relatedness/ancestry PCA.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.generate_qc_mt.create_filtered_dense_mt">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.</span></span><span class="sig-name descname"><span class="pre">create_filtered_dense_mt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mtds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/generate_qc_mt.html#create_filtered_dense_mt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.create_filtered_dense_mt" title="Permalink to this definition"></a></dt>
+<dd><p>Filter a sparse MatrixTable or VariantDataset to a set of predetermined QC sites and return a dense MatrixTable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mtds</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>]) – Input MatrixTable or VariantDataset.</p></li>
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether <cite>mtds</cite> should have multi-allelics split before filtering
+variants.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filtered and densified MatrixTable.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_mt">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.</span></span><span class="sig-name descname"><span class="pre">generate_qc_mt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v3_mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v4_mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bi_allelic_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_af</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_callrate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.99</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_inbreeding_coeff_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-0.8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ld_r2</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2048</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/generate_qc_mt.html#generate_qc_mt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_mt" title="Permalink to this definition"></a></dt>
+<dd><p>Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v3_mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Dense gnomAD v3 MatrixTable filtered to predetermined sites.</p></li>
+<li><p><strong>v4_mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Dense gnomAD v4 MatrixTable filtered to predetermined sites.</p></li>
+<li><p><strong>bi_allelic_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to bi-allelic variants.</p></li>
+<li><p><strong>min_af</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum variant allele frequency to retain variant in QC MatrixTable.</p></li>
+<li><p><strong>min_callrate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum variant callrate to retain variant in QC MatrixTable.</p></li>
+<li><p><strong>min_inbreeding_coeff_threshold</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum site inbreeding coefficient to
+retain variant in QC MatrixTable.</p></li>
+<li><p><strong>ld_r2</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – LD-pruning cutoff.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to repartition the MT to before LD
+pruning.</p></li>
+<li><p><strong>block_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Block size parameter to use for LD pruning.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable of sites that pass QC filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_meta_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.</span></span><span class="sig-name descname"><span class="pre">generate_qc_meta_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/generate_qc_mt.html#generate_qc_meta_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.generate_qc_meta_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Combine v3 and v4 sample metadata into a single Table for relatedness and population inference.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Table with v3 and v4 sample metadata</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.generate_qc_mt.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.generate_qc_mt.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/generate_qc_mt.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.generate_qc_mt.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create a dense MT of a diverse set of variants for relatedness/ancestry PCA.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_sample_qc_metadata_ht_genomes.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="hard_filters.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.hard_filters" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

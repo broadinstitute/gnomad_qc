@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_release_utils &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.create_release.make_var_annot_hists" href="make_var_annot_hists.html" />
+    <link rel="prev" title="gnomad_qc.v4.create_release.create_release_sites_ht" href="create_release_sites_ht.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">create_release</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_combined_faf_release_ht.html">create_combined_faf_release_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_de_novo_release.html">create_de_novo_release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_false_dup_liftover.html">create_false_dup_liftover</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_sites_ht.html">create_release_sites_ht</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_release_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="make_var_annot_hists.html">make_var_annot_hists</a></li>
+<li class="toctree-l4"><a class="reference internal" href="validate_and_export_vcf.html">validate_and_export_vcf</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.create_release</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_release_utils</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/create_release/create_release_utils.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-create-release-create-release-utils">
+<h1>gnomad_qc.v4.create_release.create_release_utils<a class="headerlink" href="#gnomad-qc-v4-create-release-create-release-utils" title="Permalink to this heading"></a></h1>
+<p>Common utils for creating gnomAD v4 exomes and genomes releases.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_utils.remove_missing_vep_fields" title="gnomad_qc.v4.create_release.create_release_utils.remove_missing_vep_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_utils.remove_missing_vep_fields</span></code></a>(...)</p></td>
+<td><p>Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.create_release.create_release_utils"></span><p>Common utils for creating gnomAD v4 exomes and genomes releases.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_utils.remove_missing_vep_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_utils.</span></span><span class="sig-name descname"><span class="pre">remove_missing_vep_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vep_expr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_utils.html#remove_missing_vep_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_utils.remove_missing_vep_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.</p>
+<p>See <a class="reference external" href="https://github.com/broadinstitute/gnomad_production/issues/936">https://github.com/broadinstitute/gnomad_production/issues/936</a> for more
+information.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vep_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>) – StructExpression containing VEP 105 annotations.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>StructExpression containing VEP 105 annotations with missing fields
+removed.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_release_sites_ht.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.create_release.create_release_sites_ht" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="make_var_annot_hists.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.create_release.make_var_annot_hists" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

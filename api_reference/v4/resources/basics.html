@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.resources.basics &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.resources.constants" href="constants.html" />
+    <link rel="prev" title="gnomad_qc.v4.resources.assessment" href="assessment.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">resources</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotations.html">annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="assessment.html">assessment</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">basics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="constants.html">constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="meta.html">meta</a></li>
+<li class="toctree-l4"><a class="reference internal" href="release.html">release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sample_qc.html">sample_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="variant_qc.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.resources</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.resources.basics</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/resources/basics.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-resources-basics">
+<h1>gnomad_qc.v4.resources.basics<a class="headerlink" href="#gnomad-qc-v4-resources-basics" title="Permalink to this heading"></a></h1>
+<p>Script containing generic resources.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.get_gnomad_v4_vds" title="gnomad_qc.v4.resources.basics.get_gnomad_v4_vds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.get_gnomad_v4_vds</span></code></a>([...])</p></td>
+<td><p>Get gnomAD v4 data with desired filtering and metadata annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.get_gnomad_v4_genomes_vds" title="gnomad_qc.v4.resources.basics.get_gnomad_v4_genomes_vds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.get_gnomad_v4_genomes_vds</span></code></a>([...])</p></td>
+<td><p>Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.qc_temp_prefix" title="gnomad_qc.v4.resources.basics.qc_temp_prefix"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.qc_temp_prefix</span></code></a>([...])</p></td>
+<td><p>Return path to temporary QC bucket.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.get_checkpoint_path" title="gnomad_qc.v4.resources.basics.get_checkpoint_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.get_checkpoint_path</span></code></a>(name)</p></td>
+<td><p>Create a checkpoint path for Table or MatrixTable.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.get_logging_path" title="gnomad_qc.v4.resources.basics.get_logging_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.get_logging_path</span></code></a>(name)</p></td>
+<td><p>Create a path for Hail log files.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.add_meta" title="gnomad_qc.v4.resources.basics.add_meta"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.add_meta</span></code></a>(mt[, ...])</p></td>
+<td><p>Add metadata to MT in 'meta_name' column.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.basics.calling_intervals" title="gnomad_qc.v4.resources.basics.calling_intervals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.basics.calling_intervals</span></code></a>(...)</p></td>
+<td><p>Return path to capture intervals Table.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.resources.basics"></span><p>Script containing generic resources.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.get_gnomad_v4_vds">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">get_gnomad_v4_vds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_hard_filtered_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_hard_filtered_samples_no_sex</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">high_quality_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_controls</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">controls_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_samples_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">autosomes_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_chr_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_variant_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_intervals</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_reference_blocks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_dead_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotate_meta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entries_to_keep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotate_het_non_ref</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_variant_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">naive_coalesce_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#get_gnomad_v4_vds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.get_gnomad_v4_vds" title="Permalink to this definition"></a></dt>
+<dd><p>Get gnomAD v4 data with desired filtering and metadata annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Perform split on VDS - Note: this will perform a split on the VDS
+rather than grab an already split VDS.</p></li>
+<li><p><strong>remove_hard_filtered_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to remove samples that failed hard
+filters (only relevant after hard filtering is complete).</p></li>
+<li><p><strong>remove_hard_filtered_samples_no_sex</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to remove samples that failed
+non sex inference hard filters (only relevant after pre-sex imputation hard
+filtering is complete).</p></li>
+<li><p><strong>high_quality_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to only high quality samples
+(only relevant after outlier filtering is complete).</p></li>
+<li><p><strong>keep_controls</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to keep control samples when filtering the VDS to
+a subset of samples.</p></li>
+<li><p><strong>release_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to only samples available for
+release (can only be used if metadata is present).</p></li>
+<li><p><strong>controls_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to only control samples.</p></li>
+<li><p><strong>filter_samples_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table of samples to filter the VDS to.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the test VDS instead of the full v4 VDS.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional argument to read the VDS with a specific number of
+partitions.</p></li>
+<li><p><strong>filter_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]) – Optional argument to filter the VDS to specific partitions.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Set</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]) – Optional argument to filter the VDS to a specific chromosome(s).</p></li>
+<li><p><strong>autosomes_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to autosomes only. Default is
+False.</p></li>
+<li><p><strong>sex_chr_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to sex chromosomes only. Default is
+False.</p></li>
+<li><p><strong>filter_variant_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional argument to filter the VDS to a specific set of
+variants. Only supported when splitting the VDS.</p></li>
+<li><p><strong>filter_intervals</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/types.html#hail.expr.types.tinterval" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tinterval</span></code></a>]]]) – Optional argument to filter the VDS to specific intervals.</p></li>
+<li><p><strong>split_reference_blocks</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to split the reference data at the edges of
+the intervals defined by <cite>filter_intervals</cite>. Default is True.</p></li>
+<li><p><strong>remove_dead_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to remove dead alleles from the VDS when
+removing withdrawn UKB samples. Default is True.</p></li>
+<li><p><strong>annotate_meta</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to annotate the VDS with the sample QC metadata.
+Default is False.</p></li>
+<li><p><strong>entries_to_keep</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Optional argument to keep only specific entries in the
+returned VDS. If splitting the VDS, use the global entries (e.g. ‘GT’) instead
+of the local entries (e.g. ‘LGT’) to keep.</p></li>
+<li><p><strong>annotate_het_non_ref</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to annotate non reference heterozygotes (as
+‘_het_non_ref’) to the variant data. Default is False.</p></li>
+<li><p><strong>checkpoint_variant_data</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to checkpoint the variant data MT after
+splitting and filtering. Default is False.</p></li>
+<li><p><strong>naive_coalesce_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional argument to coalesce the VDS to a
+specific number of partitions using naive coalesce.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 dataset with chosen annotations and filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.get_gnomad_v4_genomes_vds">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">get_gnomad_v4_genomes_vds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_hard_filtered_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotate_meta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">autosomes_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_chr_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_variant_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_intervals</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split_reference_blocks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">entries_to_keep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotate_het_non_ref</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">naive_coalesce_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_samples_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#get_gnomad_v4_genomes_vds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.get_gnomad_v4_genomes_vds" title="Permalink to this definition"></a></dt>
+<dd><p>Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Perform split on VDS - Note: this will perform a split on the VDS
+rather than grab an already split VDS.</p></li>
+<li><p><strong>remove_hard_filtered_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to remove samples that failed hard
+filters (only relevant after sample QC).</p></li>
+<li><p><strong>release_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to only samples available for
+release (can only be used if metadata is present).</p></li>
+<li><p><strong>annotate_meta</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to add v4 genomes metadata to VDS variant_data in
+‘meta’ column.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the test VDS instead of the full v4 genomes VDS.</p></li>
+<li><p><strong>filter_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]) – Optional argument to filter the VDS to specific partitions
+in the provided list.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Set</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code>]) – Optional argument to filter the VDS to a specific chromosome(s).</p></li>
+<li><p><strong>autosomes_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to autosomes only. Default is
+False.</p></li>
+<li><p><strong>sex_chr_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the VDS to sex chromosomes only. Default is
+False.</p></li>
+<li><p><strong>filter_variant_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional argument to filter the VDS to a specific set of
+variants. Only supported when splitting the VDS.</p></li>
+<li><p><strong>filter_intervals</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/types.html#hail.expr.types.tinterval" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tinterval</span></code></a>]]]) – Optional argument to filter the VDS to specific intervals.</p></li>
+<li><p><strong>split_reference_blocks</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to split the reference data at the edges of
+the intervals defined by <cite>filter_intervals</cite>. Default is True.</p></li>
+<li><p><strong>entries_to_keep</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Optional argument to keep only specific entries in the
+returned VDS. If splitting the VDS, use the global entries (e.g. ‘GT’) instead
+of the local entries (e.g. ‘LGT’) to keep.</p></li>
+<li><p><strong>annotate_het_non_ref</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to annotate non reference heterozygotes (as
+‘_het_non_ref’) to the variant data. Default is False.</p></li>
+<li><p><strong>naive_coalesce_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional argument to coalesce the VDS to a
+specific number of partitions using naive coalesce.</p></li>
+<li><p><strong>filter_samples_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table of samples to filter the VDS to.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 genomes VariantDataset with chosen annotations and filters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.qc_temp_prefix">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">qc_temp_prefix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#qc_temp_prefix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.qc_temp_prefix" title="Permalink to this definition"></a></dt>
+<dd><p>Return path to temporary QC bucket.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of annotation path to return.</p></li>
+<li><p><strong>data_type</strong> – One of ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to bucket with temporary QC data</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.get_checkpoint_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">get_checkpoint_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#get_checkpoint_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.get_checkpoint_path" title="Permalink to this definition"></a></dt>
+<dd><p>Create a checkpoint path for Table or MatrixTable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of intermediate Table/MatrixTable</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of annotation path to return</p></li>
+<li><p><strong>mt</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether path is for a MatrixTable, default is False</p></li>
+<li><p><strong>name</strong> – </p></li>
+<li><p><strong>mt</strong> – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Output checkpoint path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.get_logging_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">get_logging_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#get_logging_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.get_logging_path" title="Permalink to this definition"></a></dt>
+<dd><p>Create a path for Hail log files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name of log file</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of annotation path to return</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Output log path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.add_meta">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">add_meta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'meta'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#add_meta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.add_meta" title="Permalink to this definition"></a></dt>
+<dd><p>Add metadata to MT in ‘meta_name’ column.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – MatrixTable to which ‘meta_name’ annotation should be added</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+<li><p><strong>meta_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable with metadata added in a ‘meta’ column</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.basics.calling_intervals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.basics.</span></span><span class="sig-name descname"><span class="pre">calling_intervals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">interval_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_interval_padding</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/basics.html#calling_intervals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.basics.calling_intervals" title="Permalink to this definition"></a></dt>
+<dd><p>Return path to capture intervals Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>interval_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – One of ‘ukb’, ‘broad’, ‘intersection’ or ‘union’.</p></li>
+<li><p><strong>calling_interval_padding</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Padding around calling intervals. Available
+options are 0 or 50.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">TableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Calling intervals resource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="assessment.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.resources.assessment" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="constants.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.resources.constants" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.assessment.calculate_per_sample_stats &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.assessment.summary_stats" href="summary_stats.html" />
+    <link rel="prev" title="gnomad_qc.v4.assessment" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">assessment</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">calculate_per_sample_stats</a></li>
+<li class="toctree-l4"><a class="reference internal" href="summary_stats.html">summary_stats</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.assessment</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.assessment.calculate_per_sample_stats</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/assessment/calculate_per_sample_stats.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-assessment-calculate-per-sample-stats">
+<h1>gnomad_qc.v4.assessment.calculate_per_sample_stats<a class="headerlink" href="#gnomad-qc-v4-assessment-calculate-per-sample-stats" title="Permalink to this heading"></a></h1>
+<p>Script to get per-sample variant counts and aggregate sample statistics.</p>
+<p>The following per-sample variant counts (including heterozygous, homozygous, non-ref, singletons etc.) can be calculated:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Total number of variants</p></li>
+<li><p>Number of variants that pass all variant qc filters</p></li>
+<li><p>Number of variants in UK Biobank capture regions</p></li>
+<li><p>Number of variants in Broad capture regions</p></li>
+<li><p>Number of variants in the intersect of UK Biobank and Broad capture regions</p></li>
+<li><p>Number of variants in the union of UK Biobank and Broad capture regions</p></li>
+<li><p>Number of rare variants (adj AF &lt;0.1%)</p></li>
+<li><p>Number of loss-of-function variants</p></li>
+<li><p>Number of missense variants</p></li>
+<li><p>Number of synonymous variants</p></li>
+</ul>
+</div></blockquote>
+<p>The following aggregate sample stats of all of the above per-sample counts can be
+computed:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Mean</p></li>
+<li><p>Quantiles (0.0, 0.25, 0.5, 0.75, 1.0)</p></li>
+</ul>
+</div></blockquote>
+<p>Aggregated statistics can also be computed by ancestry.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.SUM_STAT_FILTERS" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.SUM_STAT_FILTERS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.SUM_STAT_FILTERS</span></code></a></p></td>
+<td><p>Dictionary of default filter settings for summary stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTERS" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTERS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTERS</span></code></a></p></td>
+<td><p>Dictionary of common filter settings to use for most summary stats.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTER_COMBOS" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTER_COMBOS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTER_COMBOS</span></code></a></p></td>
+<td><p>List of common variant filter combinations to use for summary stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTERS_FOR_COMBO" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTERS_FOR_COMBO"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTERS_FOR_COMBO</span></code></a></p></td>
+<td><p>Dictionary of an additional filter group to use for loss-of-function filter combinations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTER_COMBOS" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTER_COMBOS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTER_COMBOS</span></code></a></p></td>
+<td><p>List of loss-of-function consequence combinations to use for summary stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.MAP_FILTER_FIELD_TO_META" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.MAP_FILTER_FIELD_TO_META"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.MAP_FILTER_FIELD_TO_META</span></code></a></p></td>
+<td><p>Dictionary to rename keys in <cite>SUM_STAT_FILTERS</cite>, <cite>COMMON_FILTERS</cite>, or <cite>LOF_FILTERS_FOR_COMBO</cite> to final metadata keys.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.process_test_args" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.process_test_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.process_test_args</span></code></a>(...)</p></td>
+<td><p>Process test arguments for the per-sample stats pipeline.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.get_capture_filter_exprs" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.get_capture_filter_exprs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.get_capture_filter_exprs</span></code></a>(ht)</p></td>
+<td><p>Get filter expressions for UK Biobank and Broad capture regions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.get_summary_stats_filter_groups_ht" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.get_summary_stats_filter_groups_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.get_summary_stats_filter_groups_ht</span></code></a>(ht)</p></td>
+<td><p>Create Table annotated with an array of booleans indicating whether a variant belongs to certain filter groups.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.load_mt_for_sample_counts" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.load_mt_for_sample_counts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.load_mt_for_sample_counts</span></code></a>(...)</p></td>
+<td><p>Load VDS variant data and prepare MatrixTable for computing per-sample stats counts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.annotate_per_sample_stat_combinations" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.annotate_per_sample_stat_combinations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.annotate_per_sample_stat_combinations</span></code></a>(ht)</p></td>
+<td><p>Annotate the per-sample stats Table with ratios of other per-sample stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_ht" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_ht</span></code></a>(mt)</p></td>
+<td><p>Create Table of Hail's sample_qc output broken down by requested variant groupings.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.create_intermediate_mt_for_sample_counts" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.create_intermediate_mt_for_sample_counts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.create_intermediate_mt_for_sample_counts</span></code></a>(mt)</p></td>
+<td><p>Create intermediate MatrixTable for computing per-sample stats counts.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_from_intermediate_ht" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_from_intermediate_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_from_intermediate_ht</span></code></a>(ht)</p></td>
+<td><p>Create Table of sample QC metrics broken down by requested variant groupings.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.combine_autosome_and_sex_chr_stats" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.combine_autosome_and_sex_chr_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.combine_autosome_and_sex_chr_stats</span></code></a>(...)</p></td>
+<td><p>Combine autosomal and sex chromosome per-sample stats Tables.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.compute_agg_sample_stats" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.compute_agg_sample_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.compute_agg_sample_stats</span></code></a>(ht)</p></td>
+<td><p>Compute aggregate statistics for per-sample QC metrics.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.get_pipeline_resources" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.get_pipeline_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.get_pipeline_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the per-sample stats pipeline.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.main" title="gnomad_qc.v4.assessment.calculate_per_sample_stats.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.main</span></code></a>(args)</p></td>
+<td><p>Collect per-sample variant counts and aggregate sample statistics.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.assessment.calculate_per_sample_stats"></span><p>Script to get per-sample variant counts and aggregate sample statistics.</p>
+<p>The following per-sample variant counts (including heterozygous, homozygous, non-ref, singletons etc.) can be calculated:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Total number of variants</p></li>
+<li><p>Number of variants that pass all variant qc filters</p></li>
+<li><p>Number of variants in UK Biobank capture regions</p></li>
+<li><p>Number of variants in Broad capture regions</p></li>
+<li><p>Number of variants in the intersect of UK Biobank and Broad capture regions</p></li>
+<li><p>Number of variants in the union of UK Biobank and Broad capture regions</p></li>
+<li><p>Number of rare variants (adj AF &lt;0.1%)</p></li>
+<li><p>Number of loss-of-function variants</p></li>
+<li><p>Number of missense variants</p></li>
+<li><p>Number of synonymous variants</p></li>
+</ul>
+</div></blockquote>
+<p>The following aggregate sample stats of all of the above per-sample counts can be
+computed:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Mean</p></li>
+<li><p>Quantiles (0.0, 0.25, 0.5, 0.75, 1.0)</p></li>
+</ul>
+</div></blockquote>
+<p>Aggregated statistics can also be computed by ancestry.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.SUM_STAT_FILTERS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">SUM_STAT_FILTERS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'capture':</span> <span class="pre">['ukb',</span> <span class="pre">'broad',</span> <span class="pre">'ukb_broad_intersect',</span> <span class="pre">'ukb_broad_union'],</span> <span class="pre">'csq':</span> <span class="pre">['missense_variant',</span> <span class="pre">'synonymous_variant',</span> <span class="pre">'intron_variant',</span> <span class="pre">'intergenic_variant'],</span> <span class="pre">'csq_set':</span> <span class="pre">['lof',</span> <span class="pre">'coding',</span> <span class="pre">'non_coding'],</span> <span class="pre">'lof_csq':</span> <span class="pre">{'frameshift_variant',</span> <span class="pre">'splice_acceptor_variant',</span> <span class="pre">'splice_donor_variant',</span> <span class="pre">'stop_gained'},</span> <span class="pre">'max_af':</span> <span class="pre">[0.0001,</span> <span class="pre">0.001,</span> <span class="pre">0.01],</span> <span class="pre">'variant_qc':</span> <span class="pre">['none',</span> <span class="pre">'pass']}</span></em><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.SUM_STAT_FILTERS" title="Permalink to this definition"></a></dt>
+<dd><p>Dictionary of default filter settings for summary stats.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTERS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">COMMON_FILTERS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'capture':</span> <span class="pre">['ukb_broad_intersect'],</span> <span class="pre">'variant_qc':</span> <span class="pre">['pass']}</span></em><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTERS" title="Permalink to this definition"></a></dt>
+<dd><p>Dictionary of common filter settings to use for most summary stats.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTER_COMBOS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">COMMON_FILTER_COMBOS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[['variant_qc'],</span> <span class="pre">['variant_qc',</span> <span class="pre">'capture']]</span></em><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.COMMON_FILTER_COMBOS" title="Permalink to this definition"></a></dt>
+<dd><p>List of common variant filter combinations to use for summary stats.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTERS_FOR_COMBO">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">LOF_FILTERS_FOR_COMBO</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'lof_csq_set':</span> <span class="pre">['lof'],</span> <span class="pre">'loftee_HC':</span> <span class="pre">['HC'],</span> <span class="pre">'loftee_flags':</span> <span class="pre">['no_flags',</span> <span class="pre">'with_flags'],</span> <span class="pre">'loftee_label':</span> <span class="pre">['HC',</span> <span class="pre">'LC']}</span></em><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTERS_FOR_COMBO" title="Permalink to this definition"></a></dt>
+<dd><p>Dictionary of an additional filter group to use for loss-of-function filter
+combinations.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTER_COMBOS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">LOF_FILTER_COMBOS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">[['lof_csq',</span> <span class="pre">'loftee_label'],</span> <span class="pre">['lof_csq_set',</span> <span class="pre">'loftee_label'],</span> <span class="pre">['lof_csq_set',</span> <span class="pre">'loftee_HC',</span> <span class="pre">'loftee_flags'],</span> <span class="pre">['lof_csq',</span> <span class="pre">'loftee_HC',</span> <span class="pre">'loftee_flags']]</span></em><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.LOF_FILTER_COMBOS" title="Permalink to this definition"></a></dt>
+<dd><p>List of loss-of-function consequence combinations to use for summary stats.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.MAP_FILTER_FIELD_TO_META">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">MAP_FILTER_FIELD_TO_META</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'lof_csq':</span> <span class="pre">'csq',</span> <span class="pre">'lof_csq_set':</span> <span class="pre">'csq_set',</span> <span class="pre">'loftee_HC':</span> <span class="pre">'loftee_label'}</span></em><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.MAP_FILTER_FIELD_TO_META" title="Permalink to this definition"></a></dt>
+<dd><p>Dictionary to rename keys in <cite>SUM_STAT_FILTERS</cite>, <cite>COMMON_FILTERS</cite>, or
+<cite>LOF_FILTERS_FOR_COMBO</cite> to final metadata keys.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.process_test_args">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">process_test_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_gene</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_difficult_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">create_filter_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">create_intermediate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">create_per_sample_counts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_intermediate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_chr_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">autosomes_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#process_test_args"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.process_test_args" title="Permalink to this definition"></a></dt>
+<dd><p>Process test arguments for the per-sample stats pipeline.</p>
+<p>Return the intervals and partitions to filter to for testing or raise a ValueError
+if the test argument combination is invalid.</p>
+<p>The test argument combination is invalid if:</p>
+<blockquote>
+<div><ul>
+<li><p><cite>create_filter_group</cite> is True, and:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><cite>test_partitions</cite> and <cite>create_per_sample_counts</cite> are both True because the
+partitions in the release HT and the raw VDS are different.</p></li>
+<li><p><cite>test_difficult_partitions</cite> is True because difficult partitions are only
+relevant for testing per-sample counts.</p></li>
+<li><p><cite>test_dataset</cite> is True and <cite>create_per_sample_counts</cite> is False because the
+test dataset is only relevant when testing per-sample counts.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><cite>test_difficult_partitions</cite> is True, and:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><cite>data_type</cite> is “genomes” because difficult partitions are only relevant for
+the raw exome VDS.</p></li>
+<li><p><cite>test_dataset</cite> or <cite>test_partitions</cite> is True because difficult partitions
+only apply to the full exomes VDS.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><cite>test_gene</cite> is True, and <cite>test_partitions</cite> or <cite>test_difficult_partitions</cite> is
+True because there is no (or likely no) overlap in partitions between the
+gene test intervals and the test partitions or difficult partitions.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of the dataset.</p></li>
+<li><p><strong>test_dataset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether to use the test dataset instead of
+the full dataset. Default is False.</p></li>
+<li><p><strong>test_gene</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether to filter the dataset to PCSK9 and/or
+TRPC5 and ZFY (depends on values of <cite>sex_chr_only</cite> and <cite>autosomes_only</cite> because
+PCSK9 is on chr1 and TRPC5 is on chrX and ZFY is on chrY). Default is False.</p></li>
+<li><p><strong>test_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]) – Optional list of partitions to test on. Default is None.</p></li>
+<li><p><strong>test_difficult_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether to test on difficult
+partitions. For exomes only. Default is False.</p></li>
+<li><p><strong>create_filter_group</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether the filter group HT is being
+created. Default is False.</p></li>
+<li><p><strong>create_intermediate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether the intermediate MT is being
+created. Default is False.</p></li>
+<li><p><strong>create_per_sample_counts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether the per-sample counts HT
+is being created. Default is False.</p></li>
+<li><p><strong>use_intermediate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether the intermediate MT is being
+used. Default is False.</p></li>
+<li><p><strong>sex_chr_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether the dataset is being filtered to
+sex chromosomes only. Default is False.</p></li>
+<li><p><strong>autosomes_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether the dataset is being filtered to
+autosomes only. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/types.html#hail.expr.types.tinterval" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tinterval</span></code></a>]], <code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of filter intervals and partitions to filter to for testing.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.get_capture_filter_exprs">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">get_capture_filter_exprs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ukb_capture</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">broad_capture</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#get_capture_filter_exprs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.get_capture_filter_exprs" title="Permalink to this definition"></a></dt>
+<dd><p>Get filter expressions for UK Biobank and Broad capture regions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing variant annotations. The following annotations are
+required: ‘region_flags’.</p></li>
+<li><p><strong>ukb_capture</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Expression for variants that are in UKB capture intervals.
+Default is True.</p></li>
+<li><p><strong>broad_capture</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Expression for variants that are in Broad capture intervals.
+Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of filter expressions for UK Biobank and Broad capture regions.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.get_summary_stats_filter_groups_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">get_summary_stats_filter_groups_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">capture_regions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_canonical</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_mane</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rare_variants_afs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rare_variants_grpmax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rare_variant_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#get_summary_stats_filter_groups_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.get_summary_stats_filter_groups_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create Table annotated with an array of booleans indicating whether a variant belongs to certain filter groups.</p>
+<p>A ‘filter_groups’ annotation is added to the Table containing an ArrayExpression of
+BooleanExpressions for the following filter groups:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>All variants</p></li>
+<li><p>Variants that pass all variant QC filters</p></li>
+<li><p>Variants in UK Biobank capture regions</p></li>
+<li><p>Variants in Broad capture regions</p></li>
+<li><p>Variants in the intersect of UK Biobank and Broad capture regions</p></li>
+<li><p>Variants in the union of UK Biobank and Broad capture regions</p></li>
+<li><p>Variant consequence: loss-of-function, missense, and synonymous</p></li>
+<li><p>Rare variants with allele frequencies less than the thresholds in
+<cite>rare_variants_afs</cite></p></li>
+</ul>
+</div></blockquote>
+<p>A ‘filter_group_meta’ global annotation is added to the Table containing an array
+of dictionaries detailing the filters used in each filter group.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing variant annotations. The following annotations are
+required: ‘freq’, ‘filters’, ‘region_flags’, and ‘vep’.</p></li>
+<li><p><strong>capture_regions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include filtering groups for variants in UK
+Biobank and Broad capture regions. Default is False.</p></li>
+<li><p><strong>vep_canonical</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to only canonical transcripts. If trying
+count variants in all transcripts, set it to False. Default is True.</p></li>
+<li><p><strong>vep_mane</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to only MANE transcripts. Default is False.</p></li>
+<li><p><strong>rare_variants_afs</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]) – Optional list of allele frequency thresholds to use for
+rare variant filtering.</p></li>
+<li><p><strong>rare_variants_grpmax</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]]) – Optional list of grpmax thresholds to use for rare
+variant filtering.</p></li>
+<li><p><strong>rare_variant_mode</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to only include the rare variant filter groups
+and variant_qc as the common filter groups. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing an ArrayExpression of filter groups for summary stats.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.load_mt_for_sample_counts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">load_mt_for_sample_counts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_group_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adjust_ploidy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#load_mt_for_sample_counts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.load_mt_for_sample_counts" title="Permalink to this definition"></a></dt>
+<dd><p>Load VDS variant data and prepare MatrixTable for computing per-sample stats counts.</p>
+<p>This function loads the VDS for the requested data type and prepares the variant
+data MatrixTable for computing per-sample stats counts. It does the following:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Filters to non-ref genotypes (likely unnecessary if the MT is already a
+variant data MT).</p></li>
+<li><p>Annotates the rows with the filter group metadata from <cite>filter_group_ht</cite>.</p></li>
+<li><p>Performs the high AB het -&gt; hom alt adjustment of GT, and adds a
+‘high_ab_het_ref’ annotation.</p></li>
+<li><p>Filters to <cite>adj</cite> genotypes and selects only the necessary entries for
+downstream processing.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of the MatrixTable to return. Either ‘genomes’ or
+‘exomes’.</p></li>
+<li><p><strong>filter_group_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing filter group metadata from
+<cite>get_summary_stats_filter_groups_ht</cite>.</p></li>
+<li><p><strong>adjust_ploidy</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to adjust ploidy. If <cite>data_type</cite> is ‘exomes’, ploidy
+is adjusted before determining the adj annotation. If <cite>data_type</cite> is ‘genomes’,
+the ploidy adjustment is done after determining the adj annotation. This
+difference is only added for consistency with v3.1, where we added the adj
+annotation before adjusting ploidy, but the correct thing to do is to adjust
+ploidy before determining the adj annotation. Default is False.</p></li>
+<li><p><strong>kwargs</strong> – Additional keyword arguments to pass to the VDS loading function.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable prepared for computing per-sample stats counts.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.annotate_per_sample_stat_combinations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">annotate_per_sample_stat_combinations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sums</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'n_indel':</span> <span class="pre">['n_insertion',</span> <span class="pre">'n_deletion'],</span> <span class="pre">'n_snp':</span> <span class="pre">['n_transition',</span> <span class="pre">'n_transversion']}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diffs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ratios</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'r_het_hom_var':</span> <span class="pre">('n_het',</span> <span class="pre">'n_hom_var'),</span> <span class="pre">'r_insertion_deletion':</span> <span class="pre">('n_insertion',</span> <span class="pre">'n_deletion'),</span> <span class="pre">'r_ti_tv':</span> <span class="pre">('n_transition',</span> <span class="pre">'n_transversion'),</span> <span class="pre">'r_ti_tv_singleton':</span> <span class="pre">('n_singleton_ti',</span> <span class="pre">'n_singleton_tv')}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">additional_stat_combos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#annotate_per_sample_stat_combinations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.annotate_per_sample_stat_combinations" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate the per-sample stats Table with ratios of other per-sample stats.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table containing per-sample stats.</p></li>
+<li><p><strong>sums</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dictionary of per-sample stats to sum. The key is the name of the sum
+and the value is a List of the stats to sum. Default is to sum the number of
+insertions and deletions to get the total number of indels, and the number of
+transitions and transversions to get the total number of transitions.</p></li>
+<li><p><strong>diffs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dictionary of per-sample stats to subtract. The key is the name of the
+difference and the value is a tuple of the stats to subtract, where the second
+stat is subtracted from the first. Default is {}.</p></li>
+<li><p><strong>ratios</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Dictionary of ratios to compute. The key is the name of the ratio
+and the value is a tuple of the numerator and denominator per-sample stats.
+Default is to compute the transition/transversion ratio, the singleton
+transition/transversion ratio, the heterozygous/homozygous variant ratio, and
+the insertion/deletion ratio.</p></li>
+<li><p><strong>additional_stat_combos</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Callable</span></code>]]) – Optional dictionary of additional per-sample stat
+combinations to compute. The key is the name of the stat and the value is a
+function that takes the per-sample stats struct and returns the computed stat.
+Default is {}.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing per-sample stats annotated with the requested ratios.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">create_per_sample_counts_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gq_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(60,)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dp_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(20,</span> <span class="pre">30)</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#create_per_sample_counts_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create Table of Hail’s sample_qc output broken down by requested variant groupings.</p>
+<p>Useful for finding the number of variants per sample, either all variants, or
+variants fall into specific capture regions, or variants that are rare
+(adj AF &lt;0.1%), or variants categorized by predicted consequences in all, canonical
+or mane transcripts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable containing variant data. Must have multi-allelic sites
+split.</p></li>
+<li><p><strong>gq_bins</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Tuple of GQ bins to use for filtering. Default is (60,).</p></li>
+<li><p><strong>dp_bins</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Tuple of DP bins to use for filtering. Default is (20, 30).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing per-sample variant counts.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.create_intermediate_mt_for_sample_counts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">create_intermediate_mt_for_sample_counts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gq_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(60,)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dp_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">(20,</span> <span class="pre">30)</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#create_intermediate_mt_for_sample_counts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.create_intermediate_mt_for_sample_counts" title="Permalink to this definition"></a></dt>
+<dd><p>Create intermediate MatrixTable for computing per-sample stats counts.</p>
+<p>This function creates an intermediate Table for use in
+<cite>create_per_sample_counts_ht</cite>. It does the following:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Converts the MT to a HT with a <cite>sample_idx_by_stat</cite> row annotation that is
+a struct of arrays of sample indices for each genotype level stat. The stats
+are: non_ref, het, hom_var, high_ab_het_ref, over_gq_{gq}, and over_dp_{dp}.</p></li>
+<li><p>Changes the <cite>filter_groups</cite> annotation from an array of booleans to an array
+of structs where <cite>group_filter</cite> is the original filter group boolean value,
+mapping to the filter_group_meta, and adds boolean annotations to the struct
+indicating whether the variant is included in each of the following variant
+level stats: singleton, singleton_ti, singleton_tv, insertion, deletion,
+transition, and transversion.</p></li>
+</ul>
+</div></blockquote>
+<p>This structure creates a large intermediate Table that allows for memory efficient
+computation of per-sample stats counts. Smaller datasets do not require this
+intermediate step and can compute per-sample stats counts directly from the MT and
+with the use of Hail’s <cite>vmt_sample_qc</cite> function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable containing variant data. Must have multi-allelic sites
+split.</p></li>
+<li><p><strong>gq_bins</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Tuple of GQ bins to use for filtering. Default is (60,).</p></li>
+<li><p><strong>dp_bins</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Tuple of DP bins to use for filtering. Default is (20, 30).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Intermediate Table for computing per-sample stats counts.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_from_intermediate_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">create_per_sample_counts_from_intermediate_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#create_per_sample_counts_from_intermediate_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.create_per_sample_counts_from_intermediate_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create Table of sample QC metrics broken down by requested variant groupings.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This function is memory intensive and should be run on a cluster with
+n1-highmem-8 workers. It also requires shuffling, so a cluster with all
+workers is recommended.</p>
+</div>
+<p>Takes an intermediate Table (returned by <cite>create_intermediate_mt_for_sample_counts</cite>)
+with an array of variant level stats by filter groups and an array of sample
+indices for each genotype level stat.</p>
+<p>This function restructures the Table a few times to get around memory errors that
+occur when trying to aggregate the Table directly.</p>
+<p>The following steps are taken:</p>
+<blockquote>
+<div><ul>
+<li><p>The Table is grouped by filter group (including all variant level stats) and
+aggregated to get the count of variants for each sample in each filter group.
+Leads to a Table where the number of rows is approximately the number of
+filter groups times the possible permutations of variant level stats.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Since this number can sometimes be too few partitions to get around the
+memory errors, we approximate a reasonable number of partitions as the
+number required to split the table into approximately 10,000 variants per
+partition.</p></li>
+<li><p>Then we artificially increase the number of aggregation groups by
+assigning a random group number to each variant, so that when the Table
+is grouped by both the filter group and the random group instead
+of only the filter group, the number of rows will be approximately the
+number of desired partitions.</p></li>
+<li><p>Therefore, the number of random groups is the ideal number of partitions
+divided by the number of possible filter groups.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Sample IDs are mapped to the sample indices and the Table is exploded so that
+each row is counts for a sample and a filter group. The number of rows in the
+Table is approximately the number of samples times the number of rows in the
+previous Table.</p></li>
+<li><p>Group the Table by sample to get a struct of the count of variants by sample
+QC metric for each sample in each filter group.</p></li>
+<li><p>Add sample QC stats that are combinations of other stats.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table containing variant data. Must have multi-allelic sites split.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing per-sample variant counts.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.combine_autosome_and_sex_chr_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">combine_autosome_and_sex_chr_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">autosome_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_chr_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#combine_autosome_and_sex_chr_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.combine_autosome_and_sex_chr_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Combine autosomal and sex chromosome per-sample stats Tables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>autosome_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing per-sample stats for autosomes.</p></li>
+<li><p><strong>sex_chr_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing per-sample stats for sex chromosomes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing combined per-sample stats.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.compute_agg_sample_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">compute_agg_sample_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_ancestry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_subset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#compute_agg_sample_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.compute_agg_sample_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Compute aggregate statistics for per-sample QC metrics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing sample QC metrics.</p></li>
+<li><p><strong>meta_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table containing sample metadata. Required if
+<cite>by_ancestry</cite> is True.</p></li>
+<li><p><strong>by_ancestry</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether to stratify by ancestry.</p></li>
+<li><p><strong>by_subset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Boolean indicating whether to stratify by subset. This is only
+working on “exomes” data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Struct of aggregate statistics for per-sample QC metrics.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.get_pipeline_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">get_pipeline_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_gene</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">autosomes_only</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sex_chr_only</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_intermediate_mt_for_sample_counts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_ancestry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by_subset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_suffix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#get_pipeline_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.get_pipeline_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the per-sample stats pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of the dataset.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather all resources for testing.</p></li>
+<li><p><strong>test_gene</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the test is being performed on specific gene(s).</p></li>
+<li><p><strong>autosomes_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather resources for autosomes only.</p></li>
+<li><p><strong>sex_chr_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather resources for sex chromosomes only.</p></li>
+<li><p><strong>use_intermediate_mt_for_sample_counts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use an intermediate MT for
+computing per-sample counts.</p></li>
+<li><p><strong>by_ancestry</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return resource for aggregate stats stratified by
+ancestry.</p></li>
+<li><p><strong>by_subset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return resource for aggregate stats stratified by
+subset.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite resources if they exist.</p></li>
+<li><p><strong>custom_suffix</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional custom suffix to add to the resource names.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+per-sample stats pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.assessment.calculate_per_sample_stats.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.assessment.calculate_per_sample_stats.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/assessment/calculate_per_sample_stats.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.assessment.calculate_per_sample_stats.main" title="Permalink to this definition"></a></dt>
+<dd><p>Collect per-sample variant counts and aggregate sample statistics.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.assessment" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="summary_stats.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.assessment.summary_stats" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

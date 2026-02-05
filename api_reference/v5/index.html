@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5 &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.annotations" href="annotations/index.html" />
+    <link rel="prev" title="gnomad_qc.v4.variant_qc.vqsr" href="../v4/variant_qc/vqsr.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">v5</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="configs/index.html">configs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="data_ingestion/index.html">data_ingestion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="resources/index.html">resources</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/api_reference/v5/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5">
+<h1>gnomad_qc.v5<a class="headerlink" href="#gnomad-qc-v5" title="Permalink to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="annotations/index.html">annotations</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="annotations/annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="annotations/compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="annotations/generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l2"><a class="reference internal" href="annotations/generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="configs/index.html">configs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="configs/validity_inputs_schema.html">validity_inputs_schema</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="data_ingestion/index.html">data_ingestion</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="data_ingestion/create_vds.html">create_vds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="data_ingestion/federated_validity_checks.html">federated_validity_checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="data_ingestion/field_md_to_html.html">field_md_to_html</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="resources/index.html">resources</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="resources/annotations.html">annotations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="resources/basics.html">basics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="resources/constants.html">constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="resources/meta.html">meta</a></li>
+<li class="toctree-l2"><a class="reference internal" href="resources/release.html">release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="resources/rwb_utils.html">rwb_utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="resources/sample_qc.html">sample_qc</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../v4/variant_qc/vqsr.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.variant_qc.vqsr" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="annotations/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.annotations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
