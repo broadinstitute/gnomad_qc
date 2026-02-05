@@ -586,6 +586,9 @@ def make_info_expr(
     # Add vep annotations to info dict
     vcf_info_dict["vep"] = t["vep"]
 
+    if "vep115" in t.row:
+        vcf_info_dict["vep115"] = t["vep115"]
+
     return vcf_info_dict
 
 
