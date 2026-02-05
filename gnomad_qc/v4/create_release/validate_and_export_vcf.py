@@ -215,8 +215,7 @@ def get_export_resources(
         input_resources={
             "create_release_sites_ht.py": {
                 "release_ht": release_sites(
-                    data_type=data_type,
-                    public=False,  # test=test
+                    data_type=data_type, public=False, test=test
                 )
             }
         },
