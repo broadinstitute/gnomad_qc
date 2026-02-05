@@ -96,12 +96,14 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
 REGION_FLAG_FIELDS = {
-    "exomes": REGION_FLAG_FIELDS
-    + [
-        "fail_interval_qc",
-        "outside_ukb_capture_region",
-        "outside_broad_capture_region",
-    ],
+    "exomes": (
+        REGION_FLAG_FIELDS
+        + [
+            "fail_interval_qc",
+            "outside_ukb_capture_region",
+            "outside_broad_capture_region",
+        ]
+    ),
     "genomes": REGION_FLAG_FIELDS,
     "joint": JOINT_REGION_FLAG_FIELDS,
 }
@@ -212,7 +214,10 @@ def get_export_resources(
         "--validate-release-ht",
         input_resources={
             "create_release_sites_ht.py": {
-                "release_ht": release_sites(data_type=data_type, test=test)
+                "release_ht": release_sites(
+                    data_type=data_type,
+                    public=False,  # test=test
+                )
             }
         },
         output_resources={
@@ -648,6 +653,10 @@ def prepare_ht_for_validation(
                 ht.vep, csq_fields=csq_fields, has_polyphen_sift=False
             ),
         }
+        if "vep115" in ht.row:
+            ann_expr["vep115"] = vep_struct_to_csq(
+                ht.vep115, csq_fields=VEP_CSQ_FIELDS["115"], has_polyphen_sift=True
+            )
 
     ht = ht.annotate(**ann_expr)
 
