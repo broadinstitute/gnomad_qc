@@ -58,6 +58,7 @@ from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
+from gnomad_qc.v4.create_release.create_release_utils import VEP_VERSIONS_TO_ADD
 from gnomad_qc.v4.resources.basics import get_logging_path, qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
     append_to_vcf_header_path,
@@ -215,7 +216,8 @@ def get_export_resources(
         input_resources={
             "create_release_sites_ht.py": {
                 "release_ht": release_sites(
-                    data_type=data_type, public=False, test=test
+                    data_type=data_type,
+                    public=False,  # test=test
                 )
             }
         },
@@ -585,8 +587,10 @@ def make_info_expr(
     # Add vep annotations to info dict
     vcf_info_dict["vep"] = t["vep"]
 
-    if "vep115" in t.row:
-        vcf_info_dict["vep115"] = t["vep115"]
+    # Get version from globals to determine if any additional VEP versions are included.
+    if t.version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[t.version]:
+            vcf_info_dict[f"vep{vep_version}"] = t[f"vep{vep_version}"]
 
     return vcf_info_dict
 
