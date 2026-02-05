@@ -216,8 +216,7 @@ def get_export_resources(
         input_resources={
             "create_release_sites_ht.py": {
                 "release_ht": release_sites(
-                    data_type=data_type,
-                    public=False,  # test=test
+                    data_type=data_type, public=False, test=test
                 )
             }
         },
@@ -659,10 +658,12 @@ def prepare_ht_for_validation(
                 ht.vep, csq_fields=csq_fields, has_polyphen_sift=False
             ),
         }
-        if "vep115" in ht.row:
-            ann_expr["vep115"] = vep_struct_to_csq(
-                ht.vep115, csq_fields=VEP_CSQ_FIELDS["115"], has_polyphen_sift=True
-            )
+        if ht.version in VEP_VERSIONS_TO_ADD:
+            for vep_version in VEP_VERSIONS_TO_ADD[ht.version]:
+                ann_expr[f"vep{vep_version}"] = vep_struct_to_csq(
+                    ht[f"vep{vep_version}"],
+                    csq_fields=VEP_CSQ_FIELDS[vep_version],
+                )
 
     ht = ht.annotate(**ann_expr)
 
