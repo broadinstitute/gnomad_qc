@@ -343,10 +343,8 @@ def get_config(
             vep_table_name = f"vep{vep_version}"
             if vep_table_name in tables_for_join:
                 config[vep_table_name] = {
-                    "ht": (get_vep(data_type=data_type, vep_version=vep_version).ht()),
-                    "path": (
-                        get_vep(data_type=data_type, vep_version=vep_version).path
-                    ),
+                    "ht": get_vep(data_type=data_type, vep_version=vep_version).ht(),
+                    "path": get_vep(data_type=data_type, vep_version=vep_version).path,
                     "select": [],
                     "custom_select": get_custom_vep_select(vep_version),
                     "custom_globals_select": get_custom_vep_globals_select(),
@@ -806,8 +804,8 @@ def get_select_global_fields(
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
-    select_globals = {}
     for t in tables_for_join:
+        select_globals = {}
         t_config = config.get(t)
         if "select_globals" in t_config:
             select_globals = get_select_fields(t_config["select_globals"], ht)
