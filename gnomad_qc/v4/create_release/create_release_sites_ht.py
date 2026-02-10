@@ -333,11 +333,7 @@ def get_config(
             "path": get_vep(data_type=data_type, vep_version=DEFAULT_VEP_VERSION).path,
             "select": ["vep"],
             "custom_select": get_custom_vep_select(DEFAULT_VEP_VERSION),
-            "select_globals": [
-                "vep_version",
-                "vep_help",
-                "vep_config",
-            ],
+            "custom_globals_select": get_custom_vep_globals_select(),
             "global_name": "vep_globals",
         }
 
@@ -347,17 +343,11 @@ def get_config(
             vep_table_name = f"vep{vep_version}"
             if vep_table_name in tables_for_join:
                 config[vep_table_name] = {
-                    "ht": (get_vep(data_type=data_type, vep_version=vep_version).ht()),
-                    "path": (
-                        get_vep(data_type=data_type, vep_version=vep_version).path
-                    ),
+                    "ht": get_vep(data_type=data_type, vep_version=vep_version).ht(),
+                    "path": get_vep(data_type=data_type, vep_version=vep_version).path,
                     "select": [],
                     "custom_select": get_custom_vep_select(vep_version),
-                    "select_globals": [
-                        "vep_version",
-                        "vep_help",
-                        "vep_config",
-                    ],
+                    "custom_globals_select": get_custom_vep_globals_select(),
                     "global_name": f"{vep_table_name}_globals",
                 }
 
@@ -587,25 +577,33 @@ def custom_filters_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_filters_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_filters_select_globals(
+    globals_expr: hl.expr.StructExpression,
+) -> Dict[str, hl.expr.Expression]:
     """
     Select filter HT globals for release dataset.
 
-    :param ht: Filters Hail Table.
+    :param globals_expr: Globals struct from a Filters Hail Table.
     :return: Select expression dict.
     """
     selects = {
         "filtering_model": hl.struct(
             **{
-                "filter_name": ht.filtering_model.filter_name,
-                "score_name": ht.filtering_model.score_name,
-                "snv_cutoff": ht.filtering_model.snv_cutoff.drop("bin_id"),
-                "indel_cutoff": ht.filtering_model.indel_cutoff.drop("bin_id"),
-                "snv_training_variables": ht.filtering_model.snv_training_variables,
-                "indel_training_variables": ht.filtering_model.indel_training_variables,
+                "filter_name": globals_expr.filtering_model.filter_name,
+                "score_name": globals_expr.filtering_model.score_name,
+                "snv_cutoff": globals_expr.filtering_model.snv_cutoff.drop("bin_id"),
+                "indel_cutoff": globals_expr.filtering_model.indel_cutoff.drop(
+                    "bin_id"
+                ),
+                "snv_training_variables": (
+                    globals_expr.filtering_model.snv_training_variables
+                ),
+                "indel_training_variables": (
+                    globals_expr.filtering_model.indel_training_variables
+                ),
             }
         ),
-        "inbreeding_coeff_cutoff": ht.inbreeding_coeff_cutoff,
+        "inbreeding_coeff_cutoff": globals_expr.inbreeding_coeff_cutoff,
     }
 
     return selects
@@ -703,6 +701,31 @@ def custom_info_select(
     return selects
 
 
+def get_custom_vep_globals_select():
+    """
+    Get custom globals select function for VEP globals.
+
+    :return: Custom globals select function.
+    """
+
+    def custom_vep_globals_select(
+        globals_expr: hl.expr.StructExpression,
+    ) -> Dict[str, hl.expr.Expression]:
+        """
+        Select globals for VEP Hail Table annotation in release.
+
+        :param globals_expr: Globals struct from a VEP Hail Table.
+        :return: Select expression dict.
+        """
+        return {
+            "vep_version": globals_expr.vep_version,
+            "vep_help": globals_expr.vep_help,
+            "vep_config": globals_expr.vep_config,
+        }
+
+    return custom_vep_globals_select
+
+
 def get_custom_vep_select(vep_version: str):
     """
     Get custom VEP select function for a given VEP version.
@@ -781,16 +804,21 @@ def get_select_global_fields(
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
-    select_globals = {}
     for t in tables_for_join:
+        select_globals = {}
         t_config = config.get(t)
         if "select_globals" in t_config:
             select_globals = get_select_fields(t_config["select_globals"], ht)
         if t_config.get("custom_globals_select"):
             custom_globals_select_fn = t_config["custom_globals_select"]
+            # Use source HT's globals via index_globals() so
+            # custom_globals_select reads from the original table, not
+            # the joined HT where globals with the same name (e.g.,
+            # vep_version) may have been overwritten.
+            source_globals = t_config["ht"].index_globals() if "ht" in t_config else ht
             select_globals = {
                 **select_globals,
-                **custom_globals_select_fn(ht),
+                **custom_globals_select_fn(source_globals),
             }
         if "global_name" in t_config:
             global_name = t_config.get("global_name")
