@@ -588,14 +588,14 @@ def make_info_expr(
 
     # Get version from globals to determine if any additional VEP versions are included.
     version = hl.eval(t.version)
-
     if version in VEP_VERSIONS_TO_ADD:
         logger.info(
-            f"VEP versions to add to info {version} :{VEP_VERSIONS_TO_ADD[version]}"
+            f"VEP versions to add to info for %s : %s",
+            version,
+            VEP_VERSIONS_TO_ADD[version],
         )
         for vep_version in VEP_VERSIONS_TO_ADD[version]:
             vcf_info_dict[f"vep{vep_version}"] = t[f"vep{vep_version}"]
-            logger.info(f"VEP version {vep_version} added to info")
 
     return vcf_info_dict
 
@@ -1375,7 +1375,8 @@ def main(args):
             if version in VEP_VERSIONS_TO_ADD:
                 for vep_version in VEP_VERSIONS_TO_ADD[version]:
                     logger.info(
-                        f"Dropping VEP{vep_version}'s row and global annotationsfrom HT for VCF export..."
+                        "Dropping VEP%s's row and global annotations from HT for VCF export...",
+                        vep_version,
                     )
                     ht = ht.annotate(info=ht.info.drop(f"vep{vep_version}"))
                     ht = ht.drop(
