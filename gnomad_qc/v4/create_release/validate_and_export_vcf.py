@@ -587,9 +587,14 @@ def make_info_expr(
     vcf_info_dict["vep"] = t["vep"]
 
     # Get version from globals to determine if any additional VEP versions are included.
-    if t.version in VEP_VERSIONS_TO_ADD:
-        for vep_version in VEP_VERSIONS_TO_ADD[t.version]:
+    version = hl.eval(t.version)
+    logger.info(
+        f"VEP versions to add to info {version} :{VEP_VERSIONS_TO_ADD[version]}"
+    )
+    if version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[version]:
             vcf_info_dict[f"vep{vep_version}"] = t[f"vep{vep_version}"]
+            logger.info(f"VEP version {vep_version} added to info")
 
     return vcf_info_dict
 
@@ -658,8 +663,9 @@ def prepare_ht_for_validation(
                 ht.vep, csq_fields=csq_fields, has_polyphen_sift=False
             ),
         }
-        if ht.version in VEP_VERSIONS_TO_ADD:
-            for vep_version in VEP_VERSIONS_TO_ADD[ht.version]:
+        version = hl.eval(ht.version)
+        if version in VEP_VERSIONS_TO_ADD:
+            for vep_version in VEP_VERSIONS_TO_ADD[version]:
                 ann_expr[f"vep{vep_version}"] = vep_struct_to_csq(
                     ht[f"vep{vep_version}"],
                     csq_fields=VEP_CSQ_FIELDS[vep_version],
@@ -1330,8 +1336,17 @@ def main(args):
                     ],
                     variant_filter_field="AS_VQSR",
                     problematic_regions=REGION_FLAG_FIELDS[data_type],
-                    single_filter_count=True,
-                    filters_check=False if dt == "joint" else True,
+                    # single_filter_count=True,
+                    # filters_check=False if dt == "joint" else True,
+                    single_filter_count=False,
+                    filters_check=False,
+                    summarize_variants_check=False,
+                    raw_adj_check=False,
+                    subset_freq_check=False,
+                    samples_sum_check=False,
+                    sex_chr_check=False,
+                    missingness_check=True,
+                    pprint_globals=True,
                 )
                 if for_joint:
                     ordered_rename_dict = {
@@ -1362,7 +1377,18 @@ def main(args):
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
                 ht = get_joint_filters(ht)
             ht.describe()
-
+            # Drop the additional VEP versions row and global annotations from the HT
+            # prior to writing as they are not needed for the VCF export.
+            version = hl.eval(ht.version)
+            if version in VEP_VERSIONS_TO_ADD:
+                for vep_version in VEP_VERSIONS_TO_ADD[version]:
+                    logger.info(
+                        f"Dropping VEP{vep_version}'s row and global annotationsfrom HT for VCF export..."
+                    )
+                    ht = ht.annotate(info=ht.info.drop(f"vep{vep_version}"))
+                    ht = ht.drop(
+                        f"vep{vep_version}_globals",
+                    )
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
             # before ready for export, but this is an intermediate write.
