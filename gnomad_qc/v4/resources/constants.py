@@ -23,9 +23,11 @@ SAMPLE_QC_VERSIONS = ["4.0"]
 CURRENT_SAMPLE_QC_VERSION = "4.0"
 
 # NOTE: There were no changes to most variant annotation files after v4.0 except for
-# VEP 115 annotations which were added in v4.1.1.
+# VEP 115 and VRS annotations which were added and updated, respectively, in v4.1.1.
 ANNOTATION_VERSIONS = ["4.0"]
 CURRENT_ANNOTATION_VERSION = "4.0"
+VRS_ANNOTATION_VERSIONS = ["4.0", "4.1.1"]
+CURRENT_VRS_ANNOTATION_VERSION = "4.1.1"
 
 # NOTE: VEP 115 annotations were added in v4.1.1.
 VEP_ANNOTATION_VERSIONS = {"105": ["4.0"], "115": ["4.1.1"]}

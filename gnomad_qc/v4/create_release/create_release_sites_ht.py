@@ -190,7 +190,6 @@ def get_config(
     release_exists: bool = False,
     version: str = CURRENT_RELEASE,
     base_release_version: Optional[str] = None,
-    test: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary for specified data type.
@@ -228,7 +227,6 @@ def get_config(
     :param base_release_version: Specific release version to use as the base HT
         (e.g., "4.1"). When provided, loads that version's release HT as the base.
         Mutually exclusive with `release_exists`.
-    :param test: Whether this is for a test run. Default is False.
     :return: Dict of dataset's configs.
     """
     if base_release_version is not None and release_exists:
@@ -246,7 +244,7 @@ def get_config(
             "select": ["rsid"],
         }
 
-    if "filters" in tables_for_join:
+    if "filters" in tables_for_join or "info" in tables_for_join:
         config["filters"] = {
             "ht": final_filter(data_type=data_type).ht(),
             "path": final_filter(data_type=data_type).path,
@@ -301,7 +299,7 @@ def get_config(
             "custom_select": custom_info_select,
         }
 
-    if "freq" in tables_for_join:
+    if "freq" in tables_for_join or "info" in tables_for_join:
         config["freq"] = {
             "ht": get_freq(data_type=data_type).ht(),
             "path": get_freq(data_type=data_type).path,
@@ -335,11 +333,7 @@ def get_config(
             "path": get_vep(data_type=data_type, vep_version=DEFAULT_VEP_VERSION).path,
             "select": ["vep"],
             "custom_select": get_custom_vep_select(DEFAULT_VEP_VERSION),
-            "select_globals": [
-                "vep_version",
-                "vep_help",
-                "vep_config",
-            ],
+            "custom_globals_select": get_custom_vep_globals_select(),
             "global_name": "vep_globals",
         }
 
@@ -349,23 +343,11 @@ def get_config(
             vep_table_name = f"vep{vep_version}"
             if vep_table_name in tables_for_join:
                 config[vep_table_name] = {
-                    "ht": (
-                        get_vep(
-                            data_type=data_type, vep_version=vep_version, test=test
-                        ).ht()
-                    ),
-                    "path": (
-                        get_vep(
-                            data_type=data_type, vep_version=vep_version, test=test
-                        ).path
-                    ),
-                    "select": ["vep"],
+                    "ht": get_vep(data_type=data_type, vep_version=vep_version).ht(),
+                    "path": get_vep(data_type=data_type, vep_version=vep_version).path,
+                    "select": [],
                     "custom_select": get_custom_vep_select(vep_version),
-                    "select_globals": [
-                        "vep_version",
-                        "vep_help",
-                        "vep_config",
-                    ],
+                    "custom_globals_select": get_custom_vep_globals_select(),
                     "global_name": f"{vep_table_name}_globals",
                 }
 
@@ -595,25 +577,33 @@ def custom_filters_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_filters_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_filters_select_globals(
+    globals_expr: hl.expr.StructExpression,
+) -> Dict[str, hl.expr.Expression]:
     """
     Select filter HT globals for release dataset.
 
-    :param ht: Filters Hail Table.
+    :param globals_expr: Globals struct from a Filters Hail Table.
     :return: Select expression dict.
     """
     selects = {
         "filtering_model": hl.struct(
             **{
-                "filter_name": ht.filtering_model.filter_name,
-                "score_name": ht.filtering_model.score_name,
-                "snv_cutoff": ht.filtering_model.snv_cutoff.drop("bin_id"),
-                "indel_cutoff": ht.filtering_model.indel_cutoff.drop("bin_id"),
-                "snv_training_variables": ht.filtering_model.snv_training_variables,
-                "indel_training_variables": ht.filtering_model.indel_training_variables,
+                "filter_name": globals_expr.filtering_model.filter_name,
+                "score_name": globals_expr.filtering_model.score_name,
+                "snv_cutoff": globals_expr.filtering_model.snv_cutoff.drop("bin_id"),
+                "indel_cutoff": globals_expr.filtering_model.indel_cutoff.drop(
+                    "bin_id"
+                ),
+                "snv_training_variables": (
+                    globals_expr.filtering_model.snv_training_variables
+                ),
+                "indel_training_variables": (
+                    globals_expr.filtering_model.indel_training_variables
+                ),
             }
         ),
-        "inbreeding_coeff_cutoff": ht.inbreeding_coeff_cutoff,
+        "inbreeding_coeff_cutoff": globals_expr.inbreeding_coeff_cutoff,
     }
 
     return selects
@@ -670,6 +660,18 @@ def custom_info_select(
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
     vrs_ht = get_vrs(data_type=data_type).ht()
+
+    # This is the schema of the updated VRS HT generated by Kyle for v4.1.1:
+    #     'info': struct {
+    #         VRS_Allele_IDs: array<str>,
+    #         VRS_Starts: array<int32>,
+    #         VRS_Ends: array<int32>,
+    #         VRS_States: array<str>,
+    #         VRS_Lengths: array<int32>,
+    #         VRS_RepeatSubunitLengths: array<int32>
+    #     }
+    # Rename info to `vrs`.
+    vrs_ht = vrs_ht.transmute(vrs=vrs_ht.info)
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
@@ -697,6 +699,31 @@ def custom_info_select(
         selects["allele_info"] = filters.allele_info
 
     return selects
+
+
+def get_custom_vep_globals_select():
+    """
+    Get custom globals select function for VEP globals.
+
+    :return: Custom globals select function.
+    """
+
+    def custom_vep_globals_select(
+        globals_expr: hl.expr.StructExpression,
+    ) -> Dict[str, hl.expr.Expression]:
+        """
+        Select globals for VEP Hail Table annotation in release.
+
+        :param globals_expr: Globals struct from a VEP Hail Table.
+        :return: Select expression dict.
+        """
+        return {
+            "vep_version": globals_expr.vep_version,
+            "vep_help": globals_expr.vep_help,
+            "vep_config": globals_expr.vep_config,
+        }
+
+    return custom_vep_globals_select
 
 
 def get_custom_vep_select(vep_version: str):
@@ -777,16 +804,21 @@ def get_select_global_fields(
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
-    select_globals = {}
     for t in tables_for_join:
+        select_globals = {}
         t_config = config.get(t)
         if "select_globals" in t_config:
             select_globals = get_select_fields(t_config["select_globals"], ht)
         if t_config.get("custom_globals_select"):
             custom_globals_select_fn = t_config["custom_globals_select"]
+            # Use source HT's globals via index_globals() so
+            # custom_globals_select reads from the original table, not
+            # the joined HT where globals with the same name (e.g.,
+            # vep_version) may have been overwritten.
+            source_globals = t_config["ht"].index_globals() if "ht" in t_config else ht
             select_globals = {
                 **select_globals,
-                **custom_globals_select_fn(ht),
+                **custom_globals_select_fn(source_globals),
             }
         if "global_name" in t_config:
             global_name = t_config.get("global_name")
@@ -1021,9 +1053,7 @@ def join_hts(
 
     if use_annotate:
         joined_ht = reduce(
-            lambda joined_ht, ht: joined_ht.annotate(
-                **ht.index([*[joined_ht[k] for k in list(ht.key)]])
-            ),
+            lambda joined_ht, ht: joined_ht.annotate(**ht[joined_ht.key]),
             hts,
         )
         hts = [g_ht.index_globals() for g_ht in hts]
@@ -1096,10 +1126,9 @@ def main(args):
         release_exists=args.release_exists,
         version=args.version,
         base_release_version=args.base_release_version,
-        test=args.test,
     )
     dup_errors = []
-    if not args.test:
+    if not args.test and not args.no_dup_check:
         for c in config:
             if "ht" in config[c]:
                 ht = config[c]["ht"]
@@ -1123,6 +1152,9 @@ def main(args):
         args.version,
         new_partition_percent=args.new_partition_percent,
         track_included_datasets=True,
+        # Use annotate if the release exists or the base release version is specified
+        # because we want to replace the annotations instead of joining them.
+        use_annotate=args.release_exists or args.base_release_version,
         test=args.test,
     )
 
@@ -1184,7 +1216,7 @@ def main(args):
     output_path = (
         f"{qc_temp_prefix(data_type=data_type)}release/gnomad.{data_type}.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
         if args.test
-        else release_sites(data_type=data_type).path
+        else release_sites(data_type=data_type, public=False).path
     )
     logger.info(f"Writing out {data_type} release HT to %s", output_path)
     ht = ht.naive_coalesce(args.n_partitions).checkpoint(
@@ -1274,6 +1306,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to naive coalesce the release Table to.",
         type=int,
         default=10000,
+    )
+    parser.add_argument(
+        "--no-dup-check",
+        help="Skip duplicate check.",
+        action="store_true",
     )
 
     return parser

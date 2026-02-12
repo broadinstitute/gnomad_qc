@@ -20,7 +20,7 @@ GENCODE_VERSIONS = {
 # MANE Select versions by VEP version.
 MANE_SELECT_VERSIONS = {
     "105": "v0.95",
-    "115": "v1.2",
+    "115": "v1.4",
 }
 # Backward compatibility: default to DEFAULT_VEP_VERSION.
 GENCODE_VERSION = GENCODE_VERSIONS[DEFAULT_VEP_VERSION]
