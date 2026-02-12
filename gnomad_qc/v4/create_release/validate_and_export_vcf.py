@@ -1336,17 +1336,8 @@ def main(args):
                     ],
                     variant_filter_field="AS_VQSR",
                     problematic_regions=REGION_FLAG_FIELDS[data_type],
-                    # single_filter_count=True,
-                    # filters_check=False if dt == "joint" else True,
-                    single_filter_count=False,
-                    filters_check=False,
-                    summarize_variants_check=False,
-                    raw_adj_check=False,
-                    subset_freq_check=False,
-                    samples_sum_check=False,
-                    sex_chr_check=False,
-                    missingness_check=True,
-                    pprint_globals=True,
+                    single_filter_count=True,
+                    filters_check=False if dt == "joint" else True,
                 )
                 if for_joint:
                     ordered_rename_dict = {
