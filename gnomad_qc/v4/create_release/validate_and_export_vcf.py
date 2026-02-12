@@ -58,6 +58,7 @@ from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
+from gnomad_qc.v4.create_release.create_release_utils import VEP_VERSIONS_TO_ADD
 from gnomad_qc.v4.resources.basics import get_logging_path, qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
     append_to_vcf_header_path,
@@ -96,12 +97,14 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
 REGION_FLAG_FIELDS = {
-    "exomes": REGION_FLAG_FIELDS
-    + [
-        "fail_interval_qc",
-        "outside_ukb_capture_region",
-        "outside_broad_capture_region",
-    ],
+    "exomes": (
+        REGION_FLAG_FIELDS
+        + [
+            "fail_interval_qc",
+            "outside_ukb_capture_region",
+            "outside_broad_capture_region",
+        ]
+    ),
     "genomes": REGION_FLAG_FIELDS,
     "joint": JOINT_REGION_FLAG_FIELDS,
 }
@@ -213,8 +216,7 @@ def get_export_resources(
         input_resources={
             "create_release_sites_ht.py": {
                 "release_ht": release_sites(
-                    data_type=data_type,
-                    public=False,  # test=test
+                    data_type=data_type, public=False, test=test
                 )
             }
         },
@@ -584,6 +586,17 @@ def make_info_expr(
     # Add vep annotations to info dict
     vcf_info_dict["vep"] = t["vep"]
 
+    # Get version from globals to determine if any additional VEP versions are included.
+    version = hl.eval(t.version)
+    if version in VEP_VERSIONS_TO_ADD:
+        logger.info(
+            f"VEP versions to add to info for %s : %s",
+            version,
+            VEP_VERSIONS_TO_ADD[version],
+        )
+        for vep_version in VEP_VERSIONS_TO_ADD[version]:
+            vcf_info_dict[f"vep{vep_version}"] = t[f"vep{vep_version}"]
+
     return vcf_info_dict
 
 
@@ -651,6 +664,13 @@ def prepare_ht_for_validation(
                 ht.vep, csq_fields=csq_fields, has_polyphen_sift=False
             ),
         }
+        version = hl.eval(ht.version)
+        if version in VEP_VERSIONS_TO_ADD:
+            for vep_version in VEP_VERSIONS_TO_ADD[version]:
+                ann_expr[f"vep{vep_version}"] = vep_struct_to_csq(
+                    ht[f"vep{vep_version}"],
+                    csq_fields=VEP_CSQ_FIELDS[vep_version],
+                )
 
     ht = ht.annotate(**ann_expr)
 
@@ -1349,7 +1369,19 @@ def main(args):
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
                 ht = get_joint_filters(ht)
             ht.describe()
-
+            # Drop the additional VEP versions row and global annotations from the HT
+            # prior to writing as they are not needed for the VCF export.
+            version = hl.eval(ht.version)
+            if version in VEP_VERSIONS_TO_ADD:
+                for vep_version in VEP_VERSIONS_TO_ADD[version]:
+                    logger.info(
+                        "Dropping VEP%s's row and global annotations from HT for VCF export...",
+                        vep_version,
+                    )
+                    ht = ht.annotate(info=ht.info.drop(f"vep{vep_version}"))
+                    ht = ht.drop(
+                        f"vep{vep_version}_globals",
+                    )
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
             # before ready for export, but this is an intermediate write.
