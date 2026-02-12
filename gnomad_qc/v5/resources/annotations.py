@@ -89,6 +89,105 @@ def get_sib_stats(
     )
 
 
+def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableResource:
+    """
+    Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: Info VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+# Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
+# is stated in the previous header as an int but it is actually a float.
+aou_vcf_header = (
+    f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
+)
+
+# AoU sites-only VCF with annotations needed for variant QC.
+aou_annotated_sites_only_vcf = (
+    f"gs://{WORKSPACE_BUCKET}/echo_full_gnomad_annotated.sites-only.vcf.gz"
+)
+
+
+def get_variant_qc_annotations(
+    test: bool = False, environment: str = "rwb"
+) -> VersionedTableResource:
+    """
+    Return the VersionedTableResource to the variant QC annotation Table.
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: Table with variant QC annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+def get_true_positive_vcf_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    adj: bool = False,
+    true_positive_type: str = "transmitted_singleton",
+    environment: str = "rwb",
+) -> str:
+    """
+    Provide the path to the transmitted singleton VCF used as input to VQSR.
+
+    :param version: Version of true positive VCF path to return.
+    :param test: Whether to use a tmp path for testing.
+    :param adj: Whether to use adj genotypes.
+    :param true_positive_type: Type of true positive VCF path to return. Should be one
+        of "transmitted_singleton", "sibling_singleton", or
+        "transmitted_singleton.sibling_singleton". Default is "transmitted_singleton".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: String for the path to the true positive VCF.
+    """
+    tp_types = [
+        "transmitted_singleton",
+        "sibling_singleton",
+        "transmitted_singleton.sibling_singleton",
+    ]
+    if true_positive_type not in tp_types:
+        raise ValueError(f"true_positive_type must be one of {tp_types}")
+    return f'{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
+
+
 ######################################################################
 # Frequency, coverage, and AN annotation resources
 ######################################################################
@@ -214,39 +313,3 @@ def get_freq(
     return TableResource(
         f"{_annotations_root(version, test, data_type, data_set, environment)}/{data_set}.genomes.v{version}.frequencies.ht"
     )
-
-
-######################################################################
-# Variant QC annotation resources
-######################################################################
-
-
-def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableResource:
-    """
-    Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
-
-    :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
-    :return: Info VersionedTableResource.
-    """
-    return VersionedTableResource(
-        CURRENT_ANNOTATION_VERSION,
-        {
-            version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
-            )
-            for version in ANNOTATION_VERSIONS
-        },
-    )
-
-
-# Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
-# is stated in the previous header as an int but it is actually a float.
-aou_vcf_header = (
-    f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
-)
-
-# AoU sites-only VCF with annotations needed for variant QC.
-aou_annotated_sites_only_vcf = (
-    f"gs://{WORKSPACE_BUCKET}/echo_full_gnomad_annotated.sites-only.vcf.gz"
-)
