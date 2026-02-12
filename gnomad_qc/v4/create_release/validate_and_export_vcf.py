@@ -588,10 +588,11 @@ def make_info_expr(
 
     # Get version from globals to determine if any additional VEP versions are included.
     version = hl.eval(t.version)
-    logger.info(
-        f"VEP versions to add to info {version} :{VEP_VERSIONS_TO_ADD[version]}"
-    )
+
     if version in VEP_VERSIONS_TO_ADD:
+        logger.info(
+            f"VEP versions to add to info {version} :{VEP_VERSIONS_TO_ADD[version]}"
+        )
         for vep_version in VEP_VERSIONS_TO_ADD[version]:
             vcf_info_dict[f"vep{vep_version}"] = t[f"vep{vep_version}"]
             logger.info(f"VEP version {vep_version} added to info")
