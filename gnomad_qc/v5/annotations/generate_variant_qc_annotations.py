@@ -6,8 +6,8 @@ import logging
 import hail as hl
 from gnomad.utils.annotations import annotate_allele_info, get_lowqual_expr
 from gnomad.utils.sparse_mt import split_info_annotation
-from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
+from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
@@ -255,19 +255,19 @@ def main(args):
             ht.write(info_ht_path, overwrite=overwrite)
         if args.export_info_vcf:
             info_ht_path = get_info_ht(test=test, environment=environment).path
-            info_vcf_path = info_vcf_path(test=test, environment=environment)
+            out_info_vcf_path = info_vcf_path(test=test, environment=environment)
             check_resource_existence(
                 input_step_resources={
                     "info_ht": [info_ht_path],
                 },
                 output_step_resources={
-                    "info_vcf_path": [info_vcf_path],
+                    "info_vcf_path": [out_info_vcf_path],
                 },
                 overwrite=overwrite,
             )
             info_ht = hl.read_table(info_ht_path)
             info_ht = adjust_vcf_incompatible_types(info_ht)
-            hl.export_vcf(info_ht, info_vcf_path, tabix=True)
+            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
 
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
