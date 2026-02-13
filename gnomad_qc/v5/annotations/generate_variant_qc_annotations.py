@@ -254,6 +254,7 @@ def main(args):
             )
             ht.write(info_ht_path, overwrite=overwrite)
         if args.export_info_vcf:
+            logger.info("Exporting info ht as VCF...")
             info_ht_path = get_info_ht(test=test, environment=environment).path
             out_info_vcf_path = info_vcf_path(test=test, environment=environment)
             check_resource_existence(
@@ -266,7 +267,10 @@ def main(args):
                 overwrite=overwrite,
             )
             info_ht = hl.read_table(info_ht_path)
-            info_ht = adjust_vcf_incompatible_types(info_ht)
+            # TODO: v4 split vcf does not have added pipe delimited annotations, but check if these are needed for VQSR and add pipe to AS_QUALapprox and AS_VarDP if needed.
+            info_ht = adjust_vcf_incompatible_types(
+                info_ht, pipe_delimited_annotations=[]
+            )
             hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
 
         if args.generate_trio_stats:
