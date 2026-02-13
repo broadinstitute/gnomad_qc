@@ -271,7 +271,7 @@ def main(args):
             # Reformat AS_SB_TABLE to be a nested array of arrays for proper use within the 'adjust_vcf_incompatible_types' function.
             info_ht = info_ht.annotate(
                 AS_SB_TABLE=hl.array(
-                    [info_ht.info.AS_SB_TABLE[0:2], info_htht.info.AS_SB_TABLE[2:4]]
+                    [info_ht.info.AS_SB_TABLE[0:2], info_ht.info.AS_SB_TABLE[2:4]]
                 )
             )
             info_ht = adjust_vcf_incompatible_types(
