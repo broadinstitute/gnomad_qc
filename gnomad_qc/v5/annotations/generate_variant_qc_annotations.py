@@ -270,8 +270,10 @@ def main(args):
             # TODO: v4 split vcf does not have added pipe delimited annotations, but check if these are needed for VQSR and add pipe to AS_QUALapprox and AS_VarDP if needed.
             # Reformat AS_SB_TABLE to be a nested array of arrays for proper use within the 'adjust_vcf_incompatible_types' function.
             info_ht = info_ht.annotate(
-                AS_SB_TABLE=hl.array(
-                    [info_ht.info.AS_SB_TABLE[0:2], info_ht.info.AS_SB_TABLE[2:4]]
+                info=info_ht.info.annotate(
+                    AS_SB_TABLE=hl.array(
+                        [info_ht.info.AS_SB_TABLE[0:2], info_ht.info.AS_SB_TABLE[2:4]]
+                    )
                 )
             )
             info_ht = adjust_vcf_incompatible_types(
