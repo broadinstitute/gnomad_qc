@@ -240,6 +240,23 @@ def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableR
     )
 
 
+def info_vcf_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    environment: str = "rwb",
+) -> str:
+    """
+    Path to sites VCF (input information for running VQSR).
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+
+    :return: String for the path to the info VCF.
+    """
+    return f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.vcf.bgz"
+
+
 # Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
 # is stated in the previous header as an int but it is actually a float.
 aou_vcf_header = (

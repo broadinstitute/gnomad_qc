@@ -6,6 +6,7 @@ import logging
 import hail as hl
 from gnomad.utils.annotations import annotate_allele_info, get_lowqual_expr
 from gnomad.utils.sparse_mt import split_info_annotation
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -16,6 +17,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
+    info_vcf_path,
 )
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
@@ -251,6 +253,34 @@ def main(args):
                 test=test,
             )
             ht.write(info_ht_path, overwrite=overwrite)
+        if args.export_info_vcf:
+            logger.info("Exporting info ht as VCF...")
+            info_ht_path = get_info_ht(test=test, environment=environment).path
+            out_info_vcf_path = info_vcf_path(test=test, environment=environment)
+            check_resource_existence(
+                input_step_resources={
+                    "info_ht": [info_ht_path],
+                },
+                output_step_resources={
+                    "info_vcf_path": [out_info_vcf_path],
+                },
+                overwrite=overwrite,
+            )
+            info_ht = hl.read_table(info_ht_path)
+            # TODO: v4 split vcf does not have added pipe delimited annotations, but check if these are needed for VQSR and add pipe to AS_QUALapprox and AS_VarDP if needed.
+            # Reformat AS_SB_TABLE to be a nested array of arrays for proper use
+            # within the 'adjust_vcf_incompatible_types' function.
+            info_ht = info_ht.annotate(
+                info=info_ht.info.annotate(
+                    AS_SB_TABLE=hl.array(
+                        [info_ht.info.AS_SB_TABLE[0:2], info_ht.info.AS_SB_TABLE[2:4]]
+                    )
+                )
+            )
+            info_ht = adjust_vcf_incompatible_types(
+                info_ht, pipe_delimited_annotations=[]
+            )
+            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
 
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
@@ -329,6 +359,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.",
         default=40,
         type=int,
+    )
+    parser.add_argument(
+        "--export-info-vcf", help="Export info ht as VCF.", action="store_true"
     )
 
     return parser
