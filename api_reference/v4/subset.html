@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.subset &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+        <script src="../../_static/doctools.js"></script>
+        <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.variant_qc" href="variant_qc/index.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.sex_inference" href="sample_qc/sex_inference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">subset</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#named-arguments">Named Arguments</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.subset</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/api_reference/v4/subset.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-subset">
+<h1>gnomad_qc.v4.subset<a class="headerlink" href="#gnomad-qc-v4-subset" title="Permalink to this heading"></a></h1>
+<p>Script to filter the gnomAD v4 VariantDataset to a subset of specified samples.</p>
+<p>Run this script on Hail version 0.2.120. Higher versions of hail greatly
+increase runtime and cost and thus we enforce this version.</p>
+<p><p>This script subsets gnomAD using a list of samples or terra workspaces.</p>
+</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">subset</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                              <span class="p">(</span><span class="o">--</span><span class="n">subset</span><span class="o">-</span><span class="n">samples</span> <span class="n">SUBSET_SAMPLES</span> <span class="o">|</span> <span class="o">--</span><span class="n">subset</span><span class="o">-</span><span class="n">workspaces</span> <span class="n">SUBSET_WORKSPACES</span><span class="p">)</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">data</span><span class="o">-</span><span class="nb">type</span> <span class="p">{</span><span class="n">exomes</span><span class="p">,</span><span class="n">genomes</span><span class="p">}]</span>
+                              <span class="p">(</span><span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">vds</span> <span class="o">|</span> <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">vcf</span><span class="p">)</span> <span class="p">[</span><span class="o">--</span><span class="n">split</span><span class="o">-</span><span class="n">multi</span><span class="p">]</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">rep</span><span class="o">-</span><span class="n">on</span><span class="o">-</span><span class="n">read</span><span class="o">-</span><span class="n">partitions</span> <span class="n">REP_ON_READ_PARTITIONS</span><span class="p">]</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">add</span><span class="o">-</span><span class="n">variant</span><span class="o">-</span><span class="n">qc</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="k">pass</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">variant</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">annotations</span> <span class="n">VARIANT_QC_ANNOTATIONS</span> <span class="p">[</span><span class="n">VARIANT_QC_ANNOTATIONS</span> <span class="o">...</span><span class="p">]]</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">meta</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">keep</span><span class="o">-</span><span class="n">data</span><span class="o">-</span><span class="n">paths</span><span class="p">]</span>
+                              <span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">path</span> <span class="n">OUTPUT_PATH</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">filename</span> <span class="n">OUTPUT_FILENAME</span><span class="p">]</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">output</span><span class="o">-</span><span class="n">partitions</span> <span class="n">OUTPUT_PARTITIONS</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span><span class="p">]</span>
+                              <span class="p">[</span><span class="o">--</span><span class="n">tmp</span><span class="o">-</span><span class="nb">dir</span> <span class="n">TMP_DIR</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--test</kbd></dt>
+<dd><p>Filter to the first 2 partitions for testing.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--subset-samples</kbd></dt>
+<dd><p>Path to a text file with sample IDs for subsetting and a header: s.</p>
+</dd>
+<dt><kbd>--subset-workspaces</kbd></dt>
+<dd><p>Path to a text file with Terra workspaces that should be included in the subset, must use a header of ‘terra_workspace’.</p>
+</dd>
+<dt><kbd>--data-type</kbd></dt>
+<dd><p>Possible choices: exomes, genomes</p>
+<p>Type of data to subset.</p>
+<p>Default: “exomes”</p>
+</dd>
+<dt><kbd>--output-vds</kbd></dt>
+<dd><p>Whether to output a subset VDS.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--output-vcf</kbd></dt>
+<dd><p>Whether to output a subset VCF.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--split-multi</kbd></dt>
+<dd><p>Whether to split multi-allelic variants.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--rep-on-read-partitions</kbd></dt>
+<dd><p>Number of partitions to pass when reading in the VDS. If passed, and the –output-partitions is not, this will be the number of output partitions. By default, there will be no change in partitioning.</p>
+</dd>
+<dt><kbd>--add-variant-qc</kbd></dt>
+<dd><p>Annotate exported file with gnomAD’s variant QC annotations. Defaults to all annotations if a subset of annotations are not specified using the –variant-qc-annotations arg</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--pass-only</kbd></dt>
+<dd><p>Keep only the variants that passed variant QC, i.e. the filter field is PASS.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--variant-qc-annotations</kbd></dt>
+<dd><p>Variant QC annotations to add to the output file. Defaults to all annotations.</p>
+</dd>
+<dt><kbd>--export-meta</kbd></dt>
+<dd><p>Pull sample subset metadata and export to a HT and .tsv.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--keep-data-paths</kbd></dt>
+<dd><p>Keep CRAM and gVCF paths in the project metadata export.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--output-path</kbd></dt>
+<dd><p>Output file path for subsetted VDS/VCF/MT, do not include file name or file extension.</p>
+</dd>
+<dt><kbd>--output-filename</kbd></dt>
+<dd><p>Name of the output file, do not include file extension.</p>
+<p>Default: “subset”</p>
+</dd>
+<dt><kbd>--output-partitions</kbd></dt>
+<dd><p>Number of desired partitions for the output file.</p>
+</dd>
+<dt><kbd>-o, --overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset (default: False).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--tmp-dir</kbd></dt>
+<dd><p>Temporary directory for Hail to write files to.</p>
+<p>Default: “gs://gnomad-tmp-4day”</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.ProcessingConfig" title="gnomad_qc.v4.subset.ProcessingConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.ProcessingConfig</span></code></a>(...[, ...])</p></td>
+<td><p>Configuration for data processing operations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.get_gnomad_datasets" title="gnomad_qc.v4.subset.get_gnomad_datasets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.get_gnomad_datasets</span></code></a>(...)</p></td>
+<td><p>Get requested data type's v4 VariantDataset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.get_subset_ht" title="gnomad_qc.v4.subset.get_subset_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.get_subset_ht</span></code></a>(...)</p></td>
+<td><p>Get the subset HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.check_subset_ht" title="gnomad_qc.v4.subset.check_subset_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.check_subset_ht</span></code></a>(...)</p></td>
+<td><p>Check that the subset HT is valid.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.apply_split_multi_logic" title="gnomad_qc.v4.subset.apply_split_multi_logic"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.apply_split_multi_logic</span></code></a>(...)</p></td>
+<td><p>Apply split multi logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.apply_min_rep_logic" title="gnomad_qc.v4.subset.apply_min_rep_logic"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.apply_min_rep_logic</span></code></a>(vds)</p></td>
+<td><p>Apply min_rep logic to an unsplit VariantDataset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.apply_variant_qc_annotations" title="gnomad_qc.v4.subset.apply_variant_qc_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.apply_variant_qc_annotations</span></code></a>(...)</p></td>
+<td><p>Apply variant QC annotations and filtering to either a MatrixTable or VariantDataset.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.filter_to_pass_only" title="gnomad_qc.v4.subset.filter_to_pass_only"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.filter_to_pass_only</span></code></a>(...)</p></td>
+<td><p>Filter to variants that passed variant QC.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.format_vcf_info_fields" title="gnomad_qc.v4.subset.format_vcf_info_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.format_vcf_info_fields</span></code></a>(mt)</p></td>
+<td><p>Apply VCF-specific formatting to info fields for export.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.process_metadata_export" title="gnomad_qc.v4.subset.process_metadata_export"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.process_metadata_export</span></code></a>(...)</p></td>
+<td><p>Process metadata and return the processed metadata Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.subset.main" title="gnomad_qc.v4.subset.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.main</span></code></a>(args)</p></td>
+<td><p>Filter the gnomAD v4 VariantDataset to a subset of specified samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.subset.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.subset"></span><p>Script to filter the gnomAD v4 VariantDataset to a subset of specified samples.</p>
+<p>Run this script on Hail version 0.2.120. Higher versions of hail greatly
+increase runtime and cost and thus we enforce this version.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">ProcessingConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split_multi</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pass_only</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_variant_qc</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_qc_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_vcf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_vds</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_meta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_data_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rep_on_read_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'subset'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_workspaces</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tmp_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#ProcessingConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig" title="Permalink to this definition"></a></dt>
+<dd><p>Configuration for data processing operations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split_multi</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>pass_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>add_variant_qc</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>variant_qc_annotations</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – </p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+<li><p><strong>output_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>output_vds</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>export_meta</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>keep_data_paths</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>output_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – </p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+<li><p><strong>rep_on_read_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – </p></li>
+<li><p><strong>output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+<li><p><strong>output_filename</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+<li><p><strong>subset_samples</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – </p></li>
+<li><p><strong>subset_workspaces</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – </p></li>
+<li><p><strong>tmp_dir</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.split_multi">
+<span class="sig-name descname"><span class="pre">split_multi</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.split_multi" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.pass_only">
+<span class="sig-name descname"><span class="pre">pass_only</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.pass_only" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.add_variant_qc">
+<span class="sig-name descname"><span class="pre">add_variant_qc</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.add_variant_qc" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.variant_qc_annotations">
+<span class="sig-name descname"><span class="pre">variant_qc_annotations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]]</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.variant_qc_annotations" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.data_type">
+<span class="sig-name descname"><span class="pre">data_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.data_type" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.output_vcf">
+<span class="sig-name descname"><span class="pre">output_vcf</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.output_vcf" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.output_vds">
+<span class="sig-name descname"><span class="pre">output_vds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.output_vds" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.export_meta">
+<span class="sig-name descname"><span class="pre">export_meta</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.export_meta" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.keep_data_paths">
+<span class="sig-name descname"><span class="pre">keep_data_paths</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.keep_data_paths" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.overwrite">
+<span class="sig-name descname"><span class="pre">overwrite</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.overwrite" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.output_partitions">
+<span class="sig-name descname"><span class="pre">output_partitions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.output_partitions" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.test">
+<span class="sig-name descname"><span class="pre">test</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.test" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.rep_on_read_partitions">
+<span class="sig-name descname"><span class="pre">rep_on_read_partitions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.rep_on_read_partitions" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.output_path">
+<span class="sig-name descname"><span class="pre">output_path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.output_path" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.output_filename">
+<span class="sig-name descname"><span class="pre">output_filename</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'subset'</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.output_filename" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.subset_samples">
+<span class="sig-name descname"><span class="pre">subset_samples</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.subset_samples" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.subset_workspaces">
+<span class="sig-name descname"><span class="pre">subset_workspaces</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code><span class="pre">[</span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code><span class="pre">]</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.subset_workspaces" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.tmp_dir">
+<span class="sig-name descname"><span class="pre">tmp_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></em><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.tmp_dir" title="Permalink to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.ProcessingConfig.from_args">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_args</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#ProcessingConfig.from_args"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.ProcessingConfig.from_args" title="Permalink to this definition"></a></dt>
+<dd><p>Create ProcessingConfig from argparse arguments.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#gnomad_qc.v4.subset.ProcessingConfig" title="gnomad_qc.v4.subset.ProcessingConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProcessingConfig</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.get_gnomad_datasets">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">get_gnomad_datasets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#get_gnomad_datasets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.get_gnomad_datasets" title="Permalink to this definition"></a></dt>
+<dd><p>Get requested data type’s v4 VariantDataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Type of data to subset.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Number of desired partitions for the VDS, repartitioned on read.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to the first 2 partitions for testing.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The gnomAD v4 VariantDataset and metadata Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.get_subset_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">get_subset_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subset_samples</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_workspaces</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#get_subset_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.get_subset_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get the subset HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>subset_samples</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Path to a text file with sample IDs for subsetting and a header: ‘s’.</p></li>
+<li><p><strong>subset_workspaces</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Path to a text file with Terra workspaces that should be included in the subset and a header: ‘terra_workspace’.</p></li>
+<li><p><strong>meta_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – The meta HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The subset HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.check_subset_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">check_subset_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subset_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vmt_cols</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#check_subset_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.check_subset_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Check that the subset HT is valid.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>subset_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – The subset HT.</p></li>
+<li><p><strong>vmt_cols</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – The variant data MatrixTable samples.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.apply_split_multi_logic">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">apply_split_multi_logic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mtds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#apply_split_multi_logic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.apply_split_multi_logic" title="Permalink to this definition"></a></dt>
+<dd><p>Apply split multi logic to either a MatrixTable (VCF path) or VariantDataset (VDS path).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mtds</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]) – MatrixTable or VariantDataset to process.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#gnomad_qc.v4.subset.ProcessingConfig" title="gnomad_qc.v4.subset.ProcessingConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProcessingConfig</span></code></a>) – Processing configuration.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable or VariantDataset with multi-allelic sites split.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.apply_min_rep_logic">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">apply_min_rep_logic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#apply_min_rep_logic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.apply_min_rep_logic" title="Permalink to this definition"></a></dt>
+<dd><p>Apply min_rep logic to an unsplit VariantDataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset to process.</p></li>
+<li><p><strong>config</strong> – Processing configuration.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VariantDataset with rows keyed by minimum representation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.apply_variant_qc_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">apply_variant_qc_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mtds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#apply_variant_qc_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.apply_variant_qc_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Apply variant QC annotations and filtering to either a MatrixTable or VariantDataset.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If the variant QC annotations are not specified, all annotations will be added.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mtds</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]) – MatrixTable or VariantDataset to process.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#gnomad_qc.v4.subset.ProcessingConfig" title="gnomad_qc.v4.subset.ProcessingConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProcessingConfig</span></code></a>) – Processing configuration.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable or VariantDataset with variant QC annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.filter_to_pass_only">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">filter_to_pass_only</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mtds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#filter_to_pass_only"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.filter_to_pass_only" title="Permalink to this definition"></a></dt>
+<dd><p>Filter to variants that passed variant QC.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mtds</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]) – MatrixTable or VariantDataset to filter.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#gnomad_qc.v4.subset.ProcessingConfig" title="gnomad_qc.v4.subset.ProcessingConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProcessingConfig</span></code></a>) – Processing configuration.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable or VariantDataset containing only variants that passed variant QC.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.format_vcf_info_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">format_vcf_info_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#format_vcf_info_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.format_vcf_info_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Apply VCF-specific formatting to info fields for export.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – MatrixTable to format.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable with fields formatted for VCF export.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.process_metadata_export">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">process_metadata_export</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vmt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#process_metadata_export"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.process_metadata_export" title="Permalink to this definition"></a></dt>
+<dd><p>Process metadata and return the processed metadata Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – The metadata Table to process.</p></li>
+<li><p><strong>vmt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – The dataset’s subsetted  matrixTable containing the samples to keep.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#gnomad_qc.v4.subset.ProcessingConfig" title="gnomad_qc.v4.subset.ProcessingConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProcessingConfig</span></code></a>) – Processing configuration.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The subsetted metadata Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.subset.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.subset.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../_modules/gnomad_qc/v4/subset.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.subset.main" title="Permalink to this definition"></a></dt>
+<dd><p>Filter the gnomAD v4 VariantDataset to a subset of specified samples.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="sample_qc/sex_inference.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.sex_inference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="variant_qc/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.variant_qc" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

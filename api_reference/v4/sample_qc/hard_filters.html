@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.hard_filters &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.identify_trios" href="identify_trios.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.generate_qc_mt" href="generate_qc_mt.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.hard_filters</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/hard_filters.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-hard-filters">
+<h1>gnomad_qc.v4.sample_qc.hard_filters<a class="headerlink" href="#gnomad-qc-v4-sample-qc-hard-filters" title="Permalink to this heading"></a></h1>
+<p>Script to determine samples that fail hard filtering thresholds.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">hard_filters</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">sample</span><span class="o">-</span><span class="n">qc</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">alt</span><span class="o">-</span><span class="n">alleles</span><span class="o">-</span><span class="n">strata</span> <span class="n">N_ALT_ALLELES_STRATA</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">alt</span><span class="o">-</span><span class="n">alleles</span><span class="o">-</span><span class="n">strata</span><span class="o">-</span><span class="n">name</span> <span class="n">N_ALT_ALLELES_STRATA_NAME</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">sample</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">SAMPLE_QC_N_PARTITIONS</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">coverage</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">contamination</span><span class="o">-</span><span class="n">estimate</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">contam</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">CONTAM_DP_CUTOFF</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">name</span> <span class="p">{</span><span class="n">ukb</span><span class="p">,</span><span class="n">broad</span><span class="p">,</span><span class="n">intersection</span><span class="p">}]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="n">padding</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span><span class="mi">50</span><span class="p">}]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">chr20</span><span class="o">-</span><span class="n">mean</span><span class="o">-</span><span class="n">dp</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">mt</span><span class="o">-</span><span class="n">callrate</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">qc</span><span class="o">-</span><span class="n">mt</span><span class="o">-</span><span class="n">callrate</span><span class="o">-</span><span class="nb">min</span><span class="o">-</span><span class="n">af</span> <span class="n">QC_MT_CALLRATE_MIN_AF</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">qc</span><span class="o">-</span><span class="n">mt</span><span class="o">-</span><span class="n">callrate</span><span class="o">-</span><span class="nb">min</span><span class="o">-</span><span class="n">site</span><span class="o">-</span><span class="n">callrate</span> <span class="n">QC_MT_CALLRATE_MIN_SITE_CALLRATE</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">hard</span><span class="o">-</span><span class="n">filters</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">include</span><span class="o">-</span><span class="n">sex</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">singleton</span> <span class="n">MAX_N_SINGLETON</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">r</span><span class="o">-</span><span class="n">het</span><span class="o">-</span><span class="n">hom</span><span class="o">-</span><span class="n">var</span> <span class="n">MAX_R_HET_HOM_VAR</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">bases</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="mi">1</span> <span class="n">MIN_BASES_DP_OVER_1</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">bases</span><span class="o">-</span><span class="n">dp</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="mi">20</span> <span class="n">MIN_BASES_DP_OVER_20</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">chimera</span> <span class="n">MAX_CHIMERA</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">contamination</span><span class="o">-</span><span class="n">estimate</span> <span class="n">MAX_CONTAMINATION_ESTIMATE</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">cov</span> <span class="n">MIN_COV</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">mt</span><span class="o">-</span><span class="n">adj</span><span class="o">-</span><span class="n">callrate</span> <span class="n">MIN_QC_MT_ADJ_CALLRATE</span><span class="p">]</span>
+                                              <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all Matrixtables/Tables. (default: False).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Use the v4 test dataset instead of the full dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sample-qc</kbd></dt>
+<dd><p>Compute Hail’s VDS sample QC metrics.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-alt-alleles-strata</kbd></dt>
+<dd><p>Number of alternative alleles to stratify sample QC on. For example ‘n_alt_alleles_strata’ = 2 will stratify ‘bi-allelic’ and ‘multi-allelic’. ‘n_alt_alleles_strata’ = 3 will stratify under 3 alt alleles and 3 or more alt alleles. Default is 3.</p>
+<p>Default: 3</p>
+</dd>
+<dt><kbd>--n-alt-alleles-strata-name</kbd></dt>
+<dd><p>Name to use for number of alternative allele stratification, where strata names are ‘under_{n_alt_alleles_strata_name}_alt_alleles’ and ‘{n_alt_alleles_strata_name}_or_more_alt_alleles’. This is not used when <cite>n_alt_alleles_strata</cite> = 2, and instead uses ‘bi-allelic’ and ‘multi-allelic’. Default is ‘three’.</p>
+<p>Default: “three”</p>
+</dd>
+<dt><kbd>--sample-qc-n-partitions</kbd></dt>
+<dd><p>Number of desired partitions for the sample QC output Table.</p>
+<p>Default: 500</p>
+</dd>
+<dt><kbd>--compute-coverage</kbd></dt>
+<dd><p>Compute per interval coverage metrics using Hail’s vds.interval_coverage method.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--compute-contamination-estimate</kbd></dt>
+<dd><p>Compute contamination estimate as the mean of reference allele balances of high-quality (DP &gt;= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--contam-dp-cutoff</kbd></dt>
+<dd><p>Minimum genotype depth to be included in contamination estimate calculation.</p>
+<p>Default: 10</p>
+</dd>
+<dt><kbd>--calling-interval-name</kbd></dt>
+<dd><p>Possible choices: ukb, broad, intersection</p>
+<p>Name of calling intervals to use for interval coverage. One of: ‘ukb’, ‘broad’, or ‘intersection’.</p>
+<p>Default: “intersection”</p>
+</dd>
+<dt><kbd>--calling-interval-padding</kbd></dt>
+<dd><p>Possible choices: 0, 50</p>
+<p>Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.</p>
+<p>Default: 50</p>
+</dd>
+<dt><kbd>--compute-chr20-mean-dp</kbd></dt>
+<dd><p>Compute per sample mean DP on chromosome 20 using interval coverage results.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--compute-qc-mt-callrate</kbd></dt>
+<dd><p>Compute per sample callrate on the predetermined QC variants after filtering to common variants (AF &gt; –qc-mt-callrate-min-af) with high site callrate ( &gt; –qc-mt-callrate-min-site-callrate) for ADJ genotypes.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--qc-mt-callrate-min-af</kbd></dt>
+<dd><p>Filtering threshold to use for minimum variant allele frequency when computing sample callrate on the predetermined QC variants (–compute-qc-mt-callrate). Default is 0.0001.</p>
+<p>Default: 0.0001</p>
+</dd>
+<dt><kbd>--qc-mt-callrate-min-site-callrate</kbd></dt>
+<dd><p>Filtering threshold to use for minimum site ADJ callrate when computing sample callrate on predetermined QC variants (–compute-qc-mt-callrate). Default is 0.99.</p>
+<p>Default: 0.99</p>
+</dd>
+<dt><kbd>--compute-hard-filters</kbd></dt>
+<dd><p>Computes samples to be hard-filtered. NOTE: Cutoffs should be determined by visual inspection of the metrics.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--include-sex-filter</kbd></dt>
+<dd><p>If sex filters should be included in hard filtering.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="hard-filter-cutoffs">
+<h2>Hard-filter cutoffs<a class="headerlink" href="#hard-filter-cutoffs" title="Permalink to this heading"></a></h2>
+<p>Arguments used for hard-filter cutoffs.</p>
+<dl class="option-list">
+<dt><kbd>--max-n-singleton</kbd></dt>
+<dd><p>Filtering threshold to use for the maximum number of singletons. Default is 5000.</p>
+<p>Default: 5000</p>
+</dd>
+<dt><kbd>--max-r-het-hom-var</kbd></dt>
+<dd><p>Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes. Default is 10.</p>
+<p>Default: 10</p>
+</dd>
+<dt><kbd>--min-bases-dp-over-1</kbd></dt>
+<dd><p>Filtering threshold to use for the minimum number of bases with a DP over one. Default is 5e7.</p>
+<p>Default: 50000000.0</p>
+</dd>
+<dt><kbd>--min-bases-dp-over-20</kbd></dt>
+<dd><p>Filtering threshold to use for the minimum number of bases with a DP over 20. Default is 4e7.</p>
+<p>Default: 40000000.0</p>
+</dd>
+<dt><kbd>--max-chimera</kbd></dt>
+<dd><p>Filtering threshold to use for maximum chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.</p>
+<p>Default: 0.05</p>
+</dd>
+<dt><kbd>--max-contamination-estimate</kbd></dt>
+<dd><p>Filtering threshold to use for maximum contamination estimate (from –compute-contamination-estimate). Default is 0.015.</p>
+<p>Default: 0.015</p>
+</dd>
+<dt><kbd>--min-cov</kbd></dt>
+<dd><p>Minimum chromosome 20 coverage for inclusion when computing hard-filters.</p>
+</dd>
+<dt><kbd>--min-qc-mt-adj-callrate</kbd></dt>
+<dd><p>Minimum sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.hard_filters.compute_sample_qc" title="gnomad_qc.v4.sample_qc.hard_filters.compute_sample_qc"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.compute_sample_qc</span></code></a>([...])</p></td>
+<td><p>Perform sample QC on the raw split matrix table using <cite>compute_stratified_sample_qc</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.hard_filters.compute_hard_filters" title="gnomad_qc.v4.sample_qc.hard_filters.compute_hard_filters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.compute_hard_filters</span></code></a>([...])</p></td>
+<td><p>Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.hard_filters.main" title="gnomad_qc.v4.sample_qc.hard_filters.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.main</span></code></a>(args)</p></td>
+<td><p>Determine samples that fail hard filtering thresholds.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.hard_filters"></span><p>Script to determine samples that fail hard filtering thresholds.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.hard_filters.compute_sample_qc">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.</span></span><span class="sig-name descname"><span class="pre">compute_sample_qc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">500</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_alt_alleles_strata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_alt_alleles_strata_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'three'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/hard_filters.html#compute_sample_qc"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.hard_filters.compute_sample_qc" title="Permalink to this definition"></a></dt>
+<dd><p>Perform sample QC on the raw split matrix table using <cite>compute_stratified_sample_qc</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to write the output sample QC HT to.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the gnomAD v4 test dataset. Default is to use the full
+dataset.</p></li>
+<li><p><strong>n_alt_alleles_strata</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of alternative alleles to stratify sample QC on.
+For example <cite>n_alt_alleles_strata</cite> = 2 will stratify ‘bi-allelic’ and
+‘multi-allelic’. <cite>n_alt_alleles_strata</cite> = 3 will stratify under 3 alt alleles
+and 3 or more alt alleles. Default is 3.</p></li>
+<li><p><strong>n_alt_alleles_strata_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name to use for number of alternative allele
+stratification, where strata names are
+‘under_{n_alt_alleles_strata_name}_alt_alleles’ and
+‘{n_alt_alleles_strata_name}_or_more_alt_alleles’. This is not used when
+<cite>n_alt_alleles_strata</cite> = 2, and instead uses ‘bi-allelic’ and ‘multi-allelic’.
+Default is ‘three’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing sample QC metrics.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.hard_filters.compute_hard_filters">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.</span></span><span class="sig-name descname"><span class="pre">compute_hard_filters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">include_sex_filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_n_singleton</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_r_het_hom_var</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_bases_dp_over_1</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50000000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_bases_dp_over_20</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">40000000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_chimera</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_contamination_estimate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.015</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chr20_mean_dp_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_cov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qc_mt_callrate_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_qc_mt_adj_callrate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/hard_filters.html#compute_hard_filters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.hard_filters.compute_hard_filters" title="Permalink to this definition"></a></dt>
+<dd><p>Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.</p>
+<p>If <cite>include_sex_filter</cite> is True, this function expects a sex inference Table
+generated by <cite>sex_inference.py –impute-sex</cite>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The defaults used in this function are callset specific, these hardfilter
+cutoffs will need to be re-examined for each callset</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>include_sex_filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If sex inference should be used in filtering.</p></li>
+<li><p><strong>max_n_singleton</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for the maximum number of
+singletons.</p></li>
+<li><p><strong>max_r_het_hom_var</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for the maximum ratio of
+heterozygotes to alternate homozygotes.</p></li>
+<li><p><strong>min_bases_dp_over_1</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for the minimum number of
+bases with a DP over one.</p></li>
+<li><p><strong>min_bases_dp_over_20</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for the minimum number of
+bases with a DP over 20.</p></li>
+<li><p><strong>max_chimera</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for maximum chimera (this is a
+proportion not a percent, e.g. 5% == 0.05, %5 != 5).</p></li>
+<li><p><strong>max_contamination_estimate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for maximum
+contamination estimate.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the gnomAD v4 test dataset. Default is to use the full
+dataset.</p></li>
+<li><p><strong>chr20_mean_dp_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing the per sample chromosome 20 mean DP.</p></li>
+<li><p><strong>min_cov</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Filtering threshold to use for chr20 coverage.</p></li>
+<li><p><strong>qc_mt_callrate_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing the per sample QC MatrixTable callrate.</p></li>
+<li><p><strong>min_qc_mt_adj_callrate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Filtering threshold to use for sample callrate
+computed on only predetermined QC variants (predetermined using CCDG
+genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of hard filtered samples.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.hard_filters.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.hard_filters.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/hard_filters.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.hard_filters.main" title="Permalink to this definition"></a></dt>
+<dd><p>Determine samples that fail hard filtering thresholds.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generate_qc_mt.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.generate_qc_mt" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="identify_trios.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.identify_trios" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

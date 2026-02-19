@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.generate_freq_genomes &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.annotations.generate_variant_qc_annotations" href="generate_variant_qc_annotations.html" />
+    <link rel="prev" title="gnomad_qc.v4.annotations.generate_freq" href="generate_freq.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fix_freq_an.html">fix_freq_an</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq.html">generate_freq</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">generate_freq_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="insilico_predictors.html">insilico_predictors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recover_and_complete_vep115.html">recover_and_complete_vep115</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vep_context_ht.html">vep_context_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vrs_annotation_batch.html">vrs_annotation_batch</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.generate_freq_genomes</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/annotations/generate_freq_genomes.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-annotations-generate-freq-genomes">
+<h1>gnomad_qc.v4.annotations.generate_freq_genomes<a class="headerlink" href="#gnomad-qc-v4-annotations-generate-freq-genomes" title="Permalink to this heading"></a></h1>
+<p>Script to create frequencies HT for v4.0 genomes.</p>
+<p>This script is written specifically for the v4.0 genomes release to handle the
+addition and subtraction of samples from the HGDP + 1KG subset. The HGDP + 1KG
+subset has updated sample QC annotations. The addition of new samples from the
+densified MT will include new variants, which will require the recomputation of AN
+for the v3.1 releases samples, and merging it to call stats of the v3.1.2 release
+sites HT and of updated HGDP + 1KG subset. In addition, the code will also get the
+other call stats related annotations, including: filtering allele frequencies (‘faf’),
+‘grpmax’, ‘gen_anc_faf_max’ and ‘InbreedingCoeff’ as done in v4.0 exomes.</p>
+<p><p>This script creates the v4.0 genomes release HT.</p>
+</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">generate_freq_genomes</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">pcsk9</span> <span class="o">|</span> <span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">x</span><span class="o">-</span><span class="n">gene</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">get</span><span class="o">-</span><span class="n">related</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">nonsubset</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">get</span><span class="o">-</span><span class="n">hgdp</span><span class="o">-</span><span class="n">tgp</span><span class="o">-</span><span class="n">v4</span><span class="o">-</span><span class="n">exome</span><span class="o">-</span><span class="n">duplicates</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">update</span><span class="o">-</span><span class="n">annotations</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">get</span><span class="o">-</span><span class="n">callstats</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">updated</span><span class="o">-</span><span class="n">samples</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">join</span><span class="o">-</span><span class="n">callstats</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">update</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">allele</span><span class="o">-</span><span class="n">number</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">new</span><span class="o">-</span><span class="n">variants</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">allele</span><span class="o">-</span><span class="n">number</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">pop</span><span class="o">-</span><span class="n">diff</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">update</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">callstats</span><span class="p">]</span>
+                                                         <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">patch</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">freq</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite data</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--test-pcsk9</kbd></dt>
+<dd><p>Test on a subset of variants in PCSK9 gene.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-x-gene</kbd></dt>
+<dd><p>Test on a subset of variants in TRPC5 on chrX.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--get-related-to-nonsubset</kbd></dt>
+<dd><p>Get the relatedness to nonsubset samples.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--get-hgdp-tgp-v4-exome-duplicates</kbd></dt>
+<dd><p>Get the duplicated samples to exomes.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--update-annotations</kbd></dt>
+<dd><p>Update HGDP + 1KG sample QC annotations.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--get-callstats-for-updated-samples</kbd></dt>
+<dd><p>Get the call stats for the genomes with an updated release status for v4.0 compared to v3.1.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--join-callstats-for-update</kbd></dt>
+<dd><p>Join the call stats Tables for the updated samples with the release call stats Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--compute-allele-number-for-new-variants</kbd></dt>
+<dd><p>Compute the allele number for variants that are in the updated samples but not in the release HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--compute-allele-number-for-pop-diff</kbd></dt>
+<dd><p>Compute the allele number of all v4.0 variants on the samples that have different pops in v4.0.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--update-release-callstats</kbd></dt>
+<dd><p>Update the release call stats by merging the call stats for the updated samples.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--apply-patch-to-freq-ht</kbd></dt>
+<dd><p>Apply a patch to the final freq HT.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.POP_MAP" title="gnomad_qc.v4.annotations.generate_freq_genomes.POP_MAP"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.POP_MAP</span></code></a></p></td>
+<td><p>Map of HGDP populations that need to be renamed in the v4.0 genomes release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.JOIN_FREQS" title="gnomad_qc.v4.annotations.generate_freq_genomes.JOIN_FREQS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.JOIN_FREQS</span></code></a></p></td>
+<td><p>Frequency Tables to join for creation of the v4.0 genomes release sites HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.FREQ_GLOBALS" title="gnomad_qc.v4.annotations.generate_freq_genomes.FREQ_GLOBALS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.FREQ_GLOBALS</span></code></a></p></td>
+<td><p>Global annotations on the frequency Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.filter_to_test" title="gnomad_qc.v4.annotations.generate_freq_genomes.filter_to_test"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.filter_to_test</span></code></a>(t)</p></td>
+<td><p>Filter to a region in PCSK9 or TRPC5 in Table or MatrixTable for testing purposes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_related_to_nonsubset" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_related_to_nonsubset"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_related_to_nonsubset</span></code></a>(...)</p></td>
+<td><p>Get the samples in the HGDP + 1KG subset that were related to samples outside the subset in the v3.1 release and were not included in the v3.1 release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_v4_exome_duplicates" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_v4_exome_duplicates"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_v4_exome_duplicates</span></code></a>(...)</p></td>
+<td><p>Get the samples in the HGDP + 1KG subset that are duplicates of an exome in the v4.0 release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.add_updated_sample_qc_annotations" title="gnomad_qc.v4.annotations.generate_freq_genomes.add_updated_sample_qc_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.add_updated_sample_qc_annotations</span></code></a>(ht)</p></td>
+<td><p>Add updated sample QC annotations to the HGDP + 1KG subset.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_updated_release_samples" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_updated_release_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_updated_release_samples</span></code></a>(ht)</p></td>
+<td><p>Get the samples in the HGDP + 1KG subset that will be added, subtracted, or have different pop labels in the v4.0 release compared to the v3.1 release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.calculate_callstats_for_selected_samples" title="gnomad_qc.v4.annotations.generate_freq_genomes.calculate_callstats_for_selected_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.calculate_callstats_for_selected_samples</span></code></a>(mt, ...)</p></td>
+<td><p>Calculate the call stats for samples in <cite>samples_ht</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.concatenate_annotations" title="gnomad_qc.v4.annotations.generate_freq_genomes.concatenate_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.concatenate_annotations</span></code></a>(hts)</p></td>
+<td><p>Concatenate annotations on multiple Tables into a single Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_callstats_for_selected_samples" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_callstats_for_selected_samples"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_callstats_for_selected_samples</span></code></a>(mt, ...)</p></td>
+<td><p>Calculate call stats for samples in <cite>samples_ht</cite> grouped by all stratifications in the v3.1 release call stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.filter_freq_arrays" title="gnomad_qc.v4.annotations.generate_freq_genomes.filter_freq_arrays"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.filter_freq_arrays</span></code></a>(ht, ...)</p></td>
+<td><p>Use <cite>filter_arrays_by_meta</cite> to filter annotations and globals by 'freq_meta' and annotate them back on <cite>ht</cite>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.annotate_v3_subsets_sample_count" title="gnomad_qc.v4.annotations.generate_freq_genomes.annotate_v3_subsets_sample_count"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.annotate_v3_subsets_sample_count</span></code></a>(ht)</p></td>
+<td><p>Get the freq sample counts from the v3.1 subsets.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.update_pop_labels" title="gnomad_qc.v4.annotations.generate_freq_genomes.update_pop_labels"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.update_pop_labels</span></code></a>(ht, ...)</p></td>
+<td><p>Update the population labels in the 'freq_meta' annotation on <cite>ht</cite>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.join_release_ht_with_subsets" title="gnomad_qc.v4.annotations.generate_freq_genomes.join_release_ht_with_subsets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.join_release_ht_with_subsets</span></code></a>(ht, ...)</p></td>
+<td><p>Join the release HT with the call stats for added and subtracted samples.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_group_membership_ht_for_an" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_group_membership_ht_for_an"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_group_membership_ht_for_an</span></code></a>(ht)</p></td>
+<td><p>Generate a Table with a 'group_membership' array for each sample indicating whether the sample belongs to specific stratification groups.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.compute_an_by_group_membership" title="gnomad_qc.v4.annotations.generate_freq_genomes.compute_an_by_group_membership"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.compute_an_by_group_membership</span></code></a>(...)</p></td>
+<td><p>Compute the allele number for new variants in the v4.0 release by call stats group membership.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.generate_v4_genomes_callstats" title="gnomad_qc.v4.annotations.generate_freq_genomes.generate_v4_genomes_callstats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.generate_v4_genomes_callstats</span></code></a>(ht, ...)</p></td>
+<td><p>Generate the call stats for the v4.0 genomes release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.finalize_v4_genomes_callstats" title="gnomad_qc.v4.annotations.generate_freq_genomes.finalize_v4_genomes_callstats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.finalize_v4_genomes_callstats</span></code></a>(ht, ...)</p></td>
+<td><p>Finalize the call stats for the v4.0 genomes release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_histograms" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_histograms"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_histograms</span></code></a>(ht, ...)</p></td>
+<td><p>Get histograms for the v4.0 genomes release from the v3.1 release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.set_downsampling_freq_missing" title="gnomad_qc.v4.annotations.generate_freq_genomes.set_downsampling_freq_missing"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.set_downsampling_freq_missing</span></code></a>(ht, ...)</p></td>
+<td><p>Set the downsampling call stats for new variants in <cite>ht</cite> to missing.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_age_distribution" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_age_distribution"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_age_distribution</span></code></a>(...)</p></td>
+<td><p>Get the updated 'age_distribution' annotation for v4.0 genomes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_pop_diff_v3_vds_group_membership" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_pop_diff_v3_vds_group_membership"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_pop_diff_v3_vds_group_membership</span></code></a>(...)</p></td>
+<td><p>Get the group membership for samples in pop_diff for the v3.1 VDS.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.patch_v4_genomes_callstats" title="gnomad_qc.v4.annotations.generate_freq_genomes.patch_v4_genomes_callstats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.patch_v4_genomes_callstats</span></code></a>(freq_ht)</p></td>
+<td><p>Patch the call stats for some inconsistent variant calls found during validity checks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_v4_genomes_release_resources" title="gnomad_qc.v4.annotations.generate_freq_genomes.get_v4_genomes_release_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_v4_genomes_release_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq_genomes.main" title="gnomad_qc.v4.annotations.generate_freq_genomes.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.main</span></code></a>(args)</p></td>
+<td><p>Create the v4.0 genomes release Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.annotations.generate_freq_genomes"></span><p>Script to create frequencies HT for v4.0 genomes.</p>
+<p>This script is written specifically for the v4.0 genomes release to handle the
+addition and subtraction of samples from the HGDP + 1KG subset. The HGDP + 1KG
+subset has updated sample QC annotations. The addition of new samples from the
+densified MT will include new variants, which will require the recomputation of AN
+for the v3.1 releases samples, and merging it to call stats of the v3.1.2 release
+sites HT and of updated HGDP + 1KG subset. In addition, the code will also get the
+other call stats related annotations, including: filtering allele frequencies (‘faf’),
+‘grpmax’, ‘gen_anc_faf_max’ and ‘InbreedingCoeff’ as done in v4.0 exomes.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.SUBSETS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">SUBSETS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['non_v2',</span> <span class="pre">'non_topmed',</span> <span class="pre">'non_cancer',</span> <span class="pre">'controls_and_biobanks',</span> <span class="pre">'non_neuro']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.SUBSETS" title="Permalink to this definition"></a></dt>
+<dd><p>List of subsets in the v3.1/v4.0 genomes release.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.POP_MAP">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">POP_MAP</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'bantusafrica':</span> <span class="pre">'bantusouthafrica',</span> <span class="pre">'biakaPygmy':</span> <span class="pre">'biaka',</span> <span class="pre">'italian':</span> <span class="pre">'bergamoitalian',</span> <span class="pre">'mbutiPygmy':</span> <span class="pre">'mbuti',</span> <span class="pre">'melanesian':</span> <span class="pre">'bougainville',</span> <span class="pre">'miaozu':</span> <span class="pre">'miao',</span> <span class="pre">'mongola':</span> <span class="pre">'mongolian',</span> <span class="pre">'oth':</span> <span class="pre">'remaining',</span> <span class="pre">'yizu':</span> <span class="pre">'yi'}</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.POP_MAP" title="Permalink to this definition"></a></dt>
+<dd><p>Map of HGDP populations that need to be renamed in the v4.0 genomes release. Also includes
+the renaming of ‘oth’ to ‘remaining’.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.JOIN_FREQS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">JOIN_FREQS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['release',</span> <span class="pre">'pop_diff',</span> <span class="pre">'added',</span> <span class="pre">'subtracted']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.JOIN_FREQS" title="Permalink to this definition"></a></dt>
+<dd><p>Frequency Tables to join for creation of the v4.0 genomes release sites HT.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.FREQ_GLOBALS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">FREQ_GLOBALS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">('freq_meta',</span> <span class="pre">'freq_meta_sample_count')</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.FREQ_GLOBALS" title="Permalink to this definition"></a></dt>
+<dd><p>Global annotations on the frequency Table.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.filter_to_test">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">filter_to_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gene_on_chrx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#filter_to_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.filter_to_test" title="Permalink to this definition"></a></dt>
+<dd><p>Filter to a region in PCSK9 or TRPC5 in Table or MatrixTable for testing purposes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>t</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]) – Table or MatrixTable to filter.</p></li>
+<li><p><strong>gene_on_chrx</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to TRPC5 (in the non-PAR region), instead of
+PCSK9, for testing chrX.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table or MatrixTable filtered to a region in PCSK9 or TRPC5.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_related_to_nonsubset">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_hgdp_tgp_related_to_nonsubset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v3_meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_hgdp_tgp_related_to_nonsubset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_related_to_nonsubset" title="Permalink to this definition"></a></dt>
+<dd><p>Get the samples in the HGDP + 1KG subset that were related to samples outside the subset in the v3.1 release and were not included in the v3.1 release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v3_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the v3.1 release metadata.</p></li>
+<li><p><strong>rel_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the v3.1 release relatedness, here we use the results
+from pc_relate of the full dataset.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the samples in the HGDP + 1KG subset that are related to
+samples outside the subset in v3 release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_v4_exome_duplicates">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_hgdp_tgp_v4_exome_duplicates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v3_meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v4_meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_hgdp_tgp_v4_exome_duplicates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_v4_exome_duplicates" title="Permalink to this definition"></a></dt>
+<dd><p>Get the samples in the HGDP + 1KG subset that are duplicates of an exome in the v4.0 release.</p>
+<p>The duplicated samples are defined as samples that were HGDP + 1KG subset samples
+in the v3.1 release and are also in the v4.0 exomes release. The duplicated samples
+have to be removed because we will have combined frequencies rom v4.0 exomes and
+genomes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v3_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the v3.1 release metadata.</p></li>
+<li><p><strong>v4_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the v4.0 exomes release metadata.</p></li>
+<li><p><strong>rel_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the v3.1 and v4.0 joint relatedness, it’s based on
+cuKING relatedness results.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the samples in the HGDP + 1KG subset that are duplicates of an
+exome in the v4.0 exomes release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.add_updated_sample_qc_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">add_updated_sample_qc_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#add_updated_sample_qc_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.add_updated_sample_qc_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Add updated sample QC annotations to the HGDP + 1KG subset.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The following annotations need to be updated for the v4.0 genomes release based
+on the latest sample QC results of the subset:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><cite>hgdp_tgp_meta.subcontinental_pca.outlier</cite>: to apply the updated pop
+outlier filter implemented by Alicia Martin’s group.</p></li>
+<li><p><cite>gnomad_sample_filters.hard_filtered</cite>: to apply the recomputed freemix
+filter for HGDP samples.</p></li>
+<li><p><cite>gnomad_sample_filters.related_to_nonsubset</cite>: to further filter out
+samples that are related to samples outside the subset but were not
+included in the v3 release.</p></li>
+<li><p><cite>gnomad_sample_filters.v4_exome_duplicate</cite>: to further filter out the
+samples in the HGDP + 1KG subset that are duplicates of an exome in the
+v4.0 release.</p></li>
+<li><p><cite>relatedness_inference.related</cite>: to apply the updated relatedness
+inference implemented by Alicia Martin’s group.</p></li>
+</ul>
+</div></blockquote>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the HGDP + 1KG subset metadata from the v3.1.2 release.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with updated sample QC annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_updated_release_samples">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_updated_release_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_updated_release_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_updated_release_samples" title="Permalink to this definition"></a></dt>
+<dd><p>Get the samples in the HGDP + 1KG subset that will be added, subtracted, or have different pop labels in the v4.0 release compared to the v3.1 release.</p>
+<dl class="simple">
+<dt>Three sets of samples will be obtained:</dt><dd><ul class="simple">
+<li><p>samples that will have different pop labels in the v4.0 genomes release:
+samples in the to-be-split ‘Han’ and ‘Papuan’ populations AND their
+‘gnomad_release’ status hasn’t changed.</p></li>
+<li><p>samples that will be added to the v4.0 genomes release: samples where
+‘gnomad_release’ status has changed and ‘gnomad_release’ is now True.</p></li>
+<li><p>samples that will be removed from the v4.0 genomes release: samples where
+‘gnomad_release’ status has changed and ‘gnomad_release’ is now False.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the HGDP + 1KG subset metadata with updated sample
+annotations.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of Tables with samples that have different pop labels in the v4
+release, to be added, and to be subtracted.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.calculate_callstats_for_selected_samples">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">calculate_callstats_for_selected_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">samples_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subsets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#calculate_callstats_for_selected_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.calculate_callstats_for_selected_samples" title="Permalink to this definition"></a></dt>
+<dd><p>Calculate the call stats for samples in <cite>samples_ht</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – MatrixTable with the HGDP + 1KG subset.</p></li>
+<li><p><strong>samples_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with selected samples and their metadata.</p></li>
+<li><p><strong>subsets</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Optional List of subsets to be included in the frequency metadata
+‘freq_meta’ annotation returned by <cite>annotate_freq</cite>. e.g. [‘hgdp’], [‘tgp’],
+[‘hgdp’, ‘tgp’].</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the call stats for the selected samples.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.concatenate_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">concatenate_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">global_field_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('freq_meta',</span> <span class="pre">'freq_meta_sample_count')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_field_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('freq',)</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#concatenate_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.concatenate_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Concatenate annotations on multiple Tables into a single Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>hts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – List of Tables with annotations to be concatenated.</p></li>
+<li><p><strong>global_field_names</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Global field names to concatenate.</p></li>
+<li><p><strong>row_field_names</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Row field names to concatenate.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with concatenated annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_callstats_for_selected_samples">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_hgdp_tgp_callstats_for_selected_samples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">samples_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compute_freq_all</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_hgdp_tgp_callstats_for_selected_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_hgdp_tgp_callstats_for_selected_samples" title="Permalink to this definition"></a></dt>
+<dd><p>Calculate call stats for samples in <cite>samples_ht</cite> grouped by all stratifications in the v3.1 release call stats.</p>
+<dl class="simple">
+<dt>This function calculates call stats for:</dt><dd><ul class="simple">
+<li><p>all samples provided in the <cite>samples_ht</cite> (if <cite>compute_freq_all</cite> is True).</p></li>
+<li><p>samples in only the HGDP subset.</p></li>
+<li><p>samples in only the 1KG (tgp) subset.</p></li>
+</ul>
+</dd>
+</dl>
+<p>The call stats in these three Tables are then concatenate to create a single Table
+with all call stats.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – MatrixTable with the HGDP + 1KG subset.</p></li>
+<li><p><strong>samples_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the samples to filter to before computing call stats.</p></li>
+<li><p><strong>compute_freq_all</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to compute the call stats for all samples in
+<cite>samples_ht</cite> instead of only the subset call stats. If False, only the HGDP and
+1KG subset call stats are computed. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the call stats for the selected samples.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.filter_freq_arrays">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">filter_freq_arrays</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items_to_filter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">combine_operator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'and'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('freq',)</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#filter_freq_arrays"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.filter_freq_arrays" title="Permalink to this definition"></a></dt>
+<dd><p>Use <cite>filter_arrays_by_meta</cite> to filter annotations and globals by ‘freq_meta’ and annotate them back on <cite>ht</cite>.</p>
+<p>Filter <cite>annotations</cite>, ‘freq_meta’ and ‘freq_meta_sample_count’ fields to only
+<cite>items_to_filter</cite> by using the ‘freq_meta’ array field values.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p></li>
+<li><p><strong>items_to_filter</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]]) – Items to filter by.</p></li>
+<li><p><strong>keep</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to keep or remove items. Default is True.</p></li>
+<li><p><strong>combine_operator</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Operator (“and” or “or”) to use when combining items in
+‘items_to_filter’. Default is “and”.</p></li>
+<li><p><strong>annotations</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Annotations in ‘ht’ to filter by <cite>items_to_filter</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with filtered ‘annotations’ and ‘freq_meta’ array fields.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.annotate_v3_subsets_sample_count">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">annotate_v3_subsets_sample_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#annotate_v3_subsets_sample_count"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.annotate_v3_subsets_sample_count" title="Permalink to this definition"></a></dt>
+<dd><p>Get the freq sample counts from the v3.1 subsets.</p>
+<p>The freq sample counts on the v3.1.2 release sites HT only contains the counts for
+the non subset groupings. This function adds the freq sample counts from the v3.1
+subset frequency groups to the v3.1.2 sample count array to give a sample count
+array matching the v3.1.2 ‘freq_meta’ global annotation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of the 3.1.2 release sites HT, which only contains the freq
+sample counts for non subset groupings.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the freq sample counts from the v3.1 subset groups added.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.update_pop_labels">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">update_pop_labels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop_map</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#update_pop_labels"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.update_pop_labels" title="Permalink to this definition"></a></dt>
+<dd><p>Update the population labels in the ‘freq_meta’ annotation on <cite>ht</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with population labels to update.</p></li>
+<li><p><strong>pop_map</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – Dictionary mapping old to new population labels.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with updated population labels in ‘freq_meta’ annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.join_release_ht_with_subsets">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">join_release_ht_with_subsets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_hts</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#join_release_ht_with_subsets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.join_release_ht_with_subsets" title="Permalink to this definition"></a></dt>
+<dd><p>Join the release HT with the call stats for added and subtracted samples.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – gnomAD v3.1.2 release sites Table.</p></li>
+<li><p><strong>freq_hts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Dictionary with the call stats Tables for added and subtracted
+samples.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with <cite>ht</cite> and all Tables in <cite>freq_hts</cite> joined.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_group_membership_ht_for_an">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_group_membership_ht_for_an</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">only_pop_diff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_group_membership_ht_for_an"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_group_membership_ht_for_an" title="Permalink to this definition"></a></dt>
+<dd><p>Generate a Table with a ‘group_membership’ array for each sample indicating whether the sample belongs to specific stratification groups.</p>
+<dl class="simple">
+<dt><cite>ht</cite> must have the following annotations:</dt><dd><ul class="simple">
+<li><p>‘meta.population_inference.pop’: population label.</p></li>
+<li><p>‘meta.sex_imputation.sex_karyotype`: sex label.</p></li>
+<li><p>‘meta.project_meta.project_subpop’: subpopulation label.</p></li>
+<li><p>‘meta.subsets’: dictionary with subset labels as keys and boolean values.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the sample metadata.</p></li>
+<li><p><strong>only_pop_diff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to only include the population stratification groups
+for samples in pop_diff. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the group membership for each sample to be used for computing
+allele number (AN) per group.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.compute_an_by_group_membership">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">compute_an_by_group_membership</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_membership_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variant_filter_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#compute_an_by_group_membership"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.compute_an_by_group_membership" title="Permalink to this definition"></a></dt>
+<dd><p>Compute the allele number for new variants in the v4.0 release by call stats group membership.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset with all v3.1 samples (including non-release).</p></li>
+<li><p><strong>group_membership_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the group membership for each sample. This
+is generated by <cite>get_group_membership_ht_for_an</cite>.</p></li>
+<li><p><strong>variant_filter_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with all variants that need AN to be computed.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the allele number for new variants in the v4.0 release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.generate_v4_genomes_callstats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">generate_v4_genomes_callstats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">an_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pop_diff_an_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#generate_v4_genomes_callstats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.generate_v4_genomes_callstats" title="Permalink to this definition"></a></dt>
+<dd><p>Generate the call stats for the v4.0 genomes release.</p>
+<p>Merge call stats from the v3.1 release, the v3.1 AN of new v4.0 variants,
+samples with updated population labels, added samples, and removed samples.</p>
+<p>Also, compute filtering allele frequencies (‘faf’), ‘grpmax’, ‘gen_anc_faf_max’ and
+‘InbreedingCoeff’ on the merged call stats.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table returned by <cite>join_release_ht_with_subsets</cite>.</p></li>
+<li><p><strong>an_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the allele number for new variants in the v4.0 release.</p></li>
+<li><p><strong>pop_diff_an_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the allele number for samples with updated pop
+labels and variants in the v4.0 release but not present in the callstats of this subset.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the updated call stats for the v4.0 genomes release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.finalize_v4_genomes_callstats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">finalize_v4_genomes_callstats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v3_sites_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v3_meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">updated_meta_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#finalize_v4_genomes_callstats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.finalize_v4_genomes_callstats" title="Permalink to this definition"></a></dt>
+<dd><p>Finalize the call stats for the v4.0 genomes release.</p>
+<dl class="simple">
+<dt>The following is done to create the final v4.0 genomes call stats:</dt><dd><ul class="simple">
+<li><p>Compute filtering allele frequencies (‘faf’), ‘grpmax’, ‘gen_anc_faf_max’ and
+‘inbreeding_coeff’ on the v4.0 genomes call stats.</p></li>
+<li><p>Drop downsamplings from the call stats.</p></li>
+<li><p>Get the quality histograms from the v3.1 release.</p></li>
+<li><p>Get the age distribution for the v4.0 genomes release.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the updated call stats for the v4.0 genomes release.</p></li>
+<li><p><strong>v3_sites_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table for the v3.1.2 release sites.</p></li>
+<li><p><strong>v3_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table for the v3.1 release metadata.</p></li>
+<li><p><strong>updated_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table for the updated metadata.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the finalized call stats for the v4.0 genomes release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_histograms">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_histograms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v3_sites_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_histograms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_histograms" title="Permalink to this definition"></a></dt>
+<dd><p>Get histograms for the v4.0 genomes release from the v3.1 release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the call stats for the v4.0 genomes release.</p></li>
+<li><p><strong>v3_sites_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table for the v3.1 release sites.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the histograms added for the v4.0 genomes release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.set_downsampling_freq_missing">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">set_downsampling_freq_missing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_variants_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#set_downsampling_freq_missing"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.set_downsampling_freq_missing" title="Permalink to this definition"></a></dt>
+<dd><p>Set the downsampling call stats for new variants in <cite>ht</cite> to missing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the call stats for all variants in the v4.0 genomes release.</p></li>
+<li><p><strong>new_variants_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with new variants in the v4.0 genomes release.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the downsampling call stats for new variants set to missing.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_age_distribution">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_age_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v3_meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset_updated_meta_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_age_distribution"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_age_distribution" title="Permalink to this definition"></a></dt>
+<dd><p>Get the updated ‘age_distribution’ annotation for v4.0 genomes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v3_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the v3.1.2 release sample metadata.</p></li>
+<li><p><strong>subset_updated_meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the updated sample metadata for the
+HGDP + 1KG subset.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Expression with the age distribution for samples in <cite>subset_updated_meta</cite>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_pop_diff_v3_vds_group_membership">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_pop_diff_v3_vds_group_membership</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">v3_vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_pop_diff_v3_vds_group_membership"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_pop_diff_v3_vds_group_membership" title="Permalink to this definition"></a></dt>
+<dd><p>Get the group membership for samples in pop_diff for the v3.1 VDS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>v3_vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VDS with the v3.1 release samples.</p></li>
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the updated HGDP + 1KG sample metadata.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the group membership for samples in pop_diff.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.patch_v4_genomes_callstats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">patch_v4_genomes_callstats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#patch_v4_genomes_callstats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.patch_v4_genomes_callstats" title="Permalink to this definition"></a></dt>
+<dd><p>Patch the call stats for some inconsistent variant calls found during validity checks.</p>
+<p>14 variants were found to have inconsistent calls between v3.1 and v4.0 genomes
+release, we determined the reason for each of these by manual inspection and
+this function applies the needed patches to these variants.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is a temporary fix until we can recompute the call stats for all the
+samples.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with the call stats for the v4.0 genomes release.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with the patched call stats for the v4.0 genomes release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.get_v4_genomes_release_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">get_v4_genomes_release_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#get_v4_genomes_release_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.get_v4_genomes_release_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather all resources for testing.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite resources if they exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+gnomAD v4.0 genomes release pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq_genomes.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq_genomes.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq_genomes.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq_genomes.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create the v4.0 genomes release Table.</p>
+<p>Update call stats to include samples from the HGDP + 1KG subset that were
+unintentionally excluded whole populations within the HGDP + 1KG subset that were
+the most genetically unique and had small sample sizes (more specifically: San,
+Mbuti Pygmy, Biaka Pygmy, Bougainville, and Papuan) compared to other populations
+within the gnomAD v3.1 callset.</p>
+<p>In order to avoid re-calculating the call stats for the whole subset / whole
+release, we calculate the call stats for the samples that will be added
+and subtracted, then merge the call stats with the old call stats in the
+release HT.</p>
+<dl class="simple">
+<dt>Changes compared to the v3 release:</dt><dd><ul class="simple">
+<li><p>Some small updates to samples that are hard filtered.</p></li>
+<li><p>Use a population PC outlier approach to filter the HGDP + 1KG samples instead
+of the sample QC metric outlier filtering approach used on the full dataset
+that caused some samples to be unintentionally excluded.</p></li>
+<li><p>HGDP + 1KG release samples are determined using relatedness (pc_relate) run on
+only samples within the subset as well as relatedness to the rest of the
+release.</p></li>
+<li><p>Some population labels were updated.</p></li>
+<li><p>The <cite>Han</cite> and <cite>Papuan</cite> populations were split into more specific groupings.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generate_freq.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.annotations.generate_freq" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_variant_qc_annotations.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.annotations.generate_variant_qc_annotations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

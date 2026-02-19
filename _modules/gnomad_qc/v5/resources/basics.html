@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.basics &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.basics</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.resources.basics</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing generic resources.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MatrixTableResource</span><span class="p">,</span>
+    <span class="n">VariantDatasetResource</span><span class="p">,</span>
+    <span class="n">VersionedVariantDatasetResource</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.file_utils</span> <span class="kn">import</span> <span class="n">file_exists</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">_split_and_filter_variant_data_for_loading</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">AOU_GENOMIC_METRICS_PATH</span><span class="p">,</span>
+    <span class="n">AOU_LOW_QUALITY_PATH</span><span class="p">,</span>
+    <span class="n">AOU_WGS_BUCKET</span><span class="p">,</span>
+    <span class="n">CURRENT_AOU_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+    <span class="n">GNOMAD_TMP_BUCKET</span><span class="p">,</span>
+    <span class="n">WORKSPACE_BUCKET</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.meta</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">failing_metrics_samples</span><span class="p">,</span>
+    <span class="n">low_quality_samples</span><span class="p">,</span>
+    <span class="n">meta</span><span class="p">,</span>
+    <span class="n">sample_id_collisions</span><span class="p">,</span>
+    <span class="n">samples_to_exclude</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;basic_resources&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="c1"># v5 DRAGEN TGP test VDS.</span>
+<span class="n">dragen_tgp_vds</span> <span class="o">=</span> <span class="n">VariantDatasetResource</span><span class="p">(</span>
+    <span class="s2">&quot;gs://gnomad/v5.0/testing/genomes/dragen_tgp_v5.0_test.vds&quot;</span>
+<span class="p">)</span>
+
+<span class="n">_aou_genotypes</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;8&quot;</span><span class="p">:</span> <span class="n">VariantDatasetResource</span><span class="p">(</span>
+        <span class="s2">&quot;gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/vds/hail.vds&quot;</span>
+    <span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">aou_genotypes</span> <span class="o">=</span> <span class="n">VersionedVariantDatasetResource</span><span class="p">(</span>
+    <span class="n">CURRENT_AOU_VERSION</span><span class="p">,</span>
+    <span class="n">_aou_genotypes</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># This test VDS was initially created to count the number of singletons in AoU and compare the results to those</span>
+<span class="c1"># provided in the sample QC metrics. It contains 10 randomly chosen samples based on if they</span>
+<span class="c1"># `fail_singleton_residual` (5 passed, 5 failed) from the AoU sample QC data and is also used for testing our code.</span>
+<span class="c1"># &#39;hl.vds.filter_samples()&#39; is used to filter the VDS to these samples, hence it includes all the variants present in</span>
+<span class="c1"># these samples on all the contigs as the original VDS.</span>
+<span class="n">aou_test_dataset</span> <span class="o">=</span> <span class="n">VariantDatasetResource</span><span class="p">(</span>
+    <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/hard_filtering/10sample_for_singleton_test.vds&quot;</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="qc_temp_prefix"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.qc_temp_prefix">[docs]</a><span class="k">def</span> <span class="nf">qc_temp_prefix</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dataproc&quot;</span><span class="p">,</span>
+    <span class="n">days</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return path to temporary QC bucket.</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param environment: Compute environment, either &#39;dataproc&#39;,&#39;rwb&#39;, or &#39;batch&#39;. Defaults to &#39;dataproc&#39;.</span>
+<span class="sd">    :param days: Number of days to keep temporary data. Defaults to None.</span>
+<span class="sd">    :return: Path to bucket with temporary QC data.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">days</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">30</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Days must be either None, 4, or 30.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">environment</span> <span class="o">==</span> <span class="s2">&quot;rwb&quot;</span><span class="p">:</span>
+        <span class="n">env_bucket</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/tmp</span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;/</span><span class="si">{</span><span class="n">days</span><span class="si">}</span><span class="s1">_day&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">days</span><span class="w"> </span><span class="ow">is</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="kc">None</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">environment</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;dataproc&quot;</span><span class="p">,</span> <span class="s2">&quot;batch&quot;</span><span class="p">):</span>
+        <span class="n">env_bucket</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">GNOMAD_TMP_BUCKET</span><span class="si">}{</span><span class="sa">f</span><span class="s1">&#39;-</span><span class="si">{</span><span class="n">days</span><span class="si">}</span><span class="s1">day&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">days</span><span class="w"> </span><span class="ow">is</span><span class="w"> </span><span class="ow">not</span><span class="w"> </span><span class="kc">None</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Environment </span><span class="si">{</span><span class="n">environment</span><span class="si">}</span><span class="s2"> not recognized. Choose &#39;rwb&#39;, &#39;dataproc&#39;, or &#39;batch&#39;.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">env_bucket</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.qc_data/&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_checkpoint_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.get_checkpoint_path">[docs]</a><span class="k">def</span> <span class="nf">get_checkpoint_path</span><span class="p">(</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dataproc&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a checkpoint path for Table or MatrixTable.</span>
+
+<span class="sd">    :param str name: Name of intermediate Table/MatrixTable.</span>
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param bool mt: Whether path is for a MatrixTable, default is False.</span>
+<span class="sd">    :param environment: Compute environment, either &#39;dataproc&#39;,&#39;rwb&#39;, or &#39;batch&#39;. Defaults to &#39;dataproc&#39;.</span>
+<span class="sd">    :return: Output checkpoint path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="p">)</span><span class="si">}{</span><span class="n">name</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="s2">&quot;mt&quot;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">mt</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">&quot;ht&quot;</span><span class="si">}</span><span class="s1">&#39;</span></div>
+
+
+<div class="viewcode-block" id="get_logging_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.get_logging_path">[docs]</a><span class="k">def</span> <span class="nf">get_logging_path</span><span class="p">(</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dataproc&quot;</span><span class="p">,</span>
+    <span class="n">tmp_dir_days</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create a path for Hail log files.</span>
+
+<span class="sd">    :param name: Name of log file.</span>
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param environment: Compute environment, &#39;dataproc&#39;, &#39;rwb&#39;, or &#39;batch&#39;. Defaults to &#39;dataproc&#39;.</span>
+<span class="sd">    :param tmp_dir_days: Number of days to keep temporary data. Defaults to None.</span>
+<span class="sd">    :return: Output log path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="p">,</span><span class="w"> </span><span class="n">tmp_dir_days</span><span class="p">)</span><span class="si">}{</span><span class="n">name</span><span class="si">}</span><span class="s2">.log&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_aou_vds"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.get_aou_vds">[docs]</a><span class="k">def</span> <span class="nf">get_aou_vds</span><span class="p">(</span>
+    <span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">remove_hard_filtered_samples</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">high_quality_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">release_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_samples</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">autosomes_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">sex_chr_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_variant_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">filter_intervals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">tinterval</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">split_reference_blocks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">remove_dead_alleles</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">annotate_meta</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">entries_to_keep</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">checkpoint_variant_data</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">naive_coalesce_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">add_project_prefix</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load the AOU VDS.</span>
+
+<span class="sd">    :param split: Whether to split multi-allelic variants in the VDS. Note: this will perform a split on the VDS</span>
+<span class="sd">        rather than grab an already split VDS. Default is False.</span>
+<span class="sd">    :param remove_hard_filtered_samples: Whether to remove samples that failed hard</span>
+<span class="sd">        filters (only relevant after hard filtering is complete). Default is True.</span>
+<span class="sd">    :param high_quality_only: Whether to filter the VDS to only high quality samples. Default is False.</span>
+<span class="sd">    :param release_only: Whether to filter the VDS to only samples available for</span>
+<span class="sd">        release (can only be used if metadata is present).</span>
+<span class="sd">    :param filter_samples: Optional samples to filter the VDS to. Can be a list of sample IDs or a Table with sample IDs.</span>
+<span class="sd">        If `filter_samples` contains sample IDs with collisions with gnomAD samples,</span>
+<span class="sd">        `add_project_prefix` must be set to True to filter properly. Default is None.</span>
+<span class="sd">    :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.</span>
+<span class="sd">    :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.</span>
+<span class="sd">    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).</span>
+<span class="sd">    :param autosomes_only: Whether to include only autosomes. Default is False.</span>
+<span class="sd">    :param sex_chr_only: Whether to include only sex chromosomes. Default is False.</span>
+<span class="sd">    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.</span>
+<span class="sd">    :param filter_intervals: Optional argument to filter the VDS to specific intervals.</span>
+<span class="sd">    :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by `filter_intervals`. Default is True.</span>
+<span class="sd">    :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.</span>
+<span class="sd">    :param annotate_meta: Whether to annotate the VDS with the sample QC metadata. Default is False.</span>
+<span class="sd">    :param entries_to_keep: Optional list of entries to keep in the variant data. If splitting the VDS, use the global entries (e.g. &#39;GT&#39;) instead of the local entries (e.g. &#39;LGT&#39;) to keep.</span>
+<span class="sd">    :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.</span>
+<span class="sd">    :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.</span>
+<span class="sd">    :param add_project_prefix: Whether to prefix sample IDs (e.g., ``&#39;aou_&#39;``) for samples that exist in multiple projects to avoid ID collisions. Default is False.</span>
+<span class="sd">    :return: AoU v8 VDS.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">aou_v8_resource</span> <span class="o">=</span> <span class="n">aou_test_dataset</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="n">aou_genotypes</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">aou_v8_resource</span><span class="o">.</span><span class="n">vds</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">chrom</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="n">chrom</span> <span class="o">=</span> <span class="p">[</span><span class="n">chrom</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">autosomes_only</span> <span class="ow">and</span> <span class="n">sex_chr_only</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Only one of &#39;autosomes_only&#39; or &#39;sex_chr_only&#39; can be set to True.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Apply chromosome filtering.</span>
+    <span class="k">if</span> <span class="n">sex_chr_only</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;chrX&quot;</span><span class="p">,</span> <span class="s2">&quot;chrY&quot;</span><span class="p">])</span>
+    <span class="k">elif</span> <span class="n">autosomes_only</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep_autosomes</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">chrom</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">chrom</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to chromosome(s) </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span> <span class="n">chrom</span><span class="p">)</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_chromosomes</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="n">chrom</span><span class="p">)</span>
+
+    <span class="c1"># Count initial number of samples.</span>
+    <span class="n">n_samples_before</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">count_cols</span><span class="p">()</span>
+
+    <span class="c1"># Remove samples that should have been excluded from the AoU v8 release</span>
+    <span class="c1"># and samples with non-XX/XY ploidies.</span>
+    <span class="n">hard_filtered_samples_ht</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">remove_hard_filtered_samples</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.sample_qc</span> <span class="kn">import</span> <span class="n">hard_filtered_samples</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Removing hard filtered samples from AoU VDS...&quot;</span><span class="p">)</span>
+        <span class="n">hard_filtered_samples_ht</span> <span class="o">=</span> <span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">s_to_exclude</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">get_samples_to_exclude</span><span class="p">(</span><span class="n">hard_filtered_samples_ht</span><span class="p">)))</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span>
+        <span class="n">vds</span><span class="p">,</span> <span class="n">s_to_exclude</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">remove_dead_alleles</span><span class="o">=</span><span class="n">remove_dead_alleles</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Report final sample exclusion count.</span>
+    <span class="n">n_samples_after</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">count_cols</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Removed </span><span class="si">%d</span><span class="s2"> samples from VDS.&quot;</span><span class="p">,</span> <span class="n">n_samples_before</span> <span class="o">-</span> <span class="n">n_samples_after</span><span class="p">)</span>
+
+    <span class="c1"># Remove the chr4 site with excessive numbers of alleles (n=22233) to</span>
+    <span class="c1"># avoid memory issues with `split_multi`.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Dropping excessively multi-allelic site at chr4:12237652...&quot;</span><span class="p">)</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+        <span class="n">vds</span><span class="p">,</span>
+        <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chr4:12237652-12237653&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)],</span>
+        <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">naive_coalesce_partitions</span><span class="p">:</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">naive_coalesce_partitions</span><span class="p">),</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">naive_coalesce_partitions</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Apply interval filtering.</span>
+    <span class="k">if</span> <span class="n">filter_intervals</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">filter_intervals</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to </span><span class="si">%s</span><span class="s2"> intervals...&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">filter_intervals</span><span class="p">))</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filter_intervals</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">filter_intervals</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">filter_intervals</span>
+            <span class="p">]</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+            <span class="n">vds</span><span class="p">,</span> <span class="n">filter_intervals</span><span class="p">,</span> <span class="n">split_reference_blocks</span><span class="o">=</span><span class="n">split_reference_blocks</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Apply partition filtering.</span>
+    <span class="k">if</span> <span class="n">filter_partitions</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">filter_partitions</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to </span><span class="si">%s</span><span class="s2"> partitions...&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">filter_partitions</span><span class="p">))</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="n">filter_partitions</span><span class="p">),</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="n">filter_partitions</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="n">vmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+    <span class="n">rmt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span>
+
+    <span class="k">if</span> <span class="n">release_only</span> <span class="ow">or</span> <span class="n">high_quality_only</span> <span class="ow">or</span> <span class="n">annotate_meta</span> <span class="ow">or</span> <span class="n">add_project_prefix</span><span class="p">:</span>
+        <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;Adding &#39;aou_&#39; prefix to samples that had ID collisions with gnomAD samples...&quot;</span>
+        <span class="p">)</span>
+        <span class="n">sample_collisions</span> <span class="o">=</span> <span class="n">sample_id_collisions</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">vmt</span> <span class="o">=</span> <span class="n">add_project_prefix_to_sample_collisions</span><span class="p">(</span>
+            <span class="n">t</span><span class="o">=</span><span class="n">vmt</span><span class="p">,</span> <span class="n">sample_collisions</span><span class="o">=</span><span class="n">sample_collisions</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s2">&quot;aou&quot;</span>
+        <span class="p">)</span>
+        <span class="n">rmt</span> <span class="o">=</span> <span class="n">add_project_prefix_to_sample_collisions</span><span class="p">(</span>
+            <span class="n">t</span><span class="o">=</span><span class="n">rmt</span><span class="p">,</span> <span class="n">sample_collisions</span><span class="o">=</span><span class="n">sample_collisions</span><span class="p">,</span> <span class="n">project</span><span class="o">=</span><span class="s2">&quot;aou&quot;</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">annotate_meta</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotating VDS variant_data with metadata...&quot;</span><span class="p">)</span>
+            <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span><span class="n">meta</span><span class="o">=</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">vmt</span><span class="o">.</span><span class="n">col_key</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">filter_variant_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">split</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering to a specific set of variants is only supported when splitting&quot;</span>
+            <span class="s2">&quot; the VDS.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">split</span><span class="p">:</span>
+        <span class="n">vmt</span> <span class="o">=</span> <span class="n">_split_and_filter_variant_data_for_loading</span><span class="p">(</span>
+            <span class="n">vmt</span><span class="p">,</span> <span class="n">filter_variant_ht</span><span class="p">,</span> <span class="n">entries_to_keep</span><span class="p">,</span> <span class="n">checkpoint_variant_data</span>
+        <span class="p">)</span>
+        <span class="c1"># Don&#39;t need to filter entries again if already done in split function</span>
+        <span class="n">entries_filtered_during_split</span> <span class="o">=</span> <span class="n">entries_to_keep</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">entries_filtered_during_split</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">if</span> <span class="n">entries_to_keep</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">entries_filtered_during_split</span><span class="p">:</span>
+        <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">select_entries</span><span class="p">(</span><span class="o">*</span><span class="n">entries_to_keep</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">checkpoint_variant_data</span><span class="p">:</span>
+        <span class="n">vmt</span> <span class="o">=</span> <span class="n">vmt</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;vds_loading.variant_data&quot;</span><span class="p">,</span> <span class="s2">&quot;mt&quot;</span><span class="p">))</span>
+
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span><span class="n">rmt</span><span class="p">,</span> <span class="n">vmt</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">release_only</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering VDS to release samples only...&quot;</span><span class="p">)</span>
+        <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">release</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">high_quality_only</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering VDS to high quality samples only...&quot;</span><span class="p">)</span>
+        <span class="n">filter_expr</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">high_quality</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">filter_samples</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Filtering to </span><span class="si">%s</span><span class="s2"> samples...&quot;</span><span class="p">,</span>
+            <span class="p">(</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">filter_samples</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filter_samples</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span>
+                <span class="k">else</span> <span class="n">filter_samples</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;This filter will not work correctly if `filter_samples` contains sample&quot;</span>
+            <span class="s2">&quot; IDs with collisions with gnomAD samples and `add_project_prefix` is not&quot;</span>
+            <span class="s2">&quot; set.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">filter_samples</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">vds</span></div>
+
+
+<div class="viewcode-block" id="get_gnomad_v5_genomes_vds"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.get_gnomad_v5_genomes_vds">[docs]</a><span class="k">def</span> <span class="nf">get_gnomad_v5_genomes_vds</span><span class="p">(</span>
+    <span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">release_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">consent_drop_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">annotate_meta</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">autosomes_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">sex_chr_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">filter_variant_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">filter_intervals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">tinterval</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">split_reference_blocks</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">entries_to_keep</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">annotate_het_non_ref</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">naive_coalesce_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">filter_samples_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get gnomAD v5 genomes VariantDataset with desired filtering and metadata annotations.</span>
+
+<span class="sd">    :param split: Perform split on VDS - Note: this will perform a split on the VDS</span>
+<span class="sd">        rather than grab an already split VDS.</span>
+<span class="sd">    :param release_only: Whether to filter the VDS to only samples available for</span>
+<span class="sd">        v5 release (distinct from v4 release due to samples to drop for consent reasons).</span>
+<span class="sd">        Requires that v5 sample metadata has been computed.</span>
+<span class="sd">    :param consent_drop_only: Whether to filter the VDS to only consent drop samples.</span>
+<span class="sd">    :param annotate_meta: Whether to add v4 genomes metadata to VDS variant_data in</span>
+<span class="sd">        &#39;meta&#39; column.</span>
+<span class="sd">    :param test: Whether to use the test VDS instead of the full v4 genomes VDS.</span>
+<span class="sd">    :param filter_partitions: Optional argument to filter the VDS to specific partitions</span>
+<span class="sd">        in the provided list.</span>
+<span class="sd">    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).</span>
+<span class="sd">    :param autosomes_only: Whether to filter the VDS to autosomes only. Default is</span>
+<span class="sd">        False.</span>
+<span class="sd">    :param sex_chr_only: Whether to filter the VDS to sex chromosomes only. Default is</span>
+<span class="sd">        False.</span>
+<span class="sd">    :param filter_variant_ht: Optional argument to filter the VDS to a specific set of</span>
+<span class="sd">        variants. Only supported when splitting the VDS.</span>
+<span class="sd">    :param filter_intervals: Optional argument to filter the VDS to specific intervals.</span>
+<span class="sd">    :param split_reference_blocks: Whether to split the reference data at the edges of</span>
+<span class="sd">        the intervals defined by `filter_intervals`. Default is True.</span>
+<span class="sd">    :param entries_to_keep: Optional argument to keep only specific entries in the</span>
+<span class="sd">        returned VDS. If splitting the VDS, use the global entries (e.g. &#39;GT&#39;) instead</span>
+<span class="sd">        of the local entries (e.g. &#39;LGT&#39;) to keep.</span>
+<span class="sd">    :param annotate_het_non_ref: Whether to annotate non reference heterozygotes (as</span>
+<span class="sd">        &#39;_het_non_ref&#39;) to the variant data. Default is False.</span>
+<span class="sd">    :param naive_coalesce_partitions: Optional argument to coalesce the VDS to a</span>
+<span class="sd">        specific number of partitions using naive coalesce.</span>
+<span class="sd">    :param filter_samples_ht: Optional Table of samples to filter the VDS to.</span>
+<span class="sd">    :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Import v3 basics and v4 meta here to avoid circular imports.</span>
+    <span class="kn">from</span> <span class="nn">gnomad_qc.v3.resources.basics</span> <span class="kn">import</span> <span class="n">get_gnomad_v3_vds</span>
+    <span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta</span> <span class="k">as</span> <span class="n">v4_meta</span>
+
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_gnomad_v3_vds</span><span class="p">(</span>
+        <span class="n">split</span><span class="o">=</span><span class="n">split</span><span class="p">,</span>
+        <span class="c1"># False because v3 hard filtered samples HT no longer exists.</span>
+        <span class="n">remove_hard_filtered_samples</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">release_only</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">samples_meta</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="n">filter_partitions</span><span class="o">=</span><span class="n">filter_partitions</span><span class="p">,</span>
+        <span class="n">chrom</span><span class="o">=</span><span class="n">chrom</span><span class="p">,</span>
+        <span class="n">autosomes_only</span><span class="o">=</span><span class="n">autosomes_only</span><span class="p">,</span>
+        <span class="n">sex_chr_only</span><span class="o">=</span><span class="n">sex_chr_only</span><span class="p">,</span>
+        <span class="n">filter_variant_ht</span><span class="o">=</span><span class="n">filter_variant_ht</span><span class="p">,</span>
+        <span class="n">filter_intervals</span><span class="o">=</span><span class="n">filter_intervals</span><span class="p">,</span>
+        <span class="n">split_reference_blocks</span><span class="o">=</span><span class="n">split_reference_blocks</span><span class="p">,</span>
+        <span class="n">entries_to_keep</span><span class="o">=</span><span class="n">entries_to_keep</span><span class="p">,</span>
+        <span class="n">annotate_het_non_ref</span><span class="o">=</span><span class="n">annotate_het_non_ref</span><span class="p">,</span>
+        <span class="n">naive_coalesce_partitions</span><span class="o">=</span><span class="n">naive_coalesce_partitions</span><span class="p">,</span>
+        <span class="n">filter_samples_ht</span><span class="o">=</span><span class="n">filter_samples_ht</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># NOTE: Not using `project_meta` here to allow all gnomAD steps to be run</span>
+    <span class="c1"># in Dataproc.</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">v4_meta</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">consent_drop</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">research_project_key</span><span class="p">)</span>
+        <span class="o">&amp;</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">research_project_key</span> <span class="o">==</span> <span class="s2">&quot;RP-1061&quot;</span><span class="p">)</span>
+            <span class="o">|</span> <span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">research_project_key</span> <span class="o">==</span> <span class="s2">&quot;RP-1411&quot;</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">release_only</span> <span class="ow">or</span> <span class="n">consent_drop_only</span> <span class="ow">or</span> <span class="n">annotate_meta</span><span class="p">:</span>
+        <span class="n">filter_expr</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">release_only</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">consent_drop_only</span><span class="p">:</span>
+                <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                    <span class="n">release</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+                        <span class="n">meta_ht</span><span class="o">.</span><span class="n">consent_drop</span><span class="p">,</span>
+                        <span class="kc">False</span><span class="p">,</span>
+                        <span class="n">meta_ht</span><span class="o">.</span><span class="n">release</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">release</span>
+
+        <span class="k">if</span> <span class="n">consent_drop_only</span><span class="p">:</span>
+            <span class="n">filter_expr</span> <span class="o">&amp;=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">consent_drop</span>
+
+        <span class="k">if</span> <span class="n">annotate_meta</span><span class="p">:</span>
+            <span class="n">vd</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+            <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">(</span>
+                <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="n">vd</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span><span class="n">meta</span><span class="o">=</span><span class="n">meta_ht</span><span class="p">[</span><span class="n">vd</span><span class="o">.</span><span class="n">col_key</span><span class="p">])</span>
+            <span class="p">)</span>
+        <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">filter_samples</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">filter_expr</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">vds</span></div>
+
+
+<span class="n">aou_acaf_mt</span> <span class="o">=</span> <span class="n">MatrixTableResource</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">AOU_WGS_BUCKET</span><span class="si">}</span><span class="s2">/acaf_threshold/splitMT/hail.mt&quot;</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">AoU v8 ACAF (Allele Count/Allele Frequency threshold) MatrixTable.</span>
+
+<span class="sd">MatrixTable contains only variants with AF &gt; 1% or AC &gt; 100 in any genetic ancestry group.</span>
+
+<span class="sd">See https://support.researchallofus.org/hc/en-us/articles/29475228181908-How-the-All-of-Us-Genomic-data-are-organized#01JJK0HH53FX9XQRDQ5HQFZW9B</span>
+<span class="sd">and https://support.researchallofus.org/hc/en-us/articles/14929793660948-Smaller-Callsets-for-Analyzing-Short-Read-WGS-SNP-Indel-Data-with-Hail-MT-VCF-and-PLINK</span>
+<span class="sd">for more information.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<span class="n">aou_exome_mt</span> <span class="o">=</span> <span class="n">MatrixTableResource</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">AOU_WGS_BUCKET</span><span class="si">}</span><span class="s2">/exome/splitMT/hail.mt&quot;</span><span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">AoU v8 Exome MatrixTable.</span>
+
+<span class="sd">MatrixTable contains only variants in exons (with 15 bp padding on either side) as defined by GENCODE v42 basic.</span>
+
+<span class="sd">See same links as above (in `acaf_mt`) for more information.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="get_aou_failing_genomic_metrics_samples"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.get_aou_failing_genomic_metrics_samples">[docs]</a><span class="k">def</span> <span class="nf">get_aou_failing_genomic_metrics_samples</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Import AoU genomic metrics and filter to samples that fail specific quality criteria, including low coverage and ambiguous sex ploidy.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Samples with low mean coverage (&lt;30x), genome coverage (&lt;90% at 20x), All of Us Hereditary Disease Risk gene</span>
+<span class="sd">        (AoUHDR) coverage (&lt;95% at 20x), or aligned_q30_bases (&lt;8e10) were expected to be excluded from the AoU</span>
+<span class="sd">        callset. However, some such samples are still present. AoU is preparing to publish a known issue in their</span>
+<span class="sd">        quality report related to this. This note will be updated with a link once the issue is published.</span>
+
+<span class="sd">        In addition, we exclude samples with ambiguous sex ploidy (i.e., not &quot;XX&quot; or &quot;XY&quot;) from the callset.</span>
+
+<span class="sd">    :return: Set of sample IDs failing coverage filters or with non-XX-XY sex ploidies.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">types</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;research_id&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span>
+        <span class="s2">&quot;sample_source&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span>
+        <span class="s2">&quot;site_id&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span>
+        <span class="s2">&quot;sex_at_birth&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span>
+        <span class="s2">&quot;dragen_sex_ploidy&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span>
+        <span class="s2">&quot;mean_coverage&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat</span><span class="p">,</span>
+        <span class="s2">&quot;genome_coverage&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat</span><span class="p">,</span>
+        <span class="s2">&quot;aou_hdr_coverage&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat</span><span class="p">,</span>
+        <span class="s2">&quot;dragen_contamination&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat</span><span class="p">,</span>
+        <span class="s2">&quot;aligned_q30_bases&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tint64</span><span class="p">,</span>
+        <span class="s2">&quot;verify_bam_id2_contamination&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tfloat</span><span class="p">,</span>
+        <span class="s2">&quot;biosample_collection_date&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span><span class="n">AOU_GENOMIC_METRICS_PATH</span><span class="p">,</span> <span class="n">types</span><span class="o">=</span><span class="n">types</span><span class="p">)</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;research_id&quot;</span><span class="p">)</span>
+
+    <span class="n">low_cov_samples</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">mean_coverage</span> <span class="o">&lt;</span> <span class="mi">30</span><span class="p">)</span>
+        <span class="o">|</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">genome_coverage</span> <span class="o">&lt;</span> <span class="mf">0.9</span><span class="p">)</span>
+        <span class="o">|</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">aou_hdr_coverage</span> <span class="o">&lt;</span> <span class="mf">0.95</span><span class="p">)</span>
+        <span class="o">|</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">aligned_q30_bases</span> <span class="o">&lt;</span> <span class="mf">8e10</span><span class="p">)</span>  <span class="c1"># AoU threshold; no v8 samples failed this.</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> samples with low coverage...&quot;</span><span class="p">,</span> <span class="n">low_cov_samples</span><span class="o">.</span><span class="n">count</span><span class="p">())</span>
+
+    <span class="n">ambiguous_sex_samples</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">dragen_sex_ploidy</span> <span class="o">!=</span> <span class="s2">&quot;XX&quot;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">dragen_sex_ploidy</span> <span class="o">!=</span> <span class="s2">&quot;XY&quot;</span><span class="p">)</span>
+        <span class="o">|</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">dragen_sex_ploidy</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;</span><span class="si">%s</span><span class="s2"> samples with ambiguous sex ploidy...&quot;</span><span class="p">,</span> <span class="n">ambiguous_sex_samples</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">low_cov_samples</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">ambiguous_sex_samples</span><span class="p">)</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">research_id</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="get_samples_to_exclude"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.get_samples_to_exclude">[docs]</a><span class="k">def</span> <span class="nf">get_samples_to_exclude</span><span class="p">(</span>
+    <span class="n">filter_samples</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">SetExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get set of AoU sample IDs to exclude.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        If `filter_samples` is a Hail Table, it must contain a field named &#39;s&#39; with sample IDs.</span>
+
+<span class="sd">    :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.</span>
+<span class="sd">    :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.</span>
+<span class="sd">    :return: SetExpression containing IDs of samples to exclude from v5 analysis.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">samples_to_exclude</span><span class="o">.</span><span class="n">path</span><span class="p">)</span> <span class="ow">or</span> <span class="n">overwrite</span><span class="p">:</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">low_quality_samples</span><span class="o">.</span><span class="n">path</span><span class="p">):</span>
+            <span class="c1"># Load samples flagged in AoU Known Issues #1.</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Removing 3 known low-quality samples (Known Issues #1)...&quot;</span><span class="p">)</span>
+            <span class="n">low_quality_ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_table</span><span class="p">(</span><span class="n">AOU_LOW_QUALITY_PATH</span><span class="p">)</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;research_id&quot;</span><span class="p">)</span>
+            <span class="n">low_quality_sample_ids</span> <span class="o">=</span> <span class="n">low_quality_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">low_quality_ht</span><span class="o">.</span><span class="n">research_id</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">write_expression</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">low_quality_sample_ids</span><span class="p">),</span> <span class="n">low_quality_samples</span><span class="o">.</span><span class="n">path</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">failing_metrics_samples</span><span class="o">.</span><span class="n">path</span><span class="p">):</span>
+            <span class="c1"># Load and count samples failing genomic metrics filters.</span>
+            <span class="n">failing_genomic_metrics_samples</span> <span class="o">=</span> <span class="n">get_aou_failing_genomic_metrics_samples</span><span class="p">()</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="s2">&quot;Removing </span><span class="si">%d</span><span class="s2"> samples failing genomic QC (low coverage or ambiguous sex)...&quot;</span><span class="p">,</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">failing_genomic_metrics_samples</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">write_expression</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">failing_genomic_metrics_samples</span><span class="p">),</span> <span class="n">failing_metrics_samples</span><span class="o">.</span><span class="n">path</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Union all samples to exclude and write out.</span>
+        <span class="n">low_quality_sample_ids</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">read_expression</span><span class="p">(</span>
+            <span class="n">low_quality_samples</span><span class="o">.</span><span class="n">path</span>
+        <span class="p">)</span>
+        <span class="n">failing_genomic_metrics_samples</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">read_expression</span><span class="p">(</span>
+            <span class="n">failing_metrics_samples</span><span class="o">.</span><span class="n">path</span>
+        <span class="p">)</span>
+        <span class="n">s_to_exclude</span> <span class="o">=</span> <span class="n">low_quality_sample_ids</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">failing_genomic_metrics_samples</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">write_expression</span><span class="p">(</span>
+            <span class="n">s_to_exclude</span><span class="p">,</span> <span class="n">samples_to_exclude</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+
+    <span class="n">s_to_exclude</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">read_expression</span><span class="p">(</span><span class="n">samples_to_exclude</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">filter_samples</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">additional_samples</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">empty_set</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filter_samples</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+        <span class="k">if</span> <span class="s2">&quot;s&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">filter_samples</span><span class="o">.</span><span class="n">row</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Hail Table must contain a field named &#39;s&#39; with sample IDs.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">additional_samples</span> <span class="o">=</span> <span class="n">filter_samples</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">filter_samples</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">filter_samples</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">additional_samples</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">filter_samples</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;`filter_samples` must be a list of sample IDs or a Hail Table with sample IDs.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">s_to_exclude</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">additional_samples</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="add_project_prefix_to_sample_collisions"><a class="viewcode-back" href="../../../../api_reference/v5/resources/basics.html#gnomad_qc.v5.resources.basics.add_project_prefix_to_sample_collisions">[docs]</a><span class="k">def</span> <span class="nf">add_project_prefix_to_sample_collisions</span><span class="p">(</span>
+    <span class="n">t</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">],</span>
+    <span class="n">sample_collisions</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">project</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sample_id_field</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;s&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Add project prefix to sample IDs that exist in multiple projects.</span>
+
+<span class="sd">    :param t: Table/MatrixTable to add project prefix to sample IDs.</span>
+<span class="sd">    :param sample_collisions: Table of sample IDs that exist in multiple projects.</span>
+<span class="sd">    :param project: Optional project name to prepend to sample collisions. If not set, will use &#39;ht.project&#39; annotation. Default is None.</span>
+<span class="sd">    :param sample_id_field: Field name for sample IDs in the table.</span>
+<span class="sd">    :return: Table with project prefix added to sample IDs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Adding project prefix to sample IDs that exists in multiple projects...&quot;</span>
+    <span class="p">)</span>
+    <span class="n">collisions</span> <span class="o">=</span> <span class="n">sample_collisions</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">collect_as_set</span><span class="p">(</span><span class="n">sample_collisions</span><span class="o">.</span><span class="n">s</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">project</span><span class="p">:</span>
+        <span class="n">prefix_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">project</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">prefix_expr</span> <span class="o">=</span> <span class="n">t</span><span class="p">[</span><span class="s2">&quot;project&quot;</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;No project name provided and &#39;t&#39; does not contain a &#39;project&#39; field.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="n">renaming_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">sample_id_field</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">collisions</span><span class="p">)</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">t</span><span class="p">[</span><span class="n">sample_id_field</span><span class="p">]),</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">delimit</span><span class="p">([</span><span class="n">prefix_expr</span><span class="p">,</span> <span class="n">t</span><span class="p">[</span><span class="n">sample_id_field</span><span class="p">]],</span> <span class="s2">&quot;_&quot;</span><span class="p">),</span>
+            <span class="n">t</span><span class="p">[</span><span class="n">sample_id_field</span><span class="p">],</span>
+        <span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">t</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="o">**</span><span class="n">renaming_expr</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Input is a MatrixTable, rekeying columns...&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">t</span><span class="o">.</span><span class="n">key_cols_by</span><span class="p">(</span><span class="o">**</span><span class="n">renaming_expr</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

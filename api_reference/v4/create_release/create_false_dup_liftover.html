@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_false_dup_liftover &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.create_release.create_release_sites_ht" href="create_release_sites_ht.html" />
+    <link rel="prev" title="gnomad_qc.v4.create_release.create_de_novo_release" href="create_de_novo_release.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">create_release</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_combined_faf_release_ht.html">create_combined_faf_release_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_de_novo_release.html">create_de_novo_release</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_false_dup_liftover</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_sites_ht.html">create_release_sites_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_utils.html">create_release_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="make_var_annot_hists.html">make_var_annot_hists</a></li>
+<li class="toctree-l4"><a class="reference internal" href="validate_and_export_vcf.html">validate_and_export_vcf</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.create_release</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_false_dup_liftover</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/create_release/create_false_dup_liftover.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-create-release-create-false-dup-liftover">
+<h1>gnomad_qc.v4.create_release.create_false_dup_liftover<a class="headerlink" href="#gnomad-qc-v4-create-release-create-false-dup-liftover" title="Permalink to this heading"></a></h1>
+<p>Script to create custom liftover file for three false dup genes CBS, KCNE1, and CRYAA.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_false_dup_liftover.filter_liftover_to_false_dups" title="gnomad_qc.v4.create_release.create_false_dup_liftover.filter_liftover_to_false_dups"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_false_dup_liftover.filter_liftover_to_false_dups</span></code></a>(...)</p></td>
+<td><p>Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_false_dup_liftover.main" title="gnomad_qc.v4.create_release.create_false_dup_liftover.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_false_dup_liftover.main</span></code></a>(args)</p></td>
+<td><p>Write merged v2 exomes and genomes liftover table with joint information for three clinically relevant genes.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.create_release.create_false_dup_liftover"></span><p>Script to create custom liftover file for three false dup genes CBS, KCNE1, and CRYAA.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_false_dup_liftover.filter_liftover_to_false_dups">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_false_dup_liftover.</span></span><span class="sig-name descname"><span class="pre">filter_liftover_to_false_dups</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_false_dup_liftover.html#filter_liftover_to_false_dups"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_false_dup_liftover.filter_liftover_to_false_dups" title="Permalink to this definition"></a></dt>
+<dd><p>Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filtered Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_false_dup_liftover.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_false_dup_liftover.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_false_dup_liftover.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_false_dup_liftover.main" title="Permalink to this definition"></a></dt>
+<dd><p>Write merged v2 exomes and genomes liftover table with joint information for three clinically relevant genes.</p>
+<p>There are three clinically relevant genes impacted by false duplications in the GRCh38 reference (KCNE1, CBS, and CRYAA).
+To make it easier for our users to switch to gnomAD v4 and the new reference build,
+this script creates a new release file that combines information from the v2 exomes and genomes only for these three genes.
+To create this file, filter the v2 liftover files (<a class="reference external" href="https://gnomad.broadinstitute.org/downloads#v2-liftover">https://gnomad.broadinstitute.org/downloads#v2-liftover</a>) to these genes,
+and then merge frequency information across the exomes and genomes</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_de_novo_release.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.create_release.create_de_novo_release" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="create_release_sites_ht.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.create_release.create_release_sites_ht" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

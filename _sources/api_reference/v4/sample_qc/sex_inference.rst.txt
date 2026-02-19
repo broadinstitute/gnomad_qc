@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.sex_inference
+====================================
+
+Script to impute chromosomal sex karyotype annotation.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.sex_inference.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.sex_inference.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.sex_inference
+
+.. automodule:: gnomad_qc.v4.sample_qc.sex_inference
+    :exclude-members: get_script_argument_parser

@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.fix_freq_an &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.annotations.generate_freq" href="generate_freq.html" />
+    <link rel="prev" title="gnomad_qc.v4.annotations.compute_coverage" href="compute_coverage.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">fix_freq_an</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq.html">generate_freq</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq_genomes.html">generate_freq_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="insilico_predictors.html">insilico_predictors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recover_and_complete_vep115.html">recover_and_complete_vep115</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vep_context_ht.html">vep_context_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vrs_annotation_batch.html">vrs_annotation_batch</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.fix_freq_an</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/annotations/fix_freq_an.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-annotations-fix-freq-an">
+<h1>gnomad_qc.v4.annotations.fix_freq_an<a class="headerlink" href="#gnomad-qc-v4-annotations-fix-freq-an" title="Permalink to this heading"></a></h1>
+<p>Updates the v4.0 freq HT with the correct AN for the v4.1 release.</p>
+<p>There is an error in the v4.0 freq HT where the AN can be incorrect for variants that
+are only present in one of the UKB or non-UKB subsets. This is because the frequency
+data was computed on each subset separately and then combined. In order to filter the
+dataset to only samples that are in the UKB or non-UKB subsets, the
+<cite>hail.vds.filter_samples</cite> was used. Unfortunately, the behavior of this function was
+not the expected behavior due to the following line of code:</p>
+<blockquote>
+<div><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">variant_data</span> <span class="o">=</span> <span class="n">variant_data</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>This line of code filters any row that has no genotypes in the sample subset. When the
+VariantDataset is densified prior to the frequency calculations this results in no
+reference data being filled in for that row, unless a row is part of multiallelic site that is not
+exclusive to the sample subset, and therefore a missing AN for that row. When combining
+the frequency data for the UKB and non-UKB subsets, the AN for these rows will
+only have the AN for the subset that has non-ref genotypes for that row.</p>
+<p>This script performs the following steps:</p>
+<blockquote>
+<div><ul>
+<li><p>Generates allele number and GQ/DP histograms for all sites in the exome calling
+interval.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>For raw genotypes, the AN is just the sum of the ploidy (more specifics on
+this below) for all genotypes.</p></li>
+<li><p>For adj genotypes, the AN is the sum of the ploidy for all genotypes that pass
+the GQ, DP, and allele balance adj filters. Since this is for a site, rather
+than a specific variant, this number will not always be the same as the AN for
+a specific variant at that site. This AN can be smaller if it is a
+multi-allelic site where there are non-ref genotypes for another variant that
+fails the adj filters.</p></li>
+<li><p>For raw genotypes on non-PAR regions of the X or Y chromosome, the AN is the
+sum of the ploidy after adjusting for sex karyotype, BUT NOT taking into
+account the genotype when adjusting the ploidy. For instance, a het genotype
+for an XY sample will still have a ploidy of 1, even though the genotype is a
+het and is therefore set to missing for the frequency calculations.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Generates allele number and GQ/DP histograms for the frequency correction.</p></li>
+</ul>
+</div></blockquote>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.prep_vds_for_all_sites_stats" title="gnomad_qc.v4.annotations.fix_freq_an.prep_vds_for_all_sites_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.prep_vds_for_all_sites_stats</span></code></a>(vds)</p></td>
+<td><p>Prepare VDS for all sites stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.compute_an_and_hists_het_fail_adj_ab" title="gnomad_qc.v4.annotations.fix_freq_an.compute_an_and_hists_het_fail_adj_ab"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.compute_an_and_hists_het_fail_adj_ab</span></code></a>(...)</p></td>
+<td><p>Compute allele number and histograms for het fail adj ab and non-PAR XY het.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.compute_allele_number_per_ref_site" title="gnomad_qc.v4.annotations.fix_freq_an.compute_allele_number_per_ref_site"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.compute_allele_number_per_ref_site</span></code></a>(...)</p></td>
+<td><p>Compute allele number per reference site and histograms for frequency correction.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.get_all_sites_nonref_adjustment" title="gnomad_qc.v4.annotations.fix_freq_an.get_all_sites_nonref_adjustment"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.get_all_sites_nonref_adjustment</span></code></a>(...)</p></td>
+<td><p>Compute allele number and histograms for het non ref adjustments.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.get_sub_hist_expr" title="gnomad_qc.v4.annotations.fix_freq_an.get_sub_hist_expr"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.get_sub_hist_expr</span></code></a>(...)</p></td>
+<td><p>Subtract sub histograms from histograms.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.adjust_per_site_an_and_hists_for_frequency" title="gnomad_qc.v4.annotations.fix_freq_an.adjust_per_site_an_and_hists_for_frequency"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.adjust_per_site_an_and_hists_for_frequency</span></code></a>(ht, ...)</p></td>
+<td><p>Adjust allele number and histograms for frequency correction.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.adjust_all_sites_an_and_hists" title="gnomad_qc.v4.annotations.fix_freq_an.adjust_all_sites_an_and_hists"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.adjust_all_sites_an_and_hists</span></code></a>(ht, ...)</p></td>
+<td><p>Adjust all sites allele number and histograms Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.update_freq_an_and_hists" title="gnomad_qc.v4.annotations.fix_freq_an.update_freq_an_and_hists"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.update_freq_an_and_hists</span></code></a>(...)</p></td>
+<td><p>Update frequency HT AN field and histograms with the correct AN from the AN HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.drop_gatk_groupings" title="gnomad_qc.v4.annotations.fix_freq_an.drop_gatk_groupings"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.drop_gatk_groupings</span></code></a>(ht)</p></td>
+<td><p>Drop GATK groupings from the frequency HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.fix_freq_an.main" title="gnomad_qc.v4.annotations.fix_freq_an.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.main</span></code></a>(args)</p></td>
+<td><p>Script to generate all sites AN and v4.0 exomes frequency fix.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.annotations.fix_freq_an"></span><p>Updates the v4.0 freq HT with the correct AN for the v4.1 release.</p>
+<p>There is an error in the v4.0 freq HT where the AN can be incorrect for variants that
+are only present in one of the UKB or non-UKB subsets. This is because the frequency
+data was computed on each subset separately and then combined. In order to filter the
+dataset to only samples that are in the UKB or non-UKB subsets, the
+<cite>hail.vds.filter_samples</cite> was used. Unfortunately, the behavior of this function was
+not the expected behavior due to the following line of code:</p>
+<blockquote>
+<div><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">variant_data</span> <span class="o">=</span> <span class="n">variant_data</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p>This line of code filters any row that has no genotypes in the sample subset. When the
+VariantDataset is densified prior to the frequency calculations this results in no
+reference data being filled in for that row, unless a row is part of multiallelic site that is not
+exclusive to the sample subset, and therefore a missing AN for that row. When combining
+the frequency data for the UKB and non-UKB subsets, the AN for these rows will
+only have the AN for the subset that has non-ref genotypes for that row.</p>
+<p>This script performs the following steps:</p>
+<blockquote>
+<div><ul>
+<li><p>Generates allele number and GQ/DP histograms for all sites in the exome calling
+interval.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>For raw genotypes, the AN is just the sum of the ploidy (more specifics on
+this below) for all genotypes.</p></li>
+<li><p>For adj genotypes, the AN is the sum of the ploidy for all genotypes that pass
+the GQ, DP, and allele balance adj filters. Since this is for a site, rather
+than a specific variant, this number will not always be the same as the AN for
+a specific variant at that site. This AN can be smaller if it is a
+multi-allelic site where there are non-ref genotypes for another variant that
+fails the adj filters.</p></li>
+<li><p>For raw genotypes on non-PAR regions of the X or Y chromosome, the AN is the
+sum of the ploidy after adjusting for sex karyotype, BUT NOT taking into
+account the genotype when adjusting the ploidy. For instance, a het genotype
+for an XY sample will still have a ploidy of 1, even though the genotype is a
+het and is therefore set to missing for the frequency calculations.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Generates allele number and GQ/DP histograms for the frequency correction.</p></li>
+</ul>
+</div></blockquote>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.prep_vds_for_all_sites_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">prep_vds_for_all_sites_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#prep_vds_for_all_sites_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.prep_vds_for_all_sites_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare VDS for all sites stats.</p>
+<p>Adds the following annotations to the VDS:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>‘ploidy’: The ploidy of the genotype adjusted for sex karyotype.</p></li>
+<li><p>‘adj’: The adj filter for GQ and DP.</p></li>
+</ul>
+</div></blockquote>
+<p>The following steps are performed on the reference data MT:</p>
+<blockquote>
+<div><ul>
+<li><p>Segments the reference data MT at the PAR boundaries on chrX and chrY.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>This is done to ensure that entries are annotated with the correct
+‘ploidy’ field when adjusting for sex karyotype.</p></li>
+<li><p>If the END field of an entry spans a PAR boundary, the entry will be
+split into two separate entries so that a locus ‘in_non_par’ annotation
+can be used to correctly annotate if the full reference block defined by
+an entry is non-PAR or not.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Annotates each entry with the ploidy of the reference block adjusting for
+sex karyotype.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>chrY non-PAR XX entries are set to missing ploidy.</p></li>
+<li><p>chrX and chrY non-PAR XY entries are set to ploidy 1.</p></li>
+<li><p>All other entries are set to ploidy 2.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Annotates each entry with the adj filter for GQ and DP taking into account
+sex karyotype for DP.</p></li>
+</ul>
+</div></blockquote>
+<p>The following steps are performed on the variant data MT:</p>
+<blockquote>
+<div><ul>
+<li><p>Annotates each entry with the ploidy of the genotype adjusting for sex
+karyotype.</p>
+<blockquote>
+<div><ul>
+<li><p>chrY non-PAR XX entries are set to missing ploidy.</p></li>
+<li><p>chrX and chrY non-PAR XY entries are set to ploidy 1 if LGT is defined.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>This deviates from our standard ploidy adjustment where if the
+genotype is a het, the ploidy is set to missing. This is because we
+are adjusting ploidy before splitting multi-allelic sites and this
+missing annotation will be propagated to all split entries including
+the reference genotypes causing discrepancies in adjusting ploidy
+before splitting and after splitting. Since we are using this VDS
+downstream to compute a reference AN, we want to keep this as a
+ploidy of 1 even if the genotype is a het.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>All other entries are set to the ploidy of the genotype.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p>Annotates each entry with the adj filter for GQ and DP taking into account
+sex karyotype for DP.</p>
+<ul class="simple">
+<li><p>The sex karyotype and locus are used instead of the genotype to determine
+if the genotype is haploid or not. This is for the same reason as described
+above for the ploidy adjustment of non-PAR XY het genotypes.</p></li>
+</ul>
+</li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Hail VDS to annotate adj onto variant data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail VDS with adj annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.compute_an_and_hists_het_fail_adj_ab">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">compute_an_and_hists_het_fail_adj_ab</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_membership_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#compute_an_and_hists_het_fail_adj_ab"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.compute_an_and_hists_het_fail_adj_ab" title="Permalink to this definition"></a></dt>
+<dd><p>Compute allele number and histograms for het fail adj ab and non-PAR XY het.</p>
+<p>This module computes the allele number and quality histograms for only the
+genotypes that are het and fail the adj allele balance or are non-PAR XY het
+genotypes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VariantDataset.</p></li>
+<li><p><strong>group_membership_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of samples group memberships.</p></li>
+<li><p><strong>freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of frequency data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of allele number and histograms for het fail adj ab.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.compute_allele_number_per_ref_site">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">compute_allele_number_per_ref_site</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_membership_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#compute_allele_number_per_ref_site"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.compute_allele_number_per_ref_site" title="Permalink to this definition"></a></dt>
+<dd><p>Compute allele number per reference site and histograms for frequency correction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VariantDataset.</p></li>
+<li><p><strong>reference_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of reference sites.</p></li>
+<li><p><strong>interval_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of intervals.</p></li>
+<li><p><strong>group_membership_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of samples group memberships.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of AN and GQ/DP hists per reference site.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.get_all_sites_nonref_adjustment">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">get_all_sites_nonref_adjustment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_membership_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#get_all_sites_nonref_adjustment"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.get_all_sites_nonref_adjustment" title="Permalink to this definition"></a></dt>
+<dd><p>Compute allele number and histograms for het non ref adjustments.</p>
+<p>The adjustment numbers computed in <cite>compute_an_and_hists_het_fail_adj_ab</cite> are
+correct for per allele AN and histogram adjustments for the frequency data, but
+they are not correct for the all sites AN and histogram adjustments. This is
+because when computing the sum of all per allele adjustment values, the
+heterozygous non-ref genotypes can be counted 2 times if both alleles are adjusted.</p>
+<p>This function will compute the number of het non-ref genotypes that are being
+counted twice so the all sites AN and histograms can be adjusted correctly.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VariantDataset.</p></li>
+<li><p><strong>group_membership_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of samples group memberships.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of allele number and histograms for het fail adj ab.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.get_sub_hist_expr">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">get_sub_hist_expr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hist_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_hist_expr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#get_sub_hist_expr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.get_sub_hist_expr" title="Permalink to this definition"></a></dt>
+<dd><p>Subtract sub histograms from histograms.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>hist_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>) – Histograms to subtract from.</p></li>
+<li><p><strong>sub_hist_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>) – Histograms to subtract.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Subtracted histograms.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.adjust_per_site_an_and_hists_for_frequency">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">adjust_per_site_an_and_hists_for_frequency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">het_fail_adj_ab_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#adjust_per_site_an_and_hists_for_frequency"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.adjust_per_site_an_and_hists_for_frequency" title="Permalink to this definition"></a></dt>
+<dd><p>Adjust allele number and histograms for frequency correction.</p>
+<p>The all sites values on <cite>ht</cite> are only the reference AN and quality histograms
+at the site level (keyed by locus) and don’t take into account the differences in
+the alleles. This function will adjust the all sites AN and quality histograms
+by the <cite>het_fail_adj_ab_ht</cite> (computed by <cite>compute_an_and_hists_het_fail_adj_ab</cite>)
+so they can be used for the variant frequency correction.</p>
+<p>The reasons a variant’s AN and quality histograms can be different from the all
+sites values are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>The reference AN adj filter doesn’t take into account the allele balance adj
+filter, so the variant AN can be smaller than the reference AN if there are
+samples with het genotypes that fail the adj allele balance filter.</p></li>
+<li><p>The reference AN doesn’t remove the non-PAR het genotypes in XY samples, so
+the variant AN can be smaller than the reference AN if there are XY samples
+with a het genotype in a non-PAR region on chrX or chrY.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of AN and GQ/DP hists per reference site.</p></li>
+<li><p><strong>freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of frequency data.</p></li>
+<li><p><strong>het_fail_adj_ab_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of variant data histograms for het fail adj ab.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table of adjusted AN and GQ/DP hists for frequency correction.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.adjust_all_sites_an_and_hists">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">adjust_all_sites_an_and_hists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">het_fail_adj_ab_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">het_nonref_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#adjust_all_sites_an_and_hists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.adjust_all_sites_an_and_hists" title="Permalink to this definition"></a></dt>
+<dd><p>Adjust all sites allele number and histograms Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of AN and GQ/DP hists per reference site.</p></li>
+<li><p><strong>het_fail_adj_ab_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of variant data histograms for het fail adj ab.</p></li>
+<li><p><strong>het_nonref_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of AN and GQ/DP hists for only het non-ref calls.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Adjusted all sites AN and GQ/DP hists Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.update_freq_an_and_hists">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">update_freq_an_and_hists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_correction_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#update_freq_an_and_hists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.update_freq_an_and_hists" title="Permalink to this definition"></a></dt>
+<dd><p>Update frequency HT AN field and histograms with the correct AN from the AN HT.</p>
+<p>This module updates the freq_ht AN field which is an array of ints with the correct
+AN from the AN HT integer array annotation. It uses the freq_correction_ht
+dictionary and the freq_ht dictionary to match the indexing of array annotations so
+each group is correctly updated. It then recomputes AF, AC/AN.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Frequency HT to update.</p></li>
+<li><p><strong>freq_correction_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – HT to update AN and histograms from.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Updated frequency HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.drop_gatk_groupings">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">drop_gatk_groupings</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#drop_gatk_groupings"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.drop_gatk_groupings" title="Permalink to this definition"></a></dt>
+<dd><p>Drop GATK groupings from the frequency HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Frequency HT to drop GATK groupings from.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Frequency HT with GATK groupings dropped.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.fix_freq_an.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.fix_freq_an.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/fix_freq_an.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.fix_freq_an.main" title="Permalink to this definition"></a></dt>
+<dd><p>Script to generate all sites AN and v4.0 exomes frequency fix.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="compute_coverage.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.annotations.compute_coverage" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_freq.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.annotations.generate_freq" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

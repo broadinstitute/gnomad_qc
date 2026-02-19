@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.generate_variant_qc_annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.generate_variant_qc_annotations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.annotations.generate_variant_qc_annotations</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to generate annotations for variant QC on gnomAD v5.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">annotate_allele_info</span><span class="p">,</span> <span class="n">get_lowqual_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.sparse_mt</span> <span class="kn">import</span> <span class="n">split_info_annotation</span>
+<span class="kn">from</span> <span class="nn">gnomad.variant_qc.pipeline</span> <span class="kn">import</span> <span class="n">generate_sib_stats</span><span class="p">,</span> <span class="n">generate_trio_stats</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="n">check_resource_existence</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.annotations.annotation_utils</span> <span class="kn">import</span> <span class="n">annotate_adj_no_dp</span><span class="p">,</span> <span class="n">get_adj_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">aou_annotated_sites_only_vcf</span><span class="p">,</span>
+    <span class="n">aou_vcf_header</span><span class="p">,</span>
+    <span class="n">get_info_ht</span><span class="p">,</span>
+    <span class="n">get_sib_stats</span><span class="p">,</span>
+    <span class="n">get_trio_stats</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="n">get_aou_vds</span><span class="p">,</span> <span class="n">get_logging_path</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="n">GNOMAD_TMP_BUCKET</span><span class="p">,</span> <span class="n">WORKSPACE_BUCKET</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.sample_qc</span> <span class="kn">import</span> <span class="n">dense_trios</span><span class="p">,</span> <span class="n">pedigree</span><span class="p">,</span> <span class="n">relatedness</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;generate_variant_qc_annotations&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="generate_ac_info_ht"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/generate_variant_qc_annotations.html#gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht">[docs]</a><span class="k">def</span> <span class="nf">generate_ac_info_ht</span><span class="p">(</span><span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute AC and AC_raw annotations for each allele count filter group.</span>
+
+<span class="sd">    :param vds: VariantDataset to use for computing AC and AC_raw annotations.</span>
+<span class="sd">    :return: Table with AC and AC_raw annotations split by high quality, release, and unrelated.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span>
+
+    <span class="n">ac_filter_groups</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;high_quality&quot;</span><span class="p">:</span> <span class="n">mt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">high_quality</span><span class="p">,</span>
+        <span class="s2">&quot;release&quot;</span><span class="p">:</span> <span class="n">mt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">release</span><span class="p">,</span>
+        <span class="s2">&quot;unrelated&quot;</span><span class="p">:</span> <span class="o">~</span><span class="n">mt</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">relatedness_inference</span><span class="o">.</span><span class="n">relatedness_filters</span><span class="o">.</span><span class="n">related</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_cols</span><span class="p">(</span><span class="n">_ac_filter_groups</span><span class="o">=</span><span class="n">ac_filter_groups</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">alt_alleles_range_array</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)))</span>
+
+    <span class="n">ac_info_expr</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">()</span>
+    <span class="c1"># First compute ACs for each non-ref allele, grouped by adj.</span>
+    <span class="n">grp_ac_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">f</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">array_agg</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">ai</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                <span class="n">mt</span><span class="o">.</span><span class="n">LA</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">ai</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">mt</span><span class="o">.</span><span class="n">_ac_filter_groups</span><span class="p">[</span><span class="n">f</span><span class="p">],</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+                    <span class="n">get_adj_expr</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">LAD</span><span class="p">),</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
+                        <span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="o">.</span><span class="n">one_hot_alleles</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">LA</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">str</span><span class="p">(</span><span class="n">x</span><span class="p">)))[</span>
+                            <span class="n">mt</span><span class="o">.</span><span class="n">LA</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">ai</span><span class="p">)</span>
+                        <span class="p">]</span>
+                    <span class="p">),</span>
+                <span class="p">),</span>
+            <span class="p">),</span>
+            <span class="n">mt</span><span class="o">.</span><span class="n">alt_alleles_range_array</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">ac_filter_groups</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Then, for each non-ref allele, compute</span>
+    <span class="c1"># &#39;AC&#39; as the adj group</span>
+    <span class="c1"># &#39;AC_raw&#39; as the sum of adj and non-adj groups</span>
+    <span class="n">ac_info_expr</span> <span class="o">=</span> <span class="n">ac_info_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;AC</span><span class="si">{</span><span class="s1">&#39;_&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="n">f</span><span class="si">}</span><span class="s2">_raw&quot;</span><span class="p">:</span> <span class="n">grp</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="n">i</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="kc">False</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">grp</span> <span class="ow">in</span> <span class="n">grp_ac_expr</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">},</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;AC</span><span class="si">{</span><span class="s1">&#39;_&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="n">f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">grp</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int32</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="mi">0</span><span class="p">)))</span>
+            <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">grp</span> <span class="ow">in</span> <span class="n">grp_ac_expr</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">ac_info_ht</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">select_rows</span><span class="p">(</span><span class="n">AC_info</span><span class="o">=</span><span class="n">ac_info_expr</span><span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+
+    <span class="c1"># Split multi-allelic sites.</span>
+    <span class="n">ac_info_ht</span> <span class="o">=</span> <span class="n">annotate_allele_info</span><span class="p">(</span><span class="n">ac_info_ht</span><span class="p">)</span>
+    <span class="n">ac_info_ht</span> <span class="o">=</span> <span class="n">ac_info_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="n">a</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">ac_info_ht</span><span class="p">[</span><span class="n">a</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                    <span class="o">**</span><span class="n">split_info_annotation</span><span class="p">(</span><span class="n">ac_info_ht</span><span class="p">[</span><span class="n">a</span><span class="p">],</span> <span class="n">ac_info_ht</span><span class="o">.</span><span class="n">a_index</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;AC_info&quot;</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ac_info_ht</span></div>
+
+
+<div class="viewcode-block" id="create_info_ht"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/generate_variant_qc_annotations.html#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_info_ht">[docs]</a><span class="k">def</span> <span class="nf">create_info_ht</span><span class="p">(</span>
+    <span class="n">vcf_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">header_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">lowqual_indel_phred_het_prior</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">40</span><span class="p">,</span>
+    <span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Import a VCF of AoU annotated sites, reformat annotations, and add AS_lowqual.</span>
+
+<span class="sd">    :param vcf_path: Path to the annotated sites-only VCF.</span>
+<span class="sd">    :param header_path: Path to the header file for the VCF.</span>
+<span class="sd">    :param lowqual_indel_phred_het_prior: Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad&#39;s Data Sciences Platform for VQSR.</span>
+<span class="sd">    :param vds: VariantDataset to use for computing AC and AC_raw annotations.</span>
+<span class="sd">    :param test: Whether to write run a test using just the first two partitions of the loaded VCF.</span>
+<span class="sd">    :return: Hail Table with reformatted annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+        <span class="n">vcf_path</span><span class="p">,</span>
+        <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">header_file</span><span class="o">=</span><span class="n">header_path</span><span class="p">,</span>
+        <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reformatting annotations...&quot;</span><span class="p">)</span>
+    <span class="n">array_annotations</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;AS_FS&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_MQ&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_MQRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_ReadPosRankSum&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;AS_SOR&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+
+    <span class="c1"># AS_VarDP is in the format of &quot;ref|alt&quot; and VarDP is an int of the alt value from this, so can just set AS_VarDP to VarDP.</span>
+    <span class="c1"># AS_SB_TABLE is an alternate formatting (string ref1, ref2 | alt 1, alt2)</span>
+    <span class="c1"># of SB_TABLE,  so can just set AS_SB_TABLE to SB_TABLE.</span>
+    <span class="n">info_updates</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="c1"># Convert single-element array annotations to float64.</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">ann</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="n">ann</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">ann</span> <span class="ow">in</span> <span class="n">array_annotations</span><span class="p">},</span>
+        <span class="c1"># Extract singular element from AS_QD array and convert to float32.</span>
+        <span class="s2">&quot;AS_QD&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">float32</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_QD</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="s2">&quot;AS_QUALapprox&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">QUALapprox</span><span class="p">),</span>
+        <span class="s2">&quot;AS_VarDP&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">VarDP</span><span class="p">,</span>
+        <span class="s2">&quot;AS_SB_TABLE&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">SB_TABLE</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">info_updates</span><span class="p">))</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;SB&quot;</span><span class="p">,</span> <span class="s2">&quot;QUALapprox&quot;</span><span class="p">,</span> <span class="s2">&quot;VarDP&quot;</span><span class="p">,</span> <span class="s2">&quot;SB_TABLE&quot;</span><span class="p">,</span> <span class="s2">&quot;AS_RAW_MQ&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;rsid&quot;</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">AS_lowqual</span><span class="o">=</span><span class="n">get_lowqual_expr</span><span class="p">(</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">,</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_QUALapprox</span><span class="p">,</span>
+            <span class="n">indel_phred_het_prior</span><span class="o">=</span><span class="n">lowqual_indel_phred_het_prior</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding AC info annotations to info ht...&quot;</span><span class="p">)</span>
+    <span class="n">ac_info_ht</span> <span class="o">=</span> <span class="n">generate_ac_info_ht</span><span class="p">(</span><span class="n">vds</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ac_info_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="run_generate_trio_stats"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/generate_variant_qc_annotations.html#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats">[docs]</a><span class="k">def</span> <span class="nf">run_generate_trio_stats</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">fam_ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate trio transmission stats from a VariantDataset and pedigree info.</span>
+
+<span class="sd">    :param mt: Dense trio MatrixTable.</span>
+<span class="sd">    :param fam_ped: Pedigree containing trio info.</span>
+<span class="sd">    :return: Table containing trio stats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Add adj annotation and convert LGT to GT since only</span>
+    <span class="c1"># autosomal bi-allelics are used to calculate trio stats.</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">annotate_adj_no_dp</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">transmute_entries</span><span class="p">(</span><span class="n">GT</span><span class="o">=</span><span class="n">mt</span><span class="o">.</span><span class="n">LGT</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">trio_matrix</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">pedigree</span><span class="o">=</span><span class="n">fam_ped</span><span class="p">,</span> <span class="n">complete_trios</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">generate_trio_stats</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_generate_sib_stats"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/generate_variant_qc_annotations.html#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats">[docs]</a><span class="k">def</span> <span class="nf">run_generate_sib_stats</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">relatedness_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate sibling stats from a VariantDataset and relatedness info.</span>
+
+<span class="sd">    :param mt: Input MatrixTable.</span>
+<span class="sd">    :param relatedness_ht: Table containing relatedness info.</span>
+<span class="sd">    :return: Table containing sibling stats.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">annotate_adj_no_dp</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">sparse_split_multi</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">generate_sib_stats</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">relatedness_ht</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v5/annotations/generate_variant_qc_annotations.html#gnomad_qc.v5.annotations.generate_variant_qc_annotations.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate all variant annotations needed for variant QC.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">rwb</span><span class="p">:</span>
+        <span class="n">environment</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+            <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/home/jupyter/workspaces/gnomadproduction/generate_variant_qc_annotations.log&quot;</span><span class="p">,</span>
+            <span class="n">tmp_dir</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/tmp/4_day&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">environment</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+            <span class="n">tmp_dir</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">GNOMAD_TMP_BUCKET</span><span class="si">}</span><span class="s2">-4day&quot;</span><span class="p">,</span>
+            <span class="n">log</span><span class="o">=</span><span class="s2">&quot;generate_variant_qc_annotations.log&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># TODO: Add machine configurations for Batch.</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">default_reference</span><span class="p">(</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">test_n_partitions</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test_n_partitions</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span> <span class="ow">or</span> <span class="n">test_n_partitions</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+
+    <span class="c1"># NOTE: VDS will have &#39;aou_&#39; prefix on sample IDs.</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">get_aou_vds</span><span class="p">(</span>
+        <span class="n">high_quality_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">filter_partitions</span><span class="o">=</span><span class="nb">range</span><span class="p">(</span><span class="n">test_n_partitions</span><span class="p">)</span> <span class="k">if</span> <span class="n">test_n_partitions</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">annotate_meta</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="c1"># NOTE: Using args.test here so that sibling stats test can be calculated from</span>
+        <span class="c1"># a few partitions of the full (not test) VDS).</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_info_ht</span><span class="p">:</span>
+            <span class="n">info_ht_path</span> <span class="o">=</span> <span class="n">get_info_ht</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+            <span class="n">check_resource_existence</span><span class="p">(</span>
+                <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;info_ht&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">info_ht_path</span><span class="p">],</span>
+                <span class="p">},</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">create_info_ht</span><span class="p">(</span>
+                <span class="n">vcf_path</span><span class="o">=</span><span class="n">aou_annotated_sites_only_vcf</span><span class="p">,</span>
+                <span class="n">header_path</span><span class="o">=</span><span class="n">aou_vcf_header</span><span class="p">,</span>
+                <span class="n">lowqual_indel_phred_het_prior</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">lowqual_indel_phred_het_prior</span><span class="p">,</span>
+                <span class="n">vds</span><span class="o">=</span><span class="n">vds</span><span class="p">,</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">info_ht_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_trio_stats</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating trio stats...&quot;</span><span class="p">)</span>
+            <span class="n">trio_stats_ht_path</span> <span class="o">=</span> <span class="n">get_trio_stats</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+            <span class="n">check_resource_existence</span><span class="p">(</span>
+                <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;trio_stats_ht&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">trio_stats_ht_path</span><span class="p">]},</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">run_generate_trio_stats</span><span class="p">(</span>
+                <span class="n">dense_trios</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">mt</span><span class="p">(),</span>
+                <span class="n">pedigree</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">pedigree</span><span class="p">(),</span>
+            <span class="p">)</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">trio_stats_ht_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_sibling_stats</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Generating sibling stats...&quot;</span><span class="p">)</span>
+            <span class="n">sib_stats_ht_path</span> <span class="o">=</span> <span class="n">get_sib_stats</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+            <span class="n">check_resource_existence</span><span class="p">(</span>
+                <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;sib_stats_ht&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">sib_stats_ht_path</span><span class="p">]},</span>
+                <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="c1"># Note: Checked sibling IDs; none of them have sample ID collisions.</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">run_generate_sib_stats</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">,</span> <span class="n">relatedness</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">sib_stats_ht_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Copying log to logging bucket...&quot;</span><span class="p">)</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">copy_log</span><span class="p">(</span>
+            <span class="n">get_logging_path</span><span class="p">(</span><span class="s2">&quot;generate_variant_qc_annotations&quot;</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--rwb&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run the script in RWB environment.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Write to test path.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test-n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use only n partitions of the VDS as input for testing purposes (default: 2).&quot;</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;?&quot;</span><span class="p">,</span>
+        <span class="n">const</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-trio-stats&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Calculates trio stats.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-sibling-stats&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Calculates sibling stats.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-info-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Create the info ht containing annotations needed for variant QC.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--lowqual-indel-phred-het-prior&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad&#39;s Data Sciences Platform for VQSR.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

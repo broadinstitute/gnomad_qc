@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes" href="create_sample_qc_metadata_ht_genomes.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.assign_ancestry" href="assign_ancestry.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/create_sample_qc_metadata_ht.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-create-sample-qc-metadata-ht">
+<h1>gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht<a class="headerlink" href="#gnomad-qc-v4-sample-qc-create-sample-qc-metadata-ht" title="Permalink to this heading"></a></h1>
+<p>Script to merge the output of all sample QC modules into a single Table.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">create_sample_qc_metadata_ht</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset (default: False)</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_project_meta" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_project_meta"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_project_meta</span></code></a>()</p></td>
+<td><p>Load project-specific metadata Table and add GATK version.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sex_imputation_ht" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sex_imputation_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sex_imputation_ht</span></code></a>()</p></td>
+<td><p>Load and reformat sex imputation Table for annotation on the combined meta Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filters_ht" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filters_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filters_ht</span></code></a>(ht)</p></td>
+<td><p>Load and reformat hard-filters Table for annotation on the combined meta Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relatedness_dict_ht" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relatedness_dict_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relatedness_dict_ht</span></code></a>(ht)</p></td>
+<td><p>Parse relatedness Table to get every relationship (except UNRELATED) per sample.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relationship_filter_expr" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relationship_filter_expr"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relationship_filter_expr</span></code></a>(...)</p></td>
+<td><p>Return case statement to populate relatedness filters in sample_filters struct.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relationships" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relationships"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relationships</span></code></a>(ht, ...)</p></td>
+<td><p>Get relatedness relationship annotations for the combined meta Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relatedness_filters" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relatedness_filters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relatedness_filters</span></code></a>(ht, ...)</p></td>
+<td><p>Get relatedness filtering Table for the combined meta Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.add_annotations" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.add_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.add_annotations</span></code></a>(...)</p></td>
+<td><p>Annotate <cite>base_ht</cite> with contents of <cite>ann_ht</cite> and optionally check that sample counts match.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_filter_ht" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_filter_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_filter_ht</span></code></a>(...)</p></td>
+<td><p>Combine sample filters into a single Table to be added to the metadata Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filter_metric_ht" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filter_metric_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filter_metric_ht</span></code></a>(base_ht)</p></td>
+<td><p>Combine sample contamination, chr20 mean DP, and QC MT callrate into a single Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_qc_meta_ht" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_qc_meta_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_qc_meta_ht</span></code></a>(base_ht)</p></td>
+<td><p>Combine all sample QC metadata Tables into a single Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.main" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.main</span></code></a>(args)</p></td>
+<td><p>Merge the output of all sample QC modules into a single Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht"></span><p>Script to merge the output of all sample QC modules into a single Table.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_project_meta">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_project_meta</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_project_meta"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_project_meta" title="Permalink to this definition"></a></dt>
+<dd><p>Load project-specific metadata Table and add GATK version.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>GATK version annotated project metadata Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sex_imputation_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_sex_imputation_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_sex_imputation_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sex_imputation_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Load and reformat sex imputation Table for annotation on the combined meta Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Reformatted sex imputation Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filters_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_hard_filters_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_hard_filters_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filters_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Load and reformat hard-filters Table for annotation on the combined meta Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Param<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Input HT to add hard-filter annotations to.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Reformatted hard-filters Table.</p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relatedness_dict_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_relatedness_dict_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_exprs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_relatedness_dict_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relatedness_dict_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Parse relatedness Table to get every relationship (except UNRELATED) per sample.</p>
+<p>Return Table keyed by sample with all sample relationships in dictionary where the
+key is the relationship and the value is a set of all samples with that
+relationship to the given sample.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with inferred relationship information. Keyed by sample pair (i, j).</p></li>
+<li><p><strong>filter_exprs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>]) – Optional dictionary of filter expressions to apply to <cite>ht</cite>
+before creating the ‘relationships’ annotations. Keyed by the postfix to add to
+‘relationships’ as the annotation label, and with boolean expressions as the
+values. By default, no additional filtering is applied, and a single
+‘relationships’ annotation is created.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table keyed by sample (s) with all relationships annotated as a dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relationship_filter_expr">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_relationship_filter_expr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hard_filtered_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">related_drop_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_set</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_relationship_filter_expr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_relationship_filter_expr" title="Permalink to this definition"></a></dt>
+<dd><p>Return case statement to populate relatedness filters in sample_filters struct.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>hard_filtered_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>) – Boolean for whether sample was hard filtered.</p></li>
+<li><p><strong>related_drop_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>) – Boolean for whether sample was filtered due to
+relatedness.</p></li>
+<li><p><strong>relationship_set</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.SetExpression.html#hail.expr.SetExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">SetExpression</span></code></a>) – Set containing all possible relationship strings for
+sample.</p></li>
+<li><p><strong>relationship</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Relationship to check for. One of DUPLICATE_OR_TWINS,
+PARENT_CHILD, SIBLINGS, or SECOND_DEGREE_RELATIVES.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/functions/hail.expr.builders.CaseBuilder.html#hail.expr.builders.CaseBuilder" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">CaseBuilder</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Case statement used to populate sample_filters related filter field.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relationships">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">annotate_relationships</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outlier_filter_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#annotate_relationships"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relationships" title="Permalink to this definition"></a></dt>
+<dd><p>Get relatedness relationship annotations for the combined meta Table.</p>
+<dl class="simple">
+<dt>Table has the following annotations:</dt><dd><ul class="simple">
+<li><p>relationships: A dictionary of all relationships (except UNRELATED) the
+sample has with other samples in the dataset. The key is the relationship
+and the value is a set of all samples with that relationship to the given
+sample.</p></li>
+<li><p>gnomad_v3_duplicate: Sample is in the gnomAD v3.1 sample set that passed hard
+filtering.</p></li>
+<li><p>gnomad_v3_release_duplicate: Sample is in the gnomAD v3.1 release.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC filter Table to add relatedness filter annotations to.</p></li>
+<li><p><strong>outlier_filter_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with ‘outlier_filtered’ annotation indicating if a
+sample was filtered during outlier detection on sample QC metrics.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with related filters added and Table with relationship and gnomad v3
+overlap information.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relatedness_filters">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">annotate_relatedness_filters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hard_filtered_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outlier_filtered_expr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#annotate_relatedness_filters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.annotate_relatedness_filters" title="Permalink to this definition"></a></dt>
+<dd><p>Get relatedness filtering Table for the combined meta Table.</p>
+<p>Add the following related filter boolean annotations to the input <cite>ht</cite> under a
+<cite>relatedness_filters</cite> struct:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>related: Whether the sample was filtered for second-degree (or closer)
+relatedness in the ancestry inference PCA.</p></li>
+<li><p>duplicate_or_twin: Whether the filtered sample has a duplicate or twin among
+all samples that are not hard-filtered.</p></li>
+<li><p>parent_child: Whether the filtered sample has a parent or child among all
+samples that are not hard-filtered.</p></li>
+<li><p>sibling: Whether the filtered sample has a sibling among all samples that are
+not hard-filtered.</p></li>
+<li><p>Any sample in <cite>ht</cite> that is hard-filtered will have a missing value for these
+annotations.</p></li>
+</ul>
+</div></blockquote>
+<p>These related filter annotations are also provided for release filtered samples
+added to the input <cite>ht</cite> under a <cite>release_relatedness_filters</cite> struct:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>related: Whether the release filtered sample was filtered for
+second-degree (or closer) relatedness in the final release.</p></li>
+<li><p>duplicate_or_twin: Whether the release filtered sample has a
+duplicate or twin among all samples that are not hard-filtered or
+outlier-filtered.</p></li>
+<li><p>parent_child: Whether the release filtered sample has a parent or
+child among all samples that are not hard-filtered or outlier-filtered.</p></li>
+<li><p>sibling: Whether the release filtered sample has a sibling among all
+samples that are not hard-filtered or outlier-filtered.</p></li>
+<li><p>Any sample in <cite>ht</cite> that is hard-filtered or outlier-filtered will have a
+missing value for these annotations.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Sample QC filter Table to add relatedness filter annotations to.</p></li>
+<li><p><strong>relationship_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with relationships annotations.</p></li>
+<li><p><strong>hard_filtered_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>) – Boolean Expression indicating whether the sample was
+hard filtered.</p></li>
+<li><p><strong>outlier_filtered_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a>) – Boolean Expression indicating whether the sample was
+outlier filtered.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with related filters added and Table with relationship and gnomad v3
+overlap information.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.add_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">add_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ann_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ann_label</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ann_top_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">global_top_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_ht_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ann_ht_missing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_count_match</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#add_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.add_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate <cite>base_ht</cite> with contents of <cite>ann_ht</cite> and optionally check that sample counts match.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table to annotate.</p></li>
+<li><p><strong>ann_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with annotations to add to <cite>base_ht</cite>.</p></li>
+<li><p><strong>ann_label</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Label to use for Struct annotation of <cite>ann_ht</cite> on <cite>base_ht</cite> if
+<cite>ann_top_level</cite> is True. Also used and for logging message describing
+annotations being added.</p></li>
+<li><p><strong>ann_top_level</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to add all annotations on <cite>ann_ht</cite> to the top level
+of <cite>base_ht</cite> instead of grouping them under a new annotation, <cite>ann_label</cite>.</p></li>
+<li><p><strong>global_top_level</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to add all global annotations on <cite>ann_ht</cite> to the
+top level instead of grouping them under a new annotation,
+“<cite>ann_label</cite>_parameters”.</p></li>
+<li><p><strong>base_ht_missing</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Optional list of approved samples missing from <cite>base_ht</cite>,
+but present in <cite>ann_ht</cite>.</p></li>
+<li><p><strong>ann_ht_missing</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Optional list of approved samples missing from <cite>ann_ht</cite>, but
+present in <cite>base_ht</cite>.</p></li>
+<li><p><strong>sample_count_match</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Check whether the sample counts match in the two input
+tables. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with additional annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_filter_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_sample_filter_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relationship_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_sample_filter_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_filter_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Combine sample filters into a single Table to be added to the metadata Table.</p>
+<p>Includes hard-filters, sample QC outlier filters, and relatedness filters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table to add annotations to.</p></li>
+<li><p><strong>relationship_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with relationships annotations.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with hard filter metric annotations added.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filter_metric_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_hard_filter_metric_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_hard_filter_metric_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_hard_filter_metric_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Combine sample contamination, chr20 mean DP, and QC MT callrate into a single Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>base_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table to add annotations to.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with hard filter metric annotations added.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_qc_meta_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">get_sample_qc_meta_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#get_sample_qc_meta_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.get_sample_qc_meta_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Combine all sample QC metadata Tables into a single Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>base_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table to add all sample QC annotations to.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with all sample QC annotation Tables added to <cite>base_ht</cite>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/create_sample_qc_metadata_ht.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht.main" title="Permalink to this definition"></a></dt>
+<dd><p>Merge the output of all sample QC modules into a single Table.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="assign_ancestry.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.assign_ancestry" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="create_sample_qc_metadata_ht_genomes.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht_genomes" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

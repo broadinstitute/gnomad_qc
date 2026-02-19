@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.relatedness &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.sex_inference" href="sex_inference.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.platform_inference" href="platform_inference.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.relatedness</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/relatedness.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-relatedness">
+<h1>gnomad_qc.v4.sample_qc.relatedness<a class="headerlink" href="#gnomad-qc-v4-sample-qc-relatedness" title="Permalink to this heading"></a></h1>
+<p>Script to compute relatedness estimates among pairs of samples in the callset.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">relatedness</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">emission</span><span class="o">-</span><span class="n">kinship</span> <span class="n">MIN_EMISSION_KINSHIP</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">relatedness</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">RELATEDNESS_N_PARTITIONS</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">prepare</span><span class="o">-</span><span class="n">cuking</span><span class="o">-</span><span class="n">inputs</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="nb">print</span><span class="o">-</span><span class="n">cuking</span><span class="o">-</span><span class="n">command</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">cuking</span><span class="o">-</span><span class="n">split</span><span class="o">-</span><span class="n">factor</span> <span class="n">CUKING_SPLIT_FACTOR</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">cuking</span><span class="o">-</span><span class="n">relatedness</span><span class="o">-</span><span class="n">table</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">ibd</span><span class="o">-</span><span class="n">on</span><span class="o">-</span><span class="n">cuking</span><span class="o">-</span><span class="n">pairs</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">ibd</span><span class="o">-</span><span class="nb">min</span><span class="o">-</span><span class="n">cuking</span><span class="o">-</span><span class="n">kin</span> <span class="n">IBD_MIN_CUKING_KIN</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">ibd</span><span class="o">-</span><span class="nb">max</span><span class="o">-</span><span class="n">cuking</span><span class="o">-</span><span class="n">ibs0</span> <span class="n">IBD_MAX_CUKING_IBS0</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">ibd</span><span class="o">-</span><span class="nb">max</span><span class="o">-</span><span class="n">samples</span> <span class="n">IBD_MAX_SAMPLES</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">pc</span><span class="o">-</span><span class="n">relate</span><span class="o">-</span><span class="n">pca</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">pca</span><span class="o">-</span><span class="n">pcs</span> <span class="n">N_PCA_PCS</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">pc</span><span class="o">-</span><span class="n">relate</span><span class="o">-</span><span class="n">relatedness</span><span class="o">-</span><span class="n">table</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">pc</span><span class="o">-</span><span class="n">relate</span><span class="o">-</span><span class="n">pcs</span> <span class="n">N_PC_RELATE_PCS</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">individual</span><span class="o">-</span><span class="n">maf</span> <span class="n">MIN_INDIVIDUAL_MAF</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">block</span><span class="o">-</span><span class="n">size</span> <span class="n">BLOCK_SIZE</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">finalize</span><span class="o">-</span><span class="n">relatedness</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">finalize</span><span class="o">-</span><span class="n">relatedness</span><span class="o">-</span><span class="n">method</span> <span class="p">{</span><span class="n">cuking</span><span class="p">,</span><span class="n">pc_relate</span><span class="p">}]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">second</span><span class="o">-</span><span class="n">degree</span><span class="o">-</span><span class="nb">min</span><span class="o">-</span><span class="n">kin</span> <span class="n">SECOND_DEGREE_MIN_KIN</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">parent</span><span class="o">-</span><span class="n">child</span><span class="o">-</span><span class="nb">max</span><span class="o">-</span><span class="n">ibd0</span><span class="o">-</span><span class="ow">or</span><span class="o">-</span><span class="n">ibs0</span><span class="o">-</span><span class="n">over</span><span class="o">-</span><span class="n">ibs2</span> <span class="n">PARENT_CHILD_MAX_IBD0_OR_IBS0_OVER_IBS2</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">second</span><span class="o">-</span><span class="n">degree</span><span class="o">-</span><span class="n">sibling</span><span class="o">-</span><span class="n">lower</span><span class="o">-</span><span class="n">cutoff</span><span class="o">-</span><span class="n">slope</span> <span class="n">SECOND_DEGREE_SIBLING_LOWER_CUTOFF_SLOPE</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">second</span><span class="o">-</span><span class="n">degree</span><span class="o">-</span><span class="n">sibling</span><span class="o">-</span><span class="n">lower</span><span class="o">-</span><span class="n">cutoff</span><span class="o">-</span><span class="n">intercept</span> <span class="n">SECOND_DEGREE_SIBLING_LOWER_CUTOFF_INTERCEPT</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">second</span><span class="o">-</span><span class="n">degree</span><span class="o">-</span><span class="n">upper</span><span class="o">-</span><span class="n">sibling</span><span class="o">-</span><span class="n">lower</span><span class="o">-</span><span class="n">cutoff</span><span class="o">-</span><span class="n">slope</span> <span class="n">SECOND_DEGREE_UPPER_SIBLING_LOWER_CUTOFF_SLOPE</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">second</span><span class="o">-</span><span class="n">degree</span><span class="o">-</span><span class="n">upper</span><span class="o">-</span><span class="n">sibling</span><span class="o">-</span><span class="n">lower</span><span class="o">-</span><span class="n">cutoff</span><span class="o">-</span><span class="n">intercept</span> <span class="n">SECOND_DEGREE_UPPER_SIBLING_LOWER_CUTOFF_INTERCEPT</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">duplicate</span><span class="o">-</span><span class="n">twin</span><span class="o">-</span><span class="nb">min</span><span class="o">-</span><span class="n">kin</span> <span class="n">DUPLICATE_TWIN_MIN_KIN</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">duplicate</span><span class="o">-</span><span class="n">twin</span><span class="o">-</span><span class="n">ibd1</span><span class="o">-</span><span class="nb">min</span> <span class="n">DUPLICATE_TWIN_IBD1_MIN</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">duplicate</span><span class="o">-</span><span class="n">twin</span><span class="o">-</span><span class="n">ibd1</span><span class="o">-</span><span class="nb">max</span> <span class="n">DUPLICATE_TWIN_IBD1_MAX</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">related</span><span class="o">-</span><span class="n">samples</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">drop</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">release</span><span class="p">]</span>
+                                             <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>-o, --overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Use a test MatrixTableResource as input.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="common-relatedness-estimate-arguments">
+<h2>Common relatedness estimate arguments<a class="headerlink" href="#common-relatedness-estimate-arguments" title="Permalink to this heading"></a></h2>
+<p>Arguments relevant to both cuKING and PC-relate relatedness estimates.</p>
+<dl class="option-list">
+<dt><kbd>--min-emission-kinship</kbd></dt>
+<dd><p>Minimum kinship threshold for emitting a pair of samples in the relatedness output.</p>
+<p>Default: 0.05</p>
+</dd>
+<dt><kbd>--relatedness-n-partitions</kbd></dt>
+<dd><p>Number of desired partitions for the relatedness Table.</p>
+<p>Default: 100</p>
+</dd>
+</dl>
+</section>
+<section id="cuking-specific-relatedness-arguments">
+<h2>cuKING specific relatedness arguments<a class="headerlink" href="#cuking-specific-relatedness-arguments" title="Permalink to this heading"></a></h2>
+<p>Arguments specific to computing relatedness estimates using cuKING.</p>
+<dl class="option-list">
+<dt><kbd>--prepare-cuking-inputs</kbd></dt>
+<dd><p>Converts the dense QC MatrixTable to a Parquet format suitable for cuKING.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--create-cuking-relatedness-table</kbd></dt>
+<dd><p>Convert the cuKING outputs to a standard Hail Table.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="finalize-relatedness-specific-arguments">
+<h2>Finalize relatedness specific arguments<a class="headerlink" href="#finalize-relatedness-specific-arguments" title="Permalink to this heading"></a></h2>
+<p>Arguments specific to creating the final relatedness Table including adding a ‘relationship’ annotation for each pair. Note: The defaults provided for the slope and intercept cutoffs were determined from visualization of the cuking kinship distribution and the IBS0/IBS2 vs. kinship plot.</p>
+<dl class="option-list">
+<dt><kbd>--finalize-relatedness-ht</kbd></dt>
+<dd><p>Whether to finalize the relatedness HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--finalize-relatedness-method</kbd></dt>
+<dd><p>Possible choices: cuking, pc_relate</p>
+<p>Which relatedness method to use for finalized relatedness Table. Options are ‘cuking’ and ‘pc_relate’. Default is ‘cuking’.</p>
+<p>Default: “cuking”</p>
+</dd>
+<dt><kbd>--second-degree-min-kin</kbd></dt>
+<dd><p>Minimum kinship threshold for filtering a pair of samples with a second degree relationship when filtering related individuals. Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship of 0.08838835 for a second degree relationship cutoff. This cutoff shouldbe determined by evaluation of the kinship distribution.</p>
+<p>Default: 0.08838835</p>
+</dd>
+<dt><kbd>--parent-child-max-ibd0-or-ibs0-over-ibs2</kbd></dt>
+<dd><p>Maximum value of IBD0 (if ‘–finalize-relatedness-method’ is ‘pc_relate’) or IBS0/IBS2 (if ‘–finalize-relatedness-method’ is ‘cuking’) for a parent-child pair.</p>
+<p>Default: 5.2e-05</p>
+</dd>
+<dt><kbd>--second-degree-sibling-lower-cutoff-slope</kbd></dt>
+<dd><p>Slope of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs.</p>
+<p>Default: -0.0019</p>
+</dd>
+<dt><kbd>--second-degree-sibling-lower-cutoff-intercept</kbd></dt>
+<dd><p>Intercept of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs.</p>
+<p>Default: 0.00058</p>
+</dd>
+<dt><kbd>--second-degree-upper-sibling-lower-cutoff-slope</kbd></dt>
+<dd><p>Slope of the line to use as an upper cutoff for second degree relatives and a lower cutoff for siblings.</p>
+<p>Default: -0.01</p>
+</dd>
+<dt><kbd>--second-degree-upper-sibling-lower-cutoff-intercept</kbd></dt>
+<dd><p>Intercept of the line to use as an upper cutoff for second degree relatives and a lower cutoff for siblings.</p>
+<p>Default: 0.0022</p>
+</dd>
+<dt><kbd>--duplicate-twin-min-kin</kbd></dt>
+<dd><p>Minimum kinship for duplicate or twin pairs.</p>
+<p>Default: 0.42</p>
+</dd>
+<dt><kbd>--duplicate-twin-ibd1-min</kbd></dt>
+<dd><p>Minimum IBD1 cutoff for duplicate or twin pairs. Only used when ‘–finalize-relatedness-method’ is ‘pc_relate’. Note: the min is used because pc_relate can output large negative values in some corner cases.</p>
+<p>Default: -0.15</p>
+</dd>
+<dt><kbd>--duplicate-twin-ibd1-max</kbd></dt>
+<dd><p>Maximum IBD1 cutoff for duplicate or twin pairs. Only used when ‘–finalize-relatedness-method’ is ‘pc_relate’.</p>
+<p>Default: 0.1</p>
+</dd>
+</dl>
+</section>
+<section id="compute-related-samples-to-drop">
+<h2>Compute related samples to drop<a class="headerlink" href="#compute-related-samples-to-drop" title="Permalink to this heading"></a></h2>
+<p>Arguments used to determine related samples that should be dropped from the ancestry PCA or release.</p>
+<dl class="option-list">
+<dt><kbd>--compute-related-samples-to-drop</kbd></dt>
+<dd><p>Determine the minimal set of related samples to prune for ancestry PCA or release if ‘–release’ is used.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--release</kbd></dt>
+<dd><p>Whether to determine related samples to drop for the release based on outlier filtering of sample QC metrics.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.print_cuking_command" title="gnomad_qc.v4.sample_qc.relatedness.print_cuking_command"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.print_cuking_command</span></code></a>(...)</p></td>
+<td><p>Print the command to submit a Cloud Batch job for running cuKING.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.compute_ibd_on_cuking_pair_subset" title="gnomad_qc.v4.sample_qc.relatedness.compute_ibd_on_cuking_pair_subset"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.compute_ibd_on_cuking_pair_subset</span></code></a>(mt, ...)</p></td>
+<td><p>Run Hail's identity by descent on a subset of related pairs identified by cuKING.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.finalize_relatedness_ht" title="gnomad_qc.v4.sample_qc.relatedness.finalize_relatedness_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.finalize_relatedness_ht</span></code></a>(ht, ...)</p></td>
+<td><p>Create the finalized relatedness Table including adding a 'relationship' annotation for each pair.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.compute_rank_ht" title="gnomad_qc.v4.sample_qc.relatedness.compute_rank_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.compute_rank_ht</span></code></a>(ht)</p></td>
+<td><p>Add a rank to each sample for use when breaking maximal independent set ties.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.run_compute_related_samples_to_drop" title="gnomad_qc.v4.sample_qc.relatedness.run_compute_related_samples_to_drop"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.run_compute_related_samples_to_drop</span></code></a>(ht, ...)</p></td>
+<td><p>Determine the minimal set of related samples to prune for ancestry PCA or release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.get_relatedness_resources" title="gnomad_qc.v4.sample_qc.relatedness.get_relatedness_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.get_relatedness_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the relatedness pipeline.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.relatedness.main" title="gnomad_qc.v4.sample_qc.relatedness.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.main</span></code></a>(args)</p></td>
+<td><p>Compute relatedness estimates among pairs of samples in the callset.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.relatedness"></span><p>Script to compute relatedness estimates among pairs of samples in the callset.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.print_cuking_command">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">print_cuking_command</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cuking_input_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuking_output_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_emission_kinship</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuking_split_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#print_cuking_command"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.print_cuking_command" title="Permalink to this definition"></a></dt>
+<dd><p>Print the command to submit a Cloud Batch job for running cuKING.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cuking_input_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the cuKING input Parquet files.</p></li>
+<li><p><strong>cuking_output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the cuKING output Parquet files.</p></li>
+<li><p><strong>min_emission_kinship</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum kinship threshold for emitting a pair of
+samples in the relatedness output.</p></li>
+<li><p><strong>cuking_split_factor</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Split factor to use for splitting the full relatedness
+matrix table into equally sized submatrices that are computed independently to
+parallelize the relatedness computation and decrease the memory requirements.
+For example, to halve memory requirements, the full matrix can be split into
+equally sized submatrices (i.e. a ‘split factor’ of 4). Only the
+‘upper triangular’ submatrices need to be evaluated due to the symmetry of the
+relatedness matrix, leading to 10 shards. Default is 4.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.compute_ibd_on_cuking_pair_subset">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">compute_ibd_on_cuking_pair_subset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relatedness_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ibd_min_cuking_kin</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ibd_max_cuking_ibs0</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ibd_max_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#compute_ibd_on_cuking_pair_subset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.compute_ibd_on_cuking_pair_subset" title="Permalink to this definition"></a></dt>
+<dd><p>Run Hail’s identity by descent on a subset of related pairs identified by cuKING.</p>
+<p>The pairs that will get an identity by descent annotation are those where either
+<cite>ibd_min_cuking_kin</cite> or <cite>ibd_max_cuking_ibs0</cite> are met.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – QC MatrixTable.</p></li>
+<li><p><strong>relatedness_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – cuKING relatedness Table.</p></li>
+<li><p><strong>ibd_min_cuking_kin</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum cuKING kinship for pair to be included in IBD
+estimates. Default is 0.16.</p></li>
+<li><p><strong>ibd_max_cuking_ibs0</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum cuKING IBS0 for pair to be included in IBD
+estimates. Default is 50. This default was determined from looking at the cuKING
+Kinship vs. IBS0 plot for gnomAD v3 + gnomAD v4.</p></li>
+<li><p><strong>ibd_max_samples</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum number of samples to include in each IBD run.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing identity by descent metrics on related sample pairs.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.finalize_relatedness_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">finalize_relatedness_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relatedness_method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relatedness_args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#finalize_relatedness_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.finalize_relatedness_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create the finalized relatedness Table including adding a ‘relationship’ annotation for each pair.</p>
+<dl class="simple">
+<dt>The <cite>relatedness_args</cite> dictionary should have the following keys:</dt><dd><ul class="simple">
+<li><p>‘second_degree_min_kin’: Minimum kinship threshold for filtering a pair of
+samples with a second degree relationship when filtering related individuals.
+Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship
+of 0.08838835 for a second degree relationship cutoff. This cutoff should be
+determined by evaluation of the kinship distribution.</p></li>
+<li><p>‘parent_child_max_ibd0_or_ibs0_over_ibs2’: Maximum value of IBD0 (if
+<cite>relatedness_method</cite> is ‘pc_relate’) or IBS0/IBS2 (if <cite>relatedness_method</cite> is
+‘cuking’) for a parent-child pair.</p></li>
+<li><p>‘second_degree_sibling_lower_cutoff_slope’: Slope of the line to use as a
+lower cutoff for second degree relatives and siblings from parent-child pairs.</p></li>
+<li><p>‘second_degree_sibling_lower_cutoff_intercept’: Intercept of the line to use
+as a lower cutoff for second degree relatives and siblings from parent-child
+pairs.</p></li>
+<li><p>‘second_degree_upper_sibling_lower_cutoff_slope’: Slope of the line to use as
+an upper cutoff for second degree relatives and a lower cutoff for siblings.</p></li>
+<li><p>‘second_degree_upper_sibling_lower_cutoff_intercept’: Intercept of the line to
+use as an upper cutoff for second degree relatives and a lower cutoff for
+siblings.</p></li>
+<li><p>‘duplicate_twin_min_kin’: Minimum kinship for duplicate or twin pairs.</p></li>
+<li><p>‘duplicate_twin_ibd1_min’: Minimum IBD1 cutoff for duplicate or twin pairs.
+Only used when <cite>relatedness_method</cite> is ‘pc_relate’. Note: the min is used
+because pc_relate can output large negative values in some corner cases.</p></li>
+<li><p>‘duplicate_twin_ibd1_max’: Maximum IBD1 cutoff for duplicate or twin pairs.
+Only used when <cite>relatedness_method</cite> is ‘pc_relate’.</p></li>
+</ul>
+</dd>
+<dt>The following annotations are added to <cite>ht</cite>:</dt><dd><ul class="simple">
+<li><p>‘relationship’: Relationship annotation for the pair. Returned by
+<cite>get_slope_int_relationship_expr</cite>.</p></li>
+<li><p>‘gnomad_v3_duplicate’: Whether the sample is a duplicate of a sample found in
+the gnomAD v3.1 genomes.</p></li>
+<li><p>‘gnomad_v3_release_duplicate’: Whether the sample is a duplicate of a sample
+found in the gnomAD v3.1 release genomes.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input relatedness Table.</p></li>
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input metadata Table. Used to add v3 overlap annotations.</p></li>
+<li><p><strong>relatedness_method</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Which relatedness method to use for finalized
+relatedness Table. Options are ‘cuking’ and ‘pc_relate’. Default is ‘cuking’.</p></li>
+<li><p><strong>relatedness_args</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]) – Dictionary of arguments to be passed to
+<cite>get_slope_int_relationship_expr</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Finalized relatedness Table</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.compute_rank_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">compute_rank_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#compute_rank_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.compute_rank_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Add a rank to each sample for use when breaking maximal independent set ties.</p>
+<p>Favor v3 release samples, then v4 samples over v3 non-release samples, then
+higher chr20 mean DP.</p>
+<p>If <cite>filter_ht</cite> is provided, rank based on filtering ‘outlier_filtered’ annotation
+first.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table to add rank to.</p></li>
+<li><p><strong>filter_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table with ‘outlier_filtered’ annotation to be used in
+ranking.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing sample ID and rank.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.run_compute_related_samples_to_drop">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">run_compute_related_samples_to_drop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#run_compute_related_samples_to_drop"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.run_compute_related_samples_to_drop" title="Permalink to this definition"></a></dt>
+<dd><p>Determine the minimal set of related samples to prune for ancestry PCA or release.</p>
+<p>Runs <cite>compute_related_samples_to_drop</cite> in gnomad_methods after computing the
+sample rankings using <cite>compute_rank_ht</cite>.</p>
+<p>When <cite>release</cite> is True, <cite>filter_ht</cite> is used to rank samples based on filtering
+‘outlier_filtered’ annotation, favoring those that are not filtered. The ‘filter_ht’
+‘outlier_filtered’ samples will also be included in the returned
+<cite>samples_to_drop_ht</cite> Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input relatedness Table.</p></li>
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Metadata Table with <cite>v3_meta.v3_release</cite>, <cite>releasable</cite>,
+<cite>chr20_mean_dp</cite> annotations to be used in ranking and filtering of related
+individuals.</p></li>
+<li><p><strong>release</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to determine related samples to drop for the release based
+on outlier filtering of sample QC metrics. <cite>filter_ht</cite> must be supplied.</p></li>
+<li><p><strong>filter_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table with outlier filtering of sample QC metrics to
+use if <cite>release</cite> is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with sample rank and a Table with related samples to drop.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.get_relatedness_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">get_relatedness_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relatedness_method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#get_relatedness_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.get_relatedness_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the relatedness pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather all resources for the test dataset.</p></li>
+<li><p><strong>release</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get release resource for
+‘compute-related-samples-to-drop’ step of the relatedness pipeline.</p></li>
+<li><p><strong>relatedness_method</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – The relatedness method to use for
+‘finalize-relatedness-ht’ resources.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite resources if they exist.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+relatedness inference pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.relatedness.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.relatedness.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/relatedness.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.relatedness.main" title="Permalink to this definition"></a></dt>
+<dd><p>Compute relatedness estimates among pairs of samples in the callset.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="platform_inference.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.platform_inference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="sex_inference.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.sex_inference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

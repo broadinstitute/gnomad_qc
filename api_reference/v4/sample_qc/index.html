@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.assign_ancestry" href="assign_ancestry.html" />
+    <link rel="prev" title="gnomad_qc.v4.resources.variant_qc" href="../resources/variant_qc.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">sample_qc</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="identify_trios.html">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc">
+<h1>gnomad_qc.v4.sample_qc<a class="headerlink" href="#gnomad-qc-v4-sample-qc" title="Permalink to this heading"></a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="assign_ancestry.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="assign_ancestry.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="create_sample_qc_metadata_ht.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="create_sample_qc_metadata_ht.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="generate_qc_mt.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generate_qc_mt.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="hard_filters.html">hard_filters</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="hard_filters.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="hard_filters.html#hard-filter-cutoffs">Hard-filter cutoffs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="hard_filters.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="identify_trios.html">identify_trios</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#duplicate-identification">Duplicate identification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#pedigree-inference">Pedigree inference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#fake-pedigree-creation">Fake Pedigree creation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#mendel-error-calculation">Mendel error calculation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#pedigree-filtering-for-final-pedigree-generation">Pedigree filtering for final Pedigree generation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#create-dense-trio-mt.">Create dense trio MT.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="identify_trios.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="interval_qc.html">interval_qc</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="interval_qc.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="interval_qc.html#sex-chromosome-interval-coverage">Sex chromosome interval coverage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="interval_qc.html#compute-aggregate-interval-stats-for-interval-qc">Compute aggregate interval stats for interval QC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="interval_qc.html#generate-interval-qc-pass-annotation">Generate interval QC pass annotation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="interval_qc.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#apply-stratified-filtering-method.">Apply stratified filtering method.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#apply-regression-filtering-method.">Apply regression filtering method.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#determine-nearest-neighbors-for-each-sample.">Determine nearest neighbors for each sample.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#apply-nearest-neighbors-filtering-method.">Apply nearest neighbors filtering method.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#create-finalized-outlier-filtering-table.">Create finalized outlier filtering Table.</a></li>
+<li class="toctree-l2"><a class="reference internal" href="outlier_filtering.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="platform_inference.html">platform_inference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="platform_inference.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="platform_inference.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="relatedness.html">relatedness</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="relatedness.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relatedness.html#common-relatedness-estimate-arguments">Common relatedness estimate arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relatedness.html#cuking-specific-relatedness-arguments">cuKING specific relatedness arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relatedness.html#finalize-relatedness-specific-arguments">Finalize relatedness specific arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relatedness.html#compute-related-samples-to-drop">Compute related samples to drop</a></li>
+<li class="toctree-l2"><a class="reference internal" href="relatedness.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="sex_inference.html">sex_inference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="sex_inference.html#named-arguments">Named Arguments</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sex_inference.html#determine-f-stat-sites">Determine f-stat sites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sex_inference.html#sex-chromosome-interval-qc">Sex chromosome interval QC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sex_inference.html#impute-sex-ploidy">Impute sex ploidy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sex_inference.html#annotate-sex-karyotype">Annotate sex karyotype</a></li>
+<li class="toctree-l2"><a class="reference internal" href="sex_inference.html#module-functions">Module Functions</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../resources/variant_qc.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.resources.variant_qc" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="assign_ancestry.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.assign_ancestry" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

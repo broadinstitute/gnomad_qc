@@ -1,0 +1,63 @@
+gnomad_qc.v5.annotations.generate_frequency
+===========================================
+
+
+Script to generate frequency data for gnomAD v5.
+
+This script calculates variant frequencies and histograms for:
+1. gnomAD dataset - updating v4 frequencies by subtracting consent withdrawal samples
+2. AoU dataset - using either pre-computed allele numbers or a densify approach
+
+Processing Workflow:
+--------------------
+gnomAD (--process-gnomad):
+1. Load v4 frequency table (contains frequencies and age histograms)
+2. Prepare consent withdrawal VDS (split multiallelics, annotate metadata)
+3. Calculate frequencies and age histograms for consent samples
+4. Subtract from v4 frequencies to get updated gnomAD v5 frequencies
+
+AoU (--process-aou):
+1. Load AoU VDS with metadata
+2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
+3. Calculate frequencies using either: All sites ANs (efficient, requires pre-computed
+AN values) or Densify approach (standard, more resource intensive)
+4. Generate age histograms during frequency calculation
+
+Merged dataset (--merge-datasets):
+1. Merge frequency data and histograms from both gnomAD and AoU datasets.
+2. Calculate FAF, grpmax, and other post-processing annotations on merged dataset.
+
+Usage Examples:
+---------------
+# Process AoU dataset using all-sites ANs.
+python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
+
+# Process AoU on batch/QoB with custom resources.
+python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
+
+# Process gnomAD consent withdrawals
+python generate_frequency.py --process-gnomad --environment dataproc
+
+# Run gnomAD in test mode
+python generate_frequency.py --process-gnomad --test --test-partitions 2
+
+# Merge both datasets
+python generate_frequency.py --merge-datasets --environment batch --app-name "merged_freq" --driver-cores 8 --worker-memory highmem
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.annotations.generate_frequency.get_script_argument_parser
+   :prog: gnomad_qc.v5.annotations.generate_frequency.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.annotations.generate_frequency
+
+.. automodule:: gnomad_qc.v5.annotations.generate_frequency
+    :exclude-members: get_script_argument_parser

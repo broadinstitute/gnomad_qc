@@ -1,0 +1,39 @@
+gnomad_qc.v4.assessment.calculate_per_sample_stats
+==================================================
+
+
+Script to get per-sample variant counts and aggregate sample statistics.
+
+The following per-sample variant counts (including heterozygous, homozygous, non-ref, singletons etc.) can be calculated:
+
+    - Total number of variants
+    - Number of variants that pass all variant qc filters
+    - Number of variants in UK Biobank capture regions
+    - Number of variants in Broad capture regions
+    - Number of variants in the intersect of UK Biobank and Broad capture regions
+    - Number of variants in the union of UK Biobank and Broad capture regions
+    - Number of rare variants (adj AF <0.1%)
+    - Number of loss-of-function variants
+    - Number of missense variants
+    - Number of synonymous variants
+
+The following aggregate sample stats of all of the above per-sample counts can be
+computed:
+
+        - Mean
+        - Quantiles (0.0, 0.25, 0.5, 0.75, 1.0)
+
+Aggregated statistics can also be computed by ancestry.
+
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.assessment.calculate_per_sample_stats
+
+.. automodule:: gnomad_qc.v4.assessment.calculate_per_sample_stats
+    :exclude-members: get_script_argument_parser

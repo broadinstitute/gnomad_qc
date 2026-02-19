@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.resources.release &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.resources.sample_qc" href="sample_qc.html" />
+    <link rel="prev" title="gnomad_qc.v4.resources.meta" href="meta.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">resources</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotations.html">annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="assessment.html">assessment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="basics.html">basics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="constants.html">constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="meta.html">meta</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sample_qc.html">sample_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="variant_qc.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.resources</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.resources.release</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/resources/release.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-resources-release">
+<h1>gnomad_qc.v4.resources.release<a class="headerlink" href="#gnomad-qc-v4-resources-release" title="Permalink to this heading"></a></h1>
+<p>Script containing release related resources.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.annotation_hists_params_path" title="gnomad_qc.v4.resources.release.annotation_hists_params_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.annotation_hists_params_path</span></code></a>([...])</p></td>
+<td><p>Return path to file containing dictionary of parameters for site metric histograms.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.qual_hists_json_path" title="gnomad_qc.v4.resources.release.qual_hists_json_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.qual_hists_json_path</span></code></a>([...])</p></td>
+<td><p>Fetch filepath for qual histograms JSON.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_ht_path" title="gnomad_qc.v4.resources.release.release_ht_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_ht_path</span></code></a>([...])</p></td>
+<td><p>Fetch filepath for release (variant-only) Hail Tables.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_sites" title="gnomad_qc.v4.resources.release.release_sites"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_sites</span></code></a>([...])</p></td>
+<td><p>Retrieve versioned resource for sites-only release Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_vcf_path" title="gnomad_qc.v4.resources.release.release_vcf_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_vcf_path</span></code></a>([...])</p></td>
+<td><p>Fetch bucket for release (sites-only) VCFs.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_header_path" title="gnomad_qc.v4.resources.release.release_header_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_header_path</span></code></a>([...])</p></td>
+<td><p>Fetch path to pickle file containing VCF header dictionary.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.append_to_vcf_header_path" title="gnomad_qc.v4.resources.release.append_to_vcf_header_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.append_to_vcf_header_path</span></code></a>([...])</p></td>
+<td><p>Fetch path to TSV file containing extra fields to append to VCF header.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_coverage_path" title="gnomad_qc.v4.resources.release.release_coverage_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_coverage_path</span></code></a>([...])</p></td>
+<td><p>Fetch filepath for all sites coverage or allele number release Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_coverage_tsv_path" title="gnomad_qc.v4.resources.release.release_coverage_tsv_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_coverage_tsv_path</span></code></a>([...])</p></td>
+<td><p>Fetch path to coverage TSV file.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_all_sites_an_tsv_path" title="gnomad_qc.v4.resources.release.release_all_sites_an_tsv_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_all_sites_an_tsv_path</span></code></a>([...])</p></td>
+<td><p>Fetch path to all sites AN TSV file.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_coverage" title="gnomad_qc.v4.resources.release.release_coverage"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_coverage</span></code></a>([...])</p></td>
+<td><p>Retrieve versioned resource for coverage release Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_all_sites_an" title="gnomad_qc.v4.resources.release.release_all_sites_an"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_all_sites_an</span></code></a>([...])</p></td>
+<td><p>Retrieve versioned resource for all sites allele number release Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.release_de_novo" title="gnomad_qc.v4.resources.release.release_de_novo"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.release_de_novo</span></code></a>([test])</p></td>
+<td><p>Retrieve versioned resource for exomes de novo release Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.included_datasets_json_path" title="gnomad_qc.v4.resources.release.included_datasets_json_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.included_datasets_json_path</span></code></a>([...])</p></td>
+<td><p>Fetch filepath for the JSON containing all datasets used in the release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.validated_release_ht" title="gnomad_qc.v4.resources.release.validated_release_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.validated_release_ht</span></code></a>([...])</p></td>
+<td><p>Retrieve versioned resource for validated sites-only release Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.get_freq_array_readme" title="gnomad_qc.v4.resources.release.get_freq_array_readme"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.get_freq_array_readme</span></code></a>([...])</p></td>
+<td><p>Fetch README for freq array for the specified data_type.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.release.get_false_dup_genes_path" title="gnomad_qc.v4.resources.release.get_false_dup_genes_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.release.get_false_dup_genes_path</span></code></a>([...])</p></td>
+<td><p>Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.resources.release"></span><p>Script containing release related resources.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.annotation_hists_params_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">annotation_hists_params_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#annotation_hists_params_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.annotation_hists_params_path" title="Permalink to this definition"></a></dt>
+<dd><p>Return path to file containing dictionary of parameters for site metric histograms.</p>
+<p>The keys of the dictionary are the names of the site quality metrics
+while the values are: [lower bound, upper bound, number  of bins].
+For example, “InbreedingCoeff”: [-0.25, 0.25, 50].</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Defaults to CURRENT RELEASE.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of annotation resource. e.g. “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>test</strong> – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path to file with annotation histograms</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.qual_hists_json_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">qual_hists_json_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#qual_hists_json_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.qual_hists_json_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch filepath for qual histograms JSON.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Defaults to CURRENT RELEASE</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>File path for histogram JSON</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_ht_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_ht_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">public</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_ht_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_ht_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch filepath for release (variant-only) Hail Tables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of release resource to return. Should be one of
+‘exomes’, ‘genomes’ or ‘joint’. Default is ‘exomes’.</p></li>
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Default is CURRENT_RELEASE.</p></li>
+<li><p><strong>public</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether release sites Table path returned is from public instead of private
+bucket. Default is True.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>File path for desired release Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_sites">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_sites</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">public</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_sites"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_sites" title="Permalink to this definition"></a></dt>
+<dd><p>Retrieve versioned resource for sites-only release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of release resource to return. Should be one of
+‘exomes’, ‘genomes’, or ‘joint’. Default is ‘exomes’.</p></li>
+<li><p><strong>public</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether release sites Table path returned is from public or private
+bucket. Default is True.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sites-only release Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_vcf_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_vcf_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_vcf_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_vcf_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch bucket for release (sites-only) VCFs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>release_version</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Release version. When no release_version is supplied
+CURRENT_RELEASE is used.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of release resource to return. Should be one of
+‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>contig</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – String containing the name of the desired reference contig. Default
+is the full (all contigs) sites VCF path.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filepath for the desired VCF.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_header_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_header_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_header_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_header_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch path to pickle file containing VCF header dictionary.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>release_version</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Release version. When no release_version is supplied
+CURRENT_RELEASE is used</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of release resource to return. Should be one of
+‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filepath for header dictionary pickle.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.append_to_vcf_header_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">append_to_vcf_header_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#append_to_vcf_header_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.append_to_vcf_header_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch path to TSV file containing extra fields to append to VCF header.</p>
+<p>Extra fields are VEP and dbSNP versions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>subset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – One of the possible release subsets.</p></li>
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Defaults to CURRENT RELEASE.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of release resource to return. Should be one of .
+‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filepath for extra fields TSV file.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_coverage_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_coverage_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">public</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stratify</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coverage_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'coverage'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_coverage_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_coverage_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch filepath for all sites coverage or allele number release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version.</p></li>
+<li><p><strong>public</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Determines whether release coverage Table is read from public or
+private bucket. Default is public.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+<li><p><strong>stratify</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to stratify results by platform and subset. Default is True.</p></li>
+<li><p><strong>coverage_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘coverage’ or ‘allele_number’. Default is ‘coverage’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>File path for desired coverage Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_coverage_tsv_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_coverage_tsv_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_coverage_tsv_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_coverage_tsv_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch path to coverage TSV file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Default is CURRENT_COVERAGE_RELEASE[“exomes”].</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Coverage TSV path.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_all_sites_an_tsv_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_all_sites_an_tsv_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_all_sites_an_tsv_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_all_sites_an_tsv_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch path to all sites AN TSV file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Default is
+CURRENT_ALL_SITES_AN_RELEASE[data_type].</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>All sites AN TSV path.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_coverage">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_coverage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">public</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stratify</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_coverage"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_coverage" title="Permalink to this definition"></a></dt>
+<dd><p>Retrieve versioned resource for coverage release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>public</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Determines whether release coverage Table is read from public or
+private bucket. Default is private.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+<li><p><strong>stratify</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to stratify results by platform and subset. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Coverage release Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_all_sites_an">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_all_sites_an</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">public</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_all_sites_an"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_all_sites_an" title="Permalink to this definition"></a></dt>
+<dd><p>Retrieve versioned resource for all sites allele number release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>public</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Determines whether release allele number Table is read from public or
+private bucket. Default is private.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>All sites allele number release Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.release_de_novo">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">release_de_novo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#release_de_novo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.release_de_novo" title="Permalink to this definition"></a></dt>
+<dd><p>Retrieve versioned resource for exomes de novo release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>De novo release Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.included_datasets_json_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">included_datasets_json_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#included_datasets_json_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.included_datasets_json_path" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch filepath for the JSON containing all datasets used in the release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Defaults to CURRENT RELEASE</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>File path for release versions included datasets JSON</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.validated_release_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">validated_release_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#validated_release_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.validated_release_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Retrieve versioned resource for validated sites-only release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Validated release Table</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.get_freq_array_readme">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">get_freq_array_readme</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#get_freq_array_readme"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.get_freq_array_readme" title="Permalink to this definition"></a></dt>
+<dd><p>Fetch README for freq array for the specified data_type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>README for freq array.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.release.get_false_dup_genes_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.release.</span></span><span class="sig-name descname"><span class="pre">get_false_dup_genes_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/release.html#get_false_dup_genes_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.release.get_false_dup_genes_path" title="Permalink to this definition"></a></dt>
+<dd><p>Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>release_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version. Defaults to CURRENT RELEASE.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Combined custom liftover table path for the three genes in false duplication.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="meta.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.resources.meta" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="sample_qc.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.resources.sample_qc" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

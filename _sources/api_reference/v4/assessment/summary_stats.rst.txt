@@ -1,0 +1,16 @@
+gnomad_qc.v4.assessment.summary_stats
+=====================================
+
+Run summary stats on gnomAD v4 data.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.assessment.summary_stats
+
+.. automodule:: gnomad_qc.v4.assessment.summary_stats
+    :exclude-members: get_script_argument_parser

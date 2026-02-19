@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_release_sites_ht &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.create_release.create_release_utils" href="create_release_utils.html" />
+    <link rel="prev" title="gnomad_qc.v4.create_release.create_false_dup_liftover" href="create_false_dup_liftover.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">create_release</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="create_combined_faf_release_ht.html">create_combined_faf_release_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_de_novo_release.html">create_de_novo_release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_false_dup_liftover.html">create_false_dup_liftover</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_release_sites_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_utils.html">create_release_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="make_var_annot_hists.html">make_var_annot_hists</a></li>
+<li class="toctree-l4"><a class="reference internal" href="validate_and_export_vcf.html">validate_and_export_vcf</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.create_release</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_release_sites_ht</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/create_release/create_release_sites_ht.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-create-release-create-release-sites-ht">
+<h1>gnomad_qc.v4.create_release.create_release_sites_ht<a class="headerlink" href="#gnomad-qc-v4-create-release-create-release-sites-ht" title="Permalink to this heading"></a></h1>
+<p>Script to create release sites HT for v4.0 exomes and genomes.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">create_release</span><span class="o">.</span><span class="n">create_release_sites_ht</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">new</span><span class="o">-</span><span class="n">partition</span><span class="o">-</span><span class="n">percent</span> <span class="n">NEW_PARTITION_PERCENT</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">v</span> <span class="n">VERSION</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">t</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">d</span> <span class="p">{</span><span class="n">exomes</span><span class="p">,</span><span class="n">genomes</span><span class="p">}]</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">j</span> <span class="n">TABLES_FOR_JOIN</span> <span class="p">[</span><span class="n">TABLES_FOR_JOIN</span> <span class="o">...</span><span class="p">]]</span> <span class="p">[</span><span class="o">-</span><span class="n">b</span> <span class="n">BASE_TABLE</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">release</span><span class="o">-</span><span class="n">exists</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">base</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">version</span> <span class="n">BASE_RELEASE_VERSION</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">no</span><span class="o">-</span><span class="n">dup</span><span class="o">-</span><span class="n">check</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--new-partition-percent</kbd></dt>
+<dd><p>Percent of start dataset partitions to use for release HT. Default is 1.1 (110%)</p>
+<p>Default: 1.1</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite data</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>-v, --version</kbd></dt>
+<dd><p>The version of gnomAD.</p>
+<p>Default: “4.1.1”</p>
+</dd>
+<dt><kbd>-t, --test</kbd></dt>
+<dd><p>Runs a test on PCSK9 region, chr1:55039447-55064852</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>-d, --data-type</kbd></dt>
+<dd><p>Possible choices: exomes, genomes</p>
+<p>Data type to create release HT for.</p>
+<p>Default: “exomes”</p>
+</dd>
+<dt><kbd>-j, --tables-for-join</kbd></dt>
+<dd><p>Tables to join for release</p>
+</dd>
+<dt><kbd>-b, --base-table</kbd></dt>
+<dd><p>Base table for interval partition calculation.</p>
+<p>Default: “freq”</p>
+</dd>
+<dt><kbd>--release-exists</kbd></dt>
+<dd><p>Use the release version specified by –version as the base HT. When specified, loads the release HT for the version being updated and uses it as the base for joining other tables. This is useful when updating an existing release in place. Mutually exclusive with –base-release-version.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--base-release-version</kbd></dt>
+<dd><p>Specific release version to use as the base HT (e.g., ‘4.1’). When specified, loads that version’s release HT as the base for joining other tables. This is useful when creating a new release version (specified by –version) from an existing release version. For example, to create v4.1.1 from v4.1 base, use –base-release-version 4.1 –version 4.1.1. Mutually exclusive with –release-exists.</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Number of partitions to naive coalesce the release Table to.</p>
+<p>Default: 10000</p>
+</dd>
+<dt><kbd>--no-dup-check</kbd></dt>
+<dd><p>Skip duplicate check.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_tables_for_release" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_tables_for_release"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_tables_for_release</span></code></a>(version)</p></td>
+<td><p>Get list of tables to include in release based on version.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_finalized_schema" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_finalized_schema"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_finalized_schema</span></code></a>(version)</p></td>
+<td><p>Get finalized schema for release HT based on version.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_config" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_config</span></code></a>(...)</p></td>
+<td><p>Get configuration dictionary for specified data type.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.drop_v3_subsets" title="gnomad_qc.v4.create_release.create_release_sites_ht.drop_v3_subsets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.drop_v3_subsets</span></code></a>(freq_ht)</p></td>
+<td><p>Drop the frequencies of all v3 subsets except 'hgdp' and 'tgp' from <cite>freq_ht</cite>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_joint_faf_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_joint_faf_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_joint_faf_select</span></code></a>(ht, **_)</p></td>
+<td><p>Drop faf95 from 'grpmax'.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_select</span></code></a>(ht, ...)</p></td>
+<td><p>Drop faf95 from both 'gnomad' and 'non_ukb' in 'grpmax' and rename <cite>gen_anc_faf_max</cite> to <cite>fafmax</cite>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_globals_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_globals_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_globals_select</span></code></a>(_ht)</p></td>
+<td><p>Select freq table globals for genomes.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_in_silico_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_in_silico_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_in_silico_select</span></code></a>(ht, **_)</p></td>
+<td><p>Get in silico predictors from VEP for release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_region_flags_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_region_flags_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_region_flags_select</span></code></a>(ht, ...)</p></td>
+<td><p>Select region flags for release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select</span></code></a>(ht, **_)</p></td>
+<td><p>Select gnomAD filter HT fields for release dataset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select_globals" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select_globals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select_globals</span></code></a>(...)</p></td>
+<td><p>Select filter HT globals for release dataset.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_info_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.custom_info_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.custom_info_select</span></code></a>(ht, ...)</p></td>
+<td><p>Select fields for info Hail Table annotation in release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_globals_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_globals_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_globals_select</span></code></a>()</p></td>
+<td><p>Get custom globals select function for VEP globals.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_select" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_select"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_select</span></code></a>(...)</p></td>
+<td><p>Get custom VEP select function for a given VEP version.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_select_global_fields" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_select_global_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_select_global_fields</span></code></a>(ht, ...)</p></td>
+<td><p>Generate a dictionary of globals to select by checking the config of all tables joined.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_select_fields" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_select_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_select_fields</span></code></a>(...)</p></td>
+<td><p>Generate a select dict from traversing the <cite>base_ht</cite> and extracting annotations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_final_ht_fields" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_final_ht_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_final_ht_fields</span></code></a>(ht)</p></td>
+<td><p>Get the final fields for the release HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_ht" title="gnomad_qc.v4.create_release.create_release_sites_ht.get_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_ht</span></code></a>(...)</p></td>
+<td><p>Return the appropriate Hail table with selects applied.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.join_hts" title="gnomad_qc.v4.create_release.create_release_sites_ht.join_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.join_hts</span></code></a>(...)</p></td>
+<td><p>Outer join a list of Hail Tables.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_release_sites_ht.main" title="gnomad_qc.v4.create_release.create_release_sites_ht.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.main</span></code></a>(args)</p></td>
+<td><p>Create release ht.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.create_release.create_release_sites_ht"></span><p>Script to create release sites HT for v4.0 exomes and genomes.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_tables_for_release">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_tables_for_release</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_tables_for_release"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_tables_for_release" title="Permalink to this definition"></a></dt>
+<dd><p>Get list of tables to include in release based on version.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version (e.g., “4.0”, “4.1”, “4.1.1”).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of table names to include in release.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_finalized_schema">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_finalized_schema</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_finalized_schema"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_finalized_schema" title="Permalink to this definition"></a></dt>
+<dd><p>Get finalized schema for release HT based on version.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version (e.g., “4.0”, “4.1”, “4.1.1”).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary with “globals” and “rows” lists of field names.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_config">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tables_for_join</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">release_exists</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.1.1'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_release_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_config" title="Permalink to this definition"></a></dt>
+<dd><p>Get configuration dictionary for specified data type.</p>
+<p>Format:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="s1">&#39;&lt;Name of dataset&gt;&#39;</span><span class="p">:</span> <span class="p">{</span>
+    <span class="s1">&#39;ht&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;Optional Hail Table for direct annotation extraction. This is not used for the join.&gt;&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;path&#39;</span><span class="p">:</span> <span class="s1">&#39;gs://path/to/hail_table.ht&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;select&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;Optional list of fields to select or dict of new field name to location of old field in the dataset.&gt;&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;field_name&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;Optional name of root annotation in combined dataset, defaults to name of dataset.&gt;&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;custom_select&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;Optional function name of custom select function that is needed for more advanced logic&gt;&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;custom_globals_select&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;Optional function name of custom globals select function that is needed for more advanced logic&gt;&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;select_globals&#39;</span><span class="p">:</span> <span class="s1">&#39;&lt;Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.&gt;&#39;</span>
+<span class="p">},</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The ‘in_silico’ key’s ‘ht’ logic is handled separately because it is a list of
+HTs. In this list, the phyloP HT is keyed by locus only and thus the ‘ht’ code
+below sets the join key to 1, which will grab the first key of
+ht.key.dtype.values() e.g. ‘locus’, when an HT’s keys are not {‘locus’,
+‘alleles’}.
+All future in_silico predictors should have the keys confirmed to be ‘locus’
+with or without ‘alleles’ before using this logic.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset’s data type: ‘exomes’ or ‘genomes’.</p></li>
+<li><p><strong>tables_for_join</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of tables to join.</p></li>
+<li><p><strong>release_exists</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the release HT already exists. If True, uses the
+specified <cite>version</cite> as the base release HT. Mutually exclusive with
+<cite>base_release_version</cite>.</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version for output (e.g., “4.0”, “4.1”, “4.1.1”).</p></li>
+<li><p><strong>base_release_version</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Specific release version to use as the base HT
+(e.g., “4.1”). When provided, loads that version’s release HT as the base.
+Mutually exclusive with <cite>release_exists</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict of dataset’s configs.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.drop_v3_subsets">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">drop_v3_subsets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#drop_v3_subsets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.drop_v3_subsets" title="Permalink to this definition"></a></dt>
+<dd><p>Drop the frequencies of all v3 subsets except ‘hgdp’ and ‘tgp’ from <cite>freq_ht</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – v4.0 genomes freq Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>v4.0 genomes freq Table with some v3 subsets dropped.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_joint_faf_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_joint_faf_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">_</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_joint_faf_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_joint_faf_select" title="Permalink to this definition"></a></dt>
+<dd><p>Drop faf95 from ‘grpmax’.</p>
+<p>This annotation will be combined with the others from joint_faf’s select in the config.
+See note in <cite>custom_freq_select</cite> explaining why this field is removed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Joint FAF Hail Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_freq_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">_</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_freq_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_select" title="Permalink to this definition"></a></dt>
+<dd><p>Drop faf95 from both ‘gnomad’ and ‘non_ukb’ in ‘grpmax’ and rename <cite>gen_anc_faf_max</cite> to <cite>fafmax</cite>.</p>
+<p>These annotations will be combined with the others from freq’s select in the config.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>The faf95 field in the grpmax struct is the FAF of the genetic ancestry group
+with the largest AF (grpmax AF).</p></li>
+<li><p>The FAF fields within the gen_anc_faf_max struct contains the FAFs from the
+genetic ancestry group(s) with the largest FAFs</p></li>
+<li><p>These values aren’t necessarily the same; the group with the highest AF for a
+variant isn’t necessarily the group with the highest FAF for a variant</p></li>
+<li><p>The filtering allele frequencies that are used by the community are the
+values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are
+dropping grpmax.faf95 and renaming gen_anc_faf_max</p></li>
+</ul>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Freq Hail Table</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset’s data type: ‘exomes’ or ‘genomes’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_globals_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_freq_globals_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_freq_globals_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_globals_select" title="Permalink to this definition"></a></dt>
+<dd><p>Select freq table globals for genomes.</p>
+<p>Recomputes age_distribution from meta table to ensure age_alt data is included
+for samples where age is stored as a bin range.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Freq Hail Table (unused, but required by interface).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Global select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_in_silico_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_in_silico_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">_</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_in_silico_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_in_silico_select" title="Permalink to this definition"></a></dt>
+<dd><p>Get in silico predictors from VEP for release.</p>
+<p>This function currently selects only SIFT and Polyphen from VEP.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – VEP Hail Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_region_flags_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_region_flags_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">_</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_region_flags_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_region_flags_select" title="Permalink to this definition"></a></dt>
+<dd><p>Select region flags for release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset’s data type: ‘exomes’ or ‘genomes’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_filters_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">_</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_filters_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select" title="Permalink to this definition"></a></dt>
+<dd><p>Select gnomAD filter HT fields for release dataset.</p>
+<p>Extract “results” field and rename based on filtering method.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Filters Hail Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select_globals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_filters_select_globals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">globals_expr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_filters_select_globals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select_globals" title="Permalink to this definition"></a></dt>
+<dd><p>Select filter HT globals for release dataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>globals_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>) – Globals struct from a Filters Hail Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.custom_info_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">custom_info_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#custom_info_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.custom_info_select" title="Permalink to this definition"></a></dt>
+<dd><p>Select fields for info Hail Table annotation in release.</p>
+<p>The info field requires fields from the freq HT and the filters HT so those are
+pulled in here along with all info HT fields. It also adds the <cite>allele_info</cite> struct
+to release HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Info Hail Table.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset’s data type: ‘exomes’ or ‘genomes’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Select expression dict.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_globals_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_custom_vep_globals_select</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_custom_vep_globals_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_globals_select" title="Permalink to this definition"></a></dt>
+<dd><p>Get custom globals select function for VEP globals.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Custom globals select function.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_select">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_custom_vep_select</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vep_version</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_custom_vep_select"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_select" title="Permalink to this definition"></a></dt>
+<dd><p>Get custom VEP select function for a given VEP version.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vep_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – VEP version (e.g., “105”, “115”).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Custom select function for the VEP version.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_select_global_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_select_global_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tables_for_join</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['dbsnp',</span> <span class="pre">'filters',</span> <span class="pre">'freq',</span> <span class="pre">'info',</span> <span class="pre">'region_flags',</span> <span class="pre">'in_silico',</span> <span class="pre">'vep',</span> <span class="pre">'vep115']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_select_global_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_select_global_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Generate a dictionary of globals to select by checking the config of all tables joined.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This function will place the globals within the select_globals value above
+any globals returned from custom_select_globals. If ordering is important, use
+only custom_select_globals.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Final joined HT with globals.</p></li>
+<li><p><strong>config</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]) – Dictionary with configuration options for each dataset. Expects the
+dataset name (matching values in <cite>tables_for_join</cite>) as the key and a dictionary
+of options as the value, where the options include any of the following keys:
+‘select_globals’, ‘custom_globals_select’, ‘global_name’.</p></li>
+<li><p><strong>tables_for_join</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of tables to join into final release HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>select mapping from global annotation name to <cite>ht</cite> annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_select_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_select_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">selects</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_select_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_select_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Generate a select dict from traversing the <cite>base_ht</cite> and extracting annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>selects</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>]) – Mapping or list of selections.</p></li>
+<li><p><strong>base_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Base Hail Table to traverse.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>select Mapping from annotation name to <cite>base_ht</cite> annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_final_ht_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_final_ht_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">schema</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'globals':</span> <span class="pre">['freq_meta',</span> <span class="pre">'freq_index_dict',</span> <span class="pre">'freq_meta_sample_count',</span> <span class="pre">'faf_meta',</span> <span class="pre">'faf_index_dict',</span> <span class="pre">'joint_freq_meta',</span> <span class="pre">'joint_freq_index_dict',</span> <span class="pre">'joint_freq_meta_sample_count',</span> <span class="pre">'joint_faf_meta',</span> <span class="pre">'joint_faf_index_dict',</span> <span class="pre">'age_distribution',</span> <span class="pre">'downsamplings',</span> <span class="pre">'filtering_model',</span> <span class="pre">'inbreeding_coeff_cutoff',</span> <span class="pre">'interval_qc_parameters',</span> <span class="pre">'tool_versions',</span> <span class="pre">'vrs_versions',</span> <span class="pre">'vep_globals',</span> <span class="pre">'vep115_globals',</span> <span class="pre">'frequency_README',</span> <span class="pre">'date',</span> <span class="pre">'version'],</span> <span class="pre">'rows':</span> <span class="pre">['freq',</span> <span class="pre">'grpmax',</span> <span class="pre">'faf',</span> <span class="pre">'fafmax',</span> <span class="pre">'joint_freq',</span> <span class="pre">'joint_grpmax',</span> <span class="pre">'joint_faf',</span> <span class="pre">'joint_fafmax',</span> <span class="pre">'a_index',</span> <span class="pre">'was_split',</span> <span class="pre">'rsid',</span> <span class="pre">'filters',</span> <span class="pre">'info',</span> <span class="pre">'vep',</span> <span class="pre">'vqsr_results',</span> <span class="pre">'region_flags',</span> <span class="pre">'allele_info',</span> <span class="pre">'histograms',</span> <span class="pre">'in_silico_predictors',</span> <span class="pre">'vep115']}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_final_ht_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_final_ht_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Get the final fields for the release HT.</p>
+<p>Create a dictionary of lists of fields that are in the <cite>schema</cite> and are
+present in the HT. If a field is not present in the HT, log a warning.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table.</p></li>
+<li><p><strong>schema</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Schema for the release HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dict of final fields for the release HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.get_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">get_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_config_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">_intervals</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_ht_filter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#get_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.get_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Return the appropriate Hail table with selects applied.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dataset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Hail Table to join.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset’s data type: ‘exomes’ or ‘genomes’.</p></li>
+<li><p><strong>config</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]) – Dictionary with configuration options for each dataset. Expects the
+dataset name as the key and a dictionary of options as the value, where the
+options include some of the following: ‘ht’, ‘path’, ‘select’, ‘field_name’,
+‘custom_select’.</p></li>
+<li><p><strong>use_config_ht</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use the ‘ht’ in the dataset config instead of
+reading in <cite>path</cite>. Default is False.</p></li>
+<li><p><strong>checkpoint</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to checkpoint the Hail Table. Default is False.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether call is for a test run. If True, the dataset will be filtered
+to PCSK9. Default is False.</p></li>
+<li><p><strong>_intervals</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – Intervals for reading in hail Table. Used to optimize join.</p></li>
+<li><p><strong>base_ht_filter</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Hail Table to filter on before joining. Default is
+None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with fields to select.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.join_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">join_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">base_table</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tables</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_partition_percent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_tables</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">track_included_datasets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_annotate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#join_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.join_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Outer join a list of Hail Tables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>base_table</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset to use for interval partitioning.</p></li>
+<li><p><strong>tables</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of tables to join.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Dataset’s data type: ‘exomes’ or ‘genomes’.</p></li>
+<li><p><strong>config</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]]) – Dictionary with configuration options for each dataset. Expects the
+dataset name (matching values in <cite>tables</cite>) as the key and a dictionary of
+options as the value, where the options include some of the following: ‘ht’,
+‘path’, ‘select’, ‘field_name’, ‘custom_select’, ‘select_globals’,
+‘custom_globals_select’, ‘global_name’.</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Release version.</p></li>
+<li><p><strong>new_partition_percent</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]) – Percent of base_table partitions used for final
+release Hail Table.</p></li>
+<li><p><strong>new_n_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>]) – Number of partitions for final release Hail Table.</p></li>
+<li><p><strong>checkpoint_tables</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to checkpoint the tables before join. Default is
+False.</p></li>
+<li><p><strong>track_included_datasets</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to track the datasets included in the
+release. This is used to update the included_datasets json file. Default is
+False.</p></li>
+<li><p><strong>use_annotate</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use annotate instead of join. Default is False.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether this is for a test run. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with datasets joined.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_release_sites_ht.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_release_sites_ht.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_release_sites_ht.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_release_sites_ht.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create release ht.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="create_false_dup_liftover.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.create_release.create_false_dup_liftover" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="create_release_utils.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.create_release.create_release_utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

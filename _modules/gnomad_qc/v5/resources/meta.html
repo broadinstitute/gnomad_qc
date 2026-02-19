@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.meta &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.meta</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.resources.meta</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing metadata related resources.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ExpressionResource</span><span class="p">,</span>
+    <span class="n">TableResource</span><span class="p">,</span>
+    <span class="n">VersionedTableResource</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CURRENT_PROJECT_META_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">WORKSPACE_BUCKET</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">_project_meta_versions</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;5.0&quot;</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+        <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/metadata/gnomad.v5.0.project_meta.ht&quot;</span>
+    <span class="p">)</span>
+<span class="p">}</span>
+
+<span class="n">project_meta</span> <span class="o">=</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+    <span class="n">CURRENT_PROJECT_META_VERSION</span><span class="p">,</span> <span class="n">_project_meta_versions</span>
+<span class="p">)</span>
+
+<span class="n">sample_id_collisions</span> <span class="o">=</span> <span class="n">TableResource</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/metadata/gnomad.v5.0.sample_id_collisions.ht&quot;</span>
+<span class="p">)</span>
+
+<span class="n">low_quality_samples</span> <span class="o">=</span> <span class="n">ExpressionResource</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/metadata/gnomad.v5.0.low_quality_samples.he&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">SetExpression containing IDs of 3 samples with an unspecified data quality issue.</span>
+
+<span class="sd">For more information, see Known Issue #1 in the AoU QC document:</span>
+<span class="sd">https://support.researchallofus.org/hc/en-us/articles/29390274413716-All-of-Us-Genomic-Quality-Report.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">failing_metrics_samples</span> <span class="o">=</span> <span class="n">ExpressionResource</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/metadata/gnomad.v5.0.failing_genomic_metrics_samples.he&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">SetExpression containing IDs of 4030 samples failing coverage hard filters and 1490 samples with non-XX/XY sex ploidies.</span>
+
+<span class="sd">For more information about samples failing coverage hard filters, see</span>
+<span class="sd">docstring of `get_aou_failing_genomic_metrics_samples`.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">samples_to_exclude</span> <span class="o">=</span> <span class="n">ExpressionResource</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/metadata/gnomad.v5.0.samples_to_exclude.he&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">SetExpression containing IDs of 5514 samples to exclude from v5 analysis.</span>
+
+<span class="sd">Contains samples that should not have been included in the AoU v8 release</span>
+<span class="sd">(3 samples with unspecified quality issues and 4030 samples failing coverage hard filters)</span>
+<span class="sd">and 1490 samples with non-XX/XY sex ploidies.</span>
+
+<span class="sd">The total number of samples to exclude is 5514, not 5523 because 9 samples both fail coverage filters</span>
+<span class="sd">and have non-XX/XY sex ploidies.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="n">consent_samples_to_drop</span> <span class="o">=</span> <span class="n">TableResource</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.ht&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Table containing IDs of 897 samples that are no longer consented to be in gnomAD.</span>
+
+<span class="sd">Samples are from the following projects:</span>
+<span class="sd">- RP-1061: 776 samples.</span>
+<span class="sd">- RP-1411: 121 samples.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_meta_root_path</span><span class="p">(</span><span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_PROJECT_META_VERSION</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Retrieve the path to the root metadata directory.</span>
+
+<span class="sd">    :param version: gnomAD version.</span>
+<span class="sd">    :return: String representation of the path to the root metadata directory.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">WORKSPACE_BUCKET</span><span class="si">}</span><span class="s2">/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/metadata/genomes&quot;</span>
+
+
+<div class="viewcode-block" id="meta"><a class="viewcode-back" href="../../../../api_reference/v5/resources/meta.html#gnomad_qc.v5.resources.meta.meta">[docs]</a><span class="k">def</span> <span class="nf">meta</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the v5 sample QC meta VersionedTableResource.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Exome data is not currently supported in this function.</span>
+<span class="sd">        The v4 sample QC meta uses a different structure, so this function</span>
+<span class="sd">        does not pull or duplicate that data. If exome data are needed, please</span>
+<span class="sd">        use the v4 resource directly.</span>
+
+<span class="sd">    :param version: Sample QC version.</span>
+<span class="sd">    :param data_type: Data type. Default is &quot;genomes&quot;. If &quot;exomes&quot; is supplied, a warning will be raised</span>
+<span class="sd">                      suggesting the use of v4 sample QC metadata.</span>
+<span class="sd">    :return: Sample QC meta VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Exome sample QC metadata is not supported in v5. &quot;</span>
+            <span class="s2">&quot;The v4 sample QC meta has a different structure and should be &quot;</span>
+            <span class="s2">&quot;imported directly from the v4 resource using &#39;from gnomad_qc.v4.resources.meta import meta as v4_meta&#39;.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">!=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Unsupported data_type: </span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">. Only &#39;genomes&#39; is supported.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">default_version</span><span class="o">=</span><span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">,</span>
+        <span class="n">versions</span><span class="o">=</span><span class="p">{</span>
+            <span class="n">CURRENT_SAMPLE_QC_VERSION</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_meta_root_path</span><span class="p">(</span><span class="n">version</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.sample_qc_metadata.ht&quot;</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

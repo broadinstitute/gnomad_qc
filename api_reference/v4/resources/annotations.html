@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.resources.annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.resources.assessment" href="assessment.html" />
+    <link rel="prev" title="gnomad_qc.v4.resources" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">resources</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="assessment.html">assessment</a></li>
+<li class="toctree-l4"><a class="reference internal" href="basics.html">basics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="constants.html">constants</a></li>
+<li class="toctree-l4"><a class="reference internal" href="meta.html">meta</a></li>
+<li class="toctree-l4"><a class="reference internal" href="release.html">release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sample_qc.html">sample_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="variant_qc.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.resources</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.resources.annotations</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/resources/annotations.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-resources-annotations">
+<h1>gnomad_qc.v4.resources.annotations<a class="headerlink" href="#gnomad-qc-v4-resources-annotations" title="Permalink to this heading"></a></h1>
+<p>Script containing annotation related resources.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_info" title="gnomad_qc.v4.resources.annotations.get_info"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_info</span></code></a>([...])</p></td>
+<td><p>Get the gnomAD v4 info VersionedTableResource.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_vep" title="gnomad_qc.v4.resources.annotations.get_vep"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_vep</span></code></a>([...])</p></td>
+<td><p>Get the gnomAD v4 VEP annotation VersionedTableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.validate_vep_path" title="gnomad_qc.v4.resources.annotations.validate_vep_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.validate_vep_path</span></code></a>([...])</p></td>
+<td><p>Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_trio_stats" title="gnomad_qc.v4.resources.annotations.get_trio_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_trio_stats</span></code></a>([...])</p></td>
+<td><p>Get the gnomAD v4 trio stats VersionedTableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_sib_stats" title="gnomad_qc.v4.resources.annotations.get_sib_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_sib_stats</span></code></a>([test])</p></td>
+<td><p>Get the gnomAD v4 sibling stats VersionedTableResource.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_variant_qc_annotations" title="gnomad_qc.v4.resources.annotations.get_variant_qc_annotations"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_variant_qc_annotations</span></code></a>([test])</p></td>
+<td><p>Return the VersionedTableResource to the RF-ready annotated Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.info_vcf_path" title="gnomad_qc.v4.resources.annotations.info_vcf_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.info_vcf_path</span></code></a>([...])</p></td>
+<td><p>Path to sites VCF (input information for running VQSR).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_true_positive_vcf_path" title="gnomad_qc.v4.resources.annotations.get_true_positive_vcf_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_true_positive_vcf_path</span></code></a>([...])</p></td>
+<td><p>Provide the path to the transmitted singleton VCF used as input to VQSR.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_downsampling" title="gnomad_qc.v4.resources.annotations.get_downsampling"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_downsampling</span></code></a>([...])</p></td>
+<td><p>Get the downsampling annotation table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_freq" title="gnomad_qc.v4.resources.annotations.get_freq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_freq</span></code></a>([...])</p></td>
+<td><p>Get the frequency annotation table for a specified release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_all_sites_an_and_qual_hists" title="gnomad_qc.v4.resources.annotations.get_all_sites_an_and_qual_hists"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_all_sites_an_and_qual_hists</span></code></a>([...])</p></td>
+<td><p>Get the all sites AN and qual hists TableResource.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_combined_frequency" title="gnomad_qc.v4.resources.annotations.get_combined_frequency"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_combined_frequency</span></code></a>([...])</p></td>
+<td><p>Get the combined v4 genome and exome frequency annotation VersionedTableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_freq_comparison" title="gnomad_qc.v4.resources.annotations.get_freq_comparison"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_freq_comparison</span></code></a>(method)</p></td>
+<td><p>Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_insilico_predictors" title="gnomad_qc.v4.resources.annotations.get_insilico_predictors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_insilico_predictors</span></code></a>([...])</p></td>
+<td><p>Get the path to the in silico predictors TableResource for a specified release.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_vrs" title="gnomad_qc.v4.resources.annotations.get_vrs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_vrs</span></code></a>([...])</p></td>
+<td><p>Get the gnomAD v4 VersionedTableResource containing VRS annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.hgdp_tgp_updated_callstats" title="gnomad_qc.v4.resources.annotations.hgdp_tgp_updated_callstats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.hgdp_tgp_updated_callstats</span></code></a>(subset)</p></td>
+<td><p>Get the HGDP + 1KG/TGP subset updated call stats TableResource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.resources.annotations.get_split_vds" title="gnomad_qc.v4.resources.annotations.get_split_vds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.resources.annotations.get_split_vds</span></code></a>([...])</p></td>
+<td><p>Get the gnomAD v4 split VDS.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.resources.annotations"></span><p>Script containing annotation related resources.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_info">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_info" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 info VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the split or multi-allelic version of the resource.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test VDS instead of the
+full v4 VDS.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 info VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_vep">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_vep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'105'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_vep"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_vep" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 VEP annotation VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test Table instead of
+the full v4 Table.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of annotation resource. e.g. “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>vep_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – VEP version to use (e.g., “105”, “115”). Default is “105”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 VEP VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.validate_vep_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">validate_vep_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'105'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#validate_vep_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.validate_vep_path" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test VDS instead of the
+full v4 VDS.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of annotation resource. e.g. “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>vep_version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – VEP version to use (e.g., “105”, “115”). Default is “105”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 VEP VersionedTableResource containing validity check.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_trio_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_trio_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">releasable_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_trio_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_trio_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 trio stats VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a temporary path for testing.</p></li>
+<li><p><strong>releasable_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use only releasable data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 trio stats VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_sib_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_sib_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_sib_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_sib_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 sibling stats VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 sibling stats VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_variant_qc_annotations">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_variant_qc_annotations</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_variant_qc_annotations"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_variant_qc_annotations" title="Permalink to this definition"></a></dt>
+<dd><p>Return the VersionedTableResource to the RF-ready annotated Table.</p>
+<p>Annotations that are included in the Table:</p>
+<blockquote>
+<div><dl class="simple">
+<dt>Features for RF:</dt><dd><ul class="simple">
+<li><p>variant_type</p></li>
+<li><p>allele_type</p></li>
+<li><p>n_alt_alleles</p></li>
+<li><p>has_star</p></li>
+<li><p>AS_QD</p></li>
+<li><p>AS_pab_max</p></li>
+<li><p>AS_MQRankSum</p></li>
+<li><p>AS_SOR</p></li>
+<li><p>AS_ReadPosRankSum</p></li>
+</ul>
+</dd>
+<dt>Training sites (bool):</dt><dd><ul class="simple">
+<li><p>transmitted_singleton</p></li>
+<li><p>sibling_singleton</p></li>
+<li><p>fail_hard_filters - (ht.QD &lt; 2) | (ht.FS &gt; 60) | (ht.MQ &lt; 30)</p></li>
+</ul>
+</dd>
+</dl>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with variant QC annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.info_vcf_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">info_vcf_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">info_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'AS'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">split</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#info_vcf_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.info_vcf_path" title="Permalink to this definition"></a></dt>
+<dd><p>Path to sites VCF (input information for running VQSR).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>info_method</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Method for generating info VCF. Must be one of “AS”, “quasi”,
+or “set_long_AS_missing”. Default is “AS”.</p></li>
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of annotation path to return.</p></li>
+<li><p><strong>split</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the split or multi-allelic version of the resource.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test VDS instead of the
+full v4 VDS.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>String for the path to the info VCF.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_true_positive_vcf_path">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_true_positive_vcf_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'4.0'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">true_positive_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'transmitted_singleton'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_true_positive_vcf_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_true_positive_vcf_path" title="Permalink to this definition"></a></dt>
+<dd><p>Provide the path to the transmitted singleton VCF used as input to VQSR.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of true positive VCF path to return.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing.</p></li>
+<li><p><strong>adj</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use adj genotypes.</p></li>
+<li><p><strong>true_positive_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Type of true positive VCF path to return. Should be one
+of “transmitted_singleton”, “sibling_singleton”, or
+“transmitted_singleton.sibling_singleton”. Default is “transmitted_singleton”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>String for the path to the true positive VCF.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_downsampling">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_downsampling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_downsampling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_downsampling" title="Permalink to this definition"></a></dt>
+<dd><p>Get the downsampling annotation table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for tests. Default is False.</p></li>
+<li><p><strong>subset</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional subset to return downsampling Table for. Downsampling for
+entire dataset will be returned if not specified.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table containing subset or overall dataset downsampling annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_freq">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hom_alt_adjusted</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_subset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">finalized</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_freq" title="Permalink to this definition"></a></dt>
+<dd><p>Get the frequency annotation table for a specified release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of annotation path to return.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of annotation resource. e.g. “exomes” or “genomes”.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for tests.</p></li>
+<li><p><strong>hom_alt_adjusted</strong> – Whether to return the hom alt adjusted frequency table.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Chromosome to return frequency table for. Entire Table will be
+returned if not specified.</p></li>
+<li><p><strong>intermediate_subset</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional intermediate subset to return temp frequency
+Table for. Entire Table will be returned if not specified.</p></li>
+<li><p><strong>finalized</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the finalized frequency table. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">TableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table containing subset or overall cohort frequency annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_all_sites_an_and_qual_hists">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_all_sites_an_and_qual_hists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_all_sites_an_and_qual_hists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_all_sites_an_and_qual_hists" title="Permalink to this definition"></a></dt>
+<dd><p>Get the all sites AN and qual hists TableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ‘exomes’ or ‘genomes’. Default is ‘exomes’.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table containing all sites AN and qual hists annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_combined_frequency">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_combined_frequency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filtered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_combined_frequency"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_combined_frequency" title="Permalink to this definition"></a></dt>
+<dd><p>Get the combined v4 genome and exome frequency annotation VersionedTableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing.</p></li>
+<li><p><strong>filtered</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the resource for the filtered combined frequency.
+Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table containing combined frequency annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_freq_comparison">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_freq_comparison</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">method</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filtered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_freq_comparison"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_freq_comparison" title="Permalink to this definition"></a></dt>
+<dd><p>Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.</p>
+<dl class="simple">
+<dt>Table contains results from one of the following comparison methods:</dt><dd><ul class="simple">
+<li><dl class="simple">
+<dt>‘contingency_table_test’: Hail’s contingency table test – chi-squared or</dt><dd><p>Fisher’s exact test of independence depending on min allele count.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>‘cmh_test’: Cochran–Mantel–Haenszel test – stratified test of independence</dt><dd><p>for 2x2xK contingency tables.</p>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>method</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Method used to compare frequencies between v4 genomes and exomes.
+Can be one of <cite>contingency_table_test</cite> or <cite>cmh_test</cite>.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for testing. Default is False.</p></li>
+<li><p><strong>filtered</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the filtered frequency comparison Table. Default
+is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>VersionedTableResource containing results from the specified comparison
+<cite>method</cite>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_insilico_predictors">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_insilico_predictors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predictor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cadd'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_insilico_predictors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_insilico_predictors" title="Permalink to this definition"></a></dt>
+<dd><p>Get the path to the in silico predictors TableResource for a specified release.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>predictor</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – One of the in silico predictors available in gnomAD v4, including
+cadd, revel, primate_ai, splice_ai, and pangolin.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>in silico predictor VersionedTableResource for gnomAD v4.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_vrs">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_vrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">original_annotations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_vrs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_vrs" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 VersionedTableResource containing VRS annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>original_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to obtain the original input Table with
+all its annotations in addition to the added on VRS annotations.
+If set to False, obtain a Table with only the VRS annotations.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test Table instead
+of the full v4 Table.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of annotation resource. e.g. “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 VRS VersionedTableResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.hgdp_tgp_updated_callstats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">hgdp_tgp_updated_callstats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">subset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#hgdp_tgp_updated_callstats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.hgdp_tgp_updated_callstats" title="Permalink to this definition"></a></dt>
+<dd><p>Get the HGDP + 1KG/TGP subset updated call stats TableResource.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>subset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – The subset of the HGDP + 1KG/TGP release to return,
+must be “added”, “subtracted”, “pop_diff”, “join”, “v3_release_an”,
+“v3_pop_diff_an”, or “pre_validity_check”.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to return the annotation resource for testing purposes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VersionedTableResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTableResource for specified subset.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.resources.annotations.get_split_vds">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.resources.annotations.</span></span><span class="sig-name descname"><span class="pre">get_split_vds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'exomes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/resources/annotations.html#get_split_vds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.resources.annotations.get_split_vds" title="Permalink to this definition"></a></dt>
+<dd><p>Get the gnomAD v4 split VDS.</p>
+<p>This is a temporary resource that will be removed once the split VDS is no longer
+needed. Given the uncertainies around frequency calculation runtimes, we cannot
+store it in gnomad-tmp but this needs to be deleted once frequency work is complete.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of annotation path to return.</p></li>
+<li><p><strong>data_type</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Data type of annotation resource. e.g. “exomes” or “genomes”.
+Default is “exomes”.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use a tmp path for analysis of the test Table instead
+of the full v4 Table.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDatasetResource</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>gnomAD v4 VariantDatasetResource.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.resources" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="assessment.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.resources.assessment" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

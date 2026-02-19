@@ -1,0 +1,16 @@
+gnomad_qc.v5.data_ingestion.field_md_to_html
+============================================
+
+Script to convert required fields markdown to html. Note: run 'python field_md_to_html.py' after any edits to 'field_requirements.md' to keep 'field_requirements.html' in sync.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.data_ingestion.field_md_to_html
+
+.. automodule:: gnomad_qc.v5.data_ingestion.field_md_to_html
+    :exclude-members: get_script_argument_parser

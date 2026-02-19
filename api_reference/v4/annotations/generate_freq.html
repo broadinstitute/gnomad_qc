@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.generate_freq &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.annotations.generate_freq_genomes" href="generate_freq_genomes.html" />
+    <link rel="prev" title="gnomad_qc.v4.annotations.fix_freq_an" href="fix_freq_an.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fix_freq_an.html">fix_freq_an</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">generate_freq</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq_genomes.html">generate_freq_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="insilico_predictors.html">insilico_predictors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recover_and_complete_vep115.html">recover_and_complete_vep115</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vep_context_ht.html">vep_context_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vrs_annotation_batch.html">vrs_annotation_batch</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.generate_freq</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/annotations/generate_freq.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-annotations-generate-freq">
+<h1>gnomad_qc.v4.annotations.generate_freq<a class="headerlink" href="#gnomad-qc-v4-annotations-generate-freq" title="Permalink to this heading"></a></h1>
+<p>Script to generate the frequency data annotations across v4 exomes.</p>
+<p>This script first splits the v4 VDS into multiples VDSs based which are then densified
+and annotated with frequency data and histograms. The VDSs are then merged back together
+in a hail Table. Next the script corrects for the high AB heterozygous GATK artifact in
+existing annotations when given the AF threshold using a high AB het array. The script
+then computes the inbreeding coefficient using the raw call stats. Finally, it computes
+the filtering allele frequency and grpmax with the AB-adjusted frequencies.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">generate_freq</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">test</span><span class="o">-</span><span class="n">dataset</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">gene</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="p">[</span><span class="n">TEST_N_PARTITIONS</span><span class="p">]]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">chrom</span> <span class="n">CHROM</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">write</span><span class="o">-</span><span class="n">split</span><span class="o">-</span><span class="n">vds</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">downsampling</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">freq</span><span class="o">-</span><span class="ow">and</span><span class="o">-</span><span class="n">dense</span><span class="o">-</span><span class="n">annotations</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">ukb</span><span class="o">-</span><span class="n">only</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">non</span><span class="o">-</span><span class="n">ukb</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">combine</span><span class="o">-</span><span class="n">freq</span><span class="o">-</span><span class="n">hts</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">correct</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">high</span><span class="o">-</span><span class="n">ab</span><span class="o">-</span><span class="n">hets</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">ab</span><span class="o">-</span><span class="n">cutoff</span> <span class="n">AB_CUTOFF</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">af</span><span class="o">-</span><span class="n">threshold</span> <span class="n">AF_THRESHOLD</span><span class="p">]</span>
+                                                 <span class="p">[</span><span class="o">--</span><span class="n">finalize</span><span class="o">-</span><span class="n">freq</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--use-test-dataset</kbd></dt>
+<dd><p>Runs a test on the gnomad test dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-gene</kbd></dt>
+<dd><p>Runs a test on the DRD2 gene in the gnomad test dataset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-n-partitions</kbd></dt>
+<dd><p>Use only N partitions of the VDS as input for testing purposes. Defaultsto 2 if passed without a value.</p>
+</dd>
+<dt><kbd>--chrom</kbd></dt>
+<dd><p>If passed, script will only run on passed chromosome.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrites existing files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--write-split-vds-and-downsampling-ht</kbd></dt>
+<dd><p>Write split VDS and downsampling HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--run-freq-and-dense-annotations</kbd></dt>
+<dd><p>Calculate frequencies, histograms, and high AB sites per sample grouping.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--ukb-only</kbd></dt>
+<dd><p>Only run frequency and histogram calculations for UKB samples.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--non-ukb-only</kbd></dt>
+<dd><p>Only run frequency and histogram calculations for non-UKB samples.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--combine-freq-hts</kbd></dt>
+<dd><p>Combine frequency and histogram Tables for UKB and non-UKB samples into a single Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--correct-for-high-ab-hets</kbd></dt>
+<dd><p>Correct each frequency entry to account for homozygous alternate depletion present in GATK versions released prior to 4.1.4.1 and run chosen downstream annotations.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--ab-cutoff</kbd></dt>
+<dd><p>Allele balance threshold to use when adjusting heterozygous calls to homozygous alternate calls at sites for samples that used GATK versions released prior to 4.1.4.1.</p>
+<p>Default: 0.9</p>
+</dd>
+<dt><kbd>--af-threshold</kbd></dt>
+<dd><p>Threshold at which to adjust site group frequencies at sites for homozygous alternate depletion present in GATK versions released prior to 4.1.4.1.</p>
+<p>Default: 0.01</p>
+</dd>
+<dt><kbd>--finalize-freq-ht</kbd></dt>
+<dd><p>Finalize frequency Table by dropping unnecessary fields and renaming remaining fields.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.AGE_HISTS" title="gnomad_qc.v4.annotations.generate_freq.AGE_HISTS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.AGE_HISTS</span></code></a></p></td>
+<td><p>Age histograms to compute and keep on the frequency Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.QUAL_HISTS" title="gnomad_qc.v4.annotations.generate_freq.QUAL_HISTS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.QUAL_HISTS</span></code></a></p></td>
+<td><p>Quality histograms to compute and keep on the frequency Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.FREQ_HIGH_AB_HET_ROW_FIELDS" title="gnomad_qc.v4.annotations.generate_freq.FREQ_HIGH_AB_HET_ROW_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.FREQ_HIGH_AB_HET_ROW_FIELDS</span></code></a></p></td>
+<td><p>List of top level row and global annotations relating to the high allele balance heterozygote correction that we want on the frequency HT before deciding on the AF cutoff.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.FREQ_ROW_FIELDS" title="gnomad_qc.v4.annotations.generate_freq.FREQ_ROW_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.FREQ_ROW_FIELDS</span></code></a></p></td>
+<td><p>List of top level row and global annotations with no high allele balance heterozygote correction that we want on the frequency HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.ALL_FREQ_ROW_FIELDS" title="gnomad_qc.v4.annotations.generate_freq.ALL_FREQ_ROW_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.ALL_FREQ_ROW_FIELDS</span></code></a></p></td>
+<td><p>List of final top level row and global annotations created from dense data that we want on the frequency HT before deciding on the AF cutoff.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.FREQ_GLOBAL_FIELDS" title="gnomad_qc.v4.annotations.generate_freq.FREQ_GLOBAL_FIELDS"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.FREQ_GLOBAL_FIELDS</span></code></a></p></td>
+<td><p>List of final global annotations created from dense data that we want on the frequency HT before deciding on the AF cutoff.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.SUBSET_DICT" title="gnomad_qc.v4.annotations.generate_freq.SUBSET_DICT"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.SUBSET_DICT</span></code></a></p></td>
+<td><p>Dictionary for accessing the annotations with subset specific annotations such as age_hists, popmax, and faf.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.get_freq_resources" title="gnomad_qc.v4.annotations.generate_freq.get_freq_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.get_freq_resources</span></code></a>([...])</p></td>
+<td><p>Get frequency resources.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.get_vds_for_freq" title="gnomad_qc.v4.annotations.generate_freq.get_vds_for_freq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.get_vds_for_freq</span></code></a>([...])</p></td>
+<td><p>Prepare VDS for frequency calculation by filtering to release samples and only adding necessary annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.annotate_freq_index_dict" title="gnomad_qc.v4.annotations.generate_freq.annotate_freq_index_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.annotate_freq_index_dict</span></code></a>(ht)</p></td>
+<td><p>Create frequency index dictionary.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.filter_freq_arrays_for_non_ukb_subset" title="gnomad_qc.v4.annotations.generate_freq.filter_freq_arrays_for_non_ukb_subset"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.filter_freq_arrays_for_non_ukb_subset</span></code></a>(ht, ...)</p></td>
+<td><p>Filter frequency arrays by metadata.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.high_ab_het" title="gnomad_qc.v4.annotations.generate_freq.high_ab_het"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.high_ab_het</span></code></a>(...)</p></td>
+<td><p>Determine if a call is considered a high allele balance heterozygous call.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.generate_freq_ht" title="gnomad_qc.v4.annotations.generate_freq.generate_freq_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.generate_freq_ht</span></code></a>(mt, ...)</p></td>
+<td><p>Generate frequency Table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.densify_and_prep_vds_for_freq" title="gnomad_qc.v4.annotations.generate_freq.densify_and_prep_vds_for_freq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.densify_and_prep_vds_for_freq</span></code></a>(vds)</p></td>
+<td><p>Densify VDS and select necessary annotations for frequency and histogram calculations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.get_downsampling_ht" title="gnomad_qc.v4.annotations.generate_freq.get_downsampling_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.get_downsampling_ht</span></code></a>(mt)</p></td>
+<td><p>Get Table with downsampling groups for all samples or the non-UKB subset.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.update_non_ukb_freq_ht" title="gnomad_qc.v4.annotations.generate_freq.update_non_ukb_freq_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.update_non_ukb_freq_ht</span></code></a>(freq_ht)</p></td>
+<td><p>Update non-UKB subset frequencies to be ready for combining with the frequencies of other samples.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.mt_hists_fields" title="gnomad_qc.v4.annotations.generate_freq.mt_hists_fields"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.mt_hists_fields</span></code></a>(mt)</p></td>
+<td><p>Annotate quality metrics histograms and age histograms onto MatrixTable.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.combine_freq_hts" title="gnomad_qc.v4.annotations.generate_freq.combine_freq_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.combine_freq_hts</span></code></a>(...)</p></td>
+<td><p>Combine frequency HTs into a single HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.correct_for_high_ab_hets" title="gnomad_qc.v4.annotations.generate_freq.correct_for_high_ab_hets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.correct_for_high_ab_hets</span></code></a>(ht)</p></td>
+<td><p>Correct for high allele balance heterozygous calls in call statistics and histograms.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.generate_faf_grpmax" title="gnomad_qc.v4.annotations.generate_freq.generate_faf_grpmax"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.generate_faf_grpmax</span></code></a>(ht)</p></td>
+<td><p>Compute filtering allele frequencies ('faf'), 'grpmax', and 'gen_anc_faf_max' with the AB-adjusted frequencies.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.compute_inbreeding_coeff" title="gnomad_qc.v4.annotations.generate_freq.compute_inbreeding_coeff"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.compute_inbreeding_coeff</span></code></a>(ht)</p></td>
+<td><p>Compute inbreeding coefficient using raw call stats.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.create_final_freq_ht" title="gnomad_qc.v4.annotations.generate_freq.create_final_freq_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.create_final_freq_ht</span></code></a>(ht)</p></td>
+<td><p>Create final freq Table with only desired annotations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.split_vds" title="gnomad_qc.v4.annotations.generate_freq.split_vds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.split_vds</span></code></a>(...)</p></td>
+<td><p>Split a VDS into multiple VDSs based on <cite>strata_expr</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.generate_freq.main" title="gnomad_qc.v4.annotations.generate_freq.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.main</span></code></a>(args)</p></td>
+<td><p>Script to generate frequency and dense dependent annotations on v4 exomes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.generate_freq.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.annotations.generate_freq"></span><p>Script to generate the frequency data annotations across v4 exomes.</p>
+<p>This script first splits the v4 VDS into multiples VDSs based which are then densified
+and annotated with frequency data and histograms. The VDSs are then merged back together
+in a hail Table. Next the script corrects for the high AB heterozygous GATK artifact in
+existing annotations when given the AF threshold using a high AB het array. The script
+then computes the inbreeding coefficient using the raw call stats. Finally, it computes
+the filtering allele frequency and grpmax with the AB-adjusted frequencies.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.AGE_HISTS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">AGE_HISTS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['age_hist_het',</span> <span class="pre">'age_hist_hom']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.AGE_HISTS" title="Permalink to this definition"></a></dt>
+<dd><p>Age histograms to compute and keep on the frequency Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.QUAL_HISTS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">QUAL_HISTS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['gq_hist_all',</span> <span class="pre">'dp_hist_all',</span> <span class="pre">'gq_hist_alt',</span> <span class="pre">'dp_hist_alt',</span> <span class="pre">'ab_hist_alt']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.QUAL_HISTS" title="Permalink to this definition"></a></dt>
+<dd><p>Quality histograms to compute and keep on the frequency Table.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.FREQ_HIGH_AB_HET_ROW_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">FREQ_HIGH_AB_HET_ROW_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['high_ab_hets_by_group',</span> <span class="pre">'high_ab_het_adjusted_ab_hists',</span> <span class="pre">'high_ab_het_adjusted_age_hists']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.FREQ_HIGH_AB_HET_ROW_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>List of top level row and global annotations relating to the high allele balance
+heterozygote correction that we want on the frequency HT before deciding on the AF
+cutoff.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.FREQ_ROW_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">FREQ_ROW_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['freq',</span> <span class="pre">'qual_hists',</span> <span class="pre">'raw_qual_hists',</span> <span class="pre">'age_hists']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.FREQ_ROW_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>List of top level row and global annotations with no high allele balance heterozygote
+correction that we want on the frequency HT.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.ALL_FREQ_ROW_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">ALL_FREQ_ROW_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['freq',</span> <span class="pre">'qual_hists',</span> <span class="pre">'raw_qual_hists',</span> <span class="pre">'age_hists',</span> <span class="pre">'high_ab_hets_by_group',</span> <span class="pre">'high_ab_het_adjusted_ab_hists',</span> <span class="pre">'high_ab_het_adjusted_age_hists']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.ALL_FREQ_ROW_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>List of final top level row and global annotations created from dense data that we
+want on the frequency HT before deciding on the AF cutoff.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.FREQ_GLOBAL_FIELDS">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">FREQ_GLOBAL_FIELDS</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['downsamplings',</span> <span class="pre">'freq_meta',</span> <span class="pre">'age_distribution',</span> <span class="pre">'freq_index_dict',</span> <span class="pre">'freq_meta_sample_count']</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.FREQ_GLOBAL_FIELDS" title="Permalink to this definition"></a></dt>
+<dd><p>List of final global annotations created from dense data that we want on the frequency
+HT before deciding on the AF cutoff.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.SUBSET_DICT">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">SUBSET_DICT</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">{'gnomad':</span> <span class="pre">0,</span> <span class="pre">'non_ukb':</span> <span class="pre">1}</span></em><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.SUBSET_DICT" title="Permalink to this definition"></a></dt>
+<dd><p>Dictionary for accessing the annotations with subset specific annotations such as
+age_hists, popmax, and faf.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.get_freq_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">get_freq_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ukb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">non_ukb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#get_freq_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.get_freq_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get frequency resources.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite existing files.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>]) – Whether to use test resources.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Chromosome used in freq calculations.</p></li>
+<li><p><strong>ukb</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get frequency resources for UKB subset.</p></li>
+<li><p><strong>non_ukb</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get frequency resources for non UKB subset.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Frequency resources.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.get_vds_for_freq">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">get_vds_for_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_test_dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_gene</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chrom</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#get_vds_for_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.get_vds_for_freq" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare VDS for frequency calculation by filtering to release samples and only adding necessary annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>use_test_dataset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use test dataset.</p></li>
+<li><p><strong>test_gene</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to DRD2 for testing purposes.</p></li>
+<li><p><strong>test_n_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Number of partitions to use for testing.</p></li>
+<li><p><strong>chrom</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Chromosome to filter to.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail VDS with only necessary annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.annotate_freq_index_dict">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">annotate_freq_index_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#annotate_freq_index_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.annotate_freq_index_dict" title="Permalink to this definition"></a></dt>
+<dd><p>Create frequency index dictionary.</p>
+<p>The keys are the strata over which frequency aggregations where calculated and
+the values are the strata’s index in the frequency array.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with ‘freq_index_dict’ global field.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.filter_freq_arrays_for_non_ukb_subset">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">filter_freq_arrays_for_non_ukb_subset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">items_to_filter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">combine_operator</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'and'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">annotations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">('freq',</span> <span class="pre">'high_ab_hets_by_group')</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_subset_from_meta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#filter_freq_arrays_for_non_ukb_subset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.filter_freq_arrays_for_non_ukb_subset" title="Permalink to this definition"></a></dt>
+<dd><p>Filter frequency arrays by metadata.</p>
+<p>Filter ‘annotations’ and <cite>freq_meta</cite> array fields to only <cite>items_to_filter</cite> by
+using the ‘freq_meta’ array field values.</p>
+<p>If <cite>remove_subset_from_meta</cite> is True, update ‘freq_meta’ dicts by removing items
+with the key “subset” removed. If False, update ‘freq_meta’ dicts to include a
+“subset” key with “non_ukb” value.</p>
+<p>Also rename the ‘downsamplings’ global field to “non_ukb_downsamplings” so we can
+merge them later without losing the non-UKB downsampling information.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table.</p></li>
+<li><p><strong>items_to_filter</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]]) – Items to filter by.</p></li>
+<li><p><strong>keep</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to keep or remove items. Default is True.</p></li>
+<li><p><strong>combine_operator</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Operator (“and” or “or”) to use when combining items in
+‘items_to_filter’. Default is “and”.</p></li>
+<li><p><strong>annotations</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>], <code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Annotations in ‘ht’ to filter by <cite>items_to_filter</cite>.</p></li>
+<li><p><strong>remove_subset_from_meta</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to remove the “subset” key from ‘freq_meta’
+or add “subset” key with “non_ukb” value. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with filtered ‘annotations’ and ‘freq_meta’ array fields.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.high_ab_het">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">high_ab_het</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entry</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#high_ab_het"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.high_ab_het" title="Permalink to this definition"></a></dt>
+<dd><p>Determine if a call is considered a high allele balance heterozygous call.</p>
+<p>High allele balance heterozygous calls were introduced in certain GATK versions.
+Track how many calls appear at each site to correct them to homozygous
+alternate calls downstream in frequency calculations and histograms.</p>
+<dl class="simple">
+<dt>Assumes the following annotations are present in <cite>entry</cite> struct:</dt><dd><ul class="simple">
+<li><p>GT</p></li>
+<li><p>adj</p></li>
+<li><p>_high_ab_het_ref</p></li>
+</ul>
+</dd>
+<dt>Assumes the following annotations are present in <cite>col</cite> struct:</dt><dd><ul class="simple">
+<li><p>fixed_homalt_model</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>entry</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>) – Entry struct.</p></li>
+<li><p><strong>col</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a>) – Column struct.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Int32Expression.html#hail.expr.Int32Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Int32Expression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>1 if high allele balance heterozygous call, else 0.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.generate_freq_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">generate_freq_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ds_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">non_ukb_ds_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#generate_freq_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.generate_freq_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Generate frequency Table.</p>
+<dl class="simple">
+<dt>Assumes all necessary annotations are present:</dt><dd><dl class="simple">
+<dt><cite>mt</cite> annotations:</dt><dd><ul class="simple">
+<li><p>GT</p></li>
+<li><p>adj</p></li>
+<li><p>_high_ab_het_ref</p></li>
+<li><p>fixed_homalt_model</p></li>
+<li><p>fixed_homalt_model</p></li>
+</ul>
+</dd>
+<dt><cite>ds_ht</cite> annotations:</dt><dd><ul class="simple">
+<li><p>downsampling</p></li>
+<li><p>downsamplings</p></li>
+<li><p>ds_pop_counts</p></li>
+</ul>
+</dd>
+<dt><cite>meta_ht</cite> annotations:</dt><dd><ul class="simple">
+<li><p>pop</p></li>
+<li><p>sex_karyotype</p></li>
+<li><p>gatk_version</p></li>
+<li><p>age</p></li>
+<li><p>ukb_sample</p></li>
+</ul>
+</dd>
+</dl>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p></li>
+<li><p><strong>ds_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with downsampling annotations.</p></li>
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with sample metadata annotations.</p></li>
+<li><p><strong>non_ukb_ds_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional Table with non-UKB downsampling annotations.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with frequency annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.densify_and_prep_vds_for_freq">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">densify_and_prep_vds_for_freq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ab_cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.9</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#densify_and_prep_vds_for_freq"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.densify_and_prep_vds_for_freq" title="Permalink to this definition"></a></dt>
+<dd><p>Densify VDS and select necessary annotations for frequency and histogram calculations.</p>
+<p>Select entry annotations required for downstream work. ‘DP’, ‘GQ’, and ‘_het_ab’ are
+required for histograms. ‘GT’ and ‘adj’ are required for frequency calculations.
+‘_high_ab_het_ref’ is required for high AB call corrections in frequency and
+histogram annotations.</p>
+<dl class="simple">
+<dt>Assumes all necessary annotations are present:</dt><dd><ul class="simple">
+<li><p>adj</p></li>
+<li><p>_het_non_ref</p></li>
+<li><p>GT</p></li>
+<li><p>GQ</p></li>
+<li><p>AD</p></li>
+<li><p>DP</p></li>
+<li><p>sex_karyotype</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VDS.</p></li>
+<li><p><strong>ab_cutoff</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Allele balance cutoff to use for high AB het annotation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dense MatrixTable with only necessary entry annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.get_downsampling_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">get_downsampling_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">non_ukb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#get_downsampling_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.get_downsampling_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Get Table with downsampling groups for all samples or the non-UKB subset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p></li>
+<li><p><strong>non_ukb</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get downsampling groups for the non-UKB subset. Default
+is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with downsampling groups.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.update_non_ukb_freq_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">update_non_ukb_freq_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#update_non_ukb_freq_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.update_non_ukb_freq_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Update non-UKB subset frequencies to be ready for combining with the frequencies of other samples.</p>
+<p>Duplicates frequency info for all groups except the non-UKB specific downsamplings
+and adds “subset” annotation to ‘freq_meta’ for one of the duplicates.</p>
+<p>This allows for the non-UKB subset frequencies to be merged with the frequencies of
+the other samples to provide full dataset frequencies while keeping the non-UKB
+subset specific frequency information.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>freq_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Non-UKB frequency Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Restructured non-UKB frequency Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.mt_hists_fields">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">mt_hists_fields</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#mt_hists_fields"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.mt_hists_fields" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate quality metrics histograms and age histograms onto MatrixTable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.StructExpression.html#hail.expr.StructExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">StructExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Struct with quality metrics histograms and age histograms.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.combine_freq_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">combine_freq_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq_hts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">global_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">age_hists</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['age_hist_het',</span> <span class="pre">'age_hist_hom']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qual_hists</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['gq_hist_all',</span> <span class="pre">'dp_hist_all',</span> <span class="pre">'gq_hist_alt',</span> <span class="pre">'dp_hist_alt',</span> <span class="pre">'ab_hist_alt']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#combine_freq_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.combine_freq_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Combine frequency HTs into a single HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freq_hts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Dictionary of frequency HTs.</p></li>
+<li><p><strong>row_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of annotations to put onto one hail Table.</p></li>
+<li><p><strong>global_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of global annotations to put onto one hail Table.</p></li>
+<li><p><strong>age_hists</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of age histogram annotations to merge.</p></li>
+<li><p><strong>qual_hists</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of quality histogram annotations to merge.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>HT with all freq_hts annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.correct_for_high_ab_hets">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">correct_for_high_ab_hets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">af_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#correct_for_high_ab_hets"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.correct_for_high_ab_hets" title="Permalink to this definition"></a></dt>
+<dd><p>Correct for high allele balance heterozygous calls in call statistics and histograms.</p>
+<p>High allele balance GTs were being called heterozygous instead of homozygous
+alternate in GATK until version 4.1.4.1. This corrects for those calls by adjusting
+them to homozygote alternate within our call statistics and histograms when a
+site’s allele frequency is greater than the passed <cite>af_threshold</cite>. Raw data is not
+adjusted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with frequency and histogram annotations for correction as well as
+high AB het annotations.</p></li>
+<li><p><strong>af_threshold</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Allele frequency threshold for high AB adjustment. Default is
+0.01.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with corrected call statistics and histograms.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.generate_faf_grpmax">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">generate_faf_grpmax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#generate_faf_grpmax"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.generate_faf_grpmax" title="Permalink to this definition"></a></dt>
+<dd><p>Compute filtering allele frequencies (‘faf’), ‘grpmax’, and ‘gen_anc_faf_max’ with the AB-adjusted frequencies.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table containing ‘freq’, ‘ab_adjusted_freq’, ‘high_ab_het’
+annotations.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with ‘faf’, ‘grpmax’, and ‘gen_anc_faf_max’ annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.compute_inbreeding_coeff">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">compute_inbreeding_coeff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#compute_inbreeding_coeff"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.compute_inbreeding_coeff" title="Permalink to this definition"></a></dt>
+<dd><p>Compute inbreeding coefficient using raw call stats.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table containing ‘freq’ array with struct entries of ‘AC’, ‘AN’, and
+‘homozygote_count’.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with inbreeding coefficient annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.create_final_freq_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">create_final_freq_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#create_final_freq_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.create_final_freq_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create final freq Table with only desired annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table containing all annotations.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with final annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.split_vds">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">split_vds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">strata_expr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#split_vds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.split_vds" title="Permalink to this definition"></a></dt>
+<dd><p>Split a VDS into multiple VDSs based on <cite>strata_expr</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – Input VDS.</p></li>
+<li><p><strong>strata_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Expression.html#hail.expr.Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Expression</span></code></a>) – Expression on VDS variant_data MT columns that will be used to
+determine if a sample belongs to certian split or subset of the VDS.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary where strata value is key and VDS is value.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.generate_freq.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.generate_freq.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/generate_freq.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.generate_freq.main" title="Permalink to this definition"></a></dt>
+<dd><p>Script to generate frequency and dense dependent annotations on v4 exomes.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="fix_freq_an.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.annotations.fix_freq_an" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="generate_freq_genomes.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.annotations.generate_freq_genomes" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_combined_faf_release_ht &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.create_release.create_de_novo_release" href="create_de_novo_release.html" />
+    <link rel="prev" title="gnomad_qc.v4.create_release" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">create_release</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">create_combined_faf_release_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_de_novo_release.html">create_de_novo_release</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_false_dup_liftover.html">create_false_dup_liftover</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_sites_ht.html">create_release_sites_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_release_utils.html">create_release_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="make_var_annot_hists.html">make_var_annot_hists</a></li>
+<li class="toctree-l4"><a class="reference internal" href="validate_and_export_vcf.html">validate_and_export_vcf</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.create_release</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_combined_faf_release_ht</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/create_release/create_combined_faf_release_ht.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-create-release-create-combined-faf-release-ht">
+<h1>gnomad_qc.v4.create_release.create_combined_faf_release_ht<a class="headerlink" href="#gnomad-qc-v4-create-release-create-combined-faf-release-ht" title="Permalink to this heading"></a></h1>
+<p>Create a joint gnomAD v4 exome and genome frequency and FAF.</p>
+<p>Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
+joint frequency, a joint FAF, and the following tests comparing the two frequencies:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Hail’s contingency table test – chi-squared or Fisher’s exact test of
+independence depending on min cell count.</p></li>
+<li><p>Cochran–Mantel–Haenszel test – stratified test of independence for 2x2xK
+contingency tables.</p></li>
+</ul>
+</div></blockquote>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">create_release</span><span class="o">.</span><span class="n">create_combined_faf_release_ht</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">gene</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">y</span><span class="o">-</span><span class="n">gene</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">combined</span><span class="o">-</span><span class="n">frequency</span><span class="o">-</span><span class="n">table</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">skip</span><span class="o">-</span><span class="n">apply</span><span class="o">-</span><span class="n">release</span><span class="o">-</span><span class="n">filters</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">stats</span><span class="o">-</span><span class="nb">chr</span> <span class="p">{</span><span class="n">chr1</span><span class="p">,</span><span class="n">chr2</span><span class="p">,</span><span class="n">chr3</span><span class="p">,</span><span class="n">chr4</span><span class="p">,</span><span class="n">chr5</span><span class="p">,</span><span class="n">chr6</span><span class="p">,</span><span class="n">chr7</span><span class="p">,</span><span class="n">chr8</span><span class="p">,</span><span class="n">chr9</span><span class="p">,</span><span class="n">chr10</span><span class="p">,</span><span class="n">chr11</span><span class="p">,</span><span class="n">chr12</span><span class="p">,</span><span class="n">chr13</span><span class="p">,</span><span class="n">chr14</span><span class="p">,</span><span class="n">chr15</span><span class="p">,</span><span class="n">chr16</span><span class="p">,</span><span class="n">chr17</span><span class="p">,</span><span class="n">chr18</span><span class="p">,</span><span class="n">chr19</span><span class="p">,</span><span class="n">chr20</span><span class="p">,</span><span class="n">chr21</span><span class="p">,</span><span class="n">chr22</span><span class="p">,</span><span class="n">chrX</span><span class="p">,</span><span class="n">chrY</span><span class="p">}]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">stats</span><span class="o">-</span><span class="n">combine</span><span class="o">-</span><span class="nb">all</span><span class="o">-</span><span class="nb">chr</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">perform</span><span class="o">-</span><span class="n">contingency</span><span class="o">-</span><span class="n">table</span><span class="o">-</span><span class="n">test</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">cell</span><span class="o">-</span><span class="n">count</span> <span class="n">MIN_CELL_COUNT</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">perform</span><span class="o">-</span><span class="n">cochran</span><span class="o">-</span><span class="n">mantel</span><span class="o">-</span><span class="n">haenszel</span><span class="o">-</span><span class="n">test</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">finalize</span><span class="o">-</span><span class="n">combined</span><span class="o">-</span><span class="n">faf</span><span class="o">-</span><span class="n">release</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-gene</kbd></dt>
+<dd><p>Filter Tables to only the PCSK9 gene for testing.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-y-gene</kbd></dt>
+<dd><p>Test on a subset of variants in ZFY on chrY.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--create-combined-frequency-table</kbd></dt>
+<dd><p>Create a Table with frequency information for exomes, genomes, and the joint exome + genome frequencies. Included frequencies are adj, raw, and adj for all genetic ancestry groups found in both the exomes and genomes. The table also includes FAF computed on the joint frequencies.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--skip-apply-release-filters</kbd></dt>
+<dd><p>Whether to skip applying the final release filters to the Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--stats-chr</kbd></dt>
+<dd><p>Possible choices: chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr20, chr21, chr22, chrX, chrY</p>
+<p>Chromosome to compute stats on.</p>
+</dd>
+<dt><kbd>--stats-combine-all-chr</kbd></dt>
+<dd><p>Whether to combined all chromosome stats. The stats calculations must have been performed for each chromosome using the <cite>–stats-chr</cite> argument.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--perform-contingency-table-test</kbd></dt>
+<dd><p>Perform chi-squared or Fisher’s exact test of independence on the allele frequencies based on <cite>min_cell_count</cite>.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--min-cell-count</kbd></dt>
+<dd><p>Minimum count in every cell to use the chi-squared test.</p>
+<p>Default: 5</p>
+</dd>
+<dt><kbd>--perform-cochran-mantel-haenszel-test</kbd></dt>
+<dd><p>Perform the Cochran–Mantel–Haenszel test, a stratified test of independence for 2x2xK contingency tables, on the allele frequencies where K is the number of genetic ancestry groups with FAF computed.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--finalize-combined-faf-release</kbd></dt>
+<dd><p>Finalize the combined FAF Table for release.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="create-finalized-combined-faf-release-table.">
+<h2>Create finalized combined FAF release Table.<a class="headerlink" href="#create-finalized-combined-faf-release-table." title="Permalink to this heading"></a></h2>
+<p>Arguments for finalizing the combined FAF release Table.</p>
+<dl class="option-list">
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Number of partitions to repartition the finalized combined FAF release Table to.</p>
+<p>Default: 10000</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.CHR_LIST" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.CHR_LIST"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.CHR_LIST</span></code></a></p></td>
+<td><p>List of chromosomes in the combined FAF release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.filter_gene_to_test" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.filter_gene_to_test"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.filter_gene_to_test</span></code></a>(ht, ...)</p></td>
+<td><p>Filter to PCSK9 1:55039447-55064852 and/or ZFY Y:2935281-2982506 for testing.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.extract_freq_info" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.extract_freq_info"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.extract_freq_info</span></code></a>(ht, ...)</p></td>
+<td><p>Extract frequencies and FAF for adj, raw (only for frequencies), adj by pop, adj by sex, and adj by pop/sex.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.add_all_sites_an_and_qual_hists" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.add_all_sites_an_and_qual_hists"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.add_all_sites_an_and_qual_hists</span></code></a>(ht, ...)</p></td>
+<td><p>Add all sites AN and qual hists to the Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_joint_freq_and_faf" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_joint_freq_and_faf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_joint_freq_and_faf</span></code></a>(...)</p></td>
+<td><p>Get joint genomes and exomes frequency and FAF information.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_contingency_table_test" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_contingency_table_test"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_contingency_table_test</span></code></a>(...)</p></td>
+<td><p>Perform Hail's <cite>contingency_table_test</cite> on the alleles counts between two frequency expressions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_cmh_test" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_cmh_test"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_cmh_test</span></code></a>(ht, ...)</p></td>
+<td><p>Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using genetic ancestry group as the stratification.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.create_final_combined_faf_release" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.create_final_combined_faf_release"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.create_final_combined_faf_release</span></code></a>(ht, ...)</p></td>
+<td><p>Create the final combined FAF release Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_combine_faf_resources" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_combine_faf_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_combine_faf_resources</span></code></a>([...])</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.main" title="gnomad_qc.v4.create_release.create_combined_faf_release_ht.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.main</span></code></a>(args)</p></td>
+<td><p>Create combined FAF resource.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.create_release.create_combined_faf_release_ht"></span><p>Create a joint gnomAD v4 exome and genome frequency and FAF.</p>
+<p>Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
+joint frequency, a joint FAF, and the following tests comparing the two frequencies:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Hail’s contingency table test – chi-squared or Fisher’s exact test of
+independence depending on min cell count.</p></li>
+<li><p>Cochran–Mantel–Haenszel test – stratified test of independence for 2x2xK
+contingency tables.</p></li>
+</ul>
+</div></blockquote>
+<dl class="py data">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.CHR_LIST">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">CHR_LIST</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">['chr1',</span> <span class="pre">'chr2',</span> <span class="pre">'chr3',</span> <span class="pre">'chr4',</span> <span class="pre">'chr5',</span> <span class="pre">'chr6',</span> <span class="pre">'chr7',</span> <span class="pre">'chr8',</span> <span class="pre">'chr9',</span> <span class="pre">'chr10',</span> <span class="pre">'chr11',</span> <span class="pre">'chr12',</span> <span class="pre">'chr13',</span> <span class="pre">'chr14',</span> <span class="pre">'chr15',</span> <span class="pre">'chr16',</span> <span class="pre">'chr17',</span> <span class="pre">'chr18',</span> <span class="pre">'chr19',</span> <span class="pre">'chr20',</span> <span class="pre">'chr21',</span> <span class="pre">'chr22',</span> <span class="pre">'chrX',</span> <span class="pre">'chrY']</span></em><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.CHR_LIST" title="Permalink to this definition"></a></dt>
+<dd><p>List of chromosomes in the combined FAF release.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.filter_gene_to_test">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">filter_gene_to_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pcsk9</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zfy</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#filter_gene_to_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.filter_gene_to_test" title="Permalink to this definition"></a></dt>
+<dd><p>Filter to PCSK9 1:55039447-55064852 and/or ZFY Y:2935281-2982506 for testing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with frequency and FAF information.</p></li>
+<li><p><strong>pcsk9</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to PCSK9 1:55039447-55064852.</p></li>
+<li><p><strong>zfy</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to ZFY Y:2935281-2982506.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with frequency and FAF information of the filtered interval of a gene</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.extract_freq_info">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">extract_freq_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_release_filters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#extract_freq_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.extract_freq_info" title="Permalink to this definition"></a></dt>
+<dd><p>Extract frequencies and FAF for adj, raw (only for frequencies), adj by pop, adj by sex, and adj by pop/sex.</p>
+<dl class="simple">
+<dt>The following annotations are renamed and where applicable, filtered:</dt><dd><ul class="simple">
+<li><p>freq: {prefix}_freq</p></li>
+<li><p>faf: {prefix}_faf</p></li>
+<li><p>grpmax: {prefix}_grpmax</p></li>
+<li><p>fafmax: {prefix}_fafmax</p></li>
+<li><p>qual_hists: {prefix}_qual_hists</p></li>
+<li><p>raw_qual_hists: {prefix}_raw_qual_hists</p></li>
+<li><p>age_hists: {prefix}_age_hists</p></li>
+</ul>
+</dd>
+<dt>The following global annotations are filtered and renamed:</dt><dd><ul class="simple">
+<li><p>freq_meta: {prefix}_freq_meta</p></li>
+<li><p>freq_index_dict: {prefix}_freq_index_dict</p></li>
+<li><p>faf_meta: {prefix}_faf_meta</p></li>
+<li><p>faf_index_dict: {prefix}_faf_index_dict</p></li>
+<li><p>age_distribution: {prefix}_age_distribution</p></li>
+</ul>
+</dd>
+<dt>If <cite>apply_release_filters</cite> is True, a {prefix}_filters annotation is added to the Table and the following variants are filtered:</dt><dd><ul class="simple">
+<li><p>chrM</p></li>
+<li><p>AS_lowqual sites (these sites are dropped in the
+final_filters HT so will not have information in <cite>filters</cite>,
+hl.is_defined(ht.filters) is used)</p></li>
+<li><p>AC_raw == 0</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with frequency and FAF information.</p></li>
+<li><p><strong>prefix</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Prefix to add to each of the filtered annotations.</p></li>
+<li><p><strong>apply_release_filters</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to apply the final release filters to the
+Table. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with filtered frequency and FAF information.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.add_all_sites_an_and_qual_hists">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">add_all_sites_an_and_qual_hists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exomes_all_sites_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">genomes_all_sites_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#add_all_sites_an_and_qual_hists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.add_all_sites_an_and_qual_hists" title="Permalink to this definition"></a></dt>
+<dd><p>Add all sites AN and qual hists to the Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with frequency and FAF information.</p></li>
+<li><p><strong>exomes_all_sites_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with all sites AN and qual hists for exomes.</p></li>
+<li><p><strong>genomes_all_sites_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with all sites AN and qual hists for genomes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with all sites AN and qual hists added.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_joint_freq_and_faf">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">get_joint_freq_and_faf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">genomes_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exomes_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">genomes_all_sites_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exomes_all_sites_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">faf_pops_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'ami',</span> <span class="pre">'asj',</span> <span class="pre">'fin',</span> <span class="pre">'oth',</span> <span class="pre">'remaining'}</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#get_joint_freq_and_faf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_joint_freq_and_faf" title="Permalink to this definition"></a></dt>
+<dd><p>Get joint genomes and exomes frequency and FAF information.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>genomes_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with genomes frequency and FAF information.</p></li>
+<li><p><strong>exomes_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with exomes frequency and FAF information.</p></li>
+<li><p><strong>genomes_all_sites_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with all sites AN and qual hists for genomes.</p></li>
+<li><p><strong>exomes_all_sites_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with all sites AN and qual hists for exomes.</p></li>
+<li><p><strong>faf_pops_to_exclude</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Set</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Set of genetic ancestry groups to exclude from the FAF
+calculation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with joint genomes and exomes frequency and FAF information.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_contingency_table_test">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">perform_contingency_table_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">freq1_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq2_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq1_meta_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq2_meta_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">joint_meta_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_cell_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#perform_contingency_table_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_contingency_table_test" title="Permalink to this definition"></a></dt>
+<dd><p>Perform Hail’s <cite>contingency_table_test</cite> on the alleles counts between two frequency expressions.</p>
+<p>This is done on the 2x2 matrix of reference and alternate allele counts. The
+chi-squared test is used for any case where all cells of the 2x2 matrix are greater
+than <cite>min_cell_count</cite>. Otherwise, Fisher’s exact test is used.</p>
+<p><cite>freq1_expr</cite> and <cite>freq2_expr</cite> should be ArrayExpressions of structs with ‘AN’ and
+‘AC’ annotations.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The order of the output array expression will be the same as <cite>joint_meta_expr</cite>
+and any frequency group with missing or zero AC in both <cite>freq1_expr</cite> and
+<cite>freq2_expr</cite> (based on <cite>freq1_meta_expr</cite> and <cite>freq2_meta_expr</cite>) will be set to
+missing. Any frequency group in <cite>freq1_meta_expr</cite> or <cite>freq2_meta_expr</cite> that is
+not in <cite>joint_meta_expr</cite> will be excluded from tests.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>freq1_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – First ArrayExpression of frequencies to combine.</p></li>
+<li><p><strong>freq2_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Second ArrayExpression of frequencies to combine.</p></li>
+<li><p><strong>freq1_meta_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Frequency metadata for <cite>freq1_expr</cite>.</p></li>
+<li><p><strong>freq2_meta_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Frequency metadata for <cite>freq2_expr</cite>.</p></li>
+<li><p><strong>joint_meta_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Joint frequency metadata, only used for ordering the output
+array expression.</p></li>
+<li><p><strong>min_cell_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Minimum count in every cell to use the chi-squared test.
+Default is 5.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ArrayExpression for contingency table test results.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_cmh_test">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">perform_cmh_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq1_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq2_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq1_meta_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq2_meta_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pops</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#perform_cmh_test"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.perform_cmh_test" title="Permalink to this definition"></a></dt>
+<dd><p>Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using genetic ancestry group as the stratification.</p>
+<p>This is done by creating a list of 2x2 matrices of freq1/freq2 reference and
+alternate allele counts for each genetic ancestry group in pops. The stats used in
+<cite>perform_contingency_table_test</cite> can only be used on 2x2 matrices, so we perform
+that per genetic ancestry group to get one statistic per genetic ancestry group.
+The CMH test allows for multiple 2x2 matrices for a specific stratification, giving
+a single statistic across all genetic ancestry groups.</p>
+<p><cite>freq1_expr</cite> and <cite>freq2_expr</cite> should be ArrayExpressions of structs with ‘AN’ and
+‘AC’ annotations.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Any genetic ancestry group with zero AC in both <cite>freq1_expr</cite> and <cite>freq2_expr</cite>
+will be excluded from the test.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with joint exomes and genomes frequency and FAF information.</p></li>
+<li><p><strong>freq1_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – First ArrayExpression of frequencies to combine.</p></li>
+<li><p><strong>freq2_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Second ArrayExpression of frequencies to combine.</p></li>
+<li><p><strong>freq1_meta_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Frequency metadata for <cite>freq1_expr</cite>.</p></li>
+<li><p><strong>freq2_meta_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayExpression.html#hail.expr.ArrayExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayExpression</span></code></a>) – Frequency metadata for <cite>freq2_expr</cite>.</p></li>
+<li><p><strong>pops</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of genetic ancestry groups to include in the CMH test.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ArrayExpression for Cochran–Mantel–Haenszel test results.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.create_final_combined_faf_release">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">create_final_combined_faf_release</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contingency_table_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmh_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#create_final_combined_faf_release"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.create_final_combined_faf_release" title="Permalink to this definition"></a></dt>
+<dd><p>Create the final combined FAF release Table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> – Table with joint exomes and genomes frequency and FAF information.</p></li>
+<li><p><strong>contingency_table_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with contingency table test results to include
+on the final Table.</p></li>
+<li><p><strong>cmh_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with Cochran–Mantel–Haenszel test results to include on the
+final Table.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with final combined FAF release information.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_combine_faf_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">get_combine_faf_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filtered</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stats_chr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stats_combine_all_chr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#get_combine_faf_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.get_combine_faf_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite existing resources. Default is False.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use test resources. Default is False.</p></li>
+<li><p><strong>filtered</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to get the resources for the filtered Tables. Default is
+True.</p></li>
+<li><p><strong>stats_chr</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Chromosome to get temp stats resource for. Default is None, which
+will return the resources for the stats on the full exome/genome.</p></li>
+<li><p><strong>stats_combine_all_chr</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to also get the stats resources for all
+chromosomes to be combined. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+combined FAF resource creation pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.create_release.create_combined_faf_release_ht.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.create_release.create_combined_faf_release_ht.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/create_release/create_combined_faf_release_ht.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.create_release.create_combined_faf_release_ht.main" title="Permalink to this definition"></a></dt>
+<dd><p>Create combined FAF resource.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.create_release" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="create_de_novo_release.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.create_release.create_de_novo_release" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

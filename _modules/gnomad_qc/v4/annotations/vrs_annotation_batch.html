@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.vrs_annotation_batch &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.vrs_annotation_batch</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.annotations.vrs_annotation_batch</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.</span>
+
+<span class="sd">Advise to run from a backend (eg. hailctl batch submit) to avoid losing progress</span>
+<span class="sd"> in case of disconnection.</span>
+
+<span class="sd">Example command to use:</span>
+
+<span class="sd">    .. code-block:: bash</span>
+
+<span class="sd">        hailctl batch submit \</span>
+<span class="sd">            --image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \</span>
+<span class="sd">            gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \</span>
+<span class="sd">            -- \</span>
+<span class="sd">            --billing-project gnomad-annot \</span>
+<span class="sd">            --working-bucket gnomad-tmp-4day \</span>
+<span class="sd">            --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \</span>
+<span class="sd">            --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \</span>
+<span class="sd">            --run-vrs \</span>
+<span class="sd">            --annotate-original \</span>
+<span class="sd">            --overwrite \</span>
+<span class="sd">            --backend-mode batch \</span>
+<span class="sd">            --data-type exomes \</span>
+<span class="sd">            --test</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">import</span> <span class="nn">hailtop.batch</span> <span class="k">as</span> <span class="nn">hb</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.reference_genome</span> <span class="kn">import</span> <span class="n">get_reference_genome</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="n">check_resource_existence</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_vep</span> <span class="k">as</span> <span class="n">v4_input_ht</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_vrs</span> <span class="k">as</span> <span class="n">v4_vrs_annotations</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;annotate_vrs_ids&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="c1"># Define the version of ga4gh.vrs code this was run on,</span>
+<span class="c1"># as present in the Dockerfile</span>
+<span class="c1"># Please change this when the Dockerfile is updated</span>
+<span class="n">VRS_SCHEMA_VERSION</span> <span class="o">=</span> <span class="s2">&quot;1.3.0&quot;</span>
+<span class="n">VRS_PYTHON_VERSION</span> <span class="o">=</span> <span class="s2">&quot;0.8.4&quot;</span>
+<span class="n">SEQREPO_VERSION</span> <span class="o">=</span> <span class="s2">&quot;2018-11-26&quot;</span>
+
+
+<div class="viewcode-block" id="init_job"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/vrs_annotation_batch.html#gnomad_qc.v4.annotations.vrs_annotation_batch.init_job">[docs]</a><span class="k">def</span> <span class="nf">init_job</span><span class="p">(</span>
+    <span class="n">batch</span><span class="p">,</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">image</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">cpu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">memory</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">disk_size</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize a hail batch job with some default parameters.</span>
+
+<span class="sd">    :param batch: Batch object</span>
+<span class="sd">    :param name: job label which will show up in the Batch web UI</span>
+<span class="sd">    :param image: docker image name (eg. &quot;weisburd/image-name@sha256:aa19845da5&quot;)</span>
+<span class="sd">    :param cpu: number of CPUs (between 0.25 to 16)</span>
+<span class="sd">    :param memory: amount of RAM in Gb (eg. 3.75)</span>
+<span class="sd">    :param disk_size: amount of disk in Gb (eg. 50)</span>
+<span class="sd">    :return: new job object</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">j</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">new_job</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">image</span><span class="p">:</span>
+        <span class="n">j</span><span class="o">.</span><span class="n">image</span><span class="p">(</span><span class="n">image</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">cpu</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">cpu</span> <span class="o">&lt;</span> <span class="mf">0.25</span> <span class="ow">or</span> <span class="n">cpu</span> <span class="o">&gt;</span> <span class="mi">16</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;CPU arg is </span><span class="si">{</span><span class="n">cpu</span><span class="si">}</span><span class="s2">. This is outside the range of 0.25 to 16 CPUs&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">j</span><span class="o">.</span><span class="n">cpu</span><span class="p">(</span><span class="n">cpu</span><span class="p">)</span>  <span class="c1"># Batch default is 1</span>
+
+    <span class="k">if</span> <span class="n">memory</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">memory</span> <span class="o">&lt;</span> <span class="mf">0.1</span> <span class="ow">or</span> <span class="n">memory</span> <span class="o">&gt;</span> <span class="mi">60</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Memory arg is </span><span class="si">{</span><span class="n">memory</span><span class="si">}</span><span class="s2">. This is outside the range of 0.1 to 60 Gb&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">j</span><span class="o">.</span><span class="n">memory</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">memory</span><span class="si">}</span><span class="s2">Gi&quot;</span><span class="p">)</span>  <span class="c1"># Batch default is 3.75G</span>
+
+    <span class="k">if</span> <span class="n">disk_size</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">disk_size</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">disk_size</span> <span class="o">&gt;</span> <span class="mi">1000</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Disk size arg is </span><span class="si">{</span><span class="n">disk_size</span><span class="si">}</span><span class="s2">. This is outside the range of 1 to&quot;</span>
+                <span class="s2">&quot; 1000 Gb&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">j</span><span class="o">.</span><span class="n">storage</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">disk_size</span><span class="si">}</span><span class="s2">Gi&quot;</span><span class="p">)</span>
+
+    <span class="n">j</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+        <span class="s2">&quot;set -euxo pipefail&quot;</span>
+    <span class="p">)</span>  <span class="c1"># set bash options for easier debugging and to make command execution more robust</span>
+
+    <span class="k">return</span> <span class="n">j</span></div>
+
+
+<div class="viewcode-block" id="init_job_with_gcloud"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/vrs_annotation_batch.html#gnomad_qc.v4.annotations.vrs_annotation_batch.init_job_with_gcloud">[docs]</a><span class="k">def</span> <span class="nf">init_job_with_gcloud</span><span class="p">(</span>
+    <span class="n">batch</span><span class="p">,</span>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">image</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">cpu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">memory</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">disk_size</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">mount</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create job and initialize glcoud authentication and gsutil commands.</span>
+
+<span class="sd">    Wraps Ben Weisburd&#39;s init_job (https://github.com/broadinstitute/tgg_methods/blob/master/tgg/batch/batch_utils.py#L160) with additional gcloud steps.</span>
+
+<span class="sd">    :param batch: Batch object.</span>
+<span class="sd">    :param name: Job label which will show up in the Batch web UI.</span>
+<span class="sd">    :param image: Docker image name (eg. &quot;us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4&quot;).</span>
+<span class="sd">    :param cpu: Number of CPUs (between 0.25 to 16).</span>
+<span class="sd">    :param memory: Amount of RAM in Gb (eg. 3.75).</span>
+<span class="sd">    :param disk_size: Amount of disk in Gb (eg. 50).</span>
+<span class="sd">    :param mount: Name of GCP Bucket to mount using cloudfuse.</span>
+<span class="sd">    :return: New job object.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">job</span> <span class="o">=</span> <span class="n">init_job</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">image</span><span class="p">,</span> <span class="n">cpu</span><span class="p">,</span> <span class="n">memory</span><span class="p">,</span> <span class="n">disk_size</span><span class="p">)</span>
+    <span class="c1"># Retry gcloud auth and gsutil commands to avoid transient failures</span>
+    <span class="n">job</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    retry() {</span>
+<span class="sd">              &quot;$@&quot; ||</span>
+<span class="sd">                  (sleep 2 &amp;&amp; &quot;$@&quot;) ||</span>
+<span class="sd">                  (sleep 5 &amp;&amp; &quot;$@&quot;);</span>
+<span class="sd">    }</span>
+<span class="sd">    retry gcloud -q auth activate-service-account --key-file=/gsa-key/key.json</span>
+
+<span class="sd">    curl_and_python() {</span>
+<span class="sd">        curl -sSL broad.io/install-gcs-connector | python3</span>
+<span class="sd">    }</span>
+<span class="sd">    retry curl_and_python</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">mount</span><span class="p">:</span>
+        <span class="n">job</span><span class="o">.</span><span class="n">cloudfuse</span><span class="p">(</span><span class="n">mount</span><span class="p">,</span> <span class="s2">&quot;/local-vrs-mount&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">job</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/annotations/vrs_annotation_batch.html#gnomad_qc.v4.annotations.vrs_annotation_batch.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate VRS annotations for a Hail Table of variants.&quot;&quot;&quot;</span>
+    <span class="c1"># Initialize Hail w/chosen mode (spark or batch for QoB), setting global</span>
+    <span class="c1"># seed for if user decides to downsample</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">backend</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">backend_mode</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">tmp_dir_hail</span><span class="p">,</span>
+        <span class="n">gcs_requester_pays_configuration</span><span class="o">=</span><span class="s2">&quot;broad-mpg-gnomad&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">global_seed</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">hail_rand_seed</span><span class="p">,</span>
+        <span class="n">regions</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;us-central1&quot;</span><span class="p">],</span>
+        <span class="n">driver_memory</span><span class="o">=</span><span class="s2">&quot;highmem&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hail version as: </span><span class="si">{</span><span class="n">hl</span><span class="o">.</span><span class="n">version</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Example schema</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Example VRS schema for 2 variants:&quot;</span><span class="p">)</span>
+    <span class="n">ht_example</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="s2">&quot;gs://gnomad-vrs-io-finals/ht-inputs/two-snps-schema.ht&quot;</span><span class="p">)</span>
+    <span class="n">ht_example</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="n">working_bucket</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">working_bucket</span>
+    <span class="n">data_type</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">data_type</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">input_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">output_vrs_path</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">output_vrs_anno_ori_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;If --input-path is provided, --output-vrs-path and&quot;</span>
+                <span class="s2">&quot; --output-vrs-anno-ori-path must also be provided&quot;</span>
+            <span class="p">)</span>
+        <span class="n">input_path</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">input_path</span>
+        <span class="n">output_vrs_path</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">output_vrs_path</span>
+        <span class="n">output_vrs_anno_ori_path</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">output_vrs_anno_ori_path</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">input_path</span> <span class="o">=</span> <span class="n">v4_input_ht</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+        <span class="n">output_vrs_path</span> <span class="o">=</span> <span class="n">v4_vrs_annotations</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+        <span class="n">output_vrs_anno_ori_path</span> <span class="o">=</span> <span class="n">v4_vrs_annotations</span><span class="p">(</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">original_annotations</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">path</span>
+
+    <span class="c1"># Read in Hail Table, partition, and export to sharded VCF</span>
+    <span class="n">ht_original</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">input_path</span><span class="p">)</span>
+    <span class="n">assembly</span> <span class="o">=</span> <span class="n">get_reference_genome</span><span class="p">(</span><span class="n">ht_original</span><span class="o">.</span><span class="n">locus</span><span class="p">)</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="c1"># Option to downsample for testing, if you want to annotate part</span>
+    <span class="c1"># of a Hail Table but not all of it</span>
+    <span class="c1"># For this, is important that we have set the Hail random seed!</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to 200 partitions for testing...&quot;</span><span class="p">)</span>
+        <span class="n">ht_original</span> <span class="o">=</span> <span class="n">ht_original</span><span class="o">.</span><span class="n">_filter_partitions</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">200</span><span class="p">))</span>
+
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">downsample</span> <span class="o">&lt;</span> <span class="mf">1.00</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Downsampling Table...&quot;</span><span class="p">)</span>
+        <span class="n">ht_original</span> <span class="o">=</span> <span class="n">ht_original</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">downsample</span><span class="p">)</span>
+        <span class="n">ht_original</span> <span class="o">=</span> <span class="n">ht_original</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">vrs_downsample</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">downsample</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">run_vrs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">backend_mode</span> <span class="o">==</span> <span class="s2">&quot;spark&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s1">&#39;Annotation step --run-vrs can only be run with &quot;batch&quot; setting for&#39;</span>
+                <span class="s2">&quot; backend-mode&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Create backend and batch for coming annotation batch jobs</span>
+        <span class="n">backend</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">ServiceBackend</span><span class="p">(</span>
+            <span class="n">billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">billing_project</span><span class="p">,</span>
+            <span class="n">remote_tmpdir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">tmp_dir_hail</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">batch_vrs</span> <span class="o">=</span> <span class="n">hb</span><span class="o">.</span><span class="n">Batch</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s2">&quot;vrs-annotation&quot;</span><span class="p">,</span> <span class="n">backend</span><span class="o">=</span><span class="n">backend</span><span class="p">)</span>
+
+        <span class="c1"># Check resource existence</span>
+        <span class="n">check_resource_existence</span><span class="p">(</span>
+            <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;--run-vrs&quot;</span><span class="p">:</span> <span class="p">[</span>
+                    <span class="n">output_vrs_path</span><span class="p">,</span>
+                <span class="p">],</span>
+            <span class="p">},</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># Use &#39;select&#39; to remove all non-key rows - VRS-Allele is added back to</span>
+        <span class="c1"># original table based on just locus and allele</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht_original</span><span class="o">.</span><span class="n">select</span><span class="p">()</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Table read in and selected&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Repartition the Hail Table if requested. In the following step, the Hail</span>
+        <span class="c1"># Table is exported to a sharded VCF with one shard per partition</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">partitions_for_vcf_export</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">partitions_for_vcf_export</span> <span class="o">&lt;</span> <span class="n">ht</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">():</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Repartitioning Table by Naive Coalsece&quot;</span><span class="p">)</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">partitions_for_vcf_export</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">partitions_for_vcf_export</span> <span class="o">&gt;</span> <span class="n">ht</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">():</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                    <span class="s2">&quot;Repartitioning Table by Repartition, NOTE this results in a&quot;</span>
+                    <span class="s2">&quot; shuffle&quot;</span>
+                <span class="p">)</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">repartition</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">partitions_for_vcf_export</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Exporting sharded VCF&quot;</span><span class="p">)</span>
+
+        <span class="n">hl</span><span class="o">.</span><span class="n">export_vcf</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">working_bucket</span><span class="si">}</span><span class="s2">/vrs-temp/shards/shard.vcf.bgz&quot;</span><span class="p">,</span>
+            <span class="n">append_to_header</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">header_path</span><span class="p">,</span>
+            <span class="n">parallel</span><span class="o">=</span><span class="s2">&quot;header_per_shard&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Gathering list of files in&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot; gs://</span><span class="si">{</span><span class="n">working_bucket</span><span class="si">}</span><span class="s2">/vrs-temp/shards/shard.vcf.bgz using&quot;</span>
+            <span class="s2">&quot; Hail&#39;s Hadoop method&quot;</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Create a list of all shards of VCF</span>
+        <span class="c1"># Note: This step requires using Hail 0.2.120 or later, for</span>
+        <span class="c1"># faster listing of files in a directory with hadoop_ls.</span>
+        <span class="n">file_dict</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">hadoop_ls</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">working_bucket</span><span class="si">}</span><span class="s2">/vrs-temp/shards/shard.vcf.bgz/part-*.bgz&quot;</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Create a list of all file names to later annotate in parallel</span>
+        <span class="n">file_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">file_item</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">file_item</span> <span class="ow">in</span> <span class="n">file_dict</span><span class="p">]</span>
+
+        <span class="c1"># Query-On-Batch sometimes produces duplicate shards</span>
+        <span class="c1"># (same number, same content, different name)</span>
+        <span class="c1"># This block removes duplicates from the list of files to be annotated</span>
+        <span class="n">to_exclude</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">file_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">file_list</span><span class="p">)):</span>
+            <span class="n">file_name</span> <span class="o">=</span> <span class="n">file_list</span><span class="p">[</span><span class="n">file_idx</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span>
+            <span class="n">file_num</span> <span class="o">=</span> <span class="n">file_name</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">file_list</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">file_list</span><span class="p">[</span><span class="n">file_idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">file_num</span><span class="p">:</span>
+                <span class="n">to_exclude</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">file_list</span><span class="p">[</span><span class="n">file_idx</span> <span class="o">-</span> <span class="mi">1</span><span class="p">])</span>
+
+        <span class="n">file_list</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">file_list</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">to_exclude</span><span class="p">)))</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Number of duplicates to be excluded: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">to_exclude</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;File list created... getting ready to start Batch Jobs&quot;</span><span class="p">)</span>
+        <span class="c1"># Define SeqRepo path to be read in, outside the loop, to avoid reading</span>
+        <span class="c1"># it in for each job</span>
+        <span class="n">seqrepo_path</span> <span class="o">=</span> <span class="s2">&quot;/tmp/local-seqrepo&quot;</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">seqrepo_mount</span><span class="p">:</span>
+            <span class="n">seqrepo_path</span> <span class="o">=</span> <span class="s2">&quot;/local-vrs-mount/seqrepo/2018-11-26/&quot;</span>
+
+        <span class="k">for</span> <span class="n">vcf_name</span> <span class="ow">in</span> <span class="n">file_list</span><span class="p">:</span>
+            <span class="c1"># Setting up jobs</span>
+            <span class="n">new_job</span> <span class="o">=</span> <span class="n">init_job_with_gcloud</span><span class="p">(</span>
+                <span class="n">batch</span><span class="o">=</span><span class="n">batch_vrs</span><span class="p">,</span>
+                <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;VCF_job_</span><span class="si">{</span><span class="n">vcf_name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;-&#39;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="n">image</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">image</span><span class="p">,</span>
+                <span class="n">mount</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">seqrepo_mount</span><span class="p">,</span>
+                <span class="n">disk_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">disk_size</span><span class="p">,</span>
+                <span class="n">memory</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">memory</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Script path for annotation is not expected to change for GA4GH if</span>
+            <span class="c1"># dependencies are installed using pip in the DockerFile</span>
+            <span class="n">vrs_script_path</span> <span class="o">=</span> <span class="s2">&quot;/usr/local/lib/python3.9/dist-packages/ga4gh/vrs/extras/vcf_annotation.py&quot;</span>
+
+            <span class="c1"># Store VCF input and output paths</span>
+            <span class="n">vcf_input</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">working_bucket</span><span class="si">}</span><span class="s2">/vrs-temp/shards/shard.vcf.bgz/</span><span class="si">{</span><span class="n">vcf_name</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="n">vcf_output</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;/temp-vcf-annotated/annotated-</span><span class="si">{</span><span class="n">vcf_name</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s1">.vcf&#39;</span>
+
+            <span class="c1"># Perform VRS annotation on vcf_input and store output in /vrs-temp</span>
+            <span class="n">new_job</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="s2">&quot;mkdir /temp-vcf-annotated/&quot;</span><span class="p">)</span>
+            <span class="n">new_job</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;python3 </span><span class="si">{</span><span class="n">vrs_script_path</span><span class="si">}</span><span class="s2"> --vcf_in&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">batch_vrs</span><span class="o">.</span><span class="n">read_input</span><span class="p">(</span><span class="n">vcf_input</span><span class="p">)</span><span class="si">}</span><span class="s2"> --vcf_out&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">vcf_output</span><span class="si">}</span><span class="s2"> --seqrepo_root_dir </span><span class="si">{</span><span class="n">seqrepo_path</span><span class="si">}</span><span class="s2"> --assembly&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">assembly</span><span class="si">}</span><span class="s2"> --vrs_attributes&quot;</span>
+            <span class="p">)</span>
+
+            <span class="c1"># bgzip the annotated VCF</span>
+            <span class="n">new_job</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;bgzip </span><span class="si">{</span><span class="n">vcf_output</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Copy annotated shard to its appropriate place in Google Bucket</span>
+            <span class="n">new_job</span><span class="o">.</span><span class="n">command</span><span class="p">(</span>
+                <span class="s2">&quot;gsutil cp&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">vcf_output</span><span class="si">}</span><span class="s2">.gz&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot; gs://</span><span class="si">{</span><span class="n">working_bucket</span><span class="si">}</span><span class="s2">/vrs-temp/annotated-shards/annotated.vcf/&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Execute all jobs in the batch_vrs Batch</span>
+        <span class="n">batch_vrs</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Batch jobs executed, importing annotated shards into Hail Table...&quot;</span>
+        <span class="p">)</span>
+        <span class="n">ht_annotated</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">working_bucket</span><span class="si">}</span><span class="s2">/vrs-temp/annotated-shards/annotated.vcf/*&quot;</span><span class="p">,</span>
+            <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">reference_genome</span><span class="o">=</span><span class="n">assembly</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">rows</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Annotated table constructed&quot;</span><span class="p">)</span>
+
+        <span class="n">vrs_struct</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="n">VRS_Allele_IDs</span><span class="o">=</span><span class="n">ht_annotated</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">VRS_Allele_IDs</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">),</span>
+            <span class="n">VRS_Starts</span><span class="o">=</span><span class="n">ht_annotated</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">VRS_Starts</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span>
+            <span class="n">VRS_Ends</span><span class="o">=</span><span class="n">ht_annotated</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">VRS_Ends</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">int</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span>
+            <span class="n">VRS_States</span><span class="o">=</span><span class="n">ht_annotated</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">VRS_States</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;,&quot;</span><span class="p">),</span>
+        <span class="p">)</span>
+
+        <span class="n">ht_annotated</span> <span class="o">=</span> <span class="n">ht_annotated</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">vrs</span><span class="o">=</span><span class="n">vrs_struct</span><span class="p">)</span>
+        <span class="n">ht_annotated</span> <span class="o">=</span> <span class="n">ht_annotated</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">ht_annotated</span><span class="o">.</span><span class="n">vrs</span><span class="p">)</span>
+
+        <span class="c1"># Checkpoint (write) resulting annotated table</span>
+        <span class="n">ht_annotated</span> <span class="o">=</span> <span class="n">ht_annotated</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+            <span class="n">output_vrs_path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Annotated Hail Table checkpointed to: </span><span class="si">{</span><span class="n">output_vrs_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">annotate_original</span><span class="p">:</span>
+        <span class="n">check_resource_existence</span><span class="p">(</span>
+            <span class="n">input_step_resources</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;--run-vrs&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">output_vrs_path</span><span class="p">],</span>
+            <span class="p">},</span>
+            <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;--annotate-original&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">output_vrs_anno_ori_path</span><span class="p">],</span>
+            <span class="p">},</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Output final Hail Tables with VRS annotations</span>
+        <span class="n">ht_annotated</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">output_vrs_path</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Adding VRS IDs and GA4GH.VRS version to original Table&quot;</span><span class="p">)</span>
+        <span class="n">ht_final</span> <span class="o">=</span> <span class="n">ht_original</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">info</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="n">vrs</span><span class="o">=</span><span class="n">ht_annotated</span><span class="p">[</span><span class="n">ht_original</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span> <span class="n">ht_original</span><span class="o">.</span><span class="n">alleles</span><span class="p">]</span><span class="o">.</span><span class="n">vrs</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">ht_final</span> <span class="o">=</span> <span class="n">ht_final</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">vrs_version</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="n">vrs_schema_version</span><span class="o">=</span><span class="n">VRS_SCHEMA_VERSION</span><span class="p">,</span>
+                <span class="n">vrs_python_version</span><span class="o">=</span><span class="n">VRS_PYTHON_VERSION</span><span class="p">,</span>
+                <span class="n">seqrepo_version</span><span class="o">=</span><span class="n">SEQREPO_VERSION</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Outputting final table at: </span><span class="si">{</span><span class="n">output_vrs_anno_ori_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">ht_final</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_vrs_anno_ori_path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">)</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Done! Final table written to </span><span class="si">{</span><span class="n">output_vrs_anno_ori_path</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--billing-project&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Project to bill.&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--image&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Image in a GCP Artifact Registry repository.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--working-bucket&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Name of GCP Bucket to output intermediate files (sharded VCFs and&quot;</span>
+            <span class="s2">&quot; checkpointed HTs) to.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;gnomad-tmp-4day&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--partitions-for-vcf-export&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of partitions to use when exporting the Table to a sharded VCF&quot;</span>
+            <span class="s2">&quot; (each partition is exported to a separate VCF). This value determines the&quot;</span>
+            <span class="s2">&quot; breakdown of jobs that will be ran (the VRS annotation script is ran in&quot;</span>
+            <span class="s2">&quot; parallel on the VCFs).&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">input_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">(</span><span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">input_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--data-type&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Data type to annotate (exomes or genomes).&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">input_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--input-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Full path of Hail Table to annotate.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-vrs-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Full path of Hail Table to write VRS annotations to.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--output-vrs-anno-ori-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Full path of Hail Table to write VRS annotations with the original &quot;</span>
+            <span class="s2">&quot;annotations added back.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Fiter to only 200 partitions for testing purposes.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--header-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Full path of txt file containing lines to append to VCF headers for fields&quot;</span>
+            <span class="s2">&quot; that maybe be missing when exporting the Table to VCF.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--downsample&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Proportion to which to downsample the original Hail Table input.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1.00</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--disk-size&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Amount of disk (GB) to allocate to each Hail Batch job.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--memory&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Amount of memory (GB) to allocate to each Hail Batch job.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--seqrepo-mount&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Bucket to mount and read from using Hail Batch&#39;s CloudFuse for access to&quot;</span>
+            <span class="s2">&quot; seqrepo: PLEASE note this DOES have performance implications.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Boolean to pass to ht.write(overwrite=_____) determining whether or not to&quot;</span>
+            <span class="s2">&quot; overwrite existing output for the final Table and checkpointed files.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--run-vrs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Pass argument to run VRS annotation on dataset of choice. Specifying&quot;</span>
+            <span class="s2">&quot; &#39;--run-vrs&#39; also requires setting &#39;backend-mode&#39; to &#39;batch&#39;, which is the&quot;</span>
+            <span class="s2">&quot; default.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--annotate-original&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Pass argument to add VRS annotations back to original dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--hail-rand-seed&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Random seed for hail. Default is 5.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--backend-mode&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Mode in which to run Hail - either &#39;spark&#39; or &#39;batch&#39; (for QoB)&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;spark&quot;</span><span class="p">,</span> <span class="s2">&quot;batch&quot;</span><span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--tmp-dir-hail&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Directory for temporary files to set when initializing Hail.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

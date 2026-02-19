@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_de_novo_release &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_de_novo_release</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.create_de_novo_release</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to create release de novo HT for v4 exomes.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="n">public_release</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.relatedness</span> <span class="kn">import</span> <span class="n">default_get_de_novo_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">annotate_adj</span><span class="p">,</span> <span class="n">get_copy_state_by_sex</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">filter_low_conf_regions</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vep</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CSQ_CODING_HIGH_IMPACT</span><span class="p">,</span>
+    <span class="n">CSQ_CODING_LOW_IMPACT</span><span class="p">,</span>
+    <span class="n">CSQ_CODING_MEDIUM_IMPACT</span><span class="p">,</span>
+    <span class="n">process_consequences</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="n">get_vep</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="n">release_de_novo</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">dense_trio_mt</span><span class="p">,</span> <span class="n">pedigree</span><span class="p">,</span> <span class="n">trio_denovo_ht</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">final_filter</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;create_de_novo_release_ht&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_releasable_de_novo_calls_ht"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.get_releasable_de_novo_calls_ht">[docs]</a><span class="k">def</span> <span class="nf">get_releasable_de_novo_calls_ht</span><span class="p">(</span>
+    <span class="n">mt</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">MatrixTable</span><span class="p">,</span>
+    <span class="n">priors_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">ped</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">n_partitions</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get de novo calls Hail Table.</span>
+
+<span class="sd">    :param mt: Dense MatrixTable of the releasable trios.</span>
+<span class="sd">    :param priors_ht: Table with AFs used as population frequency priors in de novo calculations.</span>
+<span class="sd">    :param ped: Pedigree.</span>
+<span class="sd">    :param test: Whether to filter to chr20 for testing. Default is False.</span>
+<span class="sd">    :param n_partitions: Number of partitions to use for the output Table. Default is 1000.</span>
+<span class="sd">    :return: Hail Table with de novo calls.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to chr20 for testing...&quot;</span><span class="p">)</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chr20&quot;</span><span class="p">)])</span>
+
+    <span class="c1"># The split MT was made with these extra annotations.</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span>
+        <span class="n">n_unsplit_alleles</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">),</span>
+        <span class="n">mixed_site</span><span class="o">=</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_indel</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a</span><span class="p">),</span> <span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+            <span class="o">&amp;</span> <span class="n">hl</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_snp</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">a</span><span class="p">),</span> <span class="n">mt</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">experimental</span><span class="o">.</span><span class="n">sparse_split_multi</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">dense_trio_mt</span><span class="p">(</span><span class="n">releasable</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">_read_if_exists</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">annotate_adj</span><span class="p">(</span><span class="n">mt</span><span class="p">)</span>
+
+    <span class="c1"># v3 and v4 VDS have the PL and AD fields for homref genotypes intentionally</span>
+    <span class="c1"># removed to save storage space and costs. We need to approximate the</span>
+    <span class="c1"># AD and PL fields when missing.</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span>
+        <span class="n">AD</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">AD</span><span class="p">,</span> <span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">DP</span><span class="p">,</span> <span class="mi">0</span><span class="p">]),</span>
+        <span class="n">PL</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">or_else</span><span class="p">(</span><span class="n">mt</span><span class="o">.</span><span class="n">PL</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mt</span><span class="o">.</span><span class="n">GQ</span><span class="p">]),</span>
+    <span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">prior</span><span class="o">=</span><span class="n">priors_ht</span><span class="p">[</span><span class="n">mt</span><span class="o">.</span><span class="n">row_key</span><span class="p">]</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span><span class="p">)</span>
+    <span class="n">mt</span> <span class="o">=</span> <span class="n">mt</span><span class="o">.</span><span class="n">select_entries</span><span class="p">(</span><span class="s2">&quot;GT&quot;</span><span class="p">,</span> <span class="s2">&quot;AD&quot;</span><span class="p">,</span> <span class="s2">&quot;DP&quot;</span><span class="p">,</span> <span class="s2">&quot;GQ&quot;</span><span class="p">,</span> <span class="s2">&quot;PL&quot;</span><span class="p">,</span> <span class="s2">&quot;adj&quot;</span><span class="p">)</span>
+
+    <span class="n">tm</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">trio_matrix</span><span class="p">(</span><span class="n">mt</span><span class="p">,</span> <span class="n">ped</span><span class="p">,</span> <span class="n">complete_trios</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">tm</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">transmute_cols</span><span class="p">(</span><span class="n">is_xx</span><span class="o">=</span><span class="n">tm</span><span class="o">.</span><span class="n">is_female</span><span class="p">)</span>
+    <span class="n">tm</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;trio_matrix&quot;</span><span class="p">,</span> <span class="s2">&quot;mt&quot;</span><span class="p">))</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">tm</span><span class="o">.</span><span class="n">entries</span><span class="p">()</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">de_novo_call_info</span><span class="o">=</span><span class="n">default_get_de_novo_expr</span><span class="p">(</span>
+            <span class="n">locus_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span>
+            <span class="n">alleles_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">,</span>
+            <span class="n">proband_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">proband_entry</span><span class="p">,</span>
+            <span class="n">father_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">father_entry</span><span class="p">,</span>
+            <span class="n">mother_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">mother_entry</span><span class="p">,</span>
+            <span class="n">is_xx_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">is_xx</span><span class="p">,</span>
+            <span class="n">freq_prior_expr</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">prior</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">final_partitions</span> <span class="o">=</span> <span class="n">n_partitions</span> <span class="o">//</span> <span class="mi">10</span> <span class="k">if</span> <span class="n">test</span> <span class="k">else</span> <span class="n">n_partitions</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_call_info</span><span class="o">.</span><span class="n">is_de_novo</span><span class="p">)</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">final_partitions</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="aggregate_and_annotate_de_novos"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.aggregate_and_annotate_de_novos">[docs]</a><span class="k">def</span> <span class="nf">aggregate_and_annotate_de_novos</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Aggregate and annotate de novo calls.</span>
+
+<span class="sd">    This step produces high quality coding de novos for release. High quality is defined as variants that:</span>
+<span class="sd">        - Are not in low-confidence regions</span>
+<span class="sd">        - Do not have a `*` alt allele</span>
+<span class="sd">        - Passed variant QC</span>
+<span class="sd">        - Have either HIGH (all probabilities) or MEDIUM (P-value &gt;=0.9) confidence of being a *de novo*</span>
+<span class="sd">        - Have a coding consequence</span>
+<span class="sd">        - Pass gnomAD v4.1 exomes allele frequency (AF) and callset allele count (AC) filters</span>
+
+<span class="sd">    :param ht: De novo calls Table.</span>
+<span class="sd">    :return: Aggregated and annotated Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Get needed annotation Tables.</span>
+    <span class="n">filters_ht</span> <span class="o">=</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">all_variants</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">only_filters</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">public_release</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">vep_ht</span> <span class="o">=</span> <span class="n">get_vep</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="c1"># Filter to variants with a confidence level</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="o">~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_call_info</span><span class="o">.</span><span class="n">confidence</span><span class="p">))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> de novos with a confidence level...&quot;</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">filter_low_conf_regions</span><span class="p">(</span>
+        <span class="n">ht</span><span class="p">,</span> <span class="n">filter_lcr</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">filter_decoy</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">filter_segdup</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> de novos after removing low confidence regions...&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">diploid_expr</span><span class="p">,</span> <span class="n">hemi_x_expr</span><span class="p">,</span> <span class="n">hemi_y_expr</span> <span class="o">=</span> <span class="n">get_copy_state_by_sex</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">,</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">is_xx</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">adj_trio</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">case</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span>
+            <span class="n">diploid_expr</span><span class="p">,</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">proband_entry</span><span class="o">.</span><span class="n">adj</span> <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">father_entry</span><span class="o">.</span><span class="n">adj</span> <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">mother_entry</span><span class="o">.</span><span class="n">adj</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">hemi_x_expr</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">proband_entry</span><span class="o">.</span><span class="n">adj</span> <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">mother_entry</span><span class="o">.</span><span class="n">adj</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">hemi_y_expr</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">proband_entry</span><span class="o">.</span><span class="n">adj</span> <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">father_entry</span><span class="o">.</span><span class="n">adj</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">or_missing</span><span class="p">()</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">adj_trio</span><span class="o">=</span><span class="n">adj_trio</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+            <span class="n">de_novo_AC</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="n">AC_all</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">adj_trio</span><span class="p">),</span>
+                <span class="n">AC_all_raw</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count</span><span class="p">(),</span>
+                <span class="n">AC_high_conf</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_call_info</span><span class="o">.</span><span class="n">confidence</span> <span class="o">==</span> <span class="s2">&quot;HIGH&quot;</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">adj_trio</span>
+                <span class="p">),</span>
+                <span class="c1"># We included some some MEDIUM confidence calls in the set of high-quality variants because</span>
+                <span class="c1"># the numbers of de novos for some coding consequences didn&#39;t meet the expected rates from the literature.</span>
+                <span class="c1"># To increase our de novo detection rates, we assessed the distribution of p_de_novo values for MEDIUM confidence de novos</span>
+                <span class="c1"># and chose to include MEDIUM confidence de novos with p &gt;= 0.9.</span>
+                <span class="n">AC_medium_conf_P_0_9</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">count_where</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_call_info</span><span class="o">.</span><span class="n">confidence</span> <span class="o">==</span> <span class="s2">&quot;MEDIUM&quot;</span><span class="p">)</span>
+                    <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_call_info</span><span class="o">.</span><span class="n">p_de_novo</span> <span class="o">&gt;=</span> <span class="mf">0.9</span><span class="p">)</span>
+                    <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">adj_trio</span>
+                <span class="p">),</span>
+            <span class="p">),</span>
+            <span class="n">p_de_novo_stats</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">stats</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_call_info</span><span class="o">.</span><span class="n">p_de_novo</span><span class="p">),</span>
+            <span class="c1"># The mixed_site info should stay the same for each variant.</span>
+            <span class="n">mixed_site</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">take</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">mixed_site</span><span class="p">,</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">p_de_novo_stats</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">p_de_novo_stats</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;n&quot;</span><span class="p">,</span> <span class="s2">&quot;sum&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;denovo_ac&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> unique de novo variants after computing AC...&quot;</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">vep</span><span class="o">=</span><span class="n">vep_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vep</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">process_consequences</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">has_polyphen</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">pass_filters</span><span class="o">=</span><span class="n">filters_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+        <span class="c1"># AC0 is not used as a criteria in de novos because AC0 was used for</span>
+        <span class="c1"># release sites and some of the probands weren&#39;t included in the release.</span>
+        <span class="o">.</span><span class="n">filters</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">([</span><span class="s2">&quot;AS_VQSR&quot;</span><span class="p">,</span> <span class="s2">&quot;InbreedingCoeff&quot;</span><span class="p">]))</span><span class="o">.</span><span class="n">length</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">worst_csq_for_variant</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">worst_csq_for_variant</span><span class="o">.</span><span class="n">most_severe_consequence</span><span class="p">,</span>
+        <span class="n">worst_csq_gene_id</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">worst_csq_for_variant</span><span class="o">.</span><span class="n">gene_id</span><span class="p">,</span>
+        <span class="n">worst_csq_transcript_id</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="o">.</span><span class="n">worst_csq_for_variant</span><span class="o">.</span><span class="n">transcript_id</span><span class="p">,</span>
+        <span class="n">gnomAD_v4_exomes_AF</span><span class="o">=</span><span class="n">freq_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;vep&quot;</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;*&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;denovo_no_star&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> de novos after filtering out &#39;*&#39; alts...&quot;</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">pass_filters</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;denovo_pass_filters&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> de novos after AS_VQSR and InbreedingCoeff &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;filters...&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_AC</span><span class="o">.</span><span class="n">AC_high_conf</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">de_novo_AC</span><span class="o">.</span><span class="n">AC_medium_conf_P_0_9</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;denovo_high_conf&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> high-quality de novos...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get the set of coding variant except for the splice region variants for</span>
+    <span class="c1"># calibration.</span>
+    <span class="n">coding_csqs</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span>
+        <span class="nb">set</span><span class="p">(</span><span class="n">CSQ_CODING_HIGH_IMPACT</span> <span class="o">+</span> <span class="n">CSQ_CODING_MEDIUM_IMPACT</span> <span class="o">+</span> <span class="n">CSQ_CODING_LOW_IMPACT</span><span class="p">)</span>
+        <span class="o">-</span> <span class="p">{</span>
+            <span class="s2">&quot;splice_polypyrimidine_tract_variant&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;splice_donor_5th_base_variant&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;splice_region_variant&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;splice_donor_region_variant&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;incomplete_terminal_codon_variant&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;coding_transcript_variant&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">coding_csqs</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">worst_csq_for_variant</span><span class="p">))</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;denovo_high_coding&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> high-quality coding de novos...&quot;</span><span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">gnomAD_v4_exomes_AF</span> <span class="o">&lt;</span> <span class="mf">0.001</span><span class="p">)</span> <span class="o">|</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">gnomAD_v4_exomes_AF</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;denovo_coding_af0001&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> high-quality coding de novos with AF &lt; 0.001 in &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;gnomAD...&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">de_novo_AC</span><span class="o">.</span><span class="n">AC_high_conf</span> <span class="o">+</span> <span class="n">ht</span><span class="o">.</span><span class="n">de_novo_AC</span><span class="o">.</span><span class="n">AC_medium_conf_P_0_9</span> <span class="o">&lt;=</span> <span class="mi">15</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Getting </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> high-quality coding de novos with AC &lt;= 15 in the &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;callset...&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="restructure_for_tsv"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.restructure_for_tsv">[docs]</a><span class="k">def</span> <span class="nf">restructure_for_tsv</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Restructure the de novo release HT for TSV export.</span>
+
+<span class="sd">    .. note::</span>
+<span class="sd">       This function will only be used for the TSV of high-quality coding de novos.</span>
+
+<span class="sd">    :param ht: De novo release HT.</span>
+<span class="sd">    :return: Restructured HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">ht</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;de_novo_AC.AC_all&quot;</span><span class="p">:</span> <span class="s2">&quot;de_novo_AC_all&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;de_novo_AC.AC_all_raw&quot;</span><span class="p">:</span> <span class="s2">&quot;de_novo_AC_all_raw&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;de_novo_AC.AC_high_conf&quot;</span><span class="p">:</span> <span class="s2">&quot;de_novo_AC_high_conf&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;de_novo_AC.AC_medium_conf_P_0_9&quot;</span><span class="p">:</span> <span class="s2">&quot;de_novo_AC_medium_conf_P_0_9&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;p_de_novo_stats.mean&quot;</span><span class="p">:</span> <span class="s2">&quot;p_de_novo_mean&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;p_de_novo_stats.stdev&quot;</span><span class="p">:</span> <span class="s2">&quot;p_de_novo_stdev&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;p_de_novo_stats.min&quot;</span><span class="p">:</span> <span class="s2">&quot;p_de_novo_min&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;p_de_novo_stats.max&quot;</span><span class="p">:</span> <span class="s2">&quot;p_de_novo_max&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_de_novo_release.html#gnomad_qc.v4.create_release.create_de_novo_release.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create de novo release ht.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;/create_de_novo_release_ht.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">default_reference</span><span class="p">(</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">)</span>
+
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_de_novo_calls</span><span class="p">:</span>
+        <span class="n">mt</span> <span class="o">=</span> <span class="n">dense_trio_mt</span><span class="p">(</span><span class="n">releasable</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">mt</span><span class="p">()</span>
+        <span class="n">priors_ht</span> <span class="o">=</span> <span class="n">public_release</span><span class="p">(</span><span class="s2">&quot;exomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">ped</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">Pedigree</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">pedigree</span><span class="p">()</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">get_releasable_de_novo_calls_ht</span><span class="p">(</span>
+            <span class="n">mt</span><span class="p">,</span> <span class="n">priors_ht</span><span class="p">,</span> <span class="n">ped</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">n_partitions</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">trio_denovo_ht</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_final_ht</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">trio_denovo_ht</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">aggregate_and_annotate_de_novos</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span>
+            <span class="n">release_de_novo</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final de novo release HT schema:&quot;</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">generate_final_tsv</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">release_de_novo</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">restructure_for_tsv</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">export</span><span class="p">(</span>
+            <span class="n">release_de_novo</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;.ht&quot;</span><span class="p">,</span> <span class="s2">&quot;.tsv.bgz&quot;</span><span class="p">),</span>
+            <span class="n">header</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">delimiter</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite data&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-t&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Runs a test on chr20&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n_partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of partitions to use for the output Table.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-de-novo-calls&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generate de novo calls HT.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-final-ht&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generate the final HT for de novo release.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--generate-final-tsv&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Generate the final TSV for de novo release.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

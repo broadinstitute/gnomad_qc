@@ -1,0 +1,21 @@
+gnomad_qc.v4.annotations.vep_context_ht
+=======================================
+
+Script to add VEP annotations to the GRCh38 context Table.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.annotations.vep_context_ht.get_script_argument_parser
+   :prog: gnomad_qc.v4.annotations.vep_context_ht.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.vep_context_ht
+
+.. automodule:: gnomad_qc.v4.annotations.vep_context_ht
+    :exclude-members: get_script_argument_parser

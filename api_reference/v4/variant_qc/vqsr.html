@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.vqsr &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5" href="../../v5/index.html" />
+    <link rel="prev" title="gnomad_qc.v4.variant_qc.random_forest" href="random_forest.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">variant_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="evaluation.html">evaluation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="final_filter.html">final_filter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="final_filter_genomes.html">final_filter_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="import_variant_qc_vcf.html">import_variant_qc_vcf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="random_forest.html">random_forest</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">vqsr</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.variant_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.vqsr</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/variant_qc/vqsr.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-variant-qc-vqsr">
+<h1>gnomad_qc.v4.variant_qc.vqsr<a class="headerlink" href="#gnomad-qc-v4-variant-qc-vqsr" title="Permalink to this heading"></a></h1>
+<p>Script to run VQSR on an AS-annotated Sites VCF.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">vqsr</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">-</span><span class="n">o</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span> <span class="o">--</span><span class="n">out</span><span class="o">-</span><span class="n">bucket</span>
+                                       <span class="n">OUT_BUCKET</span> <span class="o">--</span><span class="n">out</span><span class="o">-</span><span class="n">vcf</span><span class="o">-</span><span class="n">name</span> <span class="n">OUT_VCF_NAME</span>
+                                       <span class="o">--</span><span class="n">model</span><span class="o">-</span><span class="nb">id</span> <span class="n">MODEL_ID</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">header</span><span class="o">-</span><span class="n">path</span> <span class="n">HEADER_PATH</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">array</span><span class="o">-</span><span class="n">elements</span><span class="o">-</span><span class="n">required</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">gatk</span><span class="o">-</span><span class="n">image</span> <span class="n">GATK_IMAGE</span><span class="p">]</span> <span class="o">--</span><span class="n">resources</span>
+                                       <span class="n">RESOURCES</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">scatter</span><span class="o">-</span><span class="n">count</span> <span class="n">SCATTER_COUNT</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">snp</span><span class="o">-</span><span class="n">hard</span><span class="o">-</span><span class="nb">filter</span> <span class="n">SNP_HARD_FILTER</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="n">hard</span><span class="o">-</span><span class="nb">filter</span> <span class="n">INDEL_HARD_FILTER</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">mode</span> <span class="p">{</span><span class="n">small</span><span class="p">,</span><span class="n">standard</span><span class="p">,</span><span class="n">large</span><span class="p">}]</span>
+                                       <span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span>
+                                       <span class="n">BATCH_BILLING_PROJECT</span>
+                                       <span class="o">--</span><span class="n">gcp</span><span class="o">-</span><span class="n">billing</span><span class="o">-</span><span class="n">project</span>
+                                       <span class="n">GCP_BILLING_PROJECT</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">method</span> <span class="p">{</span><span class="n">AS</span><span class="p">,</span><span class="n">quasi</span><span class="p">,</span><span class="n">set_long_AS_missing</span><span class="p">}]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">adj</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">transmitted</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">sibling</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">calling</span><span class="o">-</span><span class="n">interval</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">snp</span><span class="o">-</span><span class="n">features</span> <span class="n">SNP_FEATURES</span> <span class="p">[</span><span class="n">SNP_FEATURES</span> <span class="o">...</span><span class="p">]]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">indel</span><span class="o">-</span><span class="n">features</span> <span class="n">INDEL_FEATURES</span> <span class="p">[</span><span class="n">INDEL_FEATURES</span> <span class="o">...</span><span class="p">]]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">overlap</span><span class="o">-</span><span class="n">skip</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">batch</span><span class="o">-</span><span class="n">suffix</span> <span class="n">BATCH_SUFFIX</span><span class="p">]</span>
+                                       <span class="p">[</span><span class="o">--</span><span class="n">load</span><span class="o">-</span><span class="n">vqsr</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>-o, --overwrite</kbd></dt>
+<dd><p>Whether to overwrite data already present in the output Table.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>If the dataset should be filtered to chr22 for testing.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--out-bucket</kbd></dt>
+<dd><p>Bucket to store VQSR outputs in.</p>
+</dd>
+<dt><kbd>--out-vcf-name</kbd></dt>
+<dd><p>Required prefix for VQSR outputs.</p>
+</dd>
+<dt><kbd>--model-id</kbd></dt>
+<dd><p>Model ID for the variant QC result HT.</p>
+</dd>
+<dt><kbd>--header-path</kbd></dt>
+<dd><p>Optional path to a header file to use for importing the variant QC result VCF.</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Number of desired partitions for output Table.</p>
+<p>Default: 5000</p>
+</dd>
+<dt><kbd>--array-elements-required</kbd></dt>
+<dd><p>Pass if you would like array elements required in import_vcf to be true.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--gatk-image</kbd></dt>
+<dd><p>GATK Image.</p>
+<p>Default: “us.gcr.io/broad-gatk/gatk:4.2.6.1”</p>
+</dd>
+<dt><kbd>--resources</kbd></dt>
+<dd><p>Path to .json file containing paths and information for the VQSR pipeline.</p>
+</dd>
+<dt><kbd>--scatter-count</kbd></dt>
+<dd><p>Number of intervals to scatter across.</p>
+<p>Default: 100</p>
+</dd>
+<dt><kbd>--snp-hard-filter</kbd></dt>
+<dd><p>Hard filter cutoff for SNPs.</p>
+<p>Default: 99.7</p>
+</dd>
+<dt><kbd>--indel-hard-filter</kbd></dt>
+<dd><p>Hard filter cutoff for INDELs.</p>
+<p>Default: 99.0</p>
+</dd>
+<dt><kbd>--run-mode</kbd></dt>
+<dd><p>Possible choices: small, standard, large</p>
+<p>Option to pass so that the mode/resources fit the size of the database. This affects the size of the clusters and, if –large is set, will run in a scattered mode (one job for each partition).</p>
+<p>Default: “standard”</p>
+</dd>
+<dt><kbd>--batch-billing-project</kbd></dt>
+<dd><p>Hail Batch billing project.</p>
+</dd>
+<dt><kbd>--gcp-billing-project</kbd></dt>
+<dd><p>Google Cloud billing project for reading requester pays buckets.</p>
+</dd>
+<dt><kbd>--compute-info-method</kbd></dt>
+<dd><p>Possible choices: AS, quasi, set_long_AS_missing</p>
+<p>Method of computing the INFO score to use for the variant QC features. Default is ‘AS’.</p>
+<p>Default: “quasi”</p>
+</dd>
+<dt><kbd>--adj</kbd></dt>
+<dd><p>Use adj genotypes for transmitted/sibling singletons.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--transmitted-singletons</kbd></dt>
+<dd><p>Include transmitted singletons in training.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sibling-singletons</kbd></dt>
+<dd><p>Include sibling singletons in training.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--interval-qc-filter</kbd></dt>
+<dd><p>Whether interval QC should be applied for training.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--calling-interval-filter</kbd></dt>
+<dd><p>Whether to filter to the intersection of Broad/DSP calling intervals with 50 bp of padding for training.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--snp-features</kbd></dt>
+<dd><p>Features to use in the SNP VQSR model.</p>
+<p>Default: [‘AS_QD’, ‘AS_MQRankSum’, ‘AS_ReadPosRankSum’, ‘AS_FS’, ‘AS_MQ’]</p>
+</dd>
+<dt><kbd>--indel-features</kbd></dt>
+<dd><p>Features to use in the indel VQSR model.</p>
+<p>Default: [‘AS_QD’, ‘AS_MQRankSum’, ‘AS_ReadPosRankSum’, ‘AS_FS’]</p>
+</dd>
+<dt><kbd>--overlap-skip</kbd></dt>
+<dd><p>Skip code to address overlaps, output sharded VCF.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--batch-suffix</kbd></dt>
+<dd><p>String to add to end of batch name.</p>
+<p>Default: “”</p>
+</dd>
+<dt><kbd>--load-vqsr</kbd></dt>
+<dd><p>Run import_variant_qc_vcf() to load VQSR VCFs as HT</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.split_intervals" title="gnomad_qc.v4.variant_qc.vqsr.split_intervals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.split_intervals</span></code></a>(b, ...)</p></td>
+<td><p>Split genome into intervals to parallelize VQSR for large sample sizes.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator_create_model" title="gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator_create_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator_create_model</span></code></a>(b, ...)</p></td>
+<td><p>First step of VQSR for SNPs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator" title="gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator</span></code></a>(b, ...)</p></td>
+<td><p>Second step of VQSR for SNPs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator_create_model" title="gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator_create_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator_create_model</span></code></a>(b, ...)</p></td>
+<td><p>First step of VQSR for INDELs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator" title="gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator</span></code></a>(b, ...)</p></td>
+<td><p>Second step of VQSR for INDELs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.gather_tranches" title="gnomad_qc.v4.variant_qc.vqsr.gather_tranches"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.gather_tranches</span></code></a>(b, ...)</p></td>
+<td><p>Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval tranches outputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.apply_recalibration" title="gnomad_qc.v4.variant_qc.vqsr.apply_recalibration"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.apply_recalibration</span></code></a>(b, ...)</p></td>
+<td><p>Apply a score cutoff to filter variants based on a recalibration table.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.gather_vcfs" title="gnomad_qc.v4.variant_qc.vqsr.gather_vcfs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.gather_vcfs</span></code></a>(b, ...)</p></td>
+<td><p>Combine recalibrated VCFs into a single VCF &amp; saves the output VCF to a bucket <cite>out_bucket</cite>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.make_vqsr_jobs" title="gnomad_qc.v4.variant_qc.vqsr.make_vqsr_jobs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.make_vqsr_jobs</span></code></a>(b, ...)</p></td>
+<td><p>Add jobs to Batch that perform the allele-specific VQSR variant QC.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.vqsr.main" title="gnomad_qc.v4.variant_qc.vqsr.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.main</span></code></a>(args)</p></td>
+<td><p>Run VQSR variant qc workflow.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.variant_qc.vqsr"></span><p>Script to run VQSR on an AS-annotated Sites VCF.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.split_intervals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">split_intervals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">utils</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calling_interval_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_padding</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">150</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#split_intervals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.split_intervals" title="Permalink to this definition"></a></dt>
+<dd><p>Split genome into intervals to parallelize VQSR for large sample sizes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>utils</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – Dictionary containing resources (file paths and arguments) to be
+used to split genome.</p></li>
+<li><p><strong>calling_interval_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the calling interval list with no padding.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>scatter_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of intervals to split the dataset into for scattering.</p></li>
+<li><p><strong>interval_padding</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of bases to pad each interval by.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with a single output j.intervals of type ResourceGroup.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator_create_model">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">snps_variant_recalibrator_create_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">utils</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_as_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singletons_resource_vcf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evaluation_interval_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_small_callset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_large_callset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_gaussians</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">6</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#snps_variant_recalibrator_create_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator_create_model" title="Permalink to this definition"></a></dt>
+<dd><p>First step of VQSR for SNPs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.</p>
+<p>To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
+is broken down across genomic regions for parallel processing, and done in 3 steps:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Run the recalibrator with the following additional arguments:
+–sample-every-Nth-variant &lt;downsample_factor&gt; –output-model &lt;model_file&gt;</p></li>
+<li><p>Apply the resulting model to each genomic interval with, running the
+recalibrator with the same base parameters, plus:
+–input-model &lt;model-file&gt; –output-tranches-for-scatter</p></li>
+<li><p>Collate the resulting per-interval tranches with GatherTranches</p></li>
+</ul>
+</div></blockquote>
+<p>The –max-gaussians parameter sets the expected number of clusters in modeling.
+If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,
+then the tool will tell you there is insufficient data with a No data found error
+message. In this case, try decrementing the –max-gaussians value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sites only VCF file to be used to build the model.</p></li>
+<li><p><strong>utils</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – a dictionary containing resources (file paths) to be used to create
+the model.</p></li>
+<li><p><strong>use_as_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If set, Allele-Specific variant recalibrator will be used.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to be used in the SNP VQSR model.</p></li>
+<li><p><strong>singletons_resource_vcf</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional singletons VCF to be used in
+building the model.</p></li>
+<li><p><strong>evaluation_interval_path</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional path to the evaluation interval list.</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Full path to output bucket to write model and plots to.</p></li>
+<li><p><strong>is_small_callset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the dataset is small. Used to set number of CPUs
+for the job.</p></li>
+<li><p><strong>is_large_callset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the dataset is huge. Used to set number of CPUs
+for the job.</p></li>
+<li><p><strong>max_gaussians</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum number of Gaussians for the positive model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with 2 outputs: j.model_file and j.snp_rscript_file.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">snps_variant_recalibrator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">utils</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_as_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tranche_idx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singletons_resource_vcf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_gaussians</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#snps_variant_recalibrator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.snps_variant_recalibrator" title="Permalink to this definition"></a></dt>
+<dd><p>Second step of VQSR for SNPs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.</p>
+<p>To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
+is broken down across genomic regions for parallel processing, and done in 3 steps:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Run the recalibrator with the following additional arguments:
+–sample-every-Nth-variant &lt;downsample_factor&gt; –output-model &lt;model_file&gt;</p></li>
+<li><p>Apply the resulting model to each genomic interval with, running the
+recalibrator with the same base parameters, plus:
+–input-model &lt;model-file&gt; –output-tranches-for-scatter</p></li>
+<li><p>Collate the resulting per-interval tranches with GatherTranches</p></li>
+</ul>
+</div></blockquote>
+<p>The –max-gaussians parameter sets the expected number of clusters in modeling.
+If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,
+then the tool will tell you there is insufficient data with a No data found error
+message. In this case, try decrementing the –max-gaussians value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sites only VCF file to be used to build the model.</p></li>
+<li><p><strong>model_file</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>]) – Model file to be applied.</p></li>
+<li><p><strong>utils</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – Dictionary containing resources (file paths).</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Full path to output bucket to write model and plots to.</p></li>
+<li><p><strong>tranche_idx</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Index for the tranches file.</p></li>
+<li><p><strong>use_as_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If set, Allele-Specific variant recalibrator will be used.</p></li>
+<li><p><strong>gcp_billing_project</strong> – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to be used in the SNP VQSR model.</p></li>
+<li><p><strong>singletons_resource_vcf</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional singletons VCF to include in
+VariantRecalibrator.</p></li>
+<li><p><strong>interval</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>]) – Genomic interval to apply the model to.</p></li>
+<li><p><strong>max_gaussians</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum number of Gaussians for the positive model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with 2 outputs: j.recalibration (ResourceGroup) and j.tranches.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator_create_model">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">indels_variant_recalibrator_create_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">utils</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_as_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singletons_resource_vcf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evaluation_interval_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_small_callset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_gaussians</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#indels_variant_recalibrator_create_model"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator_create_model" title="Permalink to this definition"></a></dt>
+<dd><p>First step of VQSR for INDELs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.</p>
+<p>To support cohorts with more than 10,000 WGS samples, the INDEL recalibration
+process is broken down across genomic regions for parallel processing, and done in
+3 steps:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Run the recalibrator with the following additional arguments:
+–sample-every-Nth-variant &lt;downsample_factor&gt; –output-model &lt;model_file&gt;</p></li>
+<li><p>Apply the resulting model to each genomic interval with, running the
+recalibrator with the same base parameters, plus:
+–input-model &lt;model-file&gt; –output-tranches-for-scatter</p></li>
+<li><p>Collate the resulting per-interval tranches with GatherTranches</p></li>
+</ul>
+</div></blockquote>
+<p>The –max-gaussians parameter sets the expected number of clusters in modeling.
+If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,
+then the tool will tell you there is insufficient data with a No data found error
+message. In this case, try decrementing the –max-gaussians value</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sites only VCF file to be used to build the model.</p></li>
+<li><p><strong>utils</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – Dictionary containing resources (file paths).</p></li>
+<li><p><strong>use_as_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If set, Allele-Specific variant recalibrator will be used.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to be used in the INDEL VQSR model.</p></li>
+<li><p><strong>singletons_resource_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Optional singletons VCF to be used in building the
+model.</p></li>
+<li><p><strong>evaluation_interval_path</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional path to the evaluation interval list.</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Full path to output bucket to write model and plots to.</p></li>
+<li><p><strong>is_small_callset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether the dataset is small. Used to set number of CPUs
+for the job.</p></li>
+<li><p><strong>max_gaussians</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum number of Gaussians for the positive model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with 2 outputs: j.model_file and j.indel_rscript_file. The
+latter is useful to produce the optional tranche plot.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">indels_variant_recalibrator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">utils</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_as_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tranche_idx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singletons_resource_vcf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_gaussians</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#indels_variant_recalibrator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.indels_variant_recalibrator" title="Permalink to this definition"></a></dt>
+<dd><p>Second step of VQSR for INDELs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.</p>
+<p>To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
+is broken down across genomic regions for parallel processing, and done in 3 steps:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Run the recalibrator with the following additional arguments:
+–sample-every-Nth-variant &lt;downsample_factor&gt; –output-model &lt;model_file&gt;</p></li>
+<li><p>Apply the resulting model to each genomic interval with, running the
+recalibrator with the same base parameters, plus:
+–input-model &lt;model-file&gt; –output-tranches-for-scatter</p></li>
+<li><p>Collate the resulting per-interval tranches with GatherTranches</p></li>
+</ul>
+</div></blockquote>
+<p>The –max-gaussians parameter sets the expected number of clusters in modeling.
+If a dataset gives fewer distinct clusters, e.g. as can happen for smaller data,
+then the tool will tell you there is insufficient data with a No data found error
+message. In this case, try decrementing the –max-gaussians value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sites only VCF file to be used to build the model.</p></li>
+<li><p><strong>model_file</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>]) – Model file to be applied.</p></li>
+<li><p><strong>utils</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – Dictionary containing resources (file paths).</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Full path to output bucket to write model and plots to.</p></li>
+<li><p><strong>tranche_idx</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Index for the tranches file.</p></li>
+<li><p><strong>use_as_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If set, Allele-Specific variant recalibrator will be used.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to be used in the INDEL VQSR model.</p></li>
+<li><p><strong>singletons_resource_vcf</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional singletons VCF to include in
+VariantRecalibrator.</p></li>
+<li><p><strong>interval</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>]) – Genomic interval to apply the model to.</p></li>
+<li><p><strong>max_gaussians</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum number of Gaussians for the positive model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with 2 outputs: j.recalibration (ResourceGroup) and j.tranches.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.gather_tranches">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">gather_tranches</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tranches</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disk_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#gather_tranches"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.gather_tranches" title="Permalink to this definition"></a></dt>
+<dd><p>Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval tranches outputs.</p>
+<p>To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
+is broken down across genomic regions for parallel processing, and done in 3 steps:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Run the recalibrator with the following additional arguments:
+<code class="docutils literal notranslate"><span class="pre">--sample-every-Nth-variant</span> <span class="pre">&lt;downsample_factor&gt;</span> <span class="pre">--output-model</span> <span class="pre">&lt;model_file&gt;</span></code></p></li>
+<li><p>Apply the resulting model to each genomic interval with, running the
+recalibrator with the same base parameters, plus:
+<code class="docutils literal notranslate"><span class="pre">--input-model</span> <span class="pre">&lt;model-file&gt;</span> <span class="pre">--output-tranches-for-scatter</span></code></p></li>
+<li><p>Collate the resulting per-interval tranches with GatherTranches</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>tranches</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>]) – Index for the tranches file.</p></li>
+<li><p><strong>mode</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Recalibration mode to employ, either SNP or INDEL.</p></li>
+<li><p><strong>disk_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Disk size to be used for the job.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with one output j.out_tranches.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.apply_recalibration">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">apply_recalibration</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_vcf_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indels_recalibration</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indels_tranches</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snps_recalibration</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snps_tranches</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snp_hard_filter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indel_hard_filter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disk_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_as_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overlap_skip</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#apply_recalibration"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.apply_recalibration" title="Permalink to this definition"></a></dt>
+<dd><p>Apply a score cutoff to filter variants based on a recalibration table.</p>
+<p>Runs ApplyVQSR twice to apply first indel, then SNP recalibrations.</p>
+<p>Targets indel_filter_level and snp_filter_level sensitivities. The tool matches
+them internally to a VQSLOD score cutoff based on the model’s estimated sensitivity
+to a set of true variants.</p>
+<p>The filter determination is not just a pass/fail process. The tool evaluates for
+each variant which “tranche”, or slice of the dataset, it falls into in terms of
+sensitivity to the truthset. Variants in tranches that fall below the specified
+truth sensitivity filter level have their FILTER field annotated with the
+corresponding tranche level. This results in a callset that is filtered to the
+desired level but retains the information necessary to increase sensitivity
+if needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>input_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Sites only VCF file to be used.</p></li>
+<li><p><strong>out_vcf_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Output vcf filename.</p></li>
+<li><p><strong>indels_recalibration</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>) – Input recal file (ResourceGroup) for INDELs.</p></li>
+<li><p><strong>indels_tranches</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>) – Input tranches file (ResourceFile) for INDELs.</p></li>
+<li><p><strong>snps_recalibration</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>) – Input recal file (ResourceGroup) for SNPs.</p></li>
+<li><p><strong>snps_tranches</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceFile</span></code>) – Input tranches file (ResourceFile) for SNPs.</p></li>
+<li><p><strong>snp_hard_filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – SNP hard filter level.</p></li>
+<li><p><strong>indel_hard_filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – INDEL hard filter level.</p></li>
+<li><p><strong>disk_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Disk size to be used for the job.</p></li>
+<li><p><strong>use_as_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If set, Allele-Specific variant recalibrator will be used.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>scatter</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Scatter index to be used in output VCF filename if running in
+scattered mode.</p></li>
+<li><p><strong>interval</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>]) – Genomic interval to apply the model to.</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Full path to output bucket to write output(s) to.</p></li>
+<li><p><strong>overlap_skip</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with one ResourceGroup output j.output_vcf, corresponding
+to a VCF with tranche annotated in the FILTER field.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.gather_vcfs">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">gather_vcfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_vcfs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_vcf_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disk_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#gather_vcfs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.gather_vcfs" title="Permalink to this definition"></a></dt>
+<dd><p>Combine recalibrated VCFs into a single VCF &amp; saves the output VCF to a bucket <cite>out_bucket</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>input_vcfs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">ResourceGroup</span></code>]) – List of VCFs to be gathered.</p></li>
+<li><p><strong>out_vcf_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Output vcf filename.</p></li>
+<li><p><strong>disk_size</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Disk size to be used for the job.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Full path to output bucket to write the gathered VCF to.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Job</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Job object with one ResourceGroup output j.output_vcf.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.make_vqsr_jobs">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">make_vqsr_jobs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">b</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sites_only_vcf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_small_callset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_large_callset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_vcf_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">utils</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_bucket</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_as_annotations</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gcp_billing_project</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gatk_image</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snp_features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indel_features</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">snp_hard_filter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">indel_hard_filter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scatter_count</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">singleton_vcf_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evaluation_interval_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overlap_skip</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#make_vqsr_jobs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.make_vqsr_jobs" title="Permalink to this definition"></a></dt>
+<dd><p>Add jobs to Batch that perform the allele-specific VQSR variant QC.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>b</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Batch</span></code>) – Batch object to add jobs to.</p></li>
+<li><p><strong>sites_only_vcf</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to a sites only VCF created using gnomAD
+default_compute_info().</p></li>
+<li><p><strong>is_small_callset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – For small callsets, we reduce the resources per job from
+our default.</p></li>
+<li><p><strong>is_large_callset</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – For large callsets, we increase resources per job from
+our default and shard our VCF to launch jobs in a scattered mode.</p></li>
+<li><p><strong>output_vcf_name</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Name, without extension, to use for the output VCF file(s).</p></li>
+<li><p><strong>utils</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – Dictionary containing resource files and parameters to be used in VQSR.</p></li>
+<li><p><strong>out_bucket</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to write, plots, evaluation results, and recalibrated VCF to.</p></li>
+<li><p><strong>intervals</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>) – ResourceGroup object with intervals to scatter.</p></li>
+<li><p><strong>use_as_annotations</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use allele-specific annotation for VQSR.</p></li>
+<li><p><strong>gcp_billing_project</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GCP billing project for requester-pays buckets.</p></li>
+<li><p><strong>gatk_image</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – GATK docker image.</p></li>
+<li><p><strong>snp_features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to be used in the SNP VQSR model.</p></li>
+<li><p><strong>indel_features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to be used in the INDEL VQSR model.</p></li>
+<li><p><strong>snp_hard_filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – SNP hard filter level.</p></li>
+<li><p><strong>indel_hard_filter</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – INDEL hard filter level.</p></li>
+<li><p><strong>scatter_count</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of intervals to scatter over.</p></li>
+<li><p><strong>singleton_vcf_path</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Full path to transmitted and/or sibling singletons VCF
+file and its index.</p></li>
+<li><p><strong>evaluation_interval_path</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Optional full path to evaluation intervals file.</p></li>
+<li><p><strong>overlap_skip</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.vqsr.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.vqsr.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/vqsr.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.vqsr.main" title="Permalink to this definition"></a></dt>
+<dd><p>Run VQSR variant qc workflow.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="random_forest.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.variant_qc.random_forest" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../../v5/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v5" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

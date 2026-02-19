@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.recover_and_complete_vep115 &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.annotations.vep_context_ht" href="vep_context_ht.html" />
+    <link rel="prev" title="gnomad_qc.v4.annotations.insilico_predictors" href="insilico_predictors.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fix_freq_an.html">fix_freq_an</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq.html">generate_freq</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq_genomes.html">generate_freq_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="insilico_predictors.html">insilico_predictors</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">recover_and_complete_vep115</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vep_context_ht.html">vep_context_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vrs_annotation_batch.html">vrs_annotation_batch</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.recover_and_complete_vep115</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/annotations/recover_and_complete_vep115.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-annotations-recover-and-complete-vep115">
+<h1>gnomad_qc.v4.annotations.recover_and_complete_vep115<a class="headerlink" href="#gnomad-qc-v4-annotations-recover-and-complete-vep115" title="Permalink to this heading"></a></h1>
+<p>Complete VEP annotation for gnomAD context HT.</p>
+<p>Background:</p>
+<blockquote>
+<div><p>This script was created to recover from a VEP 115 run that failed after processing
+~99% (37797/38029 partitions) of the gnomAD context HT (all possible SNVs). The job
+ran for an extended period before failing at task 32305 due to a VEP JSON parsing
+error. The error was caused by variant chr18:16770181 A&gt;C, where VEP annotated the
+context field with ‘-nan’, resulting in:</p>
+<blockquote>
+<div><p>com.fasterxml.jackson.core.JsonParseException: Unexpected character (‘n’ (code
+110)) in numeric value: expected digit (0-9) to follow minus sign</p>
+</div></blockquote>
+<p>After filtering that variant, another variant in the same region also failed with
+the same error. To ensure successful completion, the entire chr18 centromere region
+(chr18:15460900-20861207) is now excluded from VEP processing.</p>
+<p>Rather than rerun VEP on the entire context HT, this script:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Reconstructs the partially written HT by updating metadata files.</p></li>
+<li><p>Identifies which variants still need VEP annotation.</p></li>
+<li><p>Filters out the chr18 centromere region to prevent crashes.</p></li>
+<li><p>Runs VEP only on the remaining unannotated variants.</p></li>
+<li><p>Combines all results into a complete VEP-annotated context HT.</p></li>
+</ul>
+</div></blockquote>
+<p>Note: Variants in the chr18 centromere will have missing VEP annotations and
+should be investigated separately.</p>
+</div></blockquote>
+<p>Pipeline Steps:</p>
+<blockquote>
+<div><p>Step 1: Copy partial HT to temp location.
+Step 2: Extract partition metadata from index files and vep_context HT.
+Step 3: Reconstruct partial HT by updating metadata files.
+Step 4: Filter context HT to variants missing VEP (excluding chr18 centromere).
+Step 5: Run VEP on remaining variants (excludes chr18 centromere).
+Step 6: Run VEP on chr18 centromere variants with modified config.
+Step 7: Combine all VEP results and add metadata to final HT.</p>
+</div></blockquote>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.copy_partial_ht" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.copy_partial_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.copy_partial_ht</span></code></a>(...)</p></td>
+<td><p>Copy entire partial HT directory to output location.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_partition_counts" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_partition_counts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_partition_counts</span></code></a>()</p></td>
+<td><p>Get all partition counts from vep_context HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_bounds" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_bounds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_bounds</span></code></a>()</p></td>
+<td><p>Get range bounds from vep_context HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partition_info" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partition_info"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partition_info</span></code></a>(...)</p></td>
+<td><p>Load partition counts, range bounds, and partition file names from a JSON file.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.extract_partition_metadata_and_save" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.extract_partition_metadata_and_save"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.extract_partition_metadata_and_save</span></code></a>(ht_path)</p></td>
+<td><p>Extract partition metadata from index files and vep_context HT, then save for later reuse.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.reconstruct_partial_ht" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.reconstruct_partial_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.reconstruct_partial_ht</span></code></a>(...)</p></td>
+<td><p>Reconstruct the partially written HT by updating metadata from schema reference.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_context_ht" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.load_context_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.load_context_ht</span></code></a>([...])</p></td>
+<td><p>Load the gnomAD context HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partial_vep_ht" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partial_vep_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partial_vep_ht</span></code></a>(...)</p></td>
+<td><p>Load the partial VEP HT.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.prepare_context_ht" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.prepare_context_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.prepare_context_ht</span></code></a>(ht)</p></td>
+<td><p>Prepare context HT by dropping existing VEP annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_variants_that_need_vep" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.get_variants_that_need_vep"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.get_variants_that_need_vep</span></code></a>(...)</p></td>
+<td><p>Get variants that need VEP.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_problematic_variants" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_problematic_variants"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_problematic_variants</span></code></a>(ht)</p></td>
+<td><p>Filter out variants in regions that cause VEP to fail.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_to_centromere_variants" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_to_centromere_variants"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_to_centromere_variants</span></code></a>(ht)</p></td>
+<td><p>Filter to ONLY variants in the chr18 centromere region.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_remaining" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_remaining"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_remaining</span></code></a>(ht)</p></td>
+<td><p>Run VEP on variants that need it.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_centromere" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_centromere"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_centromere</span></code></a>(ht)</p></td>
+<td><p>Run VEP on chr18 centromere variants.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.add_vep_metadata" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.add_vep_metadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.add_vep_metadata</span></code></a>(ht, ...)</p></td>
+<td><p>Add VEP metadata (version, help, config) to global annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.combine_vep_results" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.combine_vep_results"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.combine_vep_results</span></code></a>(...)</p></td>
+<td><p>Combine VEP results from partial HT and newly VEPed variants.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.main" title="gnomad_qc.v4.annotations.recover_and_complete_vep115.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.main</span></code></a>(args)</p></td>
+<td><p>Run the complete VEP 115 recovery and completion annotation pipeline.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.annotations.recover_and_complete_vep115"></span><p>Complete VEP annotation for gnomAD context HT.</p>
+<p>Background:</p>
+<blockquote>
+<div><p>This script was created to recover from a VEP 115 run that failed after processing
+~99% (37797/38029 partitions) of the gnomAD context HT (all possible SNVs). The job
+ran for an extended period before failing at task 32305 due to a VEP JSON parsing
+error. The error was caused by variant chr18:16770181 A&gt;C, where VEP annotated the
+context field with ‘-nan’, resulting in:</p>
+<blockquote>
+<div><p>com.fasterxml.jackson.core.JsonParseException: Unexpected character (‘n’ (code
+110)) in numeric value: expected digit (0-9) to follow minus sign</p>
+</div></blockquote>
+<p>After filtering that variant, another variant in the same region also failed with
+the same error. To ensure successful completion, the entire chr18 centromere region
+(chr18:15460900-20861207) is now excluded from VEP processing.</p>
+<p>Rather than rerun VEP on the entire context HT, this script:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Reconstructs the partially written HT by updating metadata files.</p></li>
+<li><p>Identifies which variants still need VEP annotation.</p></li>
+<li><p>Filters out the chr18 centromere region to prevent crashes.</p></li>
+<li><p>Runs VEP only on the remaining unannotated variants.</p></li>
+<li><p>Combines all results into a complete VEP-annotated context HT.</p></li>
+</ul>
+</div></blockquote>
+<p>Note: Variants in the chr18 centromere will have missing VEP annotations and
+should be investigated separately.</p>
+</div></blockquote>
+<p>Pipeline Steps:</p>
+<blockquote>
+<div><p>Step 1: Copy partial HT to temp location.
+Step 2: Extract partition metadata from index files and vep_context HT.
+Step 3: Reconstruct partial HT by updating metadata files.
+Step 4: Filter context HT to variants missing VEP (excluding chr18 centromere).
+Step 5: Run VEP on remaining variants (excludes chr18 centromere).
+Step 6: Run VEP on chr18 centromere variants with modified config.
+Step 7: Combine all VEP results and add metadata to final HT.</p>
+</div></blockquote>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.copy_partial_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">copy_partial_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">partial_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#copy_partial_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.copy_partial_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Copy entire partial HT directory to output location.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>partial_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Source path of partial HT.</p></li>
+<li><p><strong>output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Destination path for copied HT.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_partition_counts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">get_context_ht_partition_counts</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#get_context_ht_partition_counts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_partition_counts" title="Permalink to this definition"></a></dt>
+<dd><p>Get all partition counts from vep_context HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of partition counts for all partitions in vep_context HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_bounds">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">get_context_ht_bounds</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#get_context_ht_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_context_ht_bounds" title="Permalink to this definition"></a></dt>
+<dd><p>Get range bounds from vep_context HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of bounds where bounds[i] = bound for partition i.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partition_info">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">load_partition_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#load_partition_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partition_info" title="Permalink to this definition"></a></dt>
+<dd><p>Load partition counts, range bounds, and partition file names from a JSON file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to load the info file from.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of (counts list, bounds list, partition file names list).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.extract_partition_metadata_and_save">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">extract_partition_metadata_and_save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#extract_partition_metadata_and_save"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.extract_partition_metadata_and_save" title="Permalink to this definition"></a></dt>
+<dd><p>Extract partition metadata from index files and vep_context HT, then save for later reuse.</p>
+<p>This function:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Reads partition counts from index metadata files (validated against
+vep_context).</p></li>
+<li><p>Gets partition bounds from vep_context HT.</p></li>
+<li><p>Derives partition file names from index directory names.</p></li>
+<li><p>Saves all metadata to partition_info.json.</p></li>
+</ul>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to HT.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of (counts list, bounds list, partition file names list).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.reconstruct_partial_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">reconstruct_partial_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">schema_ref_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partition_counts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partition_bounds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">part_file_names</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#reconstruct_partial_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.reconstruct_partial_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Reconstruct the partially written HT by updating metadata from schema reference.</p>
+<p>Assumes the partial HT has already been copied to output_path and partition info
+has been read.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>schema_ref_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to schema reference HT.</p></li>
+<li><p><strong>output_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to copied partial HT (will update metadata in place).</p></li>
+<li><p><strong>partition_counts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – List of per-partition row counts.</p></li>
+<li><p><strong>partition_bounds</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>]) – List of per-partition range bounds.</p></li>
+<li><p><strong>part_file_names</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of partition file names.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The reconstructed Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.load_context_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">load_context_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">version</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'101'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#load_context_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_context_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Load the gnomAD context HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>version</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Version of the context HT to load.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Context Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partial_vep_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">load_partial_vep_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">partial_vep_ht_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#load_partial_vep_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.load_partial_vep_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Load the partial VEP HT.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>partial_vep_ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to partial VEP HT.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Partial VEP Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.prepare_context_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">prepare_context_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#prepare_context_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.prepare_context_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Prepare context HT by dropping existing VEP annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Context Hail Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Prepared context Hail Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.get_variants_that_need_vep">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">get_variants_that_need_vep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">context_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partial_vep_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#get_variants_that_need_vep"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.get_variants_that_need_vep" title="Permalink to this definition"></a></dt>
+<dd><p>Get variants that need VEP.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>context_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Prepared context Hail Table.</p></li>
+<li><p><strong>partial_vep_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Partial VEP Hail Table with VEP annotations on the context
+HT key.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table of variants needing VEP.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_problematic_variants">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">filter_problematic_variants</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#filter_problematic_variants"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_problematic_variants" title="Permalink to this definition"></a></dt>
+<dd><p>Filter out variants in regions that cause VEP to fail.</p>
+<p>Specifically filters the chr18 centromere (chr18:15460900-20861207) which contains
+variants that cause VEP to return ‘-nan’ in the context field, leading to JSON
+parsing errors. This region will be investigated separately.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table to filter.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filtered Hail Table excluding chr18 centromere.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_to_centromere_variants">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">filter_to_centromere_variants</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#filter_to_centromere_variants"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.filter_to_centromere_variants" title="Permalink to this definition"></a></dt>
+<dd><p>Filter to ONLY variants in the chr18 centromere region.</p>
+<p>This function is used to isolate centromere variants for VEP processing with
+a modified configuration that excludes the context plugin (which causes ‘-nan’
+errors).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table to filter.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filtered Hail Table containing only chr18 centromere variants.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_remaining">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">run_vep_on_remaining</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_config_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'file:///vep_data/vep-gcloud.json'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#run_vep_on_remaining"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_remaining" title="Permalink to this definition"></a></dt>
+<dd><p>Run VEP on variants that need it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table of variants needing VEP.</p></li>
+<li><p><strong>vep_config_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to VEP config file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with VEP annotations (or original if revep_count is 0).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_centromere">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">run_vep_on_centromere</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_config_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'file:///vep_data/vep-gcloud.json'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#run_vep_on_centromere"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.run_vep_on_centromere" title="Permalink to this definition"></a></dt>
+<dd><p>Run VEP on chr18 centromere variants.</p>
+<p>WARNING: This step requires using a VEP init script that does NOT include the
+‘context’ plugin in the VEP command, as the context plugin causes ‘-nan’ errors
+for variants in centromeric regions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table of centromere variants needing VEP.</p></li>
+<li><p><strong>vep_config_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to VEP config file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with VEP annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.add_vep_metadata">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">add_vep_metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_config_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#add_vep_metadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.add_vep_metadata" title="Permalink to this definition"></a></dt>
+<dd><p>Add VEP metadata (version, help, config) to global annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table with VEP annotations.</p></li>
+<li><p><strong>vep_config_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to VEP config file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with metadata annotations.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.combine_vep_results">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">combine_vep_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">context_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partial_vep_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">revep_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centromere_revep_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vep_config_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'file:///vep_data/vep-gcloud.json'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#combine_vep_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.combine_vep_results" title="Permalink to this definition"></a></dt>
+<dd><p>Combine VEP results from partial HT and newly VEPed variants.</p>
+<p>Annotates context HT with VEP from multiple sources in priority order:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Partial VEP HT (from original run).</p></li>
+<li><p>ReVEP HT (newly VEPed non-centromere variants).</p></li>
+<li><p>Centromere ReVEP HT (VEPed centromere variants).</p></li>
+</ol>
+</div></blockquote>
+<p>Variants not covered by any source will have missing VEP annotations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>context_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Context Hail Table.</p></li>
+<li><p><strong>partial_vep_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Partial VEP Hail Table with VEP annotations on the context
+HT key.</p></li>
+<li><p><strong>revep_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table with newly VEPed variants (excluding centromere).</p></li>
+<li><p><strong>centromere_revep_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Hail Table with VEPed centromere variants.</p></li>
+<li><p><strong>vep_config_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to VEP config file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Final combined Hail Table with VEP metadata.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.recover_and_complete_vep115.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.recover_and_complete_vep115.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/recover_and_complete_vep115.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.recover_and_complete_vep115.main" title="Permalink to this definition"></a></dt>
+<dd><p>Run the complete VEP 115 recovery and completion annotation pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="insilico_predictors.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.annotations.insilico_predictors" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vep_context_ht.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.annotations.vep_context_ht" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

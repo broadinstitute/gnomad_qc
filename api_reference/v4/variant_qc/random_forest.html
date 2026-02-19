@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.variant_qc.random_forest &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.variant_qc.vqsr" href="vqsr.html" />
+    <link rel="prev" title="gnomad_qc.v4.variant_qc.import_variant_qc_vcf" href="import_variant_qc_vcf.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">variant_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="evaluation.html">evaluation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="final_filter.html">final_filter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="final_filter_genomes.html">final_filter_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="import_variant_qc_vcf.html">import_variant_qc_vcf</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">random_forest</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vqsr.html">vqsr</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.variant_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.variant_qc.random_forest</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/variant_qc/random_forest.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-variant-qc-random-forest">
+<h1>gnomad_qc.v4.variant_qc.random_forest<a class="headerlink" href="#gnomad-qc-v4-variant-qc-random-forest" title="Permalink to this heading"></a></h1>
+<p>Script for running random forest model on gnomAD v4 variant QC data.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">variant_qc</span><span class="o">.</span><span class="n">random_forest</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">slack_channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">model</span><span class="o">-</span><span class="nb">id</span> <span class="n">MODEL_ID</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">list</span><span class="o">-</span><span class="n">rf</span><span class="o">-</span><span class="n">runs</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">train</span><span class="o">-</span><span class="n">rf</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">apply</span><span class="o">-</span><span class="n">rf</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">compute</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">method</span> <span class="p">{</span><span class="n">AS</span><span class="p">,</span><span class="n">quasi</span><span class="p">,</span><span class="n">set_long_AS_missing</span><span class="p">}]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">features</span> <span class="n">FEATURES</span> <span class="p">[</span><span class="n">FEATURES</span> <span class="o">...</span><span class="p">]]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">fp</span><span class="o">-</span><span class="n">to</span><span class="o">-</span><span class="n">tp</span> <span class="n">FP_TO_TP</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">intervals</span> <span class="n">TEST_INTERVALS</span> <span class="p">[</span><span class="n">TEST_INTERVALS</span> <span class="o">...</span><span class="p">]]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">num</span><span class="o">-</span><span class="n">trees</span> <span class="n">NUM_TREES</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">depth</span> <span class="n">MAX_DEPTH</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">adj</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">transmitted</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">sibling</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">filter</span><span class="o">-</span><span class="n">centromere</span><span class="o">-</span><span class="n">telomere</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">interval</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="nb">filter</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--slack_channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>If the dataset should be filtered to chr22 for testing (also filtered to evaluation interval specified by –test-intervals).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--model-id</kbd></dt>
+<dd><p>Model ID. Created by –train-rf and only needed for –apply-rf without running –train-rf.</p>
+</dd>
+</dl>
+</section>
+<section id="actions">
+<h2>Actions<a class="headerlink" href="#actions" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--list-rf-runs</kbd></dt>
+<dd><p>Lists all previous RF runs, along with their model ID, parameters and testing results.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--train-rf</kbd></dt>
+<dd><p>Trains RF model.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--apply-rf</kbd></dt>
+<dd><p>Applies RF model to the data.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="random-forest-parameters">
+<h2>Random Forest parameters<a class="headerlink" href="#random-forest-parameters" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--compute-info-method</kbd></dt>
+<dd><p>Possible choices: AS, quasi, set_long_AS_missing</p>
+<p>Method of computing the INFO score to use for the variant QC features. Default is ‘AS’.</p>
+<p>Default: “AS”</p>
+</dd>
+<dt><kbd>--features</kbd></dt>
+<dd><p>Features to use in the random forests model.</p>
+<p>Default: [‘AS_MQRankSum’, ‘AS_pab_max’, ‘AS_QD’, ‘AS_ReadPosRankSum’, ‘AS_SOR’, ‘allele_type’, ‘has_star’, ‘n_alt_alleles’, ‘variant_type’]</p>
+</dd>
+<dt><kbd>--fp-to-tp</kbd></dt>
+<dd><p>Ratio of FPs to TPs for training the RF model. If 0, all training examples are used. Default is 1.0.</p>
+<p>Default: 1.0</p>
+</dd>
+<dt><kbd>--test-intervals</kbd></dt>
+<dd><p>The specified interval(s) will be held out for testing and evaluation only. Default is “chr20”.</p>
+<p>Default: “chr20”</p>
+</dd>
+<dt><kbd>--num-trees</kbd></dt>
+<dd><p>Number of trees in the RF model. Default is 500.</p>
+<p>Default: 500</p>
+</dd>
+<dt><kbd>--max-depth</kbd></dt>
+<dd><p>Maxmimum tree depth in the RF model. Default is 5.</p>
+<p>Default: 5</p>
+</dd>
+</dl>
+</section>
+<section id="training-data-parameters">
+<h2>Training data parameters<a class="headerlink" href="#training-data-parameters" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--adj</kbd></dt>
+<dd><p>Use adj genotypes for transmitted/sibling singletons.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--transmitted-singletons</kbd></dt>
+<dd><p>Include transmitted singletons in training.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sibling-singletons</kbd></dt>
+<dd><p>Include sibling singletons in training.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--filter-centromere-telomere</kbd></dt>
+<dd><p>Train RF without centromeres and telomeres.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--interval-qc-filter</kbd></dt>
+<dd><p>Whether interval QC should be applied for RF training.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.random_forest.train_rf" title="gnomad_qc.v4.variant_qc.random_forest.train_rf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.train_rf</span></code></a>(ht)</p></td>
+<td><p>Train random forest model using <cite>train_rf_model</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.random_forest.add_model_to_run_list" title="gnomad_qc.v4.variant_qc.random_forest.add_model_to_run_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.add_model_to_run_list</span></code></a>(ht, ...)</p></td>
+<td><p>Add RF model run to RF run list.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.random_forest.get_variant_qc_resources" title="gnomad_qc.v4.variant_qc.random_forest.get_variant_qc_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.get_variant_qc_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the variant QC pipeline.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.variant_qc.random_forest.main" title="gnomad_qc.v4.variant_qc.random_forest.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.main</span></code></a>(args)</p></td>
+<td><p>Run random forest variant QC pipeline.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.variant_qc.random_forest"></span><p>Script for running random forest model on gnomAD v4 variant QC data.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.random_forest.train_rf">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.</span></span><span class="sig-name descname"><span class="pre">train_rf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fp_to_tp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_trees</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">500</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_depth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transmitted_singletons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sibling_singletons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_centromere_telomere</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_intervals</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'chr20'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_qc_pass_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/random_forest.html#train_rf"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.random_forest.train_rf" title="Permalink to this definition"></a></dt>
+<dd><p>Train random forest model using <cite>train_rf_model</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing annotations needed for RF training.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter the input Table to chr20 and <cite>test_intervals</cite> for
+test purposes. Default is False.</p></li>
+<li><p><strong>features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – List of features to use in the random forests model. When no
+<cite>features</cite> list is provided, the global FEATURES is used.</p></li>
+<li><p><strong>fp_to_tp</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Ratio of FPs to TPs for creating the RF model. If set to 0, all
+training examples are used. Default is 1.0.</p></li>
+<li><p><strong>num_trees</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of trees in the RF model. Default is 500.</p></li>
+<li><p><strong>max_depth</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Maximum tree depth in the RF model. Default is 5.</p></li>
+<li><p><strong>transmitted_singletons</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use transmitted singletons for training.
+Default is False.</p></li>
+<li><p><strong>sibling_singletons</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use sibling singletons for training. Default
+is False.</p></li>
+<li><p><strong>adj</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use adj genotypes for transmitted/sibling singletons instead
+of raw. Default is False and raw is used.</p></li>
+<li><p><strong>filter_centromere_telomere</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Filter centromeres and telomeres before training.
+Default is False.</p></li>
+<li><p><strong>test_intervals</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]]) – Specified interval(s) will be held out for testing and
+evaluation only. Default is “chr20”.</p></li>
+<li><p><strong>interval_qc_pass_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional interval QC pass Table that contains an
+‘interval_qc_pass’ annotation indicating whether the interval passes
+high-quality criteria. This annotation is used to filter the Table before
+running training the RF model. Default is None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Input <cite>ht</cite> annotated with training information and the RF model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.random_forest.add_model_to_run_list">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.</span></span><span class="sig-name descname"><span class="pre">add_model_to_run_list</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rf_runs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rf_run_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/random_forest.html#add_model_to_run_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.random_forest.add_model_to_run_list" title="Permalink to this definition"></a></dt>
+<dd><p>Add RF model run to RF run list.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing RF model run information as globals.</p></li>
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – ID of RF model run.</p></li>
+<li><p><strong>rf_runs</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-data docutils literal notranslate"><span class="pre">Any</span></code>]) – Dictionary containing current RF run information.</p></li>
+<li><p><strong>rf_run_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to RF run list.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.random_forest.get_variant_qc_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.</span></span><span class="sig-name descname"><span class="pre">get_variant_qc_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/random_forest.html#get_variant_qc_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.random_forest.get_variant_qc_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the variant QC pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to gather all resources for testing.</p></li>
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite resources if they exist.</p></li>
+<li><p><strong>model_id</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Model ID to use for RF model. If not provided, a new model ID will
+be generated.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+variant QC pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.variant_qc.random_forest.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.variant_qc.random_forest.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/variant_qc/random_forest.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.variant_qc.random_forest.main" title="Permalink to this definition"></a></dt>
+<dd><p>Run random forest variant QC pipeline.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="import_variant_qc_vcf.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.variant_qc.import_variant_qc_vcf" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vqsr.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.variant_qc.vqsr" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

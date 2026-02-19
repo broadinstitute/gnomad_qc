@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.identify_trios &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.sample_qc.interval_qc" href="interval_qc.html" />
+    <link rel="prev" title="gnomad_qc.v4.sample_qc.hard_filters" href="hard_filters.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../annotations/index.html">annotations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">sample_qc</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="assign_ancestry.html">assign_ancestry</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht.html">create_sample_qc_metadata_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="create_sample_qc_metadata_ht_genomes.html">create_sample_qc_metadata_ht_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_qc_mt.html">generate_qc_mt</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hard_filters.html">hard_filters</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">identify_trios</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_qc.html">interval_qc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="outlier_filtering.html">outlier_filtering</a></li>
+<li class="toctree-l4"><a class="reference internal" href="platform_inference.html">platform_inference</a></li>
+<li class="toctree-l4"><a class="reference internal" href="relatedness.html">relatedness</a></li>
+<li class="toctree-l4"><a class="reference internal" href="sex_inference.html">sex_inference</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.sample_qc</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.identify_trios</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/sample_qc/identify_trios.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-sample-qc-identify-trios">
+<h1>gnomad_qc.v4.sample_qc.identify_trios<a class="headerlink" href="#gnomad-qc-v4-sample-qc-identify-trios" title="Permalink to this heading"></a></h1>
+<p>Script to identify trios from relatedness data and filter based on Mendel errors and de novos.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">sample_qc</span><span class="o">.</span><span class="n">identify_trios</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">identify</span><span class="o">-</span><span class="n">duplicates</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">infer</span><span class="o">-</span><span class="n">families</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">fake</span><span class="o">-</span><span class="n">pedigree</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">fake</span><span class="o">-</span><span class="n">fam</span><span class="o">-</span><span class="n">prop</span> <span class="n">FAKE_FAM_PROP</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">run</span><span class="o">-</span><span class="n">mendel</span><span class="o">-</span><span class="n">errors</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">finalize</span><span class="o">-</span><span class="n">ped</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">mendel</span><span class="o">-</span><span class="n">z</span> <span class="p">[</span><span class="n">MAX_MENDEL_Z</span><span class="p">]]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">de</span><span class="o">-</span><span class="n">novo</span><span class="o">-</span><span class="n">z</span> <span class="p">[</span><span class="n">MAX_DE_NOVO_Z</span><span class="p">]]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">stratify</span><span class="o">-</span><span class="n">ukb</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">mendel</span> <span class="n">MAX_MENDEL</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">ukb</span><span class="o">-</span><span class="nb">max</span><span class="o">-</span><span class="n">mendel</span> <span class="n">UKB_MAX_MENDEL</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">de</span><span class="o">-</span><span class="n">novo</span> <span class="n">MAX_DE_NOVO</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">ukb</span><span class="o">-</span><span class="nb">max</span><span class="o">-</span><span class="n">de</span><span class="o">-</span><span class="n">novo</span> <span class="n">UKB_MAX_DE_NOVO</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">seed</span> <span class="n">SEED</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">dense</span><span class="o">-</span><span class="n">trio</span><span class="o">-</span><span class="n">mt</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">releasable</span><span class="o">-</span><span class="n">only</span><span class="p">]</span>
+                                                <span class="p">[</span><span class="o">--</span><span class="n">naive</span><span class="o">-</span><span class="n">coalesce</span><span class="o">-</span><span class="n">partitions</span> <span class="n">NAIVE_COALESCE_PARTITIONS</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--test</kbd></dt>
+<dd><p>Runs mendel errors on only five partitions of the MT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite all data from this subset (default: False).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+</dl>
+</section>
+<section id="duplicate-identification">
+<h2>Duplicate identification<a class="headerlink" href="#duplicate-identification" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--identify-duplicates</kbd></dt>
+<dd><p>Create a table with duplicate samples indicating which one is the best to use based on the ranking of all samples after sample QC metric outlier filtering (ranking used to determine related samples to drop for the release).</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="pedigree-inference">
+<h2>Pedigree inference<a class="headerlink" href="#pedigree-inference" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--infer-families</kbd></dt>
+<dd><p>Infer families and trios using the relatedness Table and duplicate Table.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="fake-pedigree-creation">
+<h2>Fake Pedigree creation<a class="headerlink" href="#fake-pedigree-creation" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--create-fake-pedigree</kbd></dt>
+<dd><p>Create a fake Pedigree from unrelated samples in the data for comparison to the inferred Pedigree.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--fake-fam-prop</kbd></dt>
+<dd><p>Number of fake trios to generate as a proportion of the total number of trios found in the data. Default is 0.1.</p>
+<p>Default: 0.1</p>
+</dd>
+</dl>
+</section>
+<section id="mendel-error-calculation">
+<h2>Mendel error calculation<a class="headerlink" href="#mendel-error-calculation" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--run-mendel-errors</kbd></dt>
+<dd><p>Calculate mendel errors for the inferred and fake Pedigrees on chr20.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="pedigree-filtering-for-final-pedigree-generation">
+<h2>Pedigree filtering for final Pedigree generation<a class="headerlink" href="#pedigree-filtering-for-final-pedigree-generation" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--finalize-ped</kbd></dt>
+<dd><p>Create final families/trios ped files by excluding trios where the number of Mendel errors or de novos are outliers. Outliers can be defined as trios that have Mendel errors or de novos higher than those specified in –max-mendel and –max-de-novo respectively. They can also be defined as trios that have Mendel errors or de novos higher than –max-mendel-z or –max-de-novo-z standard deviations above the mean across inferred trios.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--max-mendel-z</kbd></dt>
+<dd><p>Max number of standard deviations above the mean Mendel errors across inferred trios to keep a trio. If flag is set, default is 3.</p>
+</dd>
+<dt><kbd>--max-de-novo-z</kbd></dt>
+<dd><p>Max number of standard deviations above the mean de novos across inferred trios to keep a trio. If flag is set, default is 3.</p>
+</dd>
+<dt><kbd>--stratify-ukb</kbd></dt>
+<dd><p>Stratify Mendel errors and de novo standard deviations cutoffs to UKB and non-UKB samples.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--max-mendel</kbd></dt>
+<dd><p>Maximum number of raw Mendel errors for real trios. If specified and –ukb-max-mendel is not, –max-mendel will be used for all samples. If both –max-mendel and –ukb-max-mendel are specified, –max-mendel will be used for non-UKB samples and –ukb-max-mendel will be used for UKB samples.</p>
+</dd>
+<dt><kbd>--ukb-max-mendel</kbd></dt>
+<dd><p>Maximum number of raw Mendel errors for real trios in UKB samples. If specified, –max-mendel must also be specified for non-UKB samples. If not specified, but –max-mendel is, –max-mendel will be used for all samples.</p>
+</dd>
+<dt><kbd>--max-de-novo</kbd></dt>
+<dd><p>Maximum number of raw de novo mutations for real trios. If specified and –ukb-max-de-novo is not, –max-de-novo will be used for all samples. If both –max-de-novo and –ukb-max-de-novo are specified, –max-de-novo will be used for non-UKB samples and –ukb-max-de-novo will be used for UKB samples.</p>
+</dd>
+<dt><kbd>--ukb-max-de-novo</kbd></dt>
+<dd><p>Maximum number of raw de novo mutations for real trios in UKB samples. If specified, –max-de-novo must also be specified for non-UKB samples. If not specified, but –max-de-novo is, –max-de-novo will be used for all samples.</p>
+</dd>
+<dt><kbd>--seed</kbd></dt>
+<dd><p>Random seed for choosing one random trio per family to keep after filtering.</p>
+<p>Default: 24</p>
+</dd>
+</dl>
+</section>
+<section id="create-dense-trio-mt.">
+<h2>Create dense trio MT.<a class="headerlink" href="#create-dense-trio-mt." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--create-dense-trio-mt</kbd></dt>
+<dd><p>Create a dense MT for high quality trios.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--releasable-only</kbd></dt>
+<dd><p>Only include trios that are releasable.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--naive-coalesce-partitions</kbd></dt>
+<dd><p>Number of partitions to coalesce the VDS to.</p>
+<p>Default: 5000</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.families_to_trios" title="gnomad_qc.v4.sample_qc.identify_trios.families_to_trios"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.families_to_trios</span></code></a>(ped)</p></td>
+<td><p>Convert a Pedigree with families to a Pedigree with only one random trio per family.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.filter_relatedness_ht" title="gnomad_qc.v4.sample_qc.identify_trios.filter_relatedness_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.filter_relatedness_ht</span></code></a>(ht, ...)</p></td>
+<td><p>Filter relatedness Table to only include pairs of samples that are both exomes and not QC-filtered.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.platform_table_to_dict" title="gnomad_qc.v4.sample_qc.identify_trios.platform_table_to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.platform_table_to_dict</span></code></a>(...)</p></td>
+<td><p>Convert a Table with platform assignments to a sample:platform dictionary.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.run_create_fake_pedigree" title="gnomad_qc.v4.sample_qc.identify_trios.run_create_fake_pedigree"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.run_create_fake_pedigree</span></code></a>(...)</p></td>
+<td><p>Generate a fake Pedigree with <cite>fake_fam_prop</cite> defining the proportion of the number of trios in <cite>ped</cite> to use.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.run_mendel_errors" title="gnomad_qc.v4.sample_qc.identify_trios.run_mendel_errors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.run_mendel_errors</span></code></a>(...)</p></td>
+<td><p>Run Hail's <cite>mendel_errors</cite> on chr20 of the VDS subset to samples in <cite>ped</cite> and <cite>fake_ped</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.filter_ped_to_same_platform" title="gnomad_qc.v4.sample_qc.identify_trios.filter_ped_to_same_platform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.filter_ped_to_same_platform</span></code></a>(...)</p></td>
+<td><p>Filter a Pedigree to only trios where all samples are from the same platform.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.filter_ped" title="gnomad_qc.v4.sample_qc.identify_trios.filter_ped"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.filter_ped</span></code></a>(...)</p></td>
+<td><p>Filter a Pedigree based on Mendel errors and de novo metrics.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.create_dense_trio_mt" title="gnomad_qc.v4.sample_qc.identify_trios.create_dense_trio_mt"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.create_dense_trio_mt</span></code></a>(...)</p></td>
+<td><p>Create a dense MatrixTable for high quality trios.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.get_trio_resources" title="gnomad_qc.v4.sample_qc.identify_trios.get_trio_resources"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.get_trio_resources</span></code></a>(...)</p></td>
+<td><p>Get PipelineResourceCollection for all resources needed in the trio identification pipeline.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.sample_qc.identify_trios.main" title="gnomad_qc.v4.sample_qc.identify_trios.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.main</span></code></a>(args)</p></td>
+<td><p>Identify trios and filter based on Mendel errors and de novos.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.sample_qc.identify_trios"></span><p>Script to identify trios from relatedness data and filter based on Mendel errors and de novos.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.families_to_trios">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">families_to_trios</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">24</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#families_to_trios"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.families_to_trios" title="Permalink to this definition"></a></dt>
+<dd><p>Convert a Pedigree with families to a Pedigree with only one random trio per family.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree with families.</p></li>
+<li><p><strong>seed</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Random seed for choosing trio to keep from each family. Default is 24.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Pedigree with only one trio per family.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.filter_relatedness_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">filter_relatedness_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#filter_relatedness_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.filter_relatedness_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Filter relatedness Table to only include pairs of samples that are both exomes and not QC-filtered.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Relatedness Table.</p></li>
+<li><p><strong>filter_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Outlier filtering Table.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filtered relatedness Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.platform_table_to_dict">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">platform_table_to_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">platform_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#platform_table_to_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.platform_table_to_dict" title="Permalink to this definition"></a></dt>
+<dd><p>Convert a Table with platform assignments to a sample:platform dictionary.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This function assumes that the Table has a <cite>qc_platform</cite> field.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>platform_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with platform assignments.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Sample:platform dictionary.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.run_create_fake_pedigree">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">run_create_fake_pedigree</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filter_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fake_fam_prop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#run_create_fake_pedigree"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.run_create_fake_pedigree" title="Permalink to this definition"></a></dt>
+<dd><p>Generate a fake Pedigree with <cite>fake_fam_prop</cite> defining the proportion of the number of trios in <cite>ped</cite> to use.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree to use for generating fake Pedigree.</p></li>
+<li><p><strong>filter_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Outlier filtering Table.</p></li>
+<li><p><strong>platform_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional table with platform assignments. Default is None.</p></li>
+<li><p><strong>fake_fam_prop</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Proportion of trios in <cite>ped</cite> to use for generating fake
+Pedigree. Default is 0.1.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Fake Pedigree.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.run_mendel_errors">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">run_mendel_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fake_ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval_qc_pass_ht</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#run_mendel_errors"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.run_mendel_errors" title="Permalink to this definition"></a></dt>
+<dd><p>Run Hail’s <cite>mendel_errors</cite> on chr20 of the VDS subset to samples in <cite>ped</cite> and <cite>fake_ped</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Inferred Pedigree.</p></li>
+<li><p><strong>fake_ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Fake Pedigree.</p></li>
+<li><p><strong>interval_qc_pass_ht</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Optional interval QC pass Table that contains an
+‘interval_qc_pass’ annotation indicating whether the interval passes
+high-quality criteria. This annotation is used to filter the MatrixTable before
+running <cite>mendel_errors</cite>. Default is None.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to run on five partitions of the VDS for testing. Default is
+False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with Mendel errors on chr20.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.filter_ped_to_same_platform">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">filter_ped_to_same_platform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">platform_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#filter_ped_to_same_platform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.filter_ped_to_same_platform" title="Permalink to this definition"></a></dt>
+<dd><p>Filter a Pedigree to only trios where all samples are from the same platform.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree to filter.</p></li>
+<li><p><strong>platform_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with platform assignments.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Filtered Pedigree.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.filter_ped">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">filter_ped</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ped</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mendel_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_mendel_z</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_de_novo_z</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stratify_ukb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_mendel_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ukb_max_mendel_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_de_novo_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ukb_max_de_novo_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#filter_ped"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.filter_ped" title="Permalink to this definition"></a></dt>
+<dd><p>Filter a Pedigree based on Mendel errors and de novo metrics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree to filter.</p></li>
+<li><p><strong>mendel_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with Mendel errors.</p></li>
+<li><p><strong>max_mendel_z</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional maximum z-score for Mendel error metrics. Default is 3.</p></li>
+<li><p><strong>max_de_novo_z</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional maximum z-score for de novo metrics. Default is 3.</p></li>
+<li><p><strong>stratify_ukb</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to stratify z-score cutoffs by trio UK Biobank status.
+Default is False.</p></li>
+<li><p><strong>max_mendel_n</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional maximum Mendel error count. If specified and
+<cite>ukb_max_mendel_n</cite> is not, <cite>max_mendel_n</cite> will be used for all samples. If both
+<cite>max_mendel_n</cite> and <cite>ukb_max_mendel_n</cite> are specified, max_mendel_n` will be used
+for non-UKB samples and <cite>ukb_max_mendel_n</cite> will be used for UKB samples.
+Default is None.</p></li>
+<li><p><strong>ukb_max_mendel_n</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional maximum Mendel error count for trios in UK
+Biobank. If specified, <cite>max_mendel_n</cite> must also be specified for non-UKB
+samples. If not specified, but <cite>max_mendel_n</cite> is, <cite>max_mendel_n</cite> will be used
+for all samples. Default is None.</p></li>
+<li><p><strong>max_de_novo_n</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional maximum de novo count. If specified and
+<cite>ukb_max_de_novo_n</cite> is not, <cite>max_de_novo_n</cite> will be used for all samples. If
+both <cite>max_de_novo_n</cite> and <cite>ukb_max_de_novo_n</cite> are specified, max_de_novo_n` will
+be used for non-UKB samples and <cite>ukb_max_de_novo_n</cite> will be used for UKB
+samples. Default is None.</p></li>
+<li><p><strong>ukb_max_de_novo_n</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional maximum de novo count for trios in UK Biobank.
+If specified, <cite>max_de_novo_n</cite> must also be specified for non-UKB samples. If not
+specified, but <cite>max_de_novo_n</cite> is, <cite>max_de_novo_n</cite> will be used for all samples.
+Default is None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-data docutils literal notranslate"><span class="pre">Tuple</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of filtered Pedigree and dictionary of filtering parameters.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.create_dense_trio_mt">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">create_dense_trio_mt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fam_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">releasable_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">naive_coalesce_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#create_dense_trio_mt"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.create_dense_trio_mt" title="Permalink to this definition"></a></dt>
+<dd><p>Create a dense MatrixTable for high quality trios.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fam_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with family information.</p></li>
+<li><p><strong>meta_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with metadata information.</p></li>
+<li><p><strong>releasable_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to only include trios that are releasable. Default
+is True.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to filter to chr20 for testing. Default is False.</p></li>
+<li><p><strong>naive_coalesce_partitions</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]) – Optional Number of partitions to coalesce the VDS
+to. Default is None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dense MatrixTable with high quality trios.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.get_trio_resources">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">get_trio_resources</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">overwrite</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dense_trio_mt_releasable_only</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#get_trio_resources"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.get_trio_resources" title="Permalink to this definition"></a></dt>
+<dd><p>Get PipelineResourceCollection for all resources needed in the trio identification pipeline.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>overwrite</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to overwrite existing resources.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use test resources.</p></li>
+<li><p><strong>dense_trio_mt_releasable_only</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to only include trios that are
+releasable in the dense trio MT. Default is True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">PipelineResourceCollection</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>PipelineResourceCollection containing resources for all steps of the
+trio identification pipeline.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.sample_qc.identify_trios.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.sample_qc.identify_trios.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/sample_qc/identify_trios.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.sample_qc.identify_trios.main" title="Permalink to this definition"></a></dt>
+<dd><p>Identify trios and filter based on Mendel errors and de novos.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hard_filters.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.sample_qc.hard_filters" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="interval_qc.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.sample_qc.interval_qc" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

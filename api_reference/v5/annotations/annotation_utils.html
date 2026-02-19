@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.annotation_utils &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.annotations.compute_coverage" href="compute_coverage.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">annotation_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../configs/index.html">configs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../data_ingestion/index.html">data_ingestion</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.annotation_utils</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/annotation_utils.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-annotation-utils">
+<h1>gnomad_qc.v5.annotations.annotation_utils<a class="headerlink" href="#gnomad-qc-v5-annotations-annotation-utils" title="Permalink to this heading"></a></h1>
+<p>AoU-specific annotation utilities.</p>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.annotation_utils.annotate_adj_no_dp" title="gnomad_qc.v5.annotations.annotation_utils.annotate_adj_no_dp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.annotation_utils.annotate_adj_no_dp</span></code></a>(mt)</p></td>
+<td><p>Annotate genotypes with adj criteria.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.annotation_utils.get_adj_expr" title="gnomad_qc.v5.annotations.annotation_utils.get_adj_expr"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.annotation_utils.get_adj_expr</span></code></a>(...)</p></td>
+<td><p>Get adj genotype annotation.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.annotation_utils"></span><p>AoU-specific annotation utilities.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.annotation_utils.annotate_adj_no_dp">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.annotation_utils.</span></span><span class="sig-name descname"><span class="pre">annotate_adj_no_dp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj_gq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj_ab</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/annotation_utils.html#annotate_adj_no_dp"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.annotation_utils.annotate_adj_no_dp" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate genotypes with adj criteria.</p>
+<p>Defaults are similar to gnomAD values, but GQ &gt;= 20 changed to GQ &gt;= 30 to make up for lack of DP filter
+(raised GQ threshold to 30 to match DP 10 threshold in gnomAD defaults).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p></li>
+<li><p><strong>adj_gq</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Minimum GQ. Default is 30.</p></li>
+<li><p><strong>adj_ab</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum allele balance. Default is 0.2.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MatrixTable with adj annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.annotation_utils.get_adj_expr">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.annotation_utils.</span></span><span class="sig-name descname"><span class="pre">get_adj_expr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">gt_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gq_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ad_expr</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj_gq</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adj_ab</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/annotation_utils.html#get_adj_expr"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.annotation_utils.get_adj_expr" title="Permalink to this definition"></a></dt>
+<dd><p>Get adj genotype annotation.</p>
+<p>Defaults are similar to gnomAD values, but GQ &gt;= 20 changed to GQ &gt;= 30 to make up for lack of DP filter.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Assumes that the genotype expression is already adjusted for sex ploidy.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gt_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.CallExpression.html#hail.expr.CallExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">CallExpression</span></code></a>) – Genotype expression.</p></li>
+<li><p><strong>gq_expr</strong> (<code class="xref py py-data docutils literal notranslate"><span class="pre">Union</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Int32Expression.html#hail.expr.Int32Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Int32Expression</span></code></a>, <a class="reference external" href="https://hail.is/docs/0.2/hail.expr.Int64Expression.html#hail.expr.Int64Expression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Int64Expression</span></code></a>]) – GQ expression.</p></li>
+<li><p><strong>ad_expr</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.expr.ArrayNumericExpression.html#hail.expr.ArrayNumericExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">ArrayNumericExpression</span></code></a>) – Allele depth expression.</p></li>
+<li><p><strong>adj_gq</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Minimum GQ. Default is 30.</p></li>
+<li><p><strong>adj_ab</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Minimum allele balance. Default is 0.2.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.expr.BooleanExpression.html#hail.expr.BooleanExpression" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">BooleanExpression</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Expression for adj genotype annotation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="compute_coverage.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.annotations.compute_coverage" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

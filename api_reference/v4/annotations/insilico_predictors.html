@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.annotations.insilico_predictors &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v4.annotations.recover_and_complete_vep115" href="recover_and_complete_vep115.html" />
+    <link rel="prev" title="gnomad_qc.v4.annotations.generate_variant_qc_annotations" href="generate_variant_qc_annotations.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v4</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="fix_freq_an.html">fix_freq_an</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq.html">generate_freq</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_freq_genomes.html">generate_freq_genomes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_variant_qc_annotations.html">generate_variant_qc_annotations</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">insilico_predictors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recover_and_complete_vep115.html">recover_and_complete_vep115</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vep_context_ht.html">vep_context_ht</a></li>
+<li class="toctree-l4"><a class="reference internal" href="vrs_annotation_batch.html">vrs_annotation_batch</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../assessment/index.html">assessment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../create_release/index.html">create_release</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../sample_qc/index.html">sample_qc</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../subset.html">subset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../v5/index.html">v5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v4</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v4.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.annotations.insilico_predictors</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v4/annotations/insilico_predictors.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v4-annotations-insilico-predictors">
+<h1>gnomad_qc.v4.annotations.insilico_predictors<a class="headerlink" href="#gnomad-qc-v4-annotations-insilico-predictors" title="Permalink to this heading"></a></h1>
+<p>Script to generate Hail Tables with in silico predictors.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v4</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">insilico_predictors</span><span class="o">.</span><span class="n">py</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">slack</span><span class="o">-</span><span class="n">channel</span> <span class="n">SLACK_CHANNEL</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">cadd</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">spliceai</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">pangolin</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">revel</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">phylop</span><span class="p">]</span>
+                                                       <span class="p">[</span><span class="o">--</span><span class="n">revel</span><span class="o">-</span><span class="n">unmatched</span><span class="o">-</span><span class="n">transcripts</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--slack-channel</kbd></dt>
+<dd><p>Slack channel to post results and notifications to.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite data</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--cadd</kbd></dt>
+<dd><p>Create CADD HT</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--spliceai</kbd></dt>
+<dd><p>Create SpliceAI HT</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--pangolin</kbd></dt>
+<dd><p>Create Pangolin HT</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--revel</kbd></dt>
+<dd><p>Create REVEL HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--phylop</kbd></dt>
+<dd><p>Create PhyloP HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--revel-unmatched-transcripts</kbd></dt>
+<dd><p>Get alternative REVEL score for variants in MANE transcripts in v4.1 release.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.get_sift_polyphen_from_vep" title="gnomad_qc.v4.annotations.insilico_predictors.get_sift_polyphen_from_vep"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.get_sift_polyphen_from_vep</span></code></a>(ht)</p></td>
+<td><p>Get the max SIFT and PolyPhen scores from VEP 105 annotations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.create_cadd_grch38_ht" title="gnomad_qc.v4.annotations.insilico_predictors.create_cadd_grch38_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.create_cadd_grch38_ht</span></code></a>()</p></td>
+<td><p>Create a Hail Table with CADD scores for GRCh38.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.create_spliceai_grch38_ht" title="gnomad_qc.v4.annotations.insilico_predictors.create_spliceai_grch38_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.create_spliceai_grch38_ht</span></code></a>()</p></td>
+<td><p>Create a Hail Table with SpliceAI scores for GRCh38.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.create_pangolin_grch38_ht" title="gnomad_qc.v4.annotations.insilico_predictors.create_pangolin_grch38_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.create_pangolin_grch38_ht</span></code></a>()</p></td>
+<td><p>Create a Hail Table with Pangolin score for splicing for GRCh38.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.create_revel_grch38_ht" title="gnomad_qc.v4.annotations.insilico_predictors.create_revel_grch38_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.create_revel_grch38_ht</span></code></a>()</p></td>
+<td><p>Create a Hail Table with REVEL scores for GRCh38.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.create_phylop_grch38_ht" title="gnomad_qc.v4.annotations.insilico_predictors.create_phylop_grch38_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.create_phylop_grch38_ht</span></code></a>()</p></td>
+<td><p>Convert PhyloP scores to Hail Table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.get_revel_for_unmatched_transcripts" title="gnomad_qc.v4.annotations.insilico_predictors.get_revel_for_unmatched_transcripts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.get_revel_for_unmatched_transcripts</span></code></a>()</p></td>
+<td><p>Create Tables with alternative REVEL scores for variants in v4.1 release.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v4.annotations.insilico_predictors.main" title="gnomad_qc.v4.annotations.insilico_predictors.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.main</span></code></a>(args)</p></td>
+<td><p>Generate Hail Tables with in silico predictors.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v4.annotations.insilico_predictors"></span><p>Script to generate Hail Tables with in silico predictors.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.get_sift_polyphen_from_vep">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">get_sift_polyphen_from_vep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#get_sift_polyphen_from_vep"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.get_sift_polyphen_from_vep" title="Permalink to this definition"></a></dt>
+<dd><p>Get the max SIFT and PolyPhen scores from VEP 105 annotations.</p>
+<p>This retrieves the max of SIFT and PolyPhen scores for a variant’s MANE Select
+transcript or, if MANE Select does not exist, canonical transcript.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – VEP 105 annotated Hail Table.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table annotated with max SIFT and PolyPhen scores.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.create_cadd_grch38_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">create_cadd_grch38_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#create_cadd_grch38_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.create_cadd_grch38_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create a Hail Table with CADD scores for GRCh38.</p>
+<dl class="simple">
+<dt>The combined CADD scores in the returned table are from the following sources:</dt><dd><ul class="simple">
+<li><p>all SNVs: <cite>cadd.v1.6.whole_genome_SNVs.tsv.bgz</cite> (81G) downloaded from
+<cite>https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/whole_genome_SNVs.tsv.gz</cite>.
+It contains 8,812,917,339 SNVs.</p></li>
+<li><p>gnomad 3.0 indels: <cite>cadd.v1.6.gnomad.genomes.v3.0.indel.tsv.bgz</cite> (1.1G)
+downloaded from <cite>https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz</cite>.
+It contains 100,546,109 indels from gnomaD v3.0.</p></li>
+<li><p>gnomad 3.1 indels: <cite>cadd.v1.6.gnomad.genomes.v3.1.indels.new.ht</cite> was run
+on gnomAD v3.1 with CADD v1.6 in 2020. It contains 166,122,720 new indels from
+gnomAD v3.1 compared to v3.0.</p></li>
+<li><p>gnomad 3.1 complex indels: <cite>cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht</cite>
+was run on gnomAD v3.1 with CADD v1.6 in 2020. It contains 2,307 complex
+variants that do not fit Hail’s criteria for an indel and thus exist in
+a separate table than the gnomad 3.1 indels.</p></li>
+<li><p>gnomAD v4 exomes indels: <cite>cadd.v1.6.gnomad.exomes.v4.0.indels.new.tsv.bgz</cite>
+(368M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 32,561,
+253 indels that are new in gnomAD v4.</p></li>
+<li><p>gnomAD v4 genomes indels: <cite>cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz</cite>
+(13M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 904,906 indels
+that are new in gnomAD v4 genomes because of the addition of HGDP/TGP samples.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>~1,9M indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD v3.1 and
+v4.0. However, CADD only generates a score per loci. We keep only the latest
+prediction, v4.0, for these loci.
+The output generated a CADD HT with 9,110,177,520 rows.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Hail Table with CADD scores for GRCh38.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.create_spliceai_grch38_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">create_spliceai_grch38_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#create_spliceai_grch38_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.create_spliceai_grch38_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create a Hail Table with SpliceAI scores for GRCh38.</p>
+<dl class="simple">
+<dt>SpliceAI scores are from the following resources:</dt><dd><ul class="simple">
+<li><p>Precomputed SNVs: spliceai_scores.masked.snv.hg38.vcf.bgz,
+downloaded from <a class="reference external" href="https://basespace.illumina.com/s/5u6ThOblecrh">https://basespace.illumina.com/s/5u6ThOblecrh</a></p></li>
+<li><p>Precomputed indels: spliceai_scores.masked.indel.hg38.vcf.bgz,
+downloaded from <a class="reference external" href="https://basespace.illumina.com/s/5u6ThOblecrh">https://basespace.illumina.com/s/5u6ThOblecrh</a></p></li>
+<li><p>gnomAD v3 indels: gnomad_v3_indel.spliceai_masked.vcf.bgz,
+computed on v3.1 indels by Illumina in 2020.</p></li>
+<li><p>gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,
+computed on v4 indels that are new compared to v3 indels by Illumina in
+February 2023.</p></li>
+<li><p>gnomAD v3 and v4 unscored indels:
+spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz,
+another set of indels were not scored in v3 or v4 but computed by Illumina in
+September 2023.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Hail Table with SpliceAI scores for GRCh38.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.create_pangolin_grch38_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">create_pangolin_grch38_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#create_pangolin_grch38_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.create_pangolin_grch38_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create a Hail Table with Pangolin score for splicing for GRCh38.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The score was based on the splicing prediction tool Pangolin:
+Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
+Genome Biol 23, 103 (2022). <a class="reference external" href="https://doi.org/10.1186/s13059-022-02664-4">https://doi.org/10.1186/s13059-022-02664-4</a></p>
+</div>
+<p>There’s no precomputed score for all possible variants, the scores were
+generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
+gene body only with code from developers at Invitae:
+<a class="reference external" href="https://github.com/invitae/pangolin">https://github.com/invitae/pangolin</a>. All v4 genomes variants (except ~20M
+bug-affected and ~3M new variants from HGDP/TGP samples, noted below) were run on
+Pangolin v1.3.12, the others were run on Pangolin v1.4.4.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Hail Table with Pangolin score for splicing for GRCh38.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.create_revel_grch38_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">create_revel_grch38_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#create_revel_grch38_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.create_revel_grch38_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create a Hail Table with REVEL scores for GRCh38.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Starting with gnomAD v4, we use REVEL scores for only MANE Select and
+canonical transcripts. Even when a variant falls on multiple MANE/canonical
+transcripts of different genes, the scores are equal.</p>
+</div>
+<p>REVEL scores were downloaded from:
+<a class="reference external" href="https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip">https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip</a>
+size ~648M, ~82,100,677 variants</p>
+<p>REVEL’s Ensembl ID is not from Ensembl 105, so we filter to transcripts
+that are in Ensembl 105. The Ensembl 105 ID file was downloaded from Ensembl
+105 archive. It contains the following columns:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Transcript stable ID</p></li>
+<li><p>Ensembl Canonical</p></li>
+<li><p>MANE Select</p></li>
+</ul>
+</div></blockquote>
+<p>This deprecates the <cite>has_duplicate</cite> field present in gnomAD v3.1.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Hail Table with REVEL scores for GRCh38.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.create_phylop_grch38_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">create_phylop_grch38_ht</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#create_phylop_grch38_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.create_phylop_grch38_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Convert PhyloP scores to Hail Table.</p>
+<p>BigWig format of Phylop was download from here:
+<a class="reference external" href="https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig">https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig</a>
+and converted it to bedGraph format with bigWigToBedGraph from the kent packages
+of UCSC (<a class="reference external" href="https://hgdownload.cse.ucsc.edu/admin/exe/">https://hgdownload.cse.ucsc.edu/admin/exe/</a>) with the following command:
+<cite>./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph</cite>
+The bedGraph file is bigzipped before importing to Hail.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Different to other in silico predictors, the Phylop HT is keyed by locus only.
+Since the PhyloP scores have one value per position, we exploded the interval
+to store the HT by locus. In result, we have Phylop scores for 2,852,623,265
+locus from 2,648,607,958 intervals.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.137)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Hail Table with Phylop Scores for GRCh38</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.get_revel_for_unmatched_transcripts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">get_revel_for_unmatched_transcripts</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#get_revel_for_unmatched_transcripts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.get_revel_for_unmatched_transcripts" title="Permalink to this definition"></a></dt>
+<dd><p>Create Tables with alternative REVEL scores for variants in v4.1 release.</p>
+<p>..note:
+:rtype: <code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+<blockquote>
+<div><p>REVEL was computed using transcripts from Ensembl v64. In the gnomAD v4.0
+and v4.1 release Tables, transcript information from Ensembl v105 and variant
+information (locus and alleles combination) were used to ascertain variant
+REVEL scores for MANE select or canonical transcripts only. This means that
+variants within 2,414 MANE select transcripts in gnomAD v4.0 and v4.1 are
+missing REVEL scores because they are not present in Ensembl v64.</p>
+<p>To address this, we annotated the variants within the 2,414 genes with the
+maximum REVEL score found at the specific locus and allele, rather than the
+score for the MANE Select transcript.</p>
+<p>The exomes TSV adds REVEL scores to 1,936,321 out of 2,284,296 (87.77%)
+missense variants within the 2,414 genes. The genomes TSV adds REVEL scores
+to 528,204 out of 620,799 ( 85.08%) missense variants within the 2,414 genes.</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v4.annotations.insilico_predictors.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v4.annotations.insilico_predictors.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v4/annotations/insilico_predictors.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v4.annotations.insilico_predictors.main" title="Permalink to this definition"></a></dt>
+<dd><p>Generate Hail Tables with in silico predictors.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generate_variant_qc_annotations.html" class="btn btn-neutral float-left" title="gnomad_qc.v4.annotations.generate_variant_qc_annotations" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="recover_and_complete_vep115.html" class="btn btn-neutral float-right" title="gnomad_qc.v4.annotations.recover_and_complete_vep115" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
