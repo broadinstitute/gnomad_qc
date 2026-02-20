@@ -17,6 +17,7 @@ from gnomad_qc.v5.resources.constants import (
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
+    BATCH_TMP_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
     GNOMAD_TMP_BUCKET,
@@ -80,7 +81,10 @@ def qc_temp_prefix(
             f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
         )
     elif environment in ("dataproc", "batch"):
-        env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
+        tmp_bucket = (
+            GNOMAD_TMP_BUCKET if environment == "dataproc" else BATCH_TMP_BUCKET
+        )
+        env_bucket = f"{tmp_bucket}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb', 'dataproc', or 'batch'."

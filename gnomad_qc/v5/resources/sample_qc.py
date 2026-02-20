@@ -12,6 +12,7 @@ from gnomad.resources.resource_utils import (
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     AOU_VERSIONS,
+    BATCH_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
     GNOMAD_BUCKET,
@@ -44,7 +45,12 @@ def get_sample_qc_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    base_bucket = WORKSPACE_BUCKET if environment == "rwb" else GNOMAD_BUCKET
+    if environment == "rwb":
+        base_bucket = WORKSPACE_BUCKET
+    elif environment == "batch":
+        base_bucket = BATCH_BUCKET
+    else:
+        base_bucket = GNOMAD_BUCKET
     return f"gs://{base_bucket}/v{version}/{path_suffix}"
 
 

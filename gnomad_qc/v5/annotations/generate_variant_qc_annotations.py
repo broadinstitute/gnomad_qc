@@ -18,7 +18,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_trio_stats,
 )
 from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
-from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -213,7 +213,7 @@ def main(args):
     else:
         environment = "batch"
         hl.init(
-            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4day",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             log="generate_variant_qc_annotations.log",
         )
         # TODO: Add machine configurations for Batch.
