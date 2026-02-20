@@ -240,6 +240,33 @@ def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableR
     )
 
 
+def get_variant_qc_annotations(
+    test: bool = False, environment: str = "rwb"
+) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 variant QC annotations VersionedTableResource.
+
+    This HT contains all annotations needed for variant QC RF training, including:
+    - Info features (AS_QD, AS_MQRankSum, AS_SOR, AS_ReadPosRankSum, AS_pab_max)
+    - Allele features (variant_type, allele_type, n_alt_alleles, has_star)
+    - Truth data (hapmap, omni, mills, kgp_phase1_hc)
+    - Training labels (transmitted_singleton_*, sibling_singleton_*, fail_hard_filters)
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :return: Variant QC annotations VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
 # Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
 # is stated in the previous header as an int but it is actually a float.
 aou_vcf_header = (
