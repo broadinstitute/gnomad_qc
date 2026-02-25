@@ -1135,10 +1135,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--release-exists",
         help=(
-            "Use the release version specified by --version as the base HT. When "
-            "specified, loads the release HT for the version being updated and uses it "
-            "as the base for joining other tables. This is useful when updating an "
-            "existing release in place. Mutually exclusive with --base-release-version."
+            "Load the existing release HT for the version specified by --version so it "
+            "can be joined with other tables. To use this release HT as the base for "
+            "joining, also set --base-table release and include 'release' in "
+            "--tables-for-join. This is useful when updating an existing release in "
+            "place. Mutually exclusive with --base-release-version."
         ),
         action="store_true",
     )
