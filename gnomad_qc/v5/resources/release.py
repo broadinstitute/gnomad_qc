@@ -48,7 +48,7 @@ The example below shows how to access the entry of the high quality genotypes
 (group: adj) of XX individuals (sex: XX) labeled as AFR (gen_anc: AFR)
 in the HT:
 
-    # Use the key 'afr-XX-adj' to retrieve the index of this groups frequency data in 'freq'
+    # Use the key 'afr-XX-adj' to retrieve the index of this group's frequency data in 'freq'
     ht = ht.annotate(afr_XX_freq=ht.freq[ht.freq_index_dict['afr-XX-adj']])
 
 The above example will retrieve the entire frequency struct for each variant. To grab a
