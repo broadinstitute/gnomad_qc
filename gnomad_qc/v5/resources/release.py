@@ -234,15 +234,15 @@ def release_all_sites_an(
 
 
 def included_datasets_json_path(
-    test: bool = False,
     release_version: str = CURRENT_RELEASE,
+    test: bool = False,
     environment: str = "rwb",
 ) -> str:
     """
     Fetch filepath for the JSON containing all datasets used in the release.
 
-    :param test: Whether to use a tmp path for testing. Default is False.
     :param release_version: Release version. Default is CURRENT_RELEASE.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :param environment: Environment to use. Default is "rwb".
     :return: File path for release versions included datasets JSON
     """
