@@ -40,7 +40,7 @@ subset_group, e.g. “non_aou_raw”
 gen-anc_group, e.g. “afr_adj”
 gen-anc_sex_group, e.g. “ami_XX_adj”
 subset_gen-anc_group, e.g. “non_aou_sas_adj”
-subset_gen-anc_group, e.g. “non_aou_XY_adj”
+subset_sex_group, e.g. “non_aou_XY_adj”
 subset_gen-anc_sex_group, e.g. “non_aou_mid_XX_adj”,
 downsampling_group_gen-anc, e.g. “1373_afr_adj”
 
