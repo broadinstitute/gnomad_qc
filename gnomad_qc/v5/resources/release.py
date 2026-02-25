@@ -61,6 +61,7 @@ by using the 'faf_index_dict'. For more information, please visit the FAQ page:
 https://gnomad.broadinstitute.org/help#technical-details:~:text=How%20do%20I%20access%20the%20gnomAD%20Hail%20Table%20frequency%20annotation%3F
 """
 
+
 def _release_root(
     version: str = CURRENT_RELEASE,
     test: bool = False,
@@ -265,10 +266,9 @@ def release_ht_path(
     :return: File path for desired release Hail Table.
     """
     if public:
-        if file_exists(
-            public_release(data_type="genomes").versions[release_version].path
-        ):
-            return public_release(data_type="genomes").versions[release_version].path
+        res = public_release(data_type="genomes").versions
+        if release_version in res and file_exists(res[release_version].path):
+            return res[release_version].path
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/genomes/gnomad.genomes.v{release_version}.sites.ht"
     else:

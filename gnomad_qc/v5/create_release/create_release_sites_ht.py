@@ -15,16 +15,22 @@ from gnomad.resources.grch38.reference_data import (
 )
 from gnomad.utils.annotations import region_flag_expr
 from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, AS_FIELDS, SITE_FIELDS
+from gnomad.utils.vep import update_loftee_end_trunc_filter
 from hail.utils import new_temp_file
 
 from gnomad_qc.v5.annotations.insilico_predictors import get_sift_polyphen_from_vep
+
+# TODO: Add all these utils.
 from gnomad_qc.v5.create_release.create_release_utils import (
     DBSNP_VERSION,
     GENCODE_VERSION,
+    GENCODE_VERSIONS,
     MANE_SELECT_VERSION,
+    MANE_SELECT_VERSIONS,
     POLYPHEN_VERSION,
     SEQREPO_VERSION,
     SIFT_VERSION,
+    VEP_VERSIONS_TO_ADD,
     VRS_PYTHON_VERSION,
     VRS_SCHEMA_VERSION,
     remove_missing_vep_fields,
@@ -39,6 +45,7 @@ from gnomad_qc.v5.resources.annotations import (
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     CURRENT_RELEASE,
+    DEFAULT_VEP_VERSION,
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
 )
@@ -56,38 +63,35 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 # TODO: check AS FIELDS AND SITE FIELDS
-TABLES_FOR_RELEASE = [
-    "dbsnp",
-    "filters",
-    "freq",
-    "info",
-    "region_flags",
-    "in_silico",
-    "vep",
-]
 
 INSILICO_PREDICTORS = ["cadd", "revel", "spliceai", "pangolin", "phylop"]
 
+
 # check release config
-FINALIZED_SCHEMA = {
-    "globals": [
-        "freq_meta",
-        "freq_index_dict",
-        "freq_meta_sample_count",
-        "faf_meta",
-        "faf_index_dict",
-        "age_distribution",
-        "aou_downsamplings",
-        "filtering_model",
-        "inbreeding_coeff_cutoff",
-        "tool_versions",
-        "vrs_versions",
-        "vep_globals",
-        "frequency_README",
-        "date",
-        "version",
-    ],
-    "rows": [
+def get_finalized_schema(version: str) -> Dict[str, List[str]]:
+    """
+    Get finalized schema for release HT based on version.
+
+    :param version: Release version (e.g., "5.0").
+    :return: Dictionary with "globals" and "rows" lists of field names.
+    """
+    globals_list = (
+        [
+            "freq_meta",
+            "freq_index_dict",
+            "freq_meta_sample_count",
+            "faf_meta",
+            "faf_index_dict",
+            "age_distribution",
+            "aou_downsamplings",
+            "filtering_model",
+            "inbreeding_coeff_cutoff",
+            "tool_versions",
+            "vrs_versions",
+            "vep_globals",
+        ],
+    )
+    rows_list = [
         "freq",
         "grpmax",
         "faf",
@@ -103,13 +107,67 @@ FINALIZED_SCHEMA = {
         "allele_info",
         "histograms",
         "in_silico_predictors",
-    ],
-}
+    ]
+
+    # Add additional VEP versions based on release version.
+    if version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[version]:
+            globals_list.append(f"vep{vep_version}_globals")
+            rows_list.append(f"vep{vep_version}")
+
+    globals_list.extend(
+        [
+            "frequency_README",
+            "date",
+            "version",
+        ]
+    )
+
+    return {
+        "globals": globals_list,
+        "rows": rows_list,
+    }
+
+
+# Default schema for backward compatibility.
+FINALIZED_SCHEMA = get_finalized_schema(CURRENT_RELEASE)
+
+
+def get_tables_for_release(version: str) -> List[str]:
+    """
+    Get list of tables to include in release based on version.
+
+    :param version: Release version (e.g., "5.0").
+    :return: List of table names to include in release.
+    """
+    tables = [
+        "dbsnp",
+        "filters",
+        "freq",
+        "info",
+        "region_flags",
+        "in_silico",
+        "vep",
+    ]
+    # Add additional VEP versions based on release version.
+    if version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[version]:
+            tables.append(f"vep{vep_version}")
+    return tables
+
+
+# Default tables for backward compatibility.
+TABLES_FOR_RELEASE = get_tables_for_release(CURRENT_RELEASE)
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
-    release_exists: bool = False, test: bool = False, environment: str = "rwb"
+    tables_for_join: List[str],
+    release_exists: bool = False,
+    version: str = CURRENT_RELEASE,
+    base_release_version: Optional[str] = None,
+    test: bool = False,
+    environment: str = "rwb",
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary for specified data type.
@@ -139,25 +197,43 @@ def get_config(
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
-    :param release_exists: Whether the release HT already exists.
+    :param tables_for_join: List of tables to join.
+    :param release_exists: Whether the release HT already exists. If True, uses the
+        specified `version` as the base release HT. Mutually exclusive with
+        `base_release_version`.
+    :param version: Release version for output (e.g., "5.0").
+    :param base_release_version: Specific release version to use as the base HT
+        (e.g., "5.0"). When provided, loads that version's release HT as the base.
+        Mutually exclusive with `release_exists`.
     :param test: Whether or not to use the test versions of the datasets when available.
     :param environment: Environment to use. Default is "rwb".
     :return: Dict of dataset's configs.
     """
-    config = {
-        "dbsnp": {
+    if base_release_version is not None and release_exists:
+        raise ValueError(
+            "Cannot specify both --release-exists and --base-release-version. "
+            "Use --base-release-version to specify a specific version to use as the "
+            "base, or use --release-exists to use the output version as the base."
+        )
+
+    config = {}
+
+    if "dbsnp" in tables_for_join:
+        config["dbsnp"] = {
             "ht": dbsnp.ht(),
             "path": dbsnp.path,
             "select": ["rsid"],
-        },
-        "filters": {
+        }
+    if "filters" in tables_for_join or "info" in tables_for_join:
+        config["filters"] = {
             "ht": final_filter().ht(),
             "path": final_filter().path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "custom_globals_select": custom_filters_select_globals,
-        },
-        "in_silico": {
+        }
+    if "in_silico" in tables_for_join:
+        config["in_silico"] = {
             "ht": reduce(
                 (
                     lambda joined_ht, ht: (
@@ -192,14 +268,16 @@ def get_config(
                 "phylop_version",
             ],
             "global_name": "tool_versions",
-        },
-        "info": {
+        }
+    if "info" in tables_for_join:
+        config["info"] = {
             "ht": get_info_ht(test=test, environment=environment).ht(),
             "path": get_info_ht(test=test, environment=environment).path,
             "select": ["was_split", "a_index"],
             "custom_select": custom_info_select,
-        },
-        "freq": {
+        }
+    if "freq" in tables_for_join or "info" in tables_for_join:
+        config["freq"] = {
             "ht": get_freq(
                 test=test,
                 data_type="genomes",
@@ -228,20 +306,49 @@ def get_config(
                 "age_distribution",
                 "aou_downsamplings",
             ],
-        },
-        "vep": {
-            "ht": get_vep(data_type="genomes").ht(),
-            "path": get_vep(data_type="genomes").path,
+        }
+    if "vep" in tables_for_join:
+        config["vep"] = {
+            # TODO: add vep version param.
+            "ht": get_vep(data_type="genomes", vep_version=DEFAULT_VEP_VERSION).ht(),
+            "path": get_vep(data_type="genomes", vep_version=DEFAULT_VEP_VERSION).path,
             "select": ["vep"],
-            "custom_select": custom_vep_select,
+            "custom_select": get_custom_vep_select(DEFAULT_VEP_VERSION),
             "select_globals": [
                 "vep_version",
                 "vep_help",
                 "vep_config",
             ],
             "global_name": "vep_globals",
-        },
-        "region_flags": {
+        }
+
+    # Dynamically add additional VEP versions based on release version.
+    if version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[version]:
+            vep_table_name = f"vep{vep_version}"
+            if vep_table_name in tables_for_join:
+                config[vep_table_name] = {
+                    "ht": (
+                        get_vep(
+                            data_type=data_type, vep_version=vep_version, test=test
+                        ).ht()
+                    ),
+                    "path": (
+                        get_vep(
+                            data_type=data_type, vep_version=vep_version, test=test
+                        ).path
+                    ),
+                    "select": [],
+                    "custom_select": get_custom_vep_select(vep_version),
+                    "select_globals": [
+                        "vep_version",
+                        "vep_help",
+                        "vep_config",
+                    ],
+                    "global_name": f"{vep_table_name}_globals",
+                }
+    if "region_flags" in tables_for_join:
+        config["region_flags"] = {
             "ht": get_freq(
                 test=test,
                 data_type="genomes",
@@ -255,22 +362,19 @@ def get_config(
                 environment=environment,
             ).path,
             "custom_select": custom_region_flags_select,
-        },
-        "release": {
-            "path": release_sites(environment=environment).path,
-        },
-    }
+        }
 
-    if release_exists:
-        config["release"].update(
-            {
-                "ht": release_sites(environment=environment).ht(),
-                "select": [r for r in release_sites(environment=environment).ht().row],
-                "select_globals": [
-                    g for g in release_sites(environment=environment).ht().globals
-                ],
-            }
-        )
+    if release_exists or base_release_version is not None:
+        # Determine which release version to use as the base HT.
+        base_version = base_release_version or version
+        release_res = release_sites(environment=environment).versions[base_version]
+        release_ht = release_res.ht()
+        config["release"] = {
+            "ht": release_ht,
+            "path": release_res.path,
+            "select": [r for r in release_ht.row_value],
+            "select_globals": [g for g in release_ht.globals],
+        }
     return config
 
 
@@ -399,6 +503,19 @@ def custom_info_select(
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
     vrs_ht = get_vrs(data_type="genomes").ht()
+
+    # This is the schema of the updated VRS HT generated by Kyle for v4.1.1 and beyond versions:
+    #     'info': struct {
+    #         VRS_Allele_IDs: array<str>,
+    #         VRS_Starts: array<int32>,
+    #         VRS_Ends: array<int32>,
+    #         VRS_States: array<str>,
+    #         VRS_Lengths: array<int32>,
+    #         VRS_RepeatSubunitLengths: array<int32>
+    #     }
+    # Rename info to `vrs`.
+    vrs_ht = vrs_ht.transmute(vrs=vrs_ht.info)
+
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
@@ -422,18 +539,46 @@ def custom_info_select(
     return selects
 
 
-def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
+def get_custom_vep_select(vep_version: str):
     """
-    Select fields for VEP hail Table annotation in release.
+    Get custom VEP select function for a given VEP version.
 
-    :param ht: VEP Hail table
-    :return: Select expression dict.
+    :param vep_version: VEP version (e.g., "105", "115").
+    :return: Custom select function for the VEP version.
     """
-    # TODO: Update based on any updates to the VEP fields.
-    vep_expr = remove_missing_vep_fields(ht.vep)
-    selects = {
-        "vep": vep_expr.annotate(
-            transcript_consequences=vep_expr.transcript_consequences.map(
+
+    def custom_vep_version_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
+        """
+        Select fields for VEP Hail Table annotation in release.
+
+        This custom select function does the following:
+
+            - For VEP 105: Removes fields from VEP annotations that have been excluded
+              in past releases or are missing in all rows.
+            - Drops sift_prediction, sift_score, polyphen_prediction, and polyphen_score
+              fields from the transcript_consequences array.
+            - Updates the loftee annotations to use a GERP score threshold of 0 instead
+              of the default applied by the LOFTEE plugin.
+
+        :param ht: VEP Hail table.
+        :return: Select expression dict.
+        """
+        # Only apply remove_missing_vep_fields for VEP 105.
+        if vep_version == "105":
+            vep_expr = remove_missing_vep_fields(ht.vep)
+        else:
+            vep_expr = ht.vep
+
+        field_name = (
+            f"vep{vep_version}" if vep_version != DEFAULT_VEP_VERSION else "vep"
+        )
+        csqs_expr = vep_expr.transcript_consequences.map(
+            lambda x: update_loftee_end_trunc_filter(x)
+        )
+
+        # Only drop sift/polyphen fields for default VEP version.
+        if vep_version == DEFAULT_VEP_VERSION:
+            csqs_expr = csqs_expr.map(
                 lambda x: x.drop(
                     "sift_prediction",
                     "sift_score",
@@ -441,9 +586,10 @@ def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
                     "polyphen_score",
                 )
             )
-        )
-    }
-    return selects
+
+        return {field_name: vep_expr.annotate(transcript_consequences=csqs_expr)}
+
+    return custom_vep_version_select
 
 
 def get_select_global_fields(
@@ -700,9 +846,7 @@ def join_hts(
 
     if use_annotate:
         joined_ht = reduce(
-            lambda joined_ht, ht: joined_ht.annotate(
-                **ht.index([*[joined_ht[k] for k in list(ht.key)]])
-            ),
+            lambda joined_ht, ht: joined_ht.annotate(**ht[joined_ht.key]),
             hts,
         )
         hts = [g_ht.index_globals() for g_ht in hts]
@@ -791,25 +935,40 @@ def add_global_annotations(ht: hl.Table, version: str) -> hl.Table:
     :param version: Version of the release.
     :return: Hail Table with global version annotations.
     """
-    return ht.annotate_globals(
-        vep_globals=ht.vep_globals.annotate(
+    # Add additional globals that were not present on the joined HTs.
+    globals_to_annotate = {
+        "vep_globals": ht.vep_globals.annotate(
             gencode_version=GENCODE_VERSION,
             mane_select_version=MANE_SELECT_VERSION,
         ),
-        tool_versions=ht.tool_versions.annotate(
+        "tool_versions": ht.tool_versions.annotate(
             dbsnp_version=DBSNP_VERSION,
             sift_version=SIFT_VERSION,
             polyphen_version=POLYPHEN_VERSION,
         ),
-        vrs_versions=hl.struct(
-            vrs_schema_version=VRS_SCHEMA_VERSION,
-            vrs_python_version=VRS_PYTHON_VERSION,
-            seqrepo_version=SEQREPO_VERSION,
+        "vrs_versions": hl.struct(
+            **{
+                "vrs_schema_version": VRS_SCHEMA_VERSION,
+                "vrs_python_version": VRS_PYTHON_VERSION,
+                "seqrepo_version": SEQREPO_VERSION,
+            },
         ),
-        date=datetime.now().isoformat(),
-        version=version,
-        frequency_README=FREQUENCY_README,
-    )
+        "date": datetime.now().isoformat(),
+        "version": version,
+        "frequency_README": FREQUENCY_README,
+    }
+
+    # Add additional VEP version globals annotations if they exist
+    if args.version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[args.version]:
+            vep_globals_name = f"vep{vep_version}_globals"
+            if vep_globals_name in ht.globals:
+                globals_to_annotate[vep_globals_name] = ht[vep_globals_name].annotate(
+                    gencode_version=GENCODE_VERSIONS[vep_version],
+                    mane_select_version=MANE_SELECT_VERSIONS[vep_version],
+                )
+
+    ht = ht.annotate_globals(**globals_to_annotate)
 
 
 def main(args):
@@ -831,22 +990,56 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
 
+    # Determine tables to join based on version if not explicitly provided.
+    tables_for_join = (
+        args.tables_for_join
+        if args.tables_for_join
+        else get_tables_for_release(args.version)
+    )
+
+    # Get schema based on version.
+    finalized_schema = get_finalized_schema(args.version)
+
     logger.info(
         "Getting config for release HT to check Tables for duplicate variants..."
     )
     config = get_config(
-        release_exists=args.release_exists, test=test, environment=environment
+        tables_for_join=tables_for_join,
+        release_exists=args.release_exists,
+        version=args.version,
+        base_release_version=args.base_release_version,
+        test=test,
+        environment=environment,
     )
-    check_duplicate_rows_in_config_hts(config)
+
+    dup_errors = []
+    if not args.test and not args.no_dup_check:
+        logger.info("Checking for duplicate rows in config HTs...")
+        for c in config:
+            if "ht" in config[c]:
+                ht = config[c]["ht"]
+                distinct_count = ht.select().distinct().count()
+                if distinct_count != ht.count():
+                    dup_errors.append(
+                        f"HT {c} has {distinct_count} distinct rows but {ht.count()} total"
+                        " rows."
+                    )
+                else:
+                    logger.info(f"HT {c} has no duplicate rows.")
+        if dup_errors:
+            raise ValueError("\n".join(dup_errors))
 
     logger.info("Creating release HT...")
     ht = join_hts(
         args.base_table,
-        args.tables_for_join,
+        tables_for_join,
         config,
-        args.version,
+        version=args.version,
         new_partition_percent=args.new_partition_percent,
         track_included_datasets=True,
+        # Use annotate if the release exists or the base release version is specified
+        # because we want to replace the annotations instead of joining them.
+        use_annotate=args.release_exists or args.base_release_version,
         test=test,
     )
 
@@ -860,15 +1053,15 @@ def main(args):
     logger.info("Finalizing the release HT globals...")
     ht = add_global_annotations(ht, version=args.version)
 
-    # Organize the fields in the release HT to match the order of FINALIZED_SCHEMA when
+    # Organize the fields in the release HT to match the order of finalized_schema when
     # the fields are present in the HT.
-    final_fields = get_final_ht_fields(ht)
+    final_fields = get_final_ht_fields(ht, schema=finalized_schema)
     ht = ht.select(*final_fields["rows"]).select_globals(*final_fields["globals"])
 
     output_path = (
         f"{qc_temp_prefix(environment=environment)}release/gnomad.genomes.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
         if test
-        else release_sites(environment=environment).path
+        else release_sites(environment=environment, public=False).path
     )
 
     logger.info(f"Writing out release HT to %s", output_path)
@@ -917,7 +1110,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "-j",
         "--tables-for-join",
         help="Tables to join for release",
-        default=TABLES_FOR_RELEASE,
+        default=None,
         type=str,
         nargs="+",
     )
@@ -926,12 +1119,29 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--base-table",
         help="Base table for interval partition calculation.",
         default="freq",
-        choices=TABLES_FOR_RELEASE,
     )
     parser.add_argument(
         "--release-exists",
-        help="Whether the release HT already exists.",
+        help=(
+            "Use the release version specified by --version as the base HT. When "
+            "specified, loads the release HT for the version being updated and uses it "
+            "as the base for joining other tables. This is useful when updating an "
+            "existing release in place. Mutually exclusive with --base-release-version."
+        ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--base-release-version",
+        help=(
+            "Specific release version to use as the base HT (e.g., '4.1'). When "
+            "specified, loads that version's release HT as the base for joining other "
+            "tables. This is useful when creating a new release version (specified by "
+            "--version) from an existing release version. For example, to create "
+            "v4.1.1 from v4.1 base, use --base-release-version 4.1 --version 4.1.1. "
+            "Mutually exclusive with --release-exists."
+        ),
+        type=str,
+        default=None,
     )
 
     parser.add_argument(
@@ -939,6 +1149,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of partitions to naive coalesce the release Table to.",
         type=int,
         default=10000,
+    )
+    parser.add_argument(
+        "--no-dup-check",
+        help="Skip duplicate check.",
+        action="store_true",
     )
 
     return parser

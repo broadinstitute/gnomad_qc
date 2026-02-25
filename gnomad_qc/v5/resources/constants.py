@@ -22,6 +22,15 @@ AOU_WGS_AUX_BUCKET = f"{AOU_WGS_BUCKET}/aux"
 AOU_LOW_QUALITY_PATH = f"gs://{AOU_BUCKET}/known_issues/wgs_v8_known_issue_1.txt"
 AOU_GENOMIC_METRICS_PATH = f"gs://{AOU_WGS_AUX_BUCKET}/qc/genomic_metrics.tsv"
 
+# TODO: review what should be used here for 5.0.
+# NOTE: VEP 115 annotations were added in v4.1.1.
+VEP_ANNOTATION_VERSIONS = {"105": ["4.0", "5.0"], "115": ["4.1.1"]}
+CURRENT_VEP_ANNOTATION_VERSION = {"105": "5.0", "115": "4.1.1"}
+
+# NOTE: The default VEP version is VEP 105.
+DEFAULT_VEP_VERSION = "105"
+
+
 # Release constants.
 RELEASES = ["5.0"]
 CURRENT_RELEASE = RELEASES[-1]
