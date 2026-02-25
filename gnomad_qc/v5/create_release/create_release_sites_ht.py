@@ -390,7 +390,7 @@ def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     :return: Select expression dict.
     """
     # TODO: edit get_vep with params
-    vep_in_silico = get_sift_polyphen_from_vep(get_vep().ht())
+    vep_in_silico = get_sift_polyphen_from_vep(get_vep(environment=environment).ht())
     selects = {
         "sift_max": vep_in_silico[ht.key].sift_max,
         "polyphen_max": vep_in_silico[ht.key].polyphen_max,
@@ -1022,22 +1022,11 @@ def main(args):
         environment=environment,
     )
 
-    dup_errors = []
+    # Optionally check all config HTs for duplicate keys before joining.
+    # Skip for test runs or when --no-dup-check is specified.
     if not args.test and not args.no_dup_check:
-        logger.info("Checking for duplicate rows in config HTs...")
-        for c in config:
-            if "ht" in config[c]:
-                ht = config[c]["ht"]
-                distinct_count = ht.select().distinct().count()
-                if distinct_count != ht.count():
-                    dup_errors.append(
-                        f"HT {c} has {distinct_count} distinct rows but {ht.count()} total"
-                        " rows."
-                    )
-                else:
-                    logger.info(f"HT {c} has no duplicate rows.")
-        if dup_errors:
-            raise ValueError("\n".join(dup_errors))
+        logger.info("Checking config HTs for duplicate keys...")
+        check_duplicate_rows_in_config_hts(config)
 
     logger.info("Creating release HT...")
     ht = join_hts(
@@ -1135,11 +1124,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--release-exists",
         help=(
-            "Load the existing release HT for the version specified by --version so it "
-            "can be joined with other tables. To use this release HT as the base for "
-            "joining, also set --base-table release and include 'release' in "
-            "--tables-for-join. This is useful when updating an existing release in "
-            "place. Mutually exclusive with --base-release-version."
+            "Use the release version specified by --version as the base HT. When "
+            "specified, loads the release HT for the version being updated and uses it "
+            "as the base for joining other tables. This is useful when updating an "
+            "existing release in place. Mutually exclusive with --base-release-version."
         ),
         action="store_true",
     )

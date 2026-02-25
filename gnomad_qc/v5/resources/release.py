@@ -32,7 +32,7 @@ The 'freq' row annotation is an array that contains allele frequency information
 Use the 'freq_index_dict' global annotation to retrieve frequency information for a specific group of samples from the 'freq' array. This global annotation is a dictionary keyed by sample
 grouping combinations whose values are the combination's index in the 'freq' array.
 
-The available keys combinations for the 'freq_index_dict' are as follows:
+The available key combinations for the 'freq_index_dict' are as follows:
 
 group, e.g. “adj”, “raw”
 sex_group, e.g. “XX_adj”
