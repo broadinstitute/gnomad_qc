@@ -22,6 +22,9 @@ AOU_WGS_AUX_BUCKET = f"{AOU_WGS_BUCKET}/aux"
 AOU_LOW_QUALITY_PATH = f"gs://{AOU_BUCKET}/known_issues/wgs_v8_known_issue_1.txt"
 AOU_GENOMIC_METRICS_PATH = f"gs://{AOU_WGS_AUX_BUCKET}/qc/genomic_metrics.tsv"
 
+
+VRS_ANNOTATION_VERSIONS = ["5.0"]
+CURRENT_VRS_ANNOTATION_VERSION = "5.0"
 # TODO: review what should be used here for 5.0.
 VEP_ANNOTATION_VERSIONS = {"105": ["5.0"], "115": ["5.0"]}
 CURRENT_VEP_ANNOTATION_VERSION = {"105": "5.0", "115": "5.0"}
