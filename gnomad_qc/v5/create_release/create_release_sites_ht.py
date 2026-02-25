@@ -959,8 +959,8 @@ def add_global_annotations(ht: hl.Table, version: str) -> hl.Table:
     }
 
     # Add additional VEP version globals annotations if they exist
-    if args.version in VEP_VERSIONS_TO_ADD:
-        for vep_version in VEP_VERSIONS_TO_ADD[args.version]:
+    if version in VEP_VERSIONS_TO_ADD:
+        for vep_version in VEP_VERSIONS_TO_ADD[version]:
             vep_globals_name = f"vep{vep_version}_globals"
             if vep_globals_name in ht.globals:
                 globals_to_annotate[vep_globals_name] = ht[vep_globals_name].annotate(
