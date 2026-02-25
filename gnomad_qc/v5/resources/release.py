@@ -244,7 +244,7 @@ def included_datasets_json_path(
     :param release_version: Release version. Default is CURRENT_RELEASE.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param environment: Environment to use. Default is "rwb".
-    :return: File path for release versions included datasets JSON
+    :return: JSON file path for release version's included datasets.
     """
     return f"{_release_root(release_version, test=test, data_type='genomes', extension='json', environment=environment)}/gnomad.genomes.v{release_version}.included_datasets.json"
 
