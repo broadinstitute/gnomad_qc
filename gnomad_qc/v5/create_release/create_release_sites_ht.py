@@ -75,22 +75,20 @@ def get_finalized_schema(version: str) -> Dict[str, List[str]]:
     :param version: Release version (e.g., "5.0").
     :return: Dictionary with "globals" and "rows" lists of field names.
     """
-    globals_list = (
-        [
-            "freq_meta",
-            "freq_index_dict",
-            "freq_meta_sample_count",
-            "faf_meta",
-            "faf_index_dict",
-            "age_distribution",
-            "aou_downsamplings",
-            "filtering_model",
-            "inbreeding_coeff_cutoff",
-            "tool_versions",
-            "vrs_versions",
-            "vep_globals",
-        ],
-    )
+    globals_list = [
+        "freq_meta",
+        "freq_index_dict",
+        "freq_meta_sample_count",
+        "faf_meta",
+        "faf_index_dict",
+        "age_distribution",
+        "aou_downsamplings",
+        "filtering_model",
+        "inbreeding_coeff_cutoff",
+        "tool_versions",
+        "vrs_versions",
+        "vep_globals",
+    ]
     rows_list = [
         "freq",
         "grpmax",
