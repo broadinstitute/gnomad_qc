@@ -1090,6 +1090,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Percent of start dataset partitions to use for release HT. Default is 1.1"
             " (110%)"
         ),
+        type=float,
         default=1.1,
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
