@@ -621,6 +621,11 @@ def get_select_global_fields(
     select_globals = {}
     for t in tables_for_join:
         t_config = config.get(t)
+        if t_config is None:
+            available_tables = ", ".join(sorted(config.keys()))
+            raise KeyError(
+                f"Table '{t}' not found in configuration. Available tables: {available_tables}"
+            )
         if "select_globals" in t_config:
             select_globals = get_select_fields(t_config["select_globals"], ht)
         if "custom_globals_select" in t_config:
