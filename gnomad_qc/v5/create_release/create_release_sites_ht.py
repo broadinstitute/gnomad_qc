@@ -310,8 +310,12 @@ def get_config(
     if "vep" in tables_for_join:
         config["vep"] = {
             # TODO: add vep version param.
-            "ht": get_vep(data_type="genomes", vep_version=DEFAULT_VEP_VERSION).ht(),
-            "path": get_vep(data_type="genomes", vep_version=DEFAULT_VEP_VERSION).path,
+            "ht": get_vep(
+                vep_version=DEFAULT_VEP_VERSION, environment=environment
+            ).ht(),
+            "path": get_vep(
+                vep_version=DEFAULT_VEP_VERSION, environment=environment
+            ).path,
             "select": ["vep"],
             "custom_select": get_custom_vep_select(DEFAULT_VEP_VERSION),
             "select_globals": [
@@ -330,12 +334,12 @@ def get_config(
                 config[vep_table_name] = {
                     "ht": (
                         get_vep(
-                            data_type=data_type, vep_version=vep_version, test=test
+                            vep_version=vep_version, test=test, environment=environment
                         ).ht()
                     ),
                     "path": (
                         get_vep(
-                            data_type=data_type, vep_version=vep_version, test=test
+                            vep_version=vep_version, test=test, environment=environment
                         ).path
                     ),
                     "select": [],
@@ -387,6 +391,7 @@ def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     :param ht: VEP Hail Table.
     :return: Select expression dict.
     """
+    # TODO: edit get_vep with params
     vep_in_silico = get_sift_polyphen_from_vep(get_vep().ht())
     selects = {
         "sift_max": vep_in_silico[ht.key].sift_max,
@@ -464,7 +469,7 @@ def custom_filters_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]
 
 
 def custom_info_select(
-    ht: hl.Table, data_type: str, config: Dict[str, Dict[str, Any]]
+    ht: hl.Table, config: Dict[str, Dict[str, Any]]
 ) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
@@ -970,6 +975,8 @@ def add_global_annotations(ht: hl.Table, version: str) -> hl.Table:
 
     ht = ht.annotate_globals(**globals_to_annotate)
 
+    return ht
+
 
 def main(args):
     """Create release ht."""
@@ -1041,6 +1048,7 @@ def main(args):
         # because we want to replace the annotations instead of joining them.
         use_annotate=args.release_exists or args.base_release_version,
         test=test,
+        environment=environment,
     )
 
     # TODO: Check if this filter is still needed.
