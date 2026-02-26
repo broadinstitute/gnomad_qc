@@ -19,15 +19,15 @@ from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import sample_id_collisions
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import get_sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     genetic_ancestry_pca_scores,
     get_gen_anc_ht,
+    get_hard_filtered_samples,
     get_outlier_detection_sample_qc,
     get_sample_qc,
-    hard_filtered_samples,
     nearest_neighbors,
     nearest_neighbors_filtering,
     regressed_filtering,
@@ -737,11 +737,23 @@ def create_finalized_outlier_filter_ht(
 
 def main(args):
     """Determine sample QC metric outliers that should be filtered."""
-    hl.init(
-        log="/home/jupyter/workspaces/gnomadproduction/outlier_filtering.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        quiet=args.quiet,
-    )
+    environment = args.environment
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log="/outlier_filtering.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+            quiet=args.quiet,
+        )
+    else:
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/outlier_filtering.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+            quiet=args.quiet,
+        )
     hl.default_reference("GRCh38")
 
     test = args.test
@@ -749,7 +761,9 @@ def main(args):
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     nn_approximation = args.use_nearest_neighbors_approximation
-    sample_qc_ht_path = get_outlier_detection_sample_qc(test=test).path
+    sample_qc_ht_path = get_outlier_detection_sample_qc(
+        test=test, environment=environment
+    ).path
 
     try:
         if apply_r_ti_tv_singleton_filter:
@@ -774,7 +788,7 @@ def main(args):
             # Get AoU genomes sample QC Table.
             # Note that the distribution of alleles in AoU looks more like the gnomAD genomes than exomes,
             # which is why we use the 'bi_allelic' stratification.
-            raw_sample_qc_ht = get_sample_qc("bi_allelic").ht()
+            raw_sample_qc_ht = get_sample_qc("bi_allelic", environment=environment).ht()
             num_filter_partitions = args.num_filter_partitions
             if num_filter_partitions:
                 raw_sample_qc_ht = raw_sample_qc_ht._filter_partitions(
@@ -783,16 +797,22 @@ def main(args):
 
             sample_qc_ht = get_sample_qc_ht(
                 sample_qc_ht=raw_sample_qc_ht,
-                hard_filtered_samples_ht=hard_filtered_samples.ht(),
-                sample_collisions=sample_id_collisions.ht(),
+                hard_filtered_samples_ht=get_hard_filtered_samples(
+                    environment=environment
+                ).ht(),
+                sample_collisions=get_sample_id_collisions(
+                    environment=environment
+                ).ht(),
                 test=test,
                 seed=args.seed,
             )
             sample_qc_ht.write(sample_qc_ht_path, overwrite=overwrite)
 
         sample_qc_ht = hl.read_table(sample_qc_ht_path)
-        gen_anc_scores_ht = genetic_ancestry_pca_scores(test=test, projection=True).ht()
-        gen_anc_ht = get_gen_anc_ht(test=test).ht()
+        gen_anc_scores_ht = genetic_ancestry_pca_scores(
+            test=test, projection=True, environment=environment
+        ).ht()
+        gen_anc_ht = get_gen_anc_ht(test=test, environment=environment).ht()
 
         if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
             rerun_filtering = False
@@ -802,6 +822,7 @@ def main(args):
         if args.apply_regressed_filters and rerun_filtering:
             regressed_filter_ht_path = regressed_filtering(
                 test=test,
+                environment=environment,
             ).path
             check_resource_existence(
                 output_step_resources={
@@ -821,7 +842,9 @@ def main(args):
             ht.write(regressed_filter_ht_path, overwrite=overwrite)
 
         if args.apply_stratified_filters and rerun_filtering:
-            stratified_filter_ht_path = stratified_filtering(test=test).path
+            stratified_filter_ht_path = stratified_filtering(
+                test=test, environment=environment
+            ).path
             check_resource_existence(
                 output_step_resources={
                     "stratified_filter_ht": [stratified_filter_ht_path]
@@ -841,6 +864,7 @@ def main(args):
             nn_ht_path = nearest_neighbors(
                 test=test,
                 approximation=nn_approximation,
+                environment=environment,
             ).path
             check_resource_existence(
                 output_step_resources={"nn_ht": [nn_ht_path]},
@@ -864,8 +888,11 @@ def main(args):
             nn_ht = nearest_neighbors(
                 test=test,
                 approximation=nn_approximation,
+                environment=environment,
             ).ht()
-            nn_filter_ht_path = nearest_neighbors_filtering(test=test).path
+            nn_filter_ht_path = nearest_neighbors_filtering(
+                test=test, environment=environment
+            ).path
             check_resource_existence(
                 output_step_resources={"nn_filter_ht": [nn_filter_ht_path]},
                 overwrite=overwrite,
@@ -883,7 +910,9 @@ def main(args):
             ).write(nn_filter_ht_path, overwrite=overwrite)
 
         if args.create_finalized_outlier_filter:
-            final_ht_path = finalized_outlier_filtering(test=test).path
+            final_ht_path = finalized_outlier_filtering(
+                test=test, environment=environment
+            ).path
             check_resource_existence(
                 output_step_resources={"finalized_ht": [final_ht_path]},
                 overwrite=overwrite,
@@ -892,15 +921,15 @@ def main(args):
             finalized_input_steps = {}
             if args.apply_regressed_filters:
                 finalized_input_steps["regressed_filter_ht"] = regressed_filtering(
-                    test=test
+                    test=test, environment=environment
                 ).ht()
             if args.apply_stratified_filters:
                 finalized_input_steps["stratified_filter_ht"] = stratified_filtering(
-                    test=test
+                    test=test, environment=environment
                 ).ht()
             if args.apply_nearest_neighbor_filters:
                 finalized_input_steps["nn_filter_ht"] = nearest_neighbors_filtering(
-                    test=test
+                    test=test, environment=environment
                 ).ht()
 
             if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
@@ -918,7 +947,7 @@ def main(args):
             ht.write(final_ht_path, overwrite=overwrite)
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("outlier_detection", environment="rwb"))
+        hl.copy_log(get_logging_path("outlier_detection", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -934,6 +963,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Test filtering using a random sample of 1%% of the dataset.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
     )
     parser.add_argument(
         "--seed",

@@ -24,12 +24,12 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     get_samples_to_exclude,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import sample_id_collisions
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import get_sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     get_aou_mt_union,
+    get_hard_filtered_samples,
     get_joint_qc,
-    hard_filtered_samples,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -102,6 +102,7 @@ def union_aou_mts(
 def generate_qc_mt(
     gnomad_mt: hl.MatrixTable,
     aou_mt: hl.MatrixTable,
+    environment: str = "rwb",
 ) -> hl.MatrixTable:
     """
     Union gnomAD v4 QC MT and AoU v8 MTs.
@@ -111,7 +112,7 @@ def generate_qc_mt(
     :return: Joint gnomAD v4 (exomes + genomes) + AoU v8 (genomes) QC MT.
     """
     logger.info("Resolving sample ID collisions...")
-    sample_collisions = sample_id_collisions.ht()
+    sample_collisions = get_sample_id_collisions(environment=environment).ht()
     gnomad_mt = add_project_prefix_to_sample_collisions(
         t=gnomad_mt,
         sample_collisions=sample_collisions,
@@ -128,18 +129,29 @@ def generate_qc_mt(
 
 def main(args):
     """Create a joint gnomAD v4 (exomes + genomes) + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
-    hl.init(
-        log="/home/jupyter/workspaces/gnomadproduction/generate_qc_mt.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    environment = args.environment
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log="/generate_qc_mt.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/generate_qc_mt.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
     hl.default_reference("GRCh38")
 
     n_partitions = args.n_partitions
     overwrite = args.overwrite
     test = args.test
     v4_qc_sites_ht = v4_sample_qc.get_joint_qc().mt().rows()
-    aou_union_mt_path = get_aou_mt_union().path
-    joint_qc_mt_path = get_joint_qc(test=test).path
+    aou_union_mt_path = get_aou_mt_union(environment=environment).path
+    joint_qc_mt_path = get_joint_qc(test=test, environment=environment).path
 
     try:
         if args.union_aou_mts:
@@ -161,7 +173,9 @@ def main(args):
                 acaf_mt=acaf_mt,
                 exome_mt=exome_mt,
                 s_to_exclude=get_samples_to_exclude(
-                    filter_samples=hard_filtered_samples.ht()
+                    filter_samples=get_hard_filtered_samples(
+                        environment=environment
+                    ).ht()
                 ),
                 ht=v4_qc_sites_ht,
                 test=test,
@@ -175,7 +189,7 @@ def main(args):
             logger.info(
                 "Checking how many sites from v4 QC MT are missing from joint AoU MT..."
             )
-            aou_ht = get_aou_mt_union().mt().rows()
+            aou_ht = get_aou_mt_union(environment=environment).mt().rows()
             ht = v4_qc_sites_ht.select()
             missing_sites = ht.anti_join(aou_ht)
             logger.info(
@@ -217,6 +231,7 @@ def main(args):
             joint_mt = generate_qc_mt(
                 gnomad_mt=gnomad_mt,
                 aou_mt=aou_mt,
+                environment=environment,
             )
             joint_mt = joint_mt.naive_coalesce(n_partitions)
             joint_mt.write(
@@ -226,7 +241,7 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("generate_qc_mt", environment="rwb"))
+        hl.copy_log(get_logging_path("generate_qc_mt", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -275,6 +290,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overwrite",
         help="Overwrite data.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
     )
 
     return parser

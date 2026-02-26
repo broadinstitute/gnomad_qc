@@ -1,5 +1,6 @@
 """Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata."""
 
+import argparse
 import logging
 import os
 from functools import reduce
@@ -14,7 +15,8 @@ from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_checkpoint_path,
 )
-from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions
 
 hl.default_reference(new_default_reference="GRCh38")
 
@@ -283,8 +285,23 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> hl.Table:
     return sample_collisions
 
 
-def main():
+def main(args):
     """Create v5 project metadata."""
+    environment = args.environment
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log="/merge_project_meta.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/merge_project_meta.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
     meta_hts = {}
     for project, project_metadata in get_meta_config().items():
         project_hts = []
@@ -345,7 +362,7 @@ def main():
         logger.info("Updating the %s metadata to the final schema...", project)
         project_ht = update_ht_to_final_schema(project_ht)
         project_ht = project_ht.checkpoint(
-            get_checkpoint_path(f"{project}_meta", mt=False, environment="rwb"),
+            get_checkpoint_path(f"{project}_meta", mt=False, environment=environment),
             overwrite=True,
         )
         meta_hts[project] = project_ht.key_by("s")
@@ -353,7 +370,7 @@ def main():
     logger.info("Determining if there are any sample ID collisions between projects...")
     sample_collisions = get_sample_collisions(meta_hts)
     sample_collisions = sample_collisions.checkpoint(
-        sample_id_collisions.path, overwrite=True
+        get_sample_id_collisions(environment=environment).path, overwrite=True
     )
     logger.info(
         f"Samples that appear in more than one project: {hl.eval(sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s)))}"
@@ -369,9 +386,26 @@ def main():
     logger.info("Combining all project metadata files into a single metadata file...")
     meta_ht = reduce((lambda joined_ht, ht: joined_ht.union(ht)), meta_hts.values())
 
-    logger.info("Writing combined project metadata to %s...", project_meta.path)
-    meta_ht.write(project_meta.path, overwrite=True)
+    project_meta_resource = get_project_meta(environment=environment)
+    logger.info(
+        "Writing combined project metadata to %s...", project_meta_resource.path
+    )
+    meta_ht.write(project_meta_resource.path, overwrite=True)
+
+
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
+    )
+    return parser
 
 
 if __name__ == "__main__":
-    main()
+    parser = get_script_argument_parser()
+    args = parser.parse_args()
+    main(args)

@@ -14,8 +14,8 @@ from gnomad_qc.v5.resources.basics import (
     get_checkpoint_path,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.sample_qc import get_sample_qc, hard_filtered_samples
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.sample_qc import get_hard_filtered_samples, get_sample_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("hard_filters")
@@ -25,6 +25,7 @@ logger.setLevel(logging.INFO)
 def compute_aou_sample_qc(
     n_partitions: int = 500,
     test: bool = False,
+    environment: str = "rwb",
 ) -> hl.Table:
     """
     Perform sample QC on AoU VDS.
@@ -84,7 +85,7 @@ def compute_aou_sample_qc(
             "bi_allelic": bi_allelic_expr(vds.variant_data),
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
-        tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
+        tmp_ht_prefix=get_sample_qc(test=test, environment=environment).path[:-3],
         gt_col="GT",
     )
 
@@ -97,6 +98,7 @@ def apply_sample_qc_metrics_hard_filters(
     max_r_insertion_deletion: float = 0.42,
     min_r_ti_tv: float = 2.9,
     max_r_ti_tv_singleton: float = 5.2,
+    environment: str = "rwb",
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -123,7 +125,7 @@ def apply_sample_qc_metrics_hard_filters(
     logger.info(
         "Removing samples that are obvious outliers based on sample QC metrics..."
     )
-    ht = get_sample_qc("bi_allelic").ht()
+    ht = get_sample_qc("bi_allelic", environment=environment).ht()
     ht = ht.annotate_globals(
         sample_qc_metric_hard_filters_cutoffs=hl.struct(
             max_n_singleton=max_n_singleton,
@@ -160,10 +162,21 @@ def apply_sample_qc_metrics_hard_filters(
 
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
-    hl.init(
-        log="/home/jupyter/workspaces/gnomadproduction/hard_filters.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    environment = args.environment
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log="/hard_filters.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/hard_filters.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
     hl.default_reference("GRCh38")
 
     test = args.test
@@ -174,14 +187,18 @@ def main(args):
             ht = compute_aou_sample_qc(
                 n_partitions=args.sample_qc_n_partitions,
                 test=test,
+                environment=environment,
             )
-            ht.write(get_sample_qc(test=test).path, overwrite=overwrite)
+            ht.write(
+                get_sample_qc(test=test, environment=environment).path,
+                overwrite=overwrite,
+            )
 
         if args.compute_hard_filters:
             hard_filter_path = (
-                get_checkpoint_path("test_aou_hard_filters", environment="rwb")
+                get_checkpoint_path("test_aou_hard_filters", environment=environment)
                 if test
-                else hard_filtered_samples.path
+                else get_hard_filtered_samples(environment=environment).path
             )
             ht = apply_sample_qc_metrics_hard_filters(
                 args.max_n_singleton,
@@ -189,6 +206,7 @@ def main(args):
                 args.max_r_insertion_deletion,
                 args.min_r_ti_tv,
                 args.max_r_ti_tv_singleton,
+                environment=environment,
             )
             ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
             ht.group_by("sample_qc_metric_hard_filters").aggregate(
@@ -196,7 +214,7 @@ def main(args):
             ).show(20)
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("hard_filters", environment="rwb"))
+        hl.copy_log(get_logging_path("hard_filters", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -211,6 +229,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Use the AoU test dataset instead of the full dataset.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
     )
     parser.add_argument(
         "--aou-sample-qc",

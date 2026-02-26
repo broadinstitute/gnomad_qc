@@ -17,8 +17,11 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.basics import get_logging_path
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import consent_samples_to_drop, project_meta
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import (
+    get_consent_samples_to_drop as get_consent_samples_to_drop_resource,
+)
+from gnomad_qc.v5.resources.meta import get_project_meta
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     get_cuking_input_path,
@@ -232,7 +235,10 @@ def finalize_relatedness_ht(
     return ht
 
 
-def get_consent_samples_to_drop(overwrite: bool = False) -> hl.Table:
+def get_consent_samples_to_drop(
+    overwrite: bool = False,
+    environment: str = "rwb",
+) -> hl.Table:
     """
     Create additional samples to drop for release HailExpression resource.
 
@@ -246,11 +252,14 @@ def get_consent_samples_to_drop(overwrite: bool = False) -> hl.Table:
         of the consent drop.
 
     :param overwrite: Whether to overwrite the consent drop Table resource. Default is False.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+        "batch", or "dataproc".
     :return: Table with consent drop samples.
     """
+    consent_resource = get_consent_samples_to_drop_resource(environment=environment)
     if (
         not check_file_exists_raise_error(
-            fname=consent_samples_to_drop.path,
+            fname=consent_resource.path,
             error_if_not_exists=False,
         )
         or overwrite
@@ -266,9 +275,9 @@ def get_consent_samples_to_drop(overwrite: bool = False) -> hl.Table:
             .select_globals()
             .select()
         )
-        consent_drop_ht.write(consent_samples_to_drop.path, overwrite=overwrite)
+        consent_drop_ht.write(consent_resource.path, overwrite=overwrite)
 
-    consent_drop_ht = hl.read_table(consent_samples_to_drop.path)
+    consent_drop_ht = hl.read_table(consent_resource.path)
     return consent_drop_ht
 
 
@@ -321,6 +330,7 @@ def run_compute_related_samples_to_drop(
     meta_ht: hl.Table,
     release: bool = False,
     filter_ht: Optional[hl.Table] = None,
+    environment: str = "rwb",
 ) -> Tuple[hl.Table, hl.Table]:
     """
     Determine the minimal set of related samples to prune for genetic ancestry PCA.
@@ -368,7 +378,7 @@ def run_compute_related_samples_to_drop(
         .select_globals()
         .select()
     )
-    consent_drop_s = get_consent_samples_to_drop()
+    consent_drop_s = get_consent_samples_to_drop(environment=environment)
     v4_release_ht = v4_release_ht.anti_join(consent_drop_s)
     # This `aggregate` converts the sample set from Hail to Python,
     # which is useful for the length check.
@@ -400,7 +410,7 @@ def run_compute_related_samples_to_drop(
         # Add all unreleased v4 samples (including hard filtered samples) to samples to
         # drop list since we force v4 retention. Add consent drop samples to samples to
         # drop list since these were considered in the forced v4 retention.
-        project_meta_ht = project_meta.ht()
+        project_meta_ht = get_project_meta(environment=environment).ht()
         v4_unreleased_ht = (
             project_meta_ht.filter(
                 (project_meta_ht.project == "gnomad") & ~project_meta_ht.release
@@ -408,7 +418,7 @@ def run_compute_related_samples_to_drop(
             .select_globals()
             .select()
         )
-        consent_drop_ht = get_consent_samples_to_drop()
+        consent_drop_ht = get_consent_samples_to_drop(environment=environment)
         samples_to_drop_ht = samples_to_drop_ht.select().union(
             v4_unreleased_ht, consent_drop_ht
         )
@@ -425,23 +435,34 @@ def main(args):
     second_degree_min_kin = args.second_degree_min_kin
     release = args.release
 
+    environment = args.environment
     if args.print_cuking_command:
         print_cuking_command(
-            get_cuking_input_path(test=test),
-            get_cuking_output_path(test=test),
+            get_cuking_input_path(test=test, environment=environment),
+            get_cuking_output_path(test=test, environment=environment),
             min_emission_kinship,
             args.cuking_split_factor,
         )
         return
 
-    hl.init(
-        log="/home/jupyter/workspaces/gnomadproduction/relatedness.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log="/relatedness.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/relatedness.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
     hl.default_reference("GRCh38")
 
-    joint_meta = project_meta.ht()
-    joint_qc_mt = get_joint_qc().mt()
+    joint_meta = get_project_meta(environment=environment).ht()
+    joint_qc_mt = get_joint_qc(environment=environment).mt()
 
     if test:
         logger.info("Filtering MT to the first 2 partitions for testing...")
@@ -459,7 +480,11 @@ def main(args):
             # Hail needs to be initialized with a temporary directory
             # to avoid memory errors.
             check_resource_existence(
-                output_step_resources={"cuking_input_parquet": get_cuking_input_path()}
+                output_step_resources={
+                    "cuking_input_parquet": get_cuking_input_path(
+                        environment=environment
+                    )
+                }
             )
             logger.info(
                 "Converting joint dense QC MatrixTable to a Parquet format suitable "
@@ -467,26 +492,35 @@ def main(args):
             )
             mt_to_cuking_inputs(
                 mt=joint_qc_mt,
-                parquet_uri=get_cuking_input_path(test=test),
+                parquet_uri=get_cuking_input_path(test=test, environment=environment),
                 overwrite=overwrite,
             )
         if args.create_cuking_relatedness_table:
             logger.info("Converting cuKING outputs to Hail Table...")
             check_resource_existence(
                 output_step_resources={
-                    "relatedness_ht": [relatedness(test=test, raw=True).path]
+                    "relatedness_ht": [
+                        relatedness(test=test, raw=True, environment=environment).path
+                    ]
                 },
                 overwrite=overwrite,
             )
-            ht = convert_cuking_output_to_ht(get_cuking_output_path(test=test))
+            ht = convert_cuking_output_to_ht(
+                get_cuking_output_path(test=test, environment=environment)
+            )
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(relatedness(test=test, raw=True).path, overwrite=overwrite)
+            ht.write(
+                relatedness(test=test, raw=True, environment=environment).path,
+                overwrite=overwrite,
+            )
 
         if args.finalize_relatedness_ht:
             logger.info("Finalizing relatedness HT...")
             check_resource_existence(
                 output_step_resources={
-                    "final_relatedness_ht": [relatedness(test=test).path]
+                    "final_relatedness_ht": [
+                        relatedness(test=test, environment=environment).path
+                    ]
                 },
                 overwrite=overwrite,
             )
@@ -508,25 +542,36 @@ def main(args):
                 "second_degree_min_kin": second_degree_min_kin,
             }
             finalize_relatedness_ht(
-                relatedness(test=test, raw=True).ht(), joint_meta, relatedness_args
-            ).write(relatedness(test=test).path, overwrite=overwrite)
+                relatedness(test=test, raw=True, environment=environment).ht(),
+                joint_meta,
+                relatedness_args,
+            ).write(
+                relatedness(test=test, environment=environment).path,
+                overwrite=overwrite,
+            )
 
         if args.compute_related_samples_to_drop:
             logger.info("Computing the sample rankings and related samples to drop...")
             check_resource_existence(
                 output_step_resources={
                     "sample_rankings_ht": [
-                        sample_rankings(test=test, release=release).path
+                        sample_rankings(
+                            test=test, release=release, environment=environment
+                        ).path
                     ],
                     "related_samples_to_drop_ht": [
-                        related_samples_to_drop(test=test, release=release).path
+                        related_samples_to_drop(
+                            test=test, release=release, environment=environment
+                        ).path
                     ],
                 },
                 overwrite=overwrite,
             )
             filter_ht = None
             if release:
-                filter_ht_path = finalized_outlier_filtering(test=test).path
+                filter_ht_path = finalized_outlier_filtering(
+                    test=test, environment=environment
+                ).path
                 check_resource_existence(
                     input_step_resources={
                         "filter_ht": [filter_ht_path],
@@ -536,21 +581,30 @@ def main(args):
                 filter_ht = filter_ht.select("outlier_filtered")
 
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
-                relatedness(test=test).ht(),
+                relatedness(test=test, environment=environment).ht(),
                 joint_meta.select_globals().semi_join(joint_qc_mt.cols()),
                 release=release,
                 filter_ht=filter_ht,
+                environment=environment,
             )
             rank_ht.write(
-                sample_rankings(test=test, release=release).path, overwrite=overwrite
+                sample_rankings(
+                    test=test, release=release, environment=environment
+                ).path,
+                overwrite=overwrite,
             )
             drop_ht.write(
-                related_samples_to_drop(test=test, release=release).path,
+                related_samples_to_drop(
+                    test=test, release=release, environment=environment
+                ).path,
                 overwrite=overwrite,
             )
             # Export the related samples to drop Table to a TSV file for SV team.
             drop_ht.export(
-                related_samples_to_drop(test=test, release=release).path[:-3] + ".tsv"
+                related_samples_to_drop(
+                    test=test, release=release, environment=environment
+                ).path[:-3]
+                + ".tsv"
             )
 
     finally:

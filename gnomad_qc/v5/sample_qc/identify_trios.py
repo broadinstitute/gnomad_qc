@@ -24,6 +24,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -279,11 +280,10 @@ def main(args):
         hl.init(
             backend="batch",
             log="/identify_trios.log",
-            tmp_dir="gs://gnomad-tmp-4day",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             gcs_requester_pays_configuration="broad-mpg-gnomad",
             default_reference="GRCh38",
             regions=["us-central1"],
-            # TODO: Add machine configurations for Batch.
         )
     hl.default_reference("GRCh38")
 
@@ -292,16 +292,20 @@ def main(args):
 
     try:
 
-        rel_ht = relatedness().ht()
-        meta_ht = meta().ht()
+        rel_ht = relatedness(environment=environment).ht()
+        meta_ht = meta(environment=environment).ht()
         dup_ht_path = duplicates(environment=environment).path
-        raw_ped_path = pedigree(finalized=False).path
-        fake_ped_path = pedigree(finalized=False, fake=True).path
-        mendel_err_ht_path = ped_mendel_errors(test=test).path
-        final_ped_path = pedigree(test=test).path
-        filter_json_path = ped_filter_param_json_path(test=test)
-        trios_path = trios(test=test).path
-        dense_trio_mt_path = dense_trios(test=test).path
+        raw_ped_path = pedigree(finalized=False, environment=environment).path
+        fake_ped_path = pedigree(
+            finalized=False, fake=True, environment=environment
+        ).path
+        mendel_err_ht_path = ped_mendel_errors(test=test, environment=environment).path
+        final_ped_path = pedigree(test=test, environment=environment).path
+        filter_json_path = ped_filter_param_json_path(
+            test=test, environment=environment
+        )
+        trios_path = trios(test=test, environment=environment).path
+        dense_trio_mt_path = dense_trios(test=test, environment=environment).path
 
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
@@ -316,7 +320,7 @@ def main(args):
             )
             ht = get_duplicated_samples_ht(
                 get_duplicated_samples(rel_ht),
-                sample_rankings(release=True).ht(),
+                sample_rankings(release=True, environment=environment).ht(),
             )
             ht.write(dup_ht_path, overwrite=overwrite)
 

@@ -30,8 +30,8 @@ from gnomad_qc.v5.resources.basics import (
     add_project_prefix_to_sample_collisions,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     gen_anc_rf_path,
     genetic_ancestry_pca_eigenvalues,
@@ -88,6 +88,7 @@ def write_pca_results(
     overwrite: hl.bool = False,
     included_unreleasables: hl.bool = False,
     test: hl.bool = False,
+    environment: str = "rwb",
 ):
     """
     Write out the eigenvalue hail Table, scores hail Table, and loadings hail Table returned by `run_pca()`.
@@ -110,15 +111,21 @@ def write_pca_results(
         )
     )
     gen_anc_pca_eigenvalues_ht.write(
-        genetic_ancestry_pca_eigenvalues(included_unreleasables, test).path,
+        genetic_ancestry_pca_eigenvalues(
+            included_unreleasables, test, environment=environment
+        ).path,
         overwrite=overwrite,
     )
     gen_anc_pca_scores_ht.write(
-        genetic_ancestry_pca_scores(included_unreleasables, test).path,
+        genetic_ancestry_pca_scores(
+            included_unreleasables, test, environment=environment
+        ).path,
         overwrite=overwrite,
     )
     gen_anc_pca_loadings_ht.write(
-        genetic_ancestry_pca_loadings(included_unreleasables, test).path,
+        genetic_ancestry_pca_loadings(
+            included_unreleasables, test, environment=environment
+        ).path,
         overwrite=overwrite,
     )
 
@@ -130,6 +137,7 @@ def prep_ht_for_rf(
     v4_gen_anc_spike: Optional[List[str]] = None,
     v3_gen_anc_spike: Optional[List[str]] = None,
     include_v3_oceania: bool = False,
+    environment: str = "rwb",
 ) -> hl.Table:
     """
     Prepare the PCA scores hail Table for the random forest genetic ancestry group assignment runs.
@@ -158,7 +166,7 @@ def prep_ht_for_rf(
     hgdp_tgp_outliers_ht = hgdp_tgp_pop_outliers.ht()
     hgdp_tgp_outliers_ht = add_project_prefix_to_sample_collisions(
         t=hgdp_tgp_outliers_ht,
-        sample_collisions=sample_id_collisions.ht(),
+        sample_collisions=get_sample_id_collisions(environment=environment).ht(),
         project="gnomad",
     )
     hgdp_tgp_outliers = hl.literal(hgdp_tgp_outliers_ht.s.collect())
@@ -265,6 +273,7 @@ def assign_gen_anc(
     v3_gen_anc_spike: Optional[List[str]] = None,
     n_partitions: int = 100,
     include_v3_oceania: bool = False,
+    environment: str = "rwb",
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global genetic ancestry group labels based on the results from `run_pca`.
@@ -302,6 +311,7 @@ def assign_gen_anc(
         v4_gen_anc_spike,
         v3_gen_anc_spike,
         include_v3_oceania,
+        environment=environment,
     )
     gen_anc_field = "gen_anc"
     logger.info(
@@ -607,11 +617,22 @@ def union_projection_scores_and_assignments(
 
 def main(args):
     """Assign genetic ancestry group labels to samples."""
-    hl.init(
-        spark_conf={"spark.memory.offHeap.enabled": "false"},
-        log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    environment = args.environment
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log="/assign_ancestry.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            default_reference="GRCh38",
+            regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            spark_conf={"spark.memory.offHeap.enabled": "false"},
+            log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+        )
     hl.default_reference("GRCh38")
     try:
 
@@ -637,30 +658,38 @@ def main(args):
         # Use tmp path if either test dataset or test on chr20 is specified.
         use_tmp_path = test_on_chr20 or test
         include_v2_known_in_training = args.include_v2_known_in_training
-        gen_anc_ht_path = get_gen_anc_ht(test=use_tmp_path).path
+        gen_anc_ht_path = get_gen_anc_ht(
+            test=use_tmp_path, environment=environment
+        ).path
 
         if args.run_pca:
             check_resource_existence(
                 output_step_resources={
                     "genetic_ancestry_pca_eigenvalues": [
                         genetic_ancestry_pca_eigenvalues(
-                            include_unreleasable_samples, use_tmp_path
+                            include_unreleasable_samples,
+                            use_tmp_path,
+                            environment=environment,
                         ).path
                     ],
                     "genetic_ancestry_pca_scores": [
                         genetic_ancestry_pca_scores(
-                            include_unreleasable_samples, use_tmp_path
+                            include_unreleasable_samples,
+                            use_tmp_path,
+                            environment=environment,
                         ).path
                     ],
                     "genetic_ancestry_pca_loadings": [
                         genetic_ancestry_pca_loadings(
-                            include_unreleasable_samples, use_tmp_path
+                            include_unreleasable_samples,
+                            use_tmp_path,
+                            environment=environment,
                         ).path
                     ],
                 },
                 overwrite=overwrite,
             )
-            qc_mt = get_joint_qc(test=test).mt()
+            qc_mt = get_joint_qc(test=test, environment=environment).mt()
 
             if test_on_chr20:
                 logger.info("Filtering QC MT to chromosome 20...")
@@ -670,8 +699,10 @@ def main(args):
 
             gen_anc_eigenvalues, gen_anc_scores_ht, gen_anc_loadings_ht = run_pca(
                 qc_mt=qc_mt,
-                meta_ht=project_meta.ht(),
-                related_samples_to_drop=related_samples_to_drop().ht(),
+                meta_ht=get_project_meta(environment=environment).ht(),
+                related_samples_to_drop=related_samples_to_drop(
+                    environment=environment
+                ).ht(),
                 # TODO: add in 'release' arg if it gets added to resource.
                 include_unreleasable_samples=include_unreleasable_samples,
                 n_pcs=args.n_pcs,
@@ -684,6 +715,7 @@ def main(args):
                 overwrite,
                 include_unreleasable_samples,
                 use_tmp_path,
+                environment=environment,
             )
         if args.assign_gen_anc:
             check_resource_existence(
@@ -694,18 +726,21 @@ def main(args):
             gen_anc_pca_scores_ht = genetic_ancestry_pca_scores(
                 include_unreleasable_samples=include_unreleasable_samples,
                 test=use_tmp_path,
+                environment=environment,
             ).ht()
 
             # Rename sample collision in v4 joint qc meta.
             v4_joint_qc_meta_ht = v4_joint_qc_meta.ht()
             v4_joint_qc_meta_ht = add_project_prefix_to_sample_collisions(
                 t=v4_joint_qc_meta_ht,
-                sample_collisions=sample_id_collisions.ht(),
+                sample_collisions=get_sample_id_collisions(
+                    environment=environment
+                ).ht(),
                 project="gnomad",
             )
 
             # Combine v4 and v5 project meta tables.
-            meta_ht = project_meta.ht()
+            meta_ht = get_project_meta(environment=environment).ht()
             meta_ht = meta_ht.select(v5_meta=hl.struct(**meta_ht.row_value))
             meta_ht = meta_ht.annotate(
                 v4_meta=v4_joint_qc_meta_ht[meta_ht.s].select(
@@ -732,13 +767,14 @@ def main(args):
                 v3_gen_anc_spike=args.v3_spike,
                 n_partitions=args.gen_anc_partitions,
                 include_v3_oceania=args.include_v3_oceania,
+                environment=environment,
             )
 
             logger.info("Writing genetic ancestry group ht...")
             gen_anc_ht.write(gen_anc_ht_path, overwrite=overwrite)
 
             with hl.hadoop_open(
-                gen_anc_rf_path(test=use_tmp_path),
+                gen_anc_rf_path(test=use_tmp_path, environment=environment),
                 "wb",
             ) as out:
                 pickle.dump(gen_anc_rf_model, out)
@@ -746,16 +782,23 @@ def main(args):
         if args.compute_precision_recall:
             check_resource_existence(
                 output_step_resources={
-                    "gen_anc_pr_ht": [get_gen_anc_pr_ht(test=use_tmp_path).path]
+                    "gen_anc_pr_ht": [
+                        get_gen_anc_pr_ht(
+                            test=use_tmp_path, environment=environment
+                        ).path
+                    ]
                 },
                 overwrite=overwrite,
             )
 
             ht = compute_precision_recall(
-                get_gen_anc_ht(test=use_tmp_path).ht(),
+                get_gen_anc_ht(test=use_tmp_path, environment=environment).ht(),
                 num_pr_points=args.number_pr_points,
             )
-            ht.write(get_gen_anc_pr_ht(test=use_tmp_path).path, overwrite=overwrite)
+            ht.write(
+                get_gen_anc_pr_ht(test=use_tmp_path, environment=environment).path,
+                overwrite=overwrite,
+            )
 
         if args.apply_per_grp_min_rf_probs:
             check_resource_existence(
@@ -763,10 +806,10 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            gen_anc = get_gen_anc_ht(test=use_tmp_path)
+            gen_anc = get_gen_anc_ht(test=use_tmp_path, environment=environment)
             if args.infer_per_grp_min_rf_probs:
                 min_probs = infer_per_grp_min_rf_probs(
-                    get_gen_anc_pr_ht(test=use_tmp_path).ht(),
+                    get_gen_anc_pr_ht(test=use_tmp_path, environment=environment).ht(),
                     min_recall=args.min_recall,
                     min_precision=args.min_precision,
                 )
@@ -778,10 +821,14 @@ def main(args):
                     gen_anc: cutoff["min_prob_cutoff"]
                     for gen_anc, cutoff in min_probs.items()
                 }
-                with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "w") as d:
+                with hl.hadoop_open(
+                    per_grp_min_rf_probs_json_path(environment=environment), "w"
+                ) as d:
                     d.write(json.dumps(min_probs))
 
-            with hl.hadoop_open(per_grp_min_rf_probs_json_path(), "r") as d:
+            with hl.hadoop_open(
+                per_grp_min_rf_probs_json_path(environment=environment), "r"
+            ) as d:
                 min_probs = json.load(d)
             logger.info(
                 "Using the following min prob cutoff per ancestry group: %s", min_probs
@@ -799,12 +846,18 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "gen_anc_projection_ht": [
-                        get_gen_anc_ht(test=use_tmp_path, projection_only=True).path
+                        get_gen_anc_ht(
+                            test=use_tmp_path,
+                            projection_only=True,
+                            environment=environment,
+                        ).path
                     ],
-                    "gen_anc_ht": [get_gen_anc_ht(test=use_tmp_path).path],
+                    "gen_anc_ht": [
+                        get_gen_anc_ht(test=use_tmp_path, environment=environment).path
+                    ],
                     "scores_ht": [
                         genetic_ancestry_pca_scores(
-                            test=use_tmp_path, projection=True
+                            test=use_tmp_path, projection=True, environment=environment
                         ).path
                     ],
                 },
@@ -814,8 +867,8 @@ def main(args):
             projected_scores_ht, projected_gen_anc_ht = project_aou_onto_v4(
                 gnomad_v4_onnx_rf_path=gnomad_v4_onnx_rf,
                 v4_loading_ht=v4_pca_loadings().ht(),
-                qc_mt=get_joint_qc(test=False).mt(),
-                meta_ht=project_meta.ht(),
+                qc_mt=get_joint_qc(test=False, environment=environment).mt(),
+                meta_ht=get_project_meta(environment=environment).ht(),
             )
 
             # TODO: Add option for correction factor if needed.
@@ -833,7 +886,9 @@ def main(args):
             )
 
             projected_gen_anc_ht.write(
-                get_gen_anc_ht(test=use_tmp_path, projection_only=True).path,
+                get_gen_anc_ht(
+                    test=use_tmp_path, projection_only=True, environment=environment
+                ).path,
                 overwrite=overwrite,
             )
 
@@ -843,20 +898,27 @@ def main(args):
                 projected_scores=projected_scores_ht,
                 v4_scores=v4_pca_scores().ht(),
                 projected_gen_anc=projected_gen_anc_ht,
-                meta_ht=project_meta.ht(),
-                sample_collisions=sample_id_collisions.ht(),
+                meta_ht=get_project_meta(environment=environment).ht(),
+                sample_collisions=get_sample_id_collisions(
+                    environment=environment
+                ).ht(),
             )
 
             scores_ht.write(
-                genetic_ancestry_pca_scores(test=use_tmp_path, projection=True).path,
+                genetic_ancestry_pca_scores(
+                    test=use_tmp_path, projection=True, environment=environment
+                ).path,
                 overwrite=overwrite,
             )
             gen_anc_ht.write(
-                get_gen_anc_ht(test=use_tmp_path).path, overwrite=overwrite
+                get_gen_anc_ht(test=use_tmp_path, environment=environment).path,
+                overwrite=overwrite,
             )
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("genetic_ancestry_assignment", environment="rwb"))
+        hl.copy_log(
+            get_logging_path("genetic_ancestry_assignment", environment=environment)
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -867,6 +929,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--overwrite", help="Overwrite output files.", action="store_true"
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        default="rwb",
+        type=str,
     )
     parser.add_argument(
         "--run-pca", help="Compute genetic ancestry PCA", action="store_true"
