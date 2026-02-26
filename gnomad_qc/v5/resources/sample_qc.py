@@ -11,9 +11,7 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
-    AOU_VERSIONS,
     BATCH_BUCKET,
-    CURRENT_AOU_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
     GNOMAD_BUCKET,
     SAMPLE_QC_VERSIONS,
@@ -81,12 +79,12 @@ def get_sample_qc(
     # with the metadata, using the `add_project_prefix_to_sample_collisions` function from
     # `gnomad_qc.v5.resources.basics`.
     return VersionedTableResource(
-        CURRENT_AOU_VERSION,
+        CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
                 f"{get_sample_qc_root(version, test, data_set='aou')}/hard_filtering/aou.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
-            for version in AOU_VERSIONS
+            for version in SAMPLE_QC_VERSIONS
         },
     )
 
