@@ -5,10 +5,9 @@ from gnomad.resources.resource_utils import TableResource, VersionedTableResourc
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ANNOTATION_VERSIONS,
-    BATCH_BUCKET,
     CURRENT_ANNOTATION_VERSION,
-    GNOMAD_BUCKET,
     WORKSPACE_BUCKET,
+    _get_base_bucket,
 )
 
 
@@ -37,13 +36,7 @@ def _annotations_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    if environment == "rwb":
-        base_bucket = WORKSPACE_BUCKET
-    elif environment == "batch":
-        base_bucket = BATCH_BUCKET
-    else:
-        base_bucket = GNOMAD_BUCKET
-    return f"gs://{base_bucket}/v{version}/{path_suffix}"
+    return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
 
 
 ######################################################################
@@ -246,13 +239,30 @@ def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableR
     )
 
 
-# Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
-# is stated in the previous header as an int but it is actually a float.
-aou_vcf_header = (
-    f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
-)
+def get_aou_vcf_header(environment: str = "rwb") -> str:
+    """
+    Get path to AoU annotation sites-only VCF header.
 
-# AoU sites-only VCF with annotations needed for variant QC.
-aou_annotated_sites_only_vcf = (
-    f"gs://{WORKSPACE_BUCKET}/echo_full_gnomad_annotated.sites-only.vcf.gz"
-)
+    This is needed for proper import of the sites-only VCF as the QUALapprox
+    annotation is stated in the previous header as an int but is actually a float.
+
+    :param environment: Environment to use. Default is "rwb".
+    :return: Path to the VCF header file.
+    """
+    return (
+        f"{_annotations_root(version='5.0', environment=environment)}"
+        "/aou_annotation_sites_only_header.vcf"
+    )
+
+
+def get_aou_annotated_sites_only_vcf(environment: str = "rwb") -> str:
+    """
+    Get path to AoU sites-only VCF with annotations needed for variant QC.
+
+    :param environment: Environment to use. Default is "rwb".
+    :return: Path to the annotated sites-only VCF.
+    """
+    bucket = _get_base_bucket(environment)
+    if environment == "batch":
+        return f"gs://{bucket}/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz"
+    return f"gs://{bucket}/echo_full_gnomad_annotated.sites-only.vcf.gz"

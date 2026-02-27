@@ -22,16 +22,14 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_VERSION,
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
+    _get_base_bucket,
 )
 from gnomad_qc.v5.resources.meta import (
-    failing_metrics_samples,
     get_failing_metrics_samples,
     get_low_quality_samples,
     get_samples_to_exclude_resource,
-    low_quality_samples,
     meta,
     sample_id_collisions,
-    samples_to_exclude,
 )
 
 logger = logging.getLogger("basic_resources")

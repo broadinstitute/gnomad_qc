@@ -18,7 +18,6 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import ancestry_pca_loadings as v4_pca_loadings
 from gnomad_qc.v4.resources.sample_qc import ancestry_pca_scores as v4_pca_scores
-from gnomad_qc.v4.resources.sample_qc import get_pop_ht as v4_get_pop_ht
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.sample_qc import joint_qc_meta as v4_joint_qc_meta
 from gnomad_qc.v4.resources.sample_qc import onnx_rf as gnomad_v4_onnx_rf
@@ -99,6 +98,7 @@ def write_pca_results(
     :param overwrite: Whether to overwrite an existing file.
     :param included_unreleasables: Whether run_pca included unreleasable samples.
     :param test: Whether the test QC MT was used in the PCA.
+    :param environment: Environment to use. Default is "rwb".
     :return: None.
     """
     gen_anc_pca_eigenvalues_ht = hl.Table.parallelize(
@@ -158,6 +158,7 @@ def prep_ht_for_rf(
     :param v3_gen_anc_spike: Optional List of genetic ancestry groups to spike into training.
         Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
     :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
+    :param environment: Environment to use. Default is "rwb".
     :return: Table with input for the random forest.
     """
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
@@ -301,6 +302,7 @@ def assign_gen_anc(
         Must be in v3_gen_anc_spike dictionary. Defaults to None.
     :param n_partitions: Number of partitions to repartition the genetic ancestry group inference table to. Default is 100.
     :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
+    :param environment: Environment to use. Default is "rwb".
     :return: Table of genetic ancestry group assignments and the RF model.
     """
     logger.info("Prepping HT for RF...")

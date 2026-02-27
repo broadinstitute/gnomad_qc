@@ -19,12 +19,8 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
-from gnomad_qc.v5.resources.basics import (
-    WORKSPACE_BUCKET,
-    get_aou_vds,
-    get_logging_path,
-)
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
+from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
+from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -269,20 +265,19 @@ def create_dense_trio_mt(
 
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
-    if args.rwb:
-        environment = "rwb"
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        environment = "batch"
+    environment = args.environment
+    if environment == "batch":
         hl.init(
             backend="batch",
             log="/identify_trios.log",
             tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             gcs_requester_pays_configuration="broad-mpg-gnomad",
             regions=["us-central1"],
+        )
+    else:
+        hl.init(
+            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
         )
     hl.default_reference("GRCh38")
 
@@ -442,14 +437,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--rwb",
-        help="Run the script in RWB environment.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--batch",
-        help="Run the script in Batch environment.",
-        action="store_true",
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch", "dataproc"],
+        default="rwb",
     )
     parser.add_argument(
         "--overwrite",

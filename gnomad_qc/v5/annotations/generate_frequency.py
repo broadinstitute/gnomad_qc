@@ -609,16 +609,19 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     return ht.select(*final_fields).select_globals(*final_globals)
 
 
-def _fix_v4_global_age_distribution(freq_ht: hl.Table) -> hl.Table:
+def _fix_v4_global_age_distribution(
+    freq_ht: hl.Table, environment: str = "rwb"
+) -> hl.Table:
     """
     Fix the age distribution global annotation in the frequency table.
 
     :param freq_ht: Frequency table to annotate with the age distribution.
+    :param environment: Environment to use. Default is "rwb".
     :return: Frequency table with the age distribution global annotation fixed.
     """
     # Use v5 meta as age is already fixed in the v5 project metadata as are the consent
     # withdrawal samples' releasable field.
-    meta_ht = meta().ht()
+    meta_ht = meta(environment=environment).ht()
     meta_ht = meta_ht.filter(
         (meta_ht.release) & (meta_ht.project_meta.project == "gnomad")
     )
@@ -682,6 +685,7 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
+    environment: str = "rwb",
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -696,6 +700,7 @@ def process_gnomad_dataset(
 
     :param test: Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
+    :param environment: Environment to use. Default is "rwb".
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     v4_ht = release_sites(data_type="genomes").ht()
@@ -724,7 +729,7 @@ def process_gnomad_dataset(
     freq_ht = _merge_updated_frequency_fields(v4_ht, updated_freq_ht)
 
     logger.info("Reannotating gnomAD's age distribution global annotation...")
-    freq_ht = _fix_v4_global_age_distribution(freq_ht)
+    freq_ht = _fix_v4_global_age_distribution(freq_ht, environment=environment)
 
     logger.info(
         "Duplicating gnomAD adj, raw, gen_anc, sex, and gen_anc-sex array entries with"
@@ -1053,6 +1058,7 @@ def main(args):
             gnomad_freq_ht = process_gnomad_dataset(
                 test=test,
                 test_partitions=test_partitions,
+                environment=environment,
             )
 
             logger.info(

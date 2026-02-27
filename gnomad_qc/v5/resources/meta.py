@@ -7,28 +7,10 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v5.resources.constants import (
-    BATCH_BUCKET,
     CURRENT_PROJECT_META_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
-    GNOMAD_BUCKET,
-    WORKSPACE_BUCKET,
+    _get_base_bucket,
 )
-
-
-def _get_metadata_bucket(environment: str = "rwb") -> str:
-    """
-    Return the top-level GCS bucket for metadata resources.
-
-    :param environment: Environment to use. Must be one of "rwb", "batch", or
-        "dataproc".
-    :return: Bucket name string (without gs:// prefix).
-    """
-    if environment == "rwb":
-        return WORKSPACE_BUCKET
-    elif environment == "batch":
-        return BATCH_BUCKET
-    else:
-        return GNOMAD_BUCKET
 
 
 def get_project_meta(environment: str = "rwb") -> VersionedTableResource:
@@ -39,7 +21,7 @@ def get_project_meta(environment: str = "rwb") -> VersionedTableResource:
         "batch", or "dataproc".
     :return: VersionedTableResource for project metadata.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return VersionedTableResource(
         CURRENT_PROJECT_META_VERSION,
         {
@@ -58,7 +40,7 @@ def get_sample_id_collisions(environment: str = "rwb") -> TableResource:
         "batch", or "dataproc".
     :return: TableResource of sample ID collisions.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.sample_id_collisions.ht"
     )
@@ -77,7 +59,7 @@ def get_low_quality_samples(environment: str = "rwb") -> ExpressionResource:
         "batch", or "dataproc".
     :return: ExpressionResource of low-quality sample IDs.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.low_quality_samples.he",
     )
@@ -97,7 +79,7 @@ def get_failing_metrics_samples(environment: str = "rwb") -> ExpressionResource:
         "batch", or "dataproc".
     :return: ExpressionResource of failing-metrics sample IDs.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.failing_genomic_metrics_samples.he",
     )
@@ -120,7 +102,7 @@ def get_samples_to_exclude_resource(environment: str = "rwb") -> ExpressionResou
         "batch", or "dataproc".
     :return: ExpressionResource of sample IDs to exclude.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.samples_to_exclude.he",
     )
@@ -140,7 +122,7 @@ def get_consent_samples_to_drop(environment: str = "rwb") -> TableResource:
         "batch", or "dataproc".
     :return: TableResource of consent-withdrawn sample IDs.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.ht",
     )
@@ -167,7 +149,7 @@ def _meta_root_path(
         "batch", or "dataproc".
     :return: String representation of the path to the root metadata directory.
     """
-    bucket = _get_metadata_bucket(environment)
+    bucket = _get_base_bucket(environment)
     return f"gs://{bucket}/v{version}/metadata/genomes"
 
 

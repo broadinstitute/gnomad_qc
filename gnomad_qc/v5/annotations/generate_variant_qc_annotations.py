@@ -11,8 +11,8 @@ from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
-    aou_annotated_sites_only_vcf,
-    aou_vcf_header,
+    get_aou_annotated_sites_only_vcf,
+    get_aou_vcf_header,
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
@@ -244,8 +244,8 @@ def main(args):
             )
 
             ht = create_info_ht(
-                vcf_path=aou_annotated_sites_only_vcf,
-                header_path=aou_vcf_header,
+                vcf_path=get_aou_annotated_sites_only_vcf(environment=environment),
+                header_path=get_aou_vcf_header(environment=environment),
                 lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
                 vds=vds,
                 test=test,

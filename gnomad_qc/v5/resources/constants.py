@@ -33,3 +33,19 @@ CURRENT_COVERAGE_RELEASE = {"exomes": "4.0", "genomes": "5.0"}
 
 ALL_SITES_AN_RELEASES = {"exomes": ["4.1"], "genomes": ["5.0"]}
 CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1", "genomes": "5.0"}
+
+
+def _get_base_bucket(environment: str = "rwb") -> str:
+    """
+    Return the top-level GCS bucket for the given environment.
+
+    :param environment: Environment to use. Must be one of "rwb", "batch", or
+        "dataproc".
+    :return: Bucket name string (without gs:// prefix).
+    """
+    if environment == "rwb":
+        return WORKSPACE_BUCKET
+    elif environment == "batch":
+        return BATCH_BUCKET
+    else:
+        return GNOMAD_BUCKET

@@ -677,7 +677,7 @@ def main(args):
         downsampling_ht_path = get_aou_downsampling(
             test=test, environment=environment
         ).path
-        meta_ht_path = meta(data_type="genomes").path
+        meta_ht_path = meta(data_type="genomes", environment=environment).path
         group_membership_ht_path = group_membership(
             test=test, data_set=project, environment=environment
         ).path
