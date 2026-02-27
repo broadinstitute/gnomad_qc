@@ -489,7 +489,6 @@ def main(args):
             log="/create_sample_meta.log",
             tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             gcs_requester_pays_configuration="broad-mpg-gnomad",
-            default_reference="GRCh38",
             regions=["us-central1"],
         )
     else:
@@ -497,6 +496,7 @@ def main(args):
             log="/home/jupyter/workspaces/gnomadproduction/create_sample_meta.log",
             tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
         )
+    hl.default_reference("GRCh38")
 
     try:
         check_resource_existence(
@@ -514,7 +514,7 @@ def main(args):
         # Add AoU hard filters to the meta Table.
         meta_ht = annotate_hard_filters(
             meta_ht=meta_ht,
-            samples_to_exclude=get_samples_to_exclude(),
+            samples_to_exclude=get_samples_to_exclude(environment=environment),
             aou_hard_filters_ht=get_hard_filtered_samples(environment=environment).ht(),
         )
 
@@ -598,8 +598,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment where script will run.",
+        choices=["rwb", "batch", "dataproc"],
         default="rwb",
-        type=str,
     )
     return parser
 

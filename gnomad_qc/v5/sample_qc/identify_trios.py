@@ -282,7 +282,6 @@ def main(args):
             log="/identify_trios.log",
             tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             gcs_requester_pays_configuration="broad-mpg-gnomad",
-            default_reference="GRCh38",
             regions=["us-central1"],
         )
     hl.default_reference("GRCh38")

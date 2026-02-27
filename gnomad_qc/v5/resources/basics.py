@@ -25,6 +25,9 @@ from gnomad_qc.v5.resources.constants import (
 )
 from gnomad_qc.v5.resources.meta import (
     failing_metrics_samples,
+    get_failing_metrics_samples,
+    get_low_quality_samples,
+    get_samples_to_exclude_resource,
     low_quality_samples,
     meta,
     sample_id_collisions,
@@ -517,6 +520,7 @@ def get_aou_failing_genomic_metrics_samples() -> Set[str]:
 def get_samples_to_exclude(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     overwrite: bool = False,
+    environment: str = "rwb",
 ) -> hl.expr.SetExpression:
     """
     Get set of AoU sample IDs to exclude.
@@ -527,11 +531,17 @@ def get_samples_to_exclude(
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
     :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+        "batch", or "dataproc".
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
-    if not file_exists(samples_to_exclude.path) or overwrite:
+    lq_resource = get_low_quality_samples(environment=environment)
+    fm_resource = get_failing_metrics_samples(environment=environment)
+    ste_resource = get_samples_to_exclude_resource(environment=environment)
 
-        if not file_exists(low_quality_samples.path):
+    if not file_exists(ste_resource.path) or overwrite:
+
+        if not file_exists(lq_resource.path):
             # Load samples flagged in AoU Known Issues #1.
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
             low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
@@ -539,9 +549,9 @@ def get_samples_to_exclude(
                 hl.agg.collect_as_set(low_quality_ht.research_id)
             )
             hl.experimental.write_expression(
-                hl.set(low_quality_sample_ids), low_quality_samples.path
+                hl.set(low_quality_sample_ids), lq_resource.path
             )
-        if not file_exists(failing_metrics_samples.path):
+        if not file_exists(fm_resource.path):
             # Load and count samples failing genomic metrics filters.
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(
@@ -549,22 +559,20 @@ def get_samples_to_exclude(
                 len(failing_genomic_metrics_samples),
             )
             hl.experimental.write_expression(
-                hl.set(failing_genomic_metrics_samples), failing_metrics_samples.path
+                hl.set(failing_genomic_metrics_samples), fm_resource.path
             )
 
         # Union all samples to exclude and write out.
-        low_quality_sample_ids = hl.experimental.read_expression(
-            low_quality_samples.path
-        )
+        low_quality_sample_ids = hl.experimental.read_expression(lq_resource.path)
         failing_genomic_metrics_samples = hl.experimental.read_expression(
-            failing_metrics_samples.path
+            fm_resource.path
         )
         s_to_exclude = low_quality_sample_ids.union(failing_genomic_metrics_samples)
         hl.experimental.write_expression(
-            s_to_exclude, samples_to_exclude.path, overwrite=True
+            s_to_exclude, ste_resource.path, overwrite=True
         )
 
-    s_to_exclude = hl.experimental.read_expression(samples_to_exclude.path)
+    s_to_exclude = hl.experimental.read_expression(ste_resource.path)
 
     if filter_samples is None:
         additional_samples = hl.empty_set(hl.tstr)

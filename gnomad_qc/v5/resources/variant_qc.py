@@ -1,4 +1,11 @@
-"""Script containing variant QC related resources."""
+"""Script containing variant QC related resources.
+
+.. note::
+
+    Sample QC was completed in the Researcher Workbench (RWB), while allele number,
+    frequency, trio stats, and variant QC were run in Hail Batch. The default
+    environment for variant QC resources is therefore "batch".
+"""
 
 from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (

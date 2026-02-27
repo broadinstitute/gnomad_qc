@@ -274,7 +274,9 @@ def main(args):
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
-            ht = run_generate_sib_stats(vds.variant_data, relatedness().ht())
+            ht = run_generate_sib_stats(
+                vds.variant_data, relatedness(environment=environment).ht()
+            )
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
     finally:

@@ -624,7 +624,6 @@ def main(args):
             log="/assign_ancestry.log",
             tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             gcs_requester_pays_configuration="broad-mpg-gnomad",
-            default_reference="GRCh38",
             regions=["us-central1"],
         )
     else:
@@ -933,8 +932,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment where script will run.",
+        choices=["rwb", "batch", "dataproc"],
         default="rwb",
-        type=str,
     )
     parser.add_argument(
         "--run-pca", help="Compute genetic ancestry PCA", action="store_true"

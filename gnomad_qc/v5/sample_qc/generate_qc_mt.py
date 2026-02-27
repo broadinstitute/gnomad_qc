@@ -136,7 +136,6 @@ def main(args):
             log="/generate_qc_mt.log",
             tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
             gcs_requester_pays_configuration="broad-mpg-gnomad",
-            default_reference="GRCh38",
             regions=["us-central1"],
         )
     else:
@@ -175,7 +174,8 @@ def main(args):
                 s_to_exclude=get_samples_to_exclude(
                     filter_samples=get_hard_filtered_samples(
                         environment=environment
-                    ).ht()
+                    ).ht(),
+                    environment=environment,
                 ),
                 ht=v4_qc_sites_ht,
                 test=test,
@@ -294,8 +294,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment where script will run.",
+        choices=["rwb", "batch", "dataproc"],
         default="rwb",
-        type=str,
     )
 
     return parser
