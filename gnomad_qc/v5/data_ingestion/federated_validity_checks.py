@@ -35,9 +35,6 @@ from gnomad_qc.v4.create_release.validate_and_export_vcf import (
     REGION_FLAG_FIELDS,
 )
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
-
-# from gnomad_qc.v5.create_release.create_release_utils import VEP_VERSIONS_TO_ADD
-from gnomad_qc.v4.create_release.create_release_utils import VEP_VERSIONS_TO_ADD
 from gnomad_qc.v5.resources.basics import get_logging_path
 
 for handler in logging.root.handlers[:]:
@@ -512,7 +509,7 @@ def validate_required_fields(
     return field_issues, type_issues, fields_validated, types_validated
 
 
-def warn_fields_not_in_requirements(
+def check_fields_not_in_requirements(
     ht: hl.Table, field_types: Dict[str, Dict[str, Any]]
 ) -> None:
     """Warn about fields in HT missing from requirements.
@@ -1199,7 +1196,7 @@ def main(args):
             field_issues, fields_validated, type_issues, types_validated
         )
 
-        warn_fields_not_in_requirements(ht, field_types)
+        check_fields_not_in_requirements(ht, field_types)
 
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
