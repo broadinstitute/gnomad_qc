@@ -434,7 +434,6 @@ def annotate_relatedness_filters(
     :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
         outlier-filtered.
     :param environment: Environment to use. Default is "rwb".
-    :param environment: Environment to use. Default is "rwb".
     :return: Table of relatedness filters.
     """
     rel_dict = {
