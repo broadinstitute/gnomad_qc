@@ -35,6 +35,9 @@ from gnomad_qc.v4.create_release.validate_and_export_vcf import (
     REGION_FLAG_FIELDS,
 )
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
+
+# from gnomad_qc.v5.create_release.create_release_utils import VEP_VERSIONS_TO_ADD
+from gnomad_qc.v4.create_release.create_release_utils import VEP_VERSIONS_TO_ADD
 from gnomad_qc.v5.resources.basics import get_logging_path
 
 for handler in logging.root.handlers[:]:
@@ -61,8 +64,8 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["genomes"]
-REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["genomes"]
+ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
+REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
 
 
 def get_table_kind(lines, header_index) -> str:
@@ -509,6 +512,73 @@ def validate_required_fields(
     return field_issues, type_issues, fields_validated, types_validated
 
 
+def warn_fields_not_in_requirements(
+    ht: hl.Table, field_types: Dict[str, Dict[str, Any]]
+) -> None:
+    """Warn about fields in HT missing from requirements.
+
+    :param ht: Hail Table.
+    :param field_types: Nested dictionary of both global and row fields and their expected types. There should be two keys: "global_field_types" and "row_field_types".
+    :return: None.
+    """
+
+    def _flatten_dtype(dtype: hl.DataType, prefix: str = "") -> List[str]:
+        """Recursively extract nested names from a Hail DataType."""
+        names = []
+        if isinstance(dtype, hl.tstruct):
+            for field, field_dtype in dtype.items():
+                name = f"{prefix}.{field}" if prefix else field
+                if isinstance(field_dtype, hl.tstruct):
+                    names.extend(_flatten_dtype(field_dtype, name))
+                else:
+                    names.append(name)
+        return names
+
+    # Define the mapping between HT components and the requirements dict.
+    tasks = [
+        ("Global", ht.globals.dtype, "global_field_types"),
+        ("Row", ht.row.dtype, "row_field_types"),
+    ]
+
+    for label, dtype, req_key in tasks:
+        table_fields = set(_flatten_dtype(dtype))
+        required_fields = set(field_types.get(req_key, {}).keys())
+
+        unexpected = table_fields - required_fields
+
+        if unexpected:
+            logger.warning(
+                "%s fields present in Table but missing from requirements: %s",
+                label,
+                ", ".join(sorted(unexpected)),
+            )
+
+
+def filter_to_test_partitions(
+    ht: hl.Table,
+    test_n_partitions: int = 2,
+) -> hl.Table:
+    """
+    Filter the Table to a specified number of partitions on autosomea and sex chromosomes for testing purposes.
+
+    :param ht: Input Table.
+    :param test_n_partitions: Number of partitions to filter to. Default is 2.
+    :return: Filtered Table with only the specified number of partitions.
+    """
+    test_ht = ht._filter_partitions(range(test_n_partitions))
+    x_ht = hl.filter_intervals(
+        ht, [hl.parse_locus_interval("chrX")]
+    )._filter_partitions(range(test_n_partitions))
+
+    y_ht = hl.filter_intervals(
+        ht, [hl.parse_locus_interval("chrY")]
+    )._filter_partitions(range(test_n_partitions))
+
+    ht = test_ht.union(x_ht, y_ht)
+
+    return ht
+
+
 def check_missingness(
     ht: hl.Table,
     missingness_threshold: float = 0.5,
@@ -561,6 +631,94 @@ def check_missingness(
     compute_missingness(
         ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
     )
+
+
+def run_row_to_globals_length_check(
+    ht: hl.Table,
+    config: dict,
+    check_all_rows: bool = True,
+) -> None:
+    """
+    Build the row_to_globals_check mapping from config and run check_global_and_row_annot_lengths.
+
+    :param ht: Hail table to check.
+    :param config: Configuration dictionary containing freq_fields and optional faf_fields.
+    :param check_all_rows: Whether to check all rows. If False, only checks first rows. Default is True.
+    :return: None
+    """
+    row_to_globals_check = {
+        config["freq_fields"]["freq"]: [
+            config["freq_fields"]["freq_meta"],
+            config["freq_fields"]["freq_meta_sample_count"],
+        ]
+    }
+    if config["freq_fields"].get("freq_index_dict"):
+        row_to_globals_check[config["freq_fields"]["freq"]].append(
+            config["freq_fields"]["freq_index_dict"]
+        )
+    if config.get("faf_fields"):
+        row_to_globals_check[config["faf_fields"]["faf"]] = [
+            config["faf_fields"]["faf_meta"],
+        ]
+    if config["faf_fields"].get("faf_index_dict"):
+        row_to_globals_check[config["faf_fields"]["faf"]].append(
+            config["faf_fields"]["faf_index_dict"]
+        )
+
+    check_global_and_row_annot_lengths(
+        t=ht, row_to_globals_check=row_to_globals_check, check_all_rows=check_all_rows
+    )
+
+
+def add_info_annotations(
+    ht: hl.Table,
+):
+    """
+     Add select annotations to `info` if present in the Table.
+
+    :param ht: Table to annotate.
+    :return: Annotated Table with new `info` field.
+    """
+    info_dict = {}
+
+    # Add region_flag fields if present.
+    missing_region_flags = []
+    region_flags = []
+
+    if "region_flags" in ht.row:
+        for field in REGION_FLAG_FIELDS:
+            if field in ht["region_flags"]:
+                info_dict[field] = ht["region_flags"][field]
+                region_flags.append(field)
+            else:
+                missing_region_flags.append(field)
+
+    if missing_region_flags:
+        logger.warning("Missing region_flag fields: %s", missing_region_flags)
+
+    # Add allele_info fields if present.
+    missing_allele_info = []
+    if "allele_info" in ht.row:
+        for field in ALLELE_TYPE_FIELDS:
+            if field in ht["allele_info"]:
+                info_dict[field] = ht["allele_info"][field]
+            else:
+                missing_allele_info.append(field)
+
+    if missing_allele_info:
+        logger.warning("Missing allele type fields: %s", missing_allele_info)
+
+    # Add monoallelic and only_het if present.
+    if "monoallelic" in ht.row:
+        info_dict["monoallelic"] = ht["monoallelic"]
+
+    if "only_het" in ht.row:
+        info_dict["only_het"] = ht["only_het"]
+
+    # Annotate info field.
+    ht = ht.annotate(info=ht.info.annotate(**info_dict))
+
+    return ht
 
 
 def validate_federated_data(
@@ -988,7 +1146,10 @@ def main(args):
 
         else:
             # TODO: Add resources to intake federated data once obtained.
-            ht = public_release(data_type="genomes").ht()
+            from gnomad_qc.v4.resources.release import release_sites
+
+            ht = release_sites(data_type="exomes", public=False).ht()
+            # ht = public_release(data_type="exomes").ht()
 
             # Check that fields specified in the config are present in the Table.
             validate_config_fields_in_ht(ht=ht, config=config)
@@ -998,48 +1159,17 @@ def main(args):
             if build != "GRCh38":
                 raise ValueError(f"Reference genome is {build}, not GRCh38!")
 
-            # Filter to test partitions if specified.
             if test_n_partitions:
                 logger.info(
                     "Filtering to %d partitions and sex chromosomes...",
                     test_n_partitions,
                 )
-                test_ht = ht._filter_partitions(range(test_n_partitions))
-
-                x_ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval("chrX")]
-                )._filter_partitions(range(test_n_partitions))
-
-                y_ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval("chrY")]
-                )._filter_partitions(range(test_n_partitions))
-
-                ht = test_ht.union(x_ht, y_ht)
-
-        row_to_globals_check = {
-            config["freq_fields"]["freq"]: [
-                config["freq_fields"]["freq_meta"],
-                config["freq_fields"]["freq_meta_sample_count"],
-            ]
-        }
-        if config["freq_fields"].get("freq_index_dict"):
-            row_to_globals_check[config["freq_fields"]["freq"]].append(
-                config["freq_fields"]["freq_index_dict"]
-            )
-
-        if config.get("faf_fields"):
-            row_to_globals_check[config["faf_fields"]["faf"]] = [
-                config["faf_fields"]["faf_meta"],
-            ]
-            if config["faf_fields"].get("faf_index_dict"):
-                row_to_globals_check[config["faf_fields"]["faf"]].append(
-                    config["faf_fields"]["faf_index_dict"]
-                )
+                ht = filter_to_test_partitions(ht, test_n_partitions)
 
         logger.info("Check that row and global annotations lengths match...")
-        check_global_and_row_annot_lengths(
-            t=ht,
-            row_to_globals_check=row_to_globals_check,
+        run_row_to_globals_length_check(
+            ht=ht,
+            config=config,
             check_all_rows=not args.check_only_first_rows_to_globals,
         )
         check_globals_for_retired_terms(ht)
@@ -1069,6 +1199,8 @@ def main(args):
             field_issues, fields_validated, type_issues, types_validated
         )
 
+        warn_fields_not_in_requirements(ht, field_types)
+
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(
@@ -1078,38 +1210,8 @@ def main(args):
         )
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
-        info_dict = {}
-
-        # Add region_flag fields if present.
-        missing_region_flags = []
-        if "region_flags" in ht.row:
-            for field in REGION_FLAG_FIELDS:
-                if field in ht["region_flags"]:
-                    info_dict[field] = ht["region_flags"][field]
-                else:
-                    missing_region_flags.append(field)
-        region_flags = [f for f in REGION_FLAG_FIELDS if f not in missing_region_flags]
-        if missing_region_flags:
-            logger.warning("Missing region_flag fields: %s", missing_region_flags)
-
-        # Add allele_info fields if present.
-        missing_allele_info = []
-        if "allele_info" in ht.row:
-            for field in ALLELE_TYPE_FIELDS:
-                if field in ht["allele_info"]:
-                    info_dict[field] = ht["allele_info"][field]
-                else:
-                    missing_allele_info.append(field)
-        if missing_allele_info:
-            logger.warning("Missing allele type fields: %s", missing_allele_info)
-
-        # Add monoallelic and only_het fields to info dict.
-        if "monoallelic" in ht.row:
-            info_dict["monoallelic"] = ht["monoallelic"]
-        if "only_het" in ht.row:
-            info_dict["only_het"] = ht["only_het"]
-
-        ht = ht.annotate(info=ht.info.annotate(**info_dict))
+        logger.info("Creating info annotations...")
+        ht = add_info_annotations(ht)
 
         # If config specifies to check for monoallelic and only heterozygous sites,
         # create the site_gt_check_expr to pass to validate_federated_data.
@@ -1120,6 +1222,8 @@ def main(args):
             }
         else:
             site_gt_check_expr = None
+
+        region_flags = [f for f in REGION_FLAG_FIELDS if f in ht.info]
 
         validate_federated_data(
             ht=ht,
@@ -1225,7 +1329,7 @@ if __name__ == "__main__":
             "Base path for output files. Will be used to create a log file and an html file."
         ),
         type=str,
-        default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks",
+        default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks/exomes",
     )
 
     args = parser.parse_args()
