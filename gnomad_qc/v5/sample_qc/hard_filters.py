@@ -40,6 +40,7 @@ def compute_aou_sample_qc(
     :param n_partitions: Number of partitions to use when writing the sample QC table.
     :param test: If true, test the function on a smaller subset of the data.
     :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb".
     :return: Table containing sample QC metrics
     """
     logger.info("Computing sample QC")
@@ -121,6 +122,7 @@ def apply_sample_qc_metrics_hard_filters(
         transitions to transverions.
     :param max_r_ti_tv_singleton: Filtering threshold to use for maximum ratio of
         transitions to tranversions in singletons.
+    :param environment: Environment to use. Default is "rwb".
     :param environment: Environment to use. Default is "rwb".
     :return: Table of hard filtered samples.
     """

@@ -150,6 +150,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
+    environment: str = "rwb",
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -178,6 +179,7 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: AoU v8 VDS.
     """
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
@@ -210,8 +212,8 @@ def get_aou_vds(
         from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
 
         logger.info("Removing hard filtered samples from AoU VDS...")
-        hard_filtered_samples_ht = hard_filtered_samples.ht()
-    s_to_exclude = list(hl.eval(get_samples_to_exclude(hard_filtered_samples_ht)))
+        hard_filtered_samples_ht = get_hard_filtered_samples(environment=environment).ht()
+    s_to_exclude = list(hl.eval(get_samples_to_exclude(hard_filtered_samples_ht, environment=environment)))
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
@@ -259,7 +261,7 @@ def get_aou_vds(
     rmt = vds.reference_data
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
-        meta_ht = meta(data_type="genomes").ht()
+        meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."

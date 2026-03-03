@@ -685,7 +685,7 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
-    environment: str = "rwb",
+    environment: str = "dataproc",
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -700,7 +700,7 @@ def process_gnomad_dataset(
 
     :param test: Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "dataproc".
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     v4_ht = release_sites(data_type="genomes").ht()
