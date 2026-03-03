@@ -26,10 +26,10 @@ from gnomad_qc.v4.resources.sample_qc import (
 )
 from gnomad_qc.v4.sample_qc.assign_ancestry import V3_SPIKE_PROJECTS, V4_POP_SPIKE_DICT
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     gen_anc_rf_path,
@@ -620,21 +620,11 @@ def union_projection_scores_and_assignments(
 def main(args):
     """Assign genetic ancestry group labels to samples."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/assign_ancestry.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            spark_conf={"spark.memory.offHeap.enabled": "false"},
-            log="/home/jupyter/workspaces/gnomadproduction/assign_ancestry.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail(
+        "assign_ancestry",
+        environment,
+        spark_conf={"spark.memory.offHeap.enabled": "false"},
+    )
     try:
 
         include_unreleasable_samples = args.include_unreleasable_samples

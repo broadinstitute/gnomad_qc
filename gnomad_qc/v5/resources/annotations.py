@@ -2,12 +2,10 @@
 
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
-from gnomad_qc.v5.resources.basics import qc_temp_prefix
+from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ANNOTATION_VERSIONS,
     CURRENT_ANNOTATION_VERSION,
-    WORKSPACE_BUCKET,
-    _get_base_bucket,
 )
 
 

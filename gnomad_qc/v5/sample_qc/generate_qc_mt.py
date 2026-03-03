@@ -18,13 +18,13 @@ from gnomad.utils.filtering import filter_to_autosomes
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources import sample_qc as v4_sample_qc
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     aou_acaf_mt,
     aou_exome_mt,
     get_logging_path,
     get_samples_to_exclude,
 )
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import get_sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     get_aou_mt_union,
@@ -131,20 +131,7 @@ def generate_qc_mt(
 def main(args):
     """Create a joint gnomAD v4 (exomes + genomes) + AoU dense MT of a diverse set of variants for relatedness/genetic ancestry PCA."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/generate_qc_mt.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/generate_qc_mt.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail("generate_qc_mt", environment)
 
     n_partitions = args.n_partitions
     overwrite = args.overwrite

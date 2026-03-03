@@ -6,10 +6,10 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
+from gnomad_qc.v5.resources.basics import _get_base_bucket
 from gnomad_qc.v5.resources.constants import (
     CURRENT_PROJECT_META_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
-    _get_base_bucket,
 )
 
 

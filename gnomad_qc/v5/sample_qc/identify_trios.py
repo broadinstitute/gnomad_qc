@@ -19,8 +19,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -266,20 +265,7 @@ def create_dense_trio_mt(
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/identify_trios.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail("identify_trios", environment)
 
     overwrite = args.overwrite
     test = args.test
@@ -437,12 +423,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--environment",
-        help="Environment where script will run.",
-        choices=["rwb", "batch", "dataproc"],
-        default="rwb",
-    )
-    parser.add_argument(
         "--overwrite",
         help="Overwrite existing data.",
         action="store_true",
@@ -451,6 +431,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Run script on subset of dataset. Applies to Mendel errors and dense trio MT creation.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch", "dataproc"],
+        default="rwb",
     )
 
     identify_dup_args = parser.add_argument_group("Duplicate identification")

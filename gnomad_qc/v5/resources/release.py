@@ -9,16 +9,13 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v5.resources.basics import qc_temp_prefix
+from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ALL_SITES_AN_RELEASES,
-    BATCH_BUCKET,
     COVERAGE_RELEASES,
     CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
-    GNOMAD_BUCKET,
-    WORKSPACE_BUCKET,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -45,17 +42,11 @@ def _release_root(
     :return: Root path of the release files.
     """
     path_suffix = f"release/{extension}/{data_type}"
-    if environment == "rwb":
-        base_bucket = WORKSPACE_BUCKET
-    elif environment == "batch":
-        base_bucket = BATCH_BUCKET
-    else:
-        base_bucket = GNOMAD_BUCKET
     if test:
         return (
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
-    return f"gs://{base_bucket}/v{version}/{path_suffix}"
+    return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
 
 
 def release_coverage_path(

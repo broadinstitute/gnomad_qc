@@ -7,8 +7,8 @@
     environment for variant QC resources is therefore "batch".
 """
 
-from gnomad_qc.v5.resources.basics import qc_temp_prefix
-from gnomad_qc.v5.resources.constants import CURRENT_VERSION, _get_base_bucket
+from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
+from gnomad_qc.v5.resources.constants import CURRENT_VERSION
 
 
 def _variant_qc_root(

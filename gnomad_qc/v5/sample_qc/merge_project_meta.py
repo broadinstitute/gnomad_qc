@@ -12,10 +12,10 @@ import pandas as pd
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     get_checkpoint_path,
 )
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions
 
 hl.default_reference(new_default_reference="GRCh38")
@@ -288,19 +288,7 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> hl.Table:
 def main(args):
     """Create v5 project metadata."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/merge_project_meta.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/merge_project_meta.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
+    _init_hail("merge_project_meta", environment)
     meta_hts = {}
     for project, project_metadata in get_meta_config().items():
         project_hts = []

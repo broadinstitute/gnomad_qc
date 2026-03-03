@@ -16,10 +16,10 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import get_sample_id_collisions
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
@@ -738,22 +738,7 @@ def create_finalized_outlier_filter_ht(
 def main(args):
     """Determine sample QC metric outliers that should be filtered."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/outlier_filtering.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-            quiet=args.quiet,
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/outlier_filtering.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-            quiet=args.quiet,
-        )
-    hl.default_reference("GRCh38")
+    _init_hail("outlier_filtering", environment, quiet=args.quiet)
 
     test = args.test
     overwrite = args.overwrite

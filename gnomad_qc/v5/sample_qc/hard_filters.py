@@ -10,11 +10,11 @@ from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import add_filters_expr
 
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     get_aou_vds,
     get_checkpoint_path,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.sample_qc import get_hard_filtered_samples, get_sample_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -165,20 +165,7 @@ def apply_sample_qc_metrics_hard_filters(
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/hard_filters.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/hard_filters.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail("hard_filters", environment)
 
     test = args.test
     overwrite = args.overwrite

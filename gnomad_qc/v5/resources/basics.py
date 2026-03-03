@@ -17,23 +17,34 @@ from gnomad_qc.v5.resources.constants import (
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
+    BATCH_BUCKET,
     BATCH_TMP_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
+    GNOMAD_BUCKET,
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
-    _get_base_bucket,
-)
-from gnomad_qc.v5.resources.meta import (
-    get_failing_metrics_samples,
-    get_low_quality_samples,
-    get_samples_to_exclude_resource,
-    meta,
-    sample_id_collisions,
 )
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
+
+
+def _get_base_bucket(environment: str = "rwb") -> str:
+    """
+    Return the top-level GCS bucket for the given environment.
+
+    :param environment: Environment to use. Must be one of "rwb", "batch", or
+        "dataproc".
+    :return: Bucket name string (without gs:// prefix).
+    """
+    if environment == "rwb":
+        return WORKSPACE_BUCKET
+    elif environment == "batch":
+        return BATCH_BUCKET
+    else:
+        return GNOMAD_BUCKET
+
 
 # v5 DRAGEN TGP test VDS.
 dragen_tgp_vds = VariantDatasetResource(
@@ -59,6 +70,38 @@ aou_genotypes = VersionedVariantDatasetResource(
 aou_test_dataset = VariantDatasetResource(
     f"gs://{WORKSPACE_BUCKET}/v5.0/hard_filtering/10sample_for_singleton_test.vds"
 )
+
+
+def _init_hail(log_name: str, environment: str = "rwb", **kwargs) -> None:
+    """
+    Initialize Hail with environment-appropriate settings and set GRCh38 as default reference.
+
+    :param log_name: Base name for the log file (without path or extension).
+    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "batch".
+    :param kwargs: Additional keyword arguments forwarded to hl.init() (applied in all environments).
+    """
+    if environment == "batch":
+        hl.init(
+            backend="batch",
+            log=f"/{log_name}.log",
+            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
+            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            regions=["us-central1"],
+            **kwargs,
+        )
+    elif environment == "dataproc":
+        hl.init(
+            log=f"/{log_name}.log",
+            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4day",
+            **kwargs,
+        )
+    else:
+        hl.init(
+            log=f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log",
+            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
+            **kwargs,
+        )
+    hl.default_reference("GRCh38")
 
 
 def qc_temp_prefix(
@@ -209,11 +252,17 @@ def get_aou_vds(
     # and samples with non-XX/XY ploidies.
     hard_filtered_samples_ht = None
     if remove_hard_filtered_samples:
-        from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
+        from gnomad_qc.v5.resources.sample_qc import get_hard_filtered_samples
 
         logger.info("Removing hard filtered samples from AoU VDS...")
-        hard_filtered_samples_ht = get_hard_filtered_samples(environment=environment).ht()
-    s_to_exclude = list(hl.eval(get_samples_to_exclude(hard_filtered_samples_ht, environment=environment)))
+        hard_filtered_samples_ht = get_hard_filtered_samples(
+            environment=environment
+        ).ht()
+    s_to_exclude = list(
+        hl.eval(
+            get_samples_to_exclude(hard_filtered_samples_ht, environment=environment)
+        )
+    )
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
@@ -261,6 +310,9 @@ def get_aou_vds(
     rmt = vds.reference_data
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
+        # Import here to avoid circular imports.
+        from gnomad_qc.v5.resources.meta import meta, sample_id_collisions
+
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
@@ -535,6 +587,13 @@ def get_samples_to_exclude(
         "batch", or "dataproc".
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
+    # Import here to avoid circular imports.
+    from gnomad_qc.v5.resources.meta import (
+        get_failing_metrics_samples,
+        get_low_quality_samples,
+        get_samples_to_exclude_resource,
+    )
+
     lq_resource = get_low_quality_samples(environment=environment)
     fm_resource = get_failing_metrics_samples(environment=environment)
     ste_resource = get_samples_to_exclude_resource(environment=environment)

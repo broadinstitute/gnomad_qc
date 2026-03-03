@@ -16,8 +16,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
-from gnomad_qc.v5.resources.basics import get_logging_path
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.basics import _init_hail, get_logging_path
 from gnomad_qc.v5.resources.meta import (
     get_consent_samples_to_drop as get_consent_samples_to_drop_resource,
 )
@@ -446,20 +445,7 @@ def main(args):
         )
         return
 
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/relatedness.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/relatedness.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail("relatedness", environment)
 
     joint_meta = get_project_meta(environment=environment).ht()
     joint_qc_mt = get_joint_qc(environment=environment).mt()

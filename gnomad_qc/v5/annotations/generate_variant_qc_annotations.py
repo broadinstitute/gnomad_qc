@@ -17,8 +17,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_sib_stats,
     get_trio_stats,
 )
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -204,20 +203,8 @@ def run_generate_sib_stats(
 
 def main(args):
     """Generate all variant annotations needed for variant QC."""
-    if args.rwb:
-        environment = "rwb"
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/generate_variant_qc_annotations.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        environment = "batch"
-        hl.init(
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            log="generate_variant_qc_annotations.log",
-        )
-        # TODO: Add machine configurations for Batch.
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("generate_variant_qc_annotations", environment)
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
@@ -290,9 +277,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--rwb",
-        help="Run the script in RWB environment.",
-        action="store_true",
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch", "dataproc"],
+        default="rwb",
     )
     parser.add_argument(
         "--overwrite",

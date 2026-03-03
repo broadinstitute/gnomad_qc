@@ -9,13 +9,10 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v5.resources.basics import qc_temp_prefix
+from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
-    BATCH_BUCKET,
     CURRENT_SAMPLE_QC_VERSION,
-    GNOMAD_BUCKET,
     SAMPLE_QC_VERSIONS,
-    WORKSPACE_BUCKET,
 )
 
 
@@ -43,13 +40,7 @@ def get_sample_qc_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    if environment == "rwb":
-        base_bucket = WORKSPACE_BUCKET
-    elif environment == "batch":
-        base_bucket = BATCH_BUCKET
-    else:
-        base_bucket = GNOMAD_BUCKET
-    return f"gs://{base_bucket}/v{version}/{path_suffix}"
+    return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
 
 
 ######################################################################

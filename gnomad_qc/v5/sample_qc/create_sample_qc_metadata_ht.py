@@ -19,11 +19,11 @@ from gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht import (
     get_relationship_filter_expr,
 )
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     get_logging_path,
     get_samples_to_exclude,
 )
-from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET, WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions, meta
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
@@ -484,20 +484,7 @@ def annotate_relatedness_filters(
 def main(args):
     """Merge the output of all sample QC modules into a single Table."""
     environment = args.environment
-    if environment == "batch":
-        hl.init(
-            backend="batch",
-            log="/create_sample_meta.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            regions=["us-central1"],
-        )
-    else:
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/create_sample_meta.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail("create_sample_meta", environment)
 
     try:
         check_resource_existence(
