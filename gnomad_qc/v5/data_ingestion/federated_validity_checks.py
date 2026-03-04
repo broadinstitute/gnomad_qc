@@ -61,8 +61,8 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["exomes"]
-REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["exomes"]
+ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["genomes"]
+REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["genomes"]
 
 
 def get_table_kind(lines, header_index) -> str:
@@ -519,7 +519,7 @@ def check_fields_not_in_requirements(
     :return: None.
     """
 
-    def _flatten_dtype(dtype: hl.DataType, prefix: str = "") -> List[str]:
+    def _flatten_dtype(dtype: hl.expr.types.HailType, prefix: str = "") -> List[str]:
         """Recursively extract nested names from a Hail DataType."""
         names = []
         if isinstance(dtype, hl.tstruct):
@@ -1040,6 +1040,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         faf_meta=faf_meta,
         freq_meta_sample_count=freq_meta_sample_count,
         faf_meta_sample_count=faf_meta_sample_count,
+        extra_global_field="extra_global_field",
     )
 
     # Add in retired terms to globals.
@@ -1143,10 +1144,7 @@ def main(args):
 
         else:
             # TODO: Add resources to intake federated data once obtained.
-            from gnomad_qc.v4.resources.release import release_sites
-
-            ht = release_sites(data_type="exomes", public=False).ht()
-            # ht = public_release(data_type="exomes").ht()
+            ht = public_release(data_type="exomes").ht()
 
             # Check that fields specified in the config are present in the Table.
             validate_config_fields_in_ht(ht=ht, config=config)
