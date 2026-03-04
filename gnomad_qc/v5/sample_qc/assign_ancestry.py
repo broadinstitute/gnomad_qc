@@ -623,7 +623,11 @@ def main(args):
     _init_hail(
         "assign_ancestry",
         environment,
-        spark_conf={"spark.memory.offHeap.enabled": "false"},
+        spark_conf=(
+            {"spark.memory.offHeap.enabled": "false"}
+            if environment != "batch"
+            else None
+        ),
     )
     try:
 
@@ -924,7 +928,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment where script will run.",
-        choices=["rwb", "batch", "dataproc"],
+        choices=["rwb", "batch"],
         default="rwb",
     )
     parser.add_argument(

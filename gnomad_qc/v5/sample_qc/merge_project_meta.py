@@ -18,8 +18,6 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions
 
-hl.default_reference(new_default_reference="GRCh38")
-
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("merge_project_meta")
 logger.setLevel(logging.INFO)

@@ -33,7 +33,7 @@ python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
 python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
 
 # Process gnomAD consent withdrawals
-python generate_frequency.py --process-gnomad --environment dataproc
+python generate_frequency.py --process-gnomad --environment batch
 
 # Run gnomAD in test mode
 python generate_frequency.py --process-gnomad --test --test-partitions 2
@@ -421,19 +421,22 @@ def _prepare_consent_vds(
 def _calculate_consent_frequencies_and_age_histograms(
     vds: hl.vds.VariantDataset,
     test: bool = False,
+    environment: str = "rwb",
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vds: Prepared VDS with consent samples.
     :param test: Whether running in test mode.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Table with freq and age_hists annotations for consent samples.
     """
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
     # Group membership table is already filtered to consent drop samples and is in GCS.
     group_membership_ht = group_membership(
-        test=test, data_set="gnomad", environment="dataproc"
+        test=test, data_set="gnomad", environment=environment
     ).ht()
 
     mt = mt.annotate_cols(
@@ -685,7 +688,7 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
-    environment: str = "dataproc",
+    environment: str = "batch",
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -700,7 +703,8 @@ def process_gnomad_dataset(
 
     :param test: Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
-    :param environment: Environment to use. Default is "dataproc".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
+        or "batch".
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     v4_ht = release_sites(data_type="genomes").ht()
@@ -712,7 +716,9 @@ def process_gnomad_dataset(
     )
 
     logger.info("Calculating frequencies and age histograms for consent samples...")
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test)
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(
+        vds, test, environment=environment
+    )
 
     if test:
         v4_ht = v4_ht.filter(hl.is_defined(consent_freq_ht[v4_ht.key]))
@@ -996,7 +1002,7 @@ def _initialize_hail(args) -> None:
             "backend": "batch",
             "log": get_logging_path("v5_frequency_generation", environment="batch"),
             "tmp_dir": (
-                f"{qc_temp_prefix(environment='dataproc', days=tmp_dir_days)}frequency_generation"
+                f"{qc_temp_prefix(environment='batch', days=tmp_dir_days)}frequency_generation"
             ),
             "gcs_requester_pays_configuration": args.gcp_billing_project,
             "regions": ["us-central1"],

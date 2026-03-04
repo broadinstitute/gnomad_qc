@@ -251,8 +251,8 @@ def get_consent_samples_to_drop(
         of the consent drop.
 
     :param overwrite: Whether to overwrite the consent drop Table resource. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Table with consent drop samples.
     """
     consent_resource = get_consent_samples_to_drop_resource(environment=environment)
