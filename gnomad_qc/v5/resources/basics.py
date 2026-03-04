@@ -93,32 +93,29 @@ def _init_hail(
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
-    filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    log = (
+        f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
+        if environment == "rwb"
+        else get_logging_path(
+            log_name, environment=environment, tmp_dir_days=tmp_dir_days
+        )
+    )
+    init_kwargs = {
+        "log": log,
+        "tmp_dir": qc_temp_prefix(environment=environment, days=tmp_dir_days),
+        **{k: v for k, v in kwargs.items() if v is not None},
+    }
     if environment == "batch":
-        hl.init(
-            backend="batch",
-            log=get_logging_path(
-                log_name, environment="batch", tmp_dir_days=tmp_dir_days
-            ),
-            tmp_dir=qc_temp_prefix(environment="batch", days=tmp_dir_days),
-            gcs_requester_pays_configuration=billing_project or "broad-mpg-gnomad",
-            regions=["us-central1"],
-            **filtered_kwargs,
+        init_kwargs.update(
+            {
+                "backend": "batch",
+                "gcs_requester_pays_configuration": (
+                    billing_project or "broad-mpg-gnomad"
+                ),
+                "regions": ["us-central1"],
+            }
         )
-    elif environment == "dataproc":
-        hl.init(
-            log=get_logging_path(
-                log_name, environment="dataproc", tmp_dir_days=tmp_dir_days
-            ),
-            tmp_dir=qc_temp_prefix(environment="dataproc", days=tmp_dir_days),
-            **filtered_kwargs,
-        )
-    else:
-        hl.init(
-            log=f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log",
-            tmp_dir=qc_temp_prefix(environment="rwb", days=tmp_dir_days),
-            **filtered_kwargs,
-        )
+    hl.init(**init_kwargs)
     hl.default_reference("GRCh38")
 
 
