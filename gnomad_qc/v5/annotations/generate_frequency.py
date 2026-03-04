@@ -125,7 +125,8 @@ def _prepare_aou_vds(
     :param aou_vds: AoU VariantDataset.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param test: Whether running in test mode.
-    :param environment: Environment being used. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment being used. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Prepared AoU VariantDataset.
     """
     aou_vmt = aou_vds.variant_data
@@ -200,7 +201,8 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
     :param aou_variant_mt: Prepared variant MatrixTable.
     :param test: Whether to use test resources.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
@@ -307,10 +309,13 @@ def process_aou_dataset(
 
     :param test: Whether to run in test mode.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
-    aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
+    aou_vds = get_aou_vds(
+        annotate_meta=True, release_only=True, test=test, environment=environment
+    )
     aou_vds = _prepare_aou_vds(
         aou_vds, use_all_sites_ans=use_all_sites_ans, test=test, environment=environment
     )
@@ -421,14 +426,14 @@ def _prepare_consent_vds(
 def _calculate_consent_frequencies_and_age_histograms(
     vds: hl.vds.VariantDataset,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vds: Prepared VDS with consent samples.
     :param test: Whether running in test mode.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Table with freq and age_hists annotations for consent samples.
     """
@@ -1198,7 +1203,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     env_group.add_argument(
         "--environment",
         help="Environment to run in.",
-        choices=["rwb", "batch", "dataproc"],
+        choices=["rwb", "batch"],
         default="rwb",
     )
     env_group.add_argument(

@@ -615,7 +615,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment where script will run.",
-        choices=["rwb", "batch", "dataproc"],
+        choices=["rwb", "batch"],
         default="rwb",
     )
     parser.add_argument(

@@ -40,12 +40,12 @@ from gnomad_qc.v5.resources.annotations import (
     qual_hists,
 )
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
     qc_temp_prefix,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
@@ -645,18 +645,8 @@ def join_aou_and_gnomad_qual_hists_ht(
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
-    environment = "rwb" if project == "aou" else "dataproc"
-    if environment == "rwb":
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        hl.init(
-            log="compute_coverage.log",
-            tmp_dir="gs://gnomad-tmp-4day",
-        )
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("compute_coverage", environment)
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
@@ -972,10 +962,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--project-name",
-        help="Project name. Determines environment where script will run.",
+        help="Project name.",
         default="aou",
         type=str,
         choices=["aou", "gnomad"],
+    )
+    parser.add_argument(
+        "--environment",
+        help="Compute environment.",
+        default="rwb",
+        choices=["rwb", "batch"],
     )
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
