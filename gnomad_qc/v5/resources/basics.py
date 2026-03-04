@@ -72,34 +72,52 @@ aou_test_dataset = VariantDatasetResource(
 )
 
 
-def _init_hail(log_name: str, environment: str = "rwb", **kwargs) -> None:
+def _init_hail(
+    log_name: str,
+    environment: str = "rwb",
+    billing_project: Optional[str] = None,
+    tmp_dir_days: Optional[int] = 4,
+    **kwargs,
+) -> None:
     """
     Initialize Hail with environment-appropriate settings and set GRCh38 as default reference.
 
     :param log_name: Base name for the log file (without path or extension).
-    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "batch".
-    :param kwargs: Additional keyword arguments forwarded to hl.init() (applied in all environments).
+    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "rwb".
+    :param billing_project: GCP billing project for requester-pays buckets (batch only).
+        Defaults to "broad-mpg-gnomad".
+    :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
+        Must be None, 4, or 30. Default is 4.
+    :param kwargs: Additional keyword arguments forwarded to hl.init() in all
+        environments. None values are silently dropped, so optional params (e.g.
+        batch resource params from :func:`_get_batch_resource_kwargs`, or
+        ``spark_conf`` for dataproc) can be passed unconditionally.
     """
+    filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
     if environment == "batch":
         hl.init(
             backend="batch",
-            log=f"/{log_name}.log",
-            tmp_dir=f"gs://{BATCH_TMP_BUCKET}-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
+            log=get_logging_path(
+                log_name, environment="batch", tmp_dir_days=tmp_dir_days
+            ),
+            tmp_dir=qc_temp_prefix(environment="batch", days=tmp_dir_days),
+            gcs_requester_pays_configuration=billing_project or "broad-mpg-gnomad",
             regions=["us-central1"],
-            **kwargs,
+            **filtered_kwargs,
         )
     elif environment == "dataproc":
         hl.init(
-            log=f"/{log_name}.log",
-            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4day",
-            **kwargs,
+            log=get_logging_path(
+                log_name, environment="dataproc", tmp_dir_days=tmp_dir_days
+            ),
+            tmp_dir=qc_temp_prefix(environment="dataproc", days=tmp_dir_days),
+            **filtered_kwargs,
         )
     else:
         hl.init(
             log=f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-            **kwargs,
+            tmp_dir=qc_temp_prefix(environment="rwb", days=tmp_dir_days),
+            **filtered_kwargs,
         )
     hl.default_reference("GRCh38")
 
@@ -171,6 +189,33 @@ def get_logging_path(
     :return: Output log path.
     """
     return f"{qc_temp_prefix(version, environment, tmp_dir_days)}{name}.log"
+
+
+_BATCH_RESOURCE_PARAMS = [
+    "app_name",
+    "driver_cores",
+    "driver_memory",
+    "worker_cores",
+    "worker_memory",
+]
+
+
+def _get_batch_resource_kwargs(args) -> dict:
+    """
+    Extract optional Hail Batch resource parameters from parsed args, omitting None values.
+
+    Intended for use with scripts that expose ``--app-name``, ``--driver-cores``,
+    ``--driver-memory``, ``--worker-cores``, and ``--worker-memory`` arguments. The
+    result can be unpacked directly into :func:`_init_hail`.
+
+    :param args: Parsed command-line arguments.
+    :return: Dict of non-None batch resource kwargs.
+    """
+    return {
+        p: getattr(args, p)
+        for p in _BATCH_RESOURCE_PARAMS
+        if getattr(args, p, None) is not None
+    }
 
 
 def get_aou_vds(
