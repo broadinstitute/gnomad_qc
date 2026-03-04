@@ -759,6 +759,7 @@ def main(args):
                     filter_partitions=range(2) if test_2_partitions else None,
                     annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
+                    environment=environment,
                 )
                 # NOTE: AoU v8 VDS does not have DP annotation, so using custom function
                 # to annotate adj.
@@ -802,9 +803,7 @@ def main(args):
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
-            merged_gnomad_coverage_ht_path = (
-                f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht"
-            )
+            merged_gnomad_coverage_ht_path = f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
                 output_step_resources={
                     "merged_gnomad_coverage_ht": [merged_gnomad_coverage_ht_path],
@@ -830,7 +829,9 @@ def main(args):
             ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_an:
-            merged_gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
+            merged_gnomad_an_ht_path = (
+                f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
+            )
             check_resource_existence(
                 output_step_resources={
                     "merged_gnomad_an_ht": [merged_gnomad_an_ht_path],
@@ -865,7 +866,7 @@ def main(args):
                 environment=environment,
             )
             cov_tsv_path = release_coverage_tsv_path(test=test, environment=environment)
-            gnomad_coverage_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_coverage.ht"
+            gnomad_coverage_ht_path = f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
                 input_step_resources={
                     "gnomad_coverage_ht": [gnomad_coverage_ht_path],
@@ -898,7 +899,9 @@ def main(args):
             an_tsv_path = release_all_sites_an_tsv_path(
                 test=test, environment=environment
             )
-            gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
+            gnomad_an_ht_path = (
+                f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
+            )
             check_resource_existence(
                 input_step_resources={
                     "gnomad_an_ht": [gnomad_an_ht_path],

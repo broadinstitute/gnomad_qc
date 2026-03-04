@@ -219,6 +219,7 @@ def create_dense_trio_mt(
     meta_ht: hl.Table,
     test: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
+    environment: str = "rwb",
 ) -> hl.MatrixTable:
     """
     Create a dense MatrixTable for high quality trios.
@@ -228,6 +229,8 @@ def create_dense_trio_mt(
     :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Dense MatrixTable with high quality trios.
     """
     # Filter the metadata table to only high quality AoU samples.
@@ -258,6 +261,7 @@ def create_dense_trio_mt(
         chrom="chr20" if test else None,
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
+        environment=environment,
     )
     return hl.vds.to_dense_mt(vds)
 
@@ -355,6 +359,7 @@ def main(args):
                 remove_dead_alleles=False,
                 filter_partitions=range(5) if test else None,
                 chrom="chr20",
+                environment=environment,
             )
             mendel_err_ht = run_mendel_errors(
                 vds,
@@ -411,6 +416,7 @@ def main(args):
                 meta_ht,
                 test=test,
                 naive_coalesce_partitions=naive_coalesce_partitions,
+                environment=environment,
             )
             dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 

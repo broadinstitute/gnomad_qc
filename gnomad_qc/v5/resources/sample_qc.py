@@ -674,8 +674,11 @@ def duplicates(environment: str = "rwb") -> VersionedTableResource:
     """
     Get the VersionedTableResource for duplicated (or twin) samples.
 
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource of duplicate samples.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {

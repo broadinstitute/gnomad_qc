@@ -1125,7 +1125,7 @@ def main(args):
                 merged_freq_ht, dataset="merged"
             )
 
-            logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
+            logger.info("Writing merged frequency HT to %s...", merged_freq.path)
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
 
     finally:

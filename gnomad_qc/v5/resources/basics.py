@@ -377,14 +377,14 @@ def get_aou_vds(
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
         # Import here to avoid circular imports.
-        from gnomad_qc.v5.resources.meta import meta, sample_id_collisions
+        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
 
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions = sample_id_collisions.ht()
+        sample_collisions = get_sample_id_collisions(environment=environment).ht()
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )

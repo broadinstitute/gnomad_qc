@@ -218,6 +218,7 @@ def main(args):
         # NOTE: Using args.test here so that sibling stats test can be calculated from
         # a few partitions of the full (not test) VDS).
         test=args.test,
+        environment=environment,
     )
 
     try:
