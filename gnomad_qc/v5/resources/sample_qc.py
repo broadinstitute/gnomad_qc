@@ -9,7 +9,12 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
+from gnomad_qc.v5.resources.basics import (
+    _SAMPLE_DATA_ENVIRONMENTS,
+    _get_base_bucket,
+    _validate_environment,
+    qc_temp_prefix,
+)
 from gnomad_qc.v5.resources.constants import (
     CURRENT_SAMPLE_QC_VERSION,
     SAMPLE_QC_VERSIONS,
@@ -30,9 +35,11 @@ def get_sample_qc_root(
     :param test: If True, return a temporary path (e.g., for testing or development).
     :param data_type: Data type (e.g., "genomes" or "exomes").
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: GCS path to the sample QC directory.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     path_suffix = f"sample_qc/{data_type}/{data_set}"
 
     if test:
@@ -64,8 +71,8 @@ def get_sample_qc(
     :param strat: Which stratification to return.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full VDS.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Sample QC table.
     """
     # NOTE: The sample QC tables currently do not have the `aou` prefix added to sample IDs
@@ -91,8 +98,8 @@ def get_hard_filtered_samples(
     Get the VersionedTableResource for hard-filtered samples.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource of hard-filtered samples.
     """
     return VersionedTableResource(
@@ -123,8 +130,8 @@ def get_aou_mt_union(
     Get the union of AoU ACAF and exome MatrixTables.
 
     :param test: Whether to use a tmp path for a test resource. Default is True.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: MatrixTableResource containing the union of AoU ACAF and exome MTs.
     """
     return MatrixTableResource(
@@ -140,8 +147,8 @@ def get_joint_qc(
     Get joint (exomes + genomes) gnomAD v4 + AoU dense MatrixTableResource.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedMatrixTableResource of QC sites.
     """
     return VersionedMatrixTableResource(
@@ -172,7 +179,8 @@ def get_cuking_input_path(
 
     :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
     :param test: Whether to return a path corresponding to a test subset. Default is False.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Default is 'rwb'.
+    :param environment: Compute environment. Default is 'rwb'. Must be one of 'rwb'
+        or 'batch'.
     :return: Temporary path to hold Parquet input tables for running cuKING.
     """
     # cuKING inputs can be easily regenerated, so use a temp location.
@@ -191,7 +199,8 @@ def get_cuking_output_path(
 
     :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
     :param test: Whether to return a path corresponding to a test subset. Default is False.
-    :param environment: Compute environment, either 'dataproc' or 'rwb'. Default is 'rwb'.
+    :param environment: Compute environment. Default is 'rwb'. Must be one of 'rwb'
+        or 'batch'.
     :return: Temporary path to hold Parquet output tables for running cuKING.
     """
     # cuKING outputs can be easily regenerated, so use a temp location.
@@ -209,8 +218,8 @@ def relatedness(
     :param test: Whether to use a tmp path for a test resource.
     :param raw: Whether to return the raw cuKING output in Hail Table format. If False,
         returns the processed relatedness table. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     suffix = ".raw" if raw else ""
@@ -237,8 +246,8 @@ def related_samples_to_drop(
     :param release: Whether to determine related samples to drop for the release based
         on outlier filtering of sample QC metrics. Also drops non-released v4 samples and consent drop samples.
         Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
@@ -264,8 +273,8 @@ def sample_rankings(
     :param release: Whether to return resource for ranking of all samples based on
         outlier filtering of sample QC metrics. Used to determine related samples to
         drop for the release.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
@@ -300,8 +309,8 @@ def _get_genetic_ancestry_pca_ht_path(
     :param version: Version of sample QC path to return.
     :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Path to requested genetic ancestry PCA file.
     """
     return f"{get_sample_qc_root(version, test, data_type, environment=environment)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
@@ -320,8 +329,8 @@ def genetic_ancestry_pca_loadings(
         that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Genetic ancestry PCA loadings.
     """
     return VersionedTableResource(
@@ -357,8 +366,8 @@ def genetic_ancestry_pca_scores(
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :param projection: Whether the scores ht includes projection scores instead of just original scores.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Genetic ancestry PCA scores.
     """
     return VersionedTableResource(
@@ -392,8 +401,8 @@ def genetic_ancestry_pca_eigenvalues(
         PCA that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Genetic ancestry PCA eigenvalues.
     """
     return VersionedTableResource(
@@ -426,8 +435,8 @@ def gen_anc_rf_path(
     :param version: gnomAD Version.
     :param test: Whether the RF assignment was from a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: String path to sample genetic ancestry group RF model.
     """
     return f"{get_sample_qc_root(version, test, data_type, environment=environment)}/genetic_ancestry_inference/gnomad.{data_type}.v{version}.gen_anc.RF_fit.pickle"
@@ -447,8 +456,8 @@ def get_gen_anc_ht(
     :param test: Whether to use the test version of the genetic ancestry TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :param projection_only: Whether the inference results consist of just the results for the projected samples. When set to False, probability scores will not be included as they cannot be obtained for all samples.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: TableResource of sample gen anc groups.
     """
     return TableResource(
@@ -468,8 +477,8 @@ def get_gen_anc_pr_ht(
     :param version: Version of gen anc group PR TableResource to return.
     :param test: Whether to use the test version of the gen anc group PR TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: TableResource of genetic ancestry inference PR values.
     """
     return TableResource(
@@ -485,8 +494,8 @@ def per_grp_min_rf_probs_json_path(
     Get path to JSON file containing per genetic ancestry group minimum RF probabilities.
 
     :param version: Version of the JSON to return.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Path to per genetic ancestry group minimum RF probabilities JSON.
     """
     return f"{get_sample_qc_root(version, data_type='joint', environment=environment)}/genetic_ancestry_inference/gnomad.joint.v{version}.gen_anc_min_probs.json"
@@ -511,8 +520,8 @@ def get_outlier_detection_sample_qc(
         - Sample 1% of the dataset if `test` is True
 
     :param test: Whether to use the test version of the sample QC TableResource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Modified sample QC Table.
     """
     return VersionedTableResource(
@@ -534,8 +543,8 @@ def stratified_filtering(
     Get VersionedTableResource for stratified genetic ancestry-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
@@ -560,8 +569,8 @@ def regressed_filtering(
     :param test: Whether to use a tmp path for a test resource.
     :param include_unreleasable_samples: Whether to get resource that included
         unreleasable samples in regression.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     postfix = ".include_unreleasable_samples" if include_unreleasable_samples else ""
@@ -590,8 +599,8 @@ def nearest_neighbors(
         neighbors.
     :param include_unreleasable_samples: Whether to get resource that included
         unreleasable samples in nearest neighbors determination.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -618,8 +627,8 @@ def nearest_neighbors_filtering(
     Get VersionedTableResource for nearest neighbors platform/genetic ancestry group-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
@@ -641,8 +650,8 @@ def finalized_outlier_filtering(
     Get VersionedTableResource for the finalized outlier filtering.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
@@ -691,7 +700,8 @@ def pedigree(
     :param fake: Whether to return the fake pedigree resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
         for the finalized pedigree, which depends on `ped_mendel_errors`.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedPedigreeResource of trio pedigree including multiple trios per
         family.
     """
@@ -722,7 +732,8 @@ def ped_mendel_errors(
     Get the VersionedTableResource for the number of mendel errors per trio.
 
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource of number of mendel errors per trio.
     """
     return VersionedTableResource(
@@ -746,7 +757,8 @@ def ped_filter_param_json_path(
 
     :param version: Version of the JSON to return.
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Path to Pedigree filter JSON.
     """
     return f"{get_sample_qc_root(version, test, environment=environment)}/relatedness/trios/aou.genomes.v{version}.ped_filters.json"
@@ -761,7 +773,8 @@ def trios(
     :param fake: Whether to return the fake trio resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
         for the finalized Pedigree, which depends on `ped_mendel_errors`.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedPedigreeResource of trio samples.
     """
     return VersionedPedigreeResource(
@@ -785,7 +798,8 @@ def dense_trios(
 
     :param split: Whether to get the resource for the split trio MatrixTable.
     :param test: Whether to use a tmp path for a test resource.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedMatrixTableResource of dense trio MatrixTable.
     """
     return VersionedMatrixTableResource(

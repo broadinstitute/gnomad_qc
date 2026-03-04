@@ -46,6 +46,28 @@ def _get_base_bucket(environment: str = "rwb") -> str:
         return GNOMAD_BUCKET
 
 
+_SAMPLE_DATA_ENVIRONMENTS = frozenset({"rwb", "batch"})
+_ALL_ENVIRONMENTS = frozenset({"rwb", "batch", "dataproc"})
+
+
+def _validate_environment(
+    environment: str,
+    allowed: frozenset = _ALL_ENVIRONMENTS,
+) -> None:
+    """
+    Raise ValueError if `environment` is not in `allowed`.
+
+    :param environment: Environment string to validate.
+    :param allowed: Set of permitted environment strings. Defaults to
+        `_ALL_ENVIRONMENTS`.
+    """
+    if environment not in allowed:
+        raise ValueError(
+            f"Environment '{environment}' is not allowed for this resource. "
+            f"Must be one of: {sorted(allowed)}"
+        )
+
+
 # v5 DRAGEN TGP test VDS.
 dragen_tgp_vds = VariantDatasetResource(
     "gs://gnomad/v5.0/testing/genomes/dragen_tgp_v5.0_test.vds"
@@ -264,9 +286,11 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: AoU v8 VDS.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
     vds = aou_v8_resource.vds()
 
@@ -625,10 +649,11 @@ def get_samples_to_exclude(
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
     :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     # Import here to avoid circular imports.
     from gnomad_qc.v5.resources.meta import (
         get_failing_metrics_samples,

@@ -2,7 +2,13 @@
 
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
-from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
+from gnomad_qc.v5.resources.basics import (
+    _ALL_ENVIRONMENTS,
+    _SAMPLE_DATA_ENVIRONMENTS,
+    _get_base_bucket,
+    _validate_environment,
+    qc_temp_prefix,
+)
 from gnomad_qc.v5.resources.constants import (
     ANNOTATION_VERSIONS,
     CURRENT_ANNOTATION_VERSION,
@@ -50,9 +56,11 @@ def get_trio_stats(
     Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.
 
     :param test: Whether to use a temporary path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: AoU trio stats VersionedTableResource.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -72,9 +80,11 @@ def get_sib_stats(
     Get the gnomAD v5 (AoU genomes only) sibling stats VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: AoU sibling stats VersionedTableResource.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -100,9 +110,11 @@ def get_aou_downsampling(
     v5 downsamplings only applies to the AoU dataset.
 
     :param test: Whether to use a tmp path for tests. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Hail Table containing downsampling annotations.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -124,9 +136,11 @@ def group_membership(
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :param data_set: Data set of annotation resource. Default is "aou".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Hail Table containing group membership annotations.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -143,9 +157,11 @@ def qual_hists(test: bool = False, environment: str = "rwb") -> VersionedTableRe
     Get the quality histograms annotation table.
 
     :param test: Whether to use a tmp path for tests. Default is False.
-    :param environment: Environment to use for quality histograms. Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use for quality histograms. Must be one of "rwb"
+        or "batch".
     :return: Hail Table containing quality histogram annotations.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -218,14 +234,18 @@ def get_freq(
 ######################################################################
 
 
-def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableResource:
+def get_info_ht(
+    test: bool = False, environment: str = "dataproc"
+) -> VersionedTableResource:
     """
     Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "dataproc". Must be one of
+        "rwb", "batch", or "dataproc".
     :return: Info VersionedTableResource.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -237,29 +257,33 @@ def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableR
     )
 
 
-def get_aou_vcf_header(environment: str = "rwb") -> str:
+def get_aou_vcf_header(environment: str = "batch") -> str:
     """
     Get path to AoU annotation sites-only VCF header.
 
     This is needed for proper import of the sites-only VCF as the QUALapprox
     annotation is stated in the previous header as an int but is actually a float.
 
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
+        or "batch".
     :return: Path to the VCF header file.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return (
         f"{_annotations_root(version='5.0', environment=environment)}"
         "/aou_annotation_sites_only_header.vcf"
     )
 
 
-def get_aou_annotated_sites_only_vcf(environment: str = "rwb") -> str:
+def get_aou_annotated_sites_only_vcf(environment: str = "batch") -> str:
     """
     Get path to AoU sites-only VCF with annotations needed for variant QC.
 
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
+        or "batch".
     :return: Path to the annotated sites-only VCF.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     if environment == "batch":
         return f"gs://{bucket}/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz"

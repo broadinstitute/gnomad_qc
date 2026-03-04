@@ -6,7 +6,11 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v5.resources.basics import _get_base_bucket
+from gnomad_qc.v5.resources.basics import (
+    _SAMPLE_DATA_ENVIRONMENTS,
+    _get_base_bucket,
+    _validate_environment,
+)
 from gnomad_qc.v5.resources.constants import (
     CURRENT_PROJECT_META_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
@@ -17,10 +21,11 @@ def get_project_meta(environment: str = "rwb") -> VersionedTableResource:
     """
     Get the VersionedTableResource for per-sample project-level metadata.
 
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: VersionedTableResource for project metadata.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return VersionedTableResource(
         CURRENT_PROJECT_META_VERSION,
@@ -36,10 +41,11 @@ def get_sample_id_collisions(environment: str = "rwb") -> TableResource:
     """
     Get the TableResource for sample IDs that collide between AoU and gnomAD v4.
 
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: TableResource of sample ID collisions.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.sample_id_collisions.ht"
@@ -55,10 +61,11 @@ def get_low_quality_samples(environment: str = "rwb") -> ExpressionResource:
     For more information, see Known Issue #1 in the AoU QC document:
     https://support.researchallofus.org/hc/en-us/articles/29390274413716-All-of-Us-Genomic-Quality-Report.
 
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: ExpressionResource of low-quality sample IDs.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.low_quality_samples.he",
@@ -75,10 +82,11 @@ def get_failing_metrics_samples(environment: str = "rwb") -> ExpressionResource:
     For more information about samples failing coverage hard filters, see
     docstring of `get_aou_failing_genomic_metrics_samples`.
 
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: ExpressionResource of failing-metrics sample IDs.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.failing_genomic_metrics_samples.he",
@@ -98,10 +106,11 @@ def get_samples_to_exclude_resource(environment: str = "rwb") -> ExpressionResou
     The total number of samples to exclude is 5514, not 5523 because 9 samples both
     fail coverage filters and have non-XX/XY sex ploidies.
 
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: ExpressionResource of sample IDs to exclude.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.samples_to_exclude.he",
@@ -118,10 +127,11 @@ def get_consent_samples_to_drop(environment: str = "rwb") -> TableResource:
     - RP-1061: 776 samples.
     - RP-1411: 121 samples.
 
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: TableResource of consent-withdrawn sample IDs.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.ht",
@@ -145,10 +155,11 @@ def _meta_root_path(
     Retrieve the path to the root metadata directory.
 
     :param version: gnomAD version.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: String representation of the path to the root metadata directory.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     bucket = _get_base_bucket(environment)
     return f"gs://{bucket}/v{version}/metadata/genomes"
 
@@ -171,8 +182,8 @@ def meta(
     :param version: Sample QC version.
     :param data_type: Data type. Default is "genomes". If "exomes" is supplied, a
         warning will be raised suggesting the use of v4 sample QC metadata.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
-        "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Sample QC meta VersionedTableResource.
     """
     if data_type == "exomes":
