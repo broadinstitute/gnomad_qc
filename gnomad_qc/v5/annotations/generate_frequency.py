@@ -77,6 +77,8 @@ from gnomad_qc.v5.resources.annotations import (
     group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
+    _get_batch_resource_kwargs,
+    _init_hail,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
@@ -999,42 +1001,14 @@ def _initialize_hail(args) -> None:
 
     :param args: Parsed command-line arguments.
     """
-    environment = args.environment
-    tmp_dir_days = args.tmp_dir_days
-
-    if environment == "batch":
-        batch_kwargs = {
-            "backend": "batch",
-            "log": get_logging_path("v5_frequency_generation", environment="batch"),
-            "tmp_dir": (
-                f"{qc_temp_prefix(environment='batch', days=tmp_dir_days)}frequency_generation"
-            ),
-            "gcs_requester_pays_configuration": args.gcp_billing_project,
-            "regions": ["us-central1"],
-        }
-        # Add optional batch configuration parameters.
-        for param in [
-            "app_name",
-            "driver_cores",
-            "driver_memory",
-            "worker_cores",
-            "worker_memory",
-        ]:
-            value = getattr(args, param, None)
-            if value is not None:
-                batch_kwargs[param] = value
-
-        hl.init(**batch_kwargs)
-    else:
-        hl.init(
-            log=get_logging_path(
-                "v5_frequency_generation",
-                environment=environment,
-                tmp_dir_days=tmp_dir_days,
-            ),
-            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail(
+        "v5_frequency_generation",
+        args.environment,
+        billing_project=getattr(args, "gcp_billing_project", None),
+        tmp_dir_days=args.tmp_dir_days,
+        tmp_dir=f"{qc_temp_prefix(environment=args.environment, days=args.tmp_dir_days)}frequency_generation",
+        **_get_batch_resource_kwargs(args),
+    )
 
 
 def main(args):
@@ -1106,15 +1080,27 @@ def main(args):
                 "Merging frequency data and age histograms from both datasets..."
             )
 
-            merged_freq = get_freq(test=test, data_type="genomes", data_set="merged")
+            merged_freq = get_freq(
+                test=test,
+                data_type="genomes",
+                data_set="merged",
+                environment=environment,
+            )
 
             check_resource_existence(
                 output_step_resources={"merge-datasets": [merged_freq]},
                 overwrite=overwrite,
             )
 
-            gnomad_freq_ht = get_freq(data_type="genomes", test=test, data_set="gnomad")
-            aou_freq_ht = get_freq(data_type="genomes", test=test, data_set="aou")
+            gnomad_freq_ht = get_freq(
+                data_type="genomes",
+                test=test,
+                data_set="gnomad",
+                environment=environment,
+            )
+            aou_freq_ht = get_freq(
+                data_type="genomes", test=test, data_set="aou", environment=environment
+            )
 
             check_resource_existence(
                 input_step_resources={

@@ -862,8 +862,9 @@ def main(args):
                 public=False,
                 test=test,
                 coverage_type="coverage",
+                environment=environment,
             )
-            cov_tsv_path = release_coverage_tsv_path(test=test)
+            cov_tsv_path = release_coverage_tsv_path(test=test, environment=environment)
             gnomad_coverage_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
                 input_step_resources={
@@ -892,8 +893,11 @@ def main(args):
                 public=False,
                 test=test,
                 coverage_type="allele_number",
+                environment=environment,
             )
-            an_tsv_path = release_all_sites_an_tsv_path(test=test)
+            an_tsv_path = release_all_sites_an_tsv_path(
+                test=test, environment=environment
+            )
             gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
             check_resource_existence(
                 input_step_resources={

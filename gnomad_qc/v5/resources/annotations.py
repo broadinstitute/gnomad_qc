@@ -191,6 +191,7 @@ def coverage_and_an_path(
         "batch", or "dataproc".
     :return: Coverage and allele number Hail Table.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     assert data_set in ["aou", "gnomad"], "data_set must be either 'aou' or 'gnomad'"
 
     return VersionedTableResource(
@@ -221,6 +222,7 @@ def get_freq(
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
     :return: Hail Table containing frequency annotations.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     assert data_set in [
         "aou",
         "gnomad",
