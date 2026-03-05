@@ -522,13 +522,23 @@ def check_fields_not_in_requirements(
     def _flatten_dtype(dtype: hl.expr.types.HailType, prefix: str = "") -> List[str]:
         """Recursively extract nested names from a Hail DataType."""
         names = []
+
+        # Handle structs.
         if isinstance(dtype, hl.tstruct):
             for field, field_dtype in dtype.items():
                 name = f"{prefix}.{field}" if prefix else field
-                if isinstance(field_dtype, hl.tstruct):
-                    names.extend(_flatten_dtype(field_dtype, name))
-                else:
-                    names.append(name)
+                # Check if this field itself is a struct or container
+                names.extend(_flatten_dtype(field_dtype, name))
+        # Handle arrays and sets.
+        elif isinstance(dtype, (hl.tarray, hl.tset)):
+            names.extend(_flatten_dtype(dtype.element_type, prefix))
+        # Handle dicts.
+        elif isinstance(dtype, hl.tdict):
+            names.extend(_flatten_dtype(dtype.value_type, prefix))
+        else:
+            if prefix:
+                names.append(prefix)
+
         return names
 
     # Define the mapping between HT components and the requirements dict.
@@ -556,7 +566,7 @@ def filter_to_test_partitions(
     test_n_partitions: int = 2,
 ) -> hl.Table:
     """
-    Filter the Table to a specified number of partitions on autosomea and sex chromosomes for testing purposes.
+    Filter the Table to a specified number of partitions on autosomes and sex chromosomes for testing purposes.
 
     :param ht: Input Table.
     :param test_n_partitions: Number of partitions to filter to. Default is 2.
@@ -680,13 +690,11 @@ def add_info_annotations(
 
     # Add region_flag fields if present.
     missing_region_flags = []
-    region_flags = []
 
     if "region_flags" in ht.row:
         for field in REGION_FLAG_FIELDS:
             if field in ht["region_flags"]:
                 info_dict[field] = ht["region_flags"][field]
-                region_flags.append(field)
             else:
                 missing_region_flags.append(field)
 
