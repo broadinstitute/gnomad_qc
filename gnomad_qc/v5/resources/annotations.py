@@ -249,7 +249,7 @@ def get_info_ht(
         "rwb" or "batch".
     :return: Info VersionedTableResource.
     """
-    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
