@@ -620,13 +620,13 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
 
 
 def _fix_v4_global_age_distribution(
-    freq_ht: hl.Table, environment: str = "rwb"
+    freq_ht: hl.Table, environment: str = "batch"
 ) -> hl.Table:
     """
     Fix the age distribution global annotation in the frequency table.
 
     :param freq_ht: Frequency table to annotate with the age distribution.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: Frequency table with the age distribution global annotation fixed.
     """
     # Use v5 meta as age is already fixed in the v5 project metadata as are the consent

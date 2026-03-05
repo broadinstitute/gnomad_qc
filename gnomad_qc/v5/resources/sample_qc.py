@@ -455,7 +455,9 @@ def get_gen_anc_ht(
     :param version: Version of gen anc group TableResource to return.
     :param test: Whether to use the test version of the genetic ancestry TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param projection_only: Whether the inference results consist of just the results for the projected samples. When set to False, probability scores will not be included as they cannot be obtained for all samples.
+    :param projection_only: Whether the inference results consist of just the results
+        for the projected samples. When set to False, probability scores will not be
+        included as they cannot be obtained for all samples.
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
         or "batch".
     :return: TableResource of sample gen anc groups.

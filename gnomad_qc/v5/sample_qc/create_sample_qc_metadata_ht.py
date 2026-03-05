@@ -280,7 +280,8 @@ def add_relatedness_inference(
 
     :param meta_ht: Hail Table containing sample metadata, hard-filter flag, and outlier-filter flag.
     :param relatedness_ht: Table containing relatedness inference results.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Hail Table annotated with relatedness filter fields.
     """
     # Obtain relationships from relatedness inference Table.
@@ -433,7 +434,8 @@ def annotate_relatedness_filters(
         hard-filtered.
     :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
         outlier-filtered.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Table of relatedness filters.
     """
     rel_dict = {

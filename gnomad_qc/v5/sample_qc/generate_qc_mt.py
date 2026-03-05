@@ -109,7 +109,8 @@ def generate_qc_mt(
 
     :param gnomad_mt: gnomAD (exomes + genomes) v4 QC MatrixTable.
     :param aou_mt: Joint AoU (ACAF + exome) v8 MatrixTable.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Joint gnomAD v4 (exomes + genomes) + AoU v8 (genomes) QC MT.
     """
     logger.info("Resolving sample ID collisions...")

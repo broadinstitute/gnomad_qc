@@ -350,7 +350,8 @@ def run_compute_related_samples_to_drop(
         `filter_ht` must be supplied. Default is False.
     :param filter_ht: Optional Table with outlier filtering of sample QC metrics to
         use if `release` is True. Default is None.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Table with sample rank and a Table with related samples to drop for PCA.
     """
     if release and filter_ht is None:

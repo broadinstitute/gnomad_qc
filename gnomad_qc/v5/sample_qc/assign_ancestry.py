@@ -98,7 +98,8 @@ def write_pca_results(
     :param overwrite: Whether to overwrite an existing file.
     :param included_unreleasables: Whether run_pca included unreleasable samples.
     :param test: Whether the test QC MT was used in the PCA.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: None.
     """
     gen_anc_pca_eigenvalues_ht = hl.Table.parallelize(
@@ -158,7 +159,8 @@ def prep_ht_for_rf(
     :param v3_gen_anc_spike: Optional List of genetic ancestry groups to spike into training.
         Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
     :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Table with input for the random forest.
     """
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
@@ -302,7 +304,8 @@ def assign_gen_anc(
         Must be in v3_gen_anc_spike dictionary. Defaults to None.
     :param n_partitions: Number of partitions to repartition the genetic ancestry group inference table to. Default is 100.
     :param include_v3_oceania: Whether to include v3 Oceania samples in training. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Table of genetic ancestry group assignments and the RF model.
     """
     logger.info("Prepping HT for RF...")

@@ -239,14 +239,14 @@ def get_freq(
 
 
 def get_info_ht(
-    test: bool = False, environment: str = "dataproc"
+    test: bool = False, environment: str = "batch"
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "dataproc". Must be one of
-        "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
     :return: Info VersionedTableResource.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
