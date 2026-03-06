@@ -35,7 +35,7 @@ from gnomad_qc.v5.resources.sample_qc import (
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("outlier_filtering")
+logger = logging.getLogger("outlier_detection")
 logger.setLevel(logging.INFO)
 
 
@@ -503,8 +503,10 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     ann_expr = {
         f"{median_filter_metric}_median_filtered": hl.is_defined(ht_idx),
         f"fail_{update_metric}": hl.coalesce(ht_idx[f"fail_{update_metric}"], False),
-        "qc_metrics_filters": (ht.qc_metrics_filters - hl.set({update_metric}))
-        | hl.coalesce(ht_idx.qc_metrics_filters, hl.empty_set(hl.tstr)),
+        "qc_metrics_filters": (
+            (ht.qc_metrics_filters - hl.set({update_metric}))
+            | hl.coalesce(ht_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
+        ),
     }
 
     # For the 'regressed' filtering method, residuals were recomputed, so update them.
@@ -647,8 +649,10 @@ def create_finalized_outlier_filter_ht(
         select_expr.update(
             {
                 "qc_metrics_fail": ht[ht.key].select(*fail_annotations_keep),
-                "qc_metrics_filters": hl.literal(qc_metrics_filters_keep)
-                & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", "")),
+                "qc_metrics_filters": (
+                    hl.literal(qc_metrics_filters_keep)
+                    & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", ""))
+                ),
             }
         )
         ht = ht.select(**select_expr)
