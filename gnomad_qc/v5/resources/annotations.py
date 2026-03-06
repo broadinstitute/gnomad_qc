@@ -14,6 +14,9 @@ from gnomad_qc.v5.resources.constants import (
     CURRENT_ANNOTATION_VERSION,
 )
 
+SAMPLE_ANNOTATION_DEFAULT_ENVIRONMENT = "rwb"
+VARIANT_ANNOTATION_DEFAULT_ENVIRONMENT = "batch"
+
 
 def _annotations_root(
     version: str = CURRENT_ANNOTATION_VERSION,

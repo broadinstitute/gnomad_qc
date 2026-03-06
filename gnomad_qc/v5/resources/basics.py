@@ -29,23 +29,7 @@ from gnomad_qc.v5.resources.constants import (
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
 
-
-def _get_base_bucket(environment: str = "rwb") -> str:
-    """
-    Return the top-level GCS bucket for the given environment.
-
-    :param environment: Environment to use. Must be one of "rwb", "batch", or
-        "dataproc".
-    :return: Bucket name string (without gs:// prefix).
-    """
-    if environment == "rwb":
-        return WORKSPACE_BUCKET
-    elif environment == "batch":
-        return BATCH_BUCKET
-    else:
-        return GNOMAD_BUCKET
-
-
+# Constants for environment validation.
 _SAMPLE_DATA_ENVIRONMENTS = frozenset({"rwb", "batch"})
 _ALL_ENVIRONMENTS = frozenset({"rwb", "batch", "dataproc"})
 
@@ -66,6 +50,23 @@ def _validate_environment(
             f"Environment '{environment}' is not allowed for this resource. "
             f"Must be one of: {sorted(allowed)}"
         )
+
+
+def _get_base_bucket(environment: str = "rwb") -> str:
+    """
+    Return the top-level GCS bucket for the given environment.
+
+    :param environment: Environment to use. Must be one of "rwb", "batch", or
+        "dataproc".
+    :return: Bucket name string (without gs:// prefix).
+    """
+    _validate_environment(environment)
+    if environment == "rwb":
+        return WORKSPACE_BUCKET
+    elif environment == "batch":
+        return BATCH_BUCKET
+    else:
+        return GNOMAD_BUCKET
 
 
 # v5 DRAGEN TGP test VDS.
