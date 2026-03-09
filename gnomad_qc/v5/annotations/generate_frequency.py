@@ -33,7 +33,7 @@ python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
 python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
 
 # Process gnomAD consent withdrawals
-python generate_frequency.py --process-gnomad --environment dataproc
+python generate_frequency.py --process-gnomad --environment batch
 
 # Run gnomAD in test mode
 python generate_frequency.py --process-gnomad --test --test-partitions 2
@@ -77,6 +77,8 @@ from gnomad_qc.v5.resources.annotations import (
     group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
+    _get_batch_resource_kwargs,
+    _init_hail,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
@@ -125,7 +127,8 @@ def _prepare_aou_vds(
     :param aou_vds: AoU VariantDataset.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param test: Whether running in test mode.
-    :param environment: Environment being used. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment being used. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Prepared AoU VariantDataset.
     """
     aou_vmt = aou_vds.variant_data
@@ -200,7 +203,8 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
     :param aou_variant_mt: Prepared variant MatrixTable.
     :param test: Whether to use test resources.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
@@ -307,10 +311,13 @@ def process_aou_dataset(
 
     :param test: Whether to run in test mode.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
-    aou_vds = get_aou_vds(annotate_meta=True, release_only=True, test=test)
+    aou_vds = get_aou_vds(
+        annotate_meta=True, release_only=True, test=test, environment=environment
+    )
     aou_vds = _prepare_aou_vds(
         aou_vds, use_all_sites_ans=use_all_sites_ans, test=test, environment=environment
     )
@@ -421,19 +428,22 @@ def _prepare_consent_vds(
 def _calculate_consent_frequencies_and_age_histograms(
     vds: hl.vds.VariantDataset,
     test: bool = False,
+    environment: str = "batch",
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vds: Prepared VDS with consent samples.
     :param test: Whether running in test mode.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
+        or "batch".
     :return: Table with freq and age_hists annotations for consent samples.
     """
     logger.info("Densifying VDS for frequency calculations...")
     mt = hl.vds.to_dense_mt(vds)
     # Group membership table is already filtered to consent drop samples and is in GCS.
     group_membership_ht = group_membership(
-        test=test, data_set="gnomad", environment="dataproc"
+        test=test, data_set="gnomad", environment=environment
     ).ht()
 
     mt = mt.annotate_cols(
@@ -609,16 +619,19 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
     return ht.select(*final_fields).select_globals(*final_globals)
 
 
-def _fix_v4_global_age_distribution(freq_ht: hl.Table) -> hl.Table:
+def _fix_v4_global_age_distribution(
+    freq_ht: hl.Table, environment: str = "batch"
+) -> hl.Table:
     """
     Fix the age distribution global annotation in the frequency table.
 
     :param freq_ht: Frequency table to annotate with the age distribution.
+    :param environment: Environment to use. Default is "batch".
     :return: Frequency table with the age distribution global annotation fixed.
     """
     # Use v5 meta as age is already fixed in the v5 project metadata as are the consent
     # withdrawal samples' releasable field.
-    meta_ht = meta().ht()
+    meta_ht = meta(environment=environment).ht()
     meta_ht = meta_ht.filter(
         (meta_ht.release) & (meta_ht.project_meta.project == "gnomad")
     )
@@ -682,6 +695,7 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
 def process_gnomad_dataset(
     test: bool = False,
     test_partitions: int = 2,
+    environment: str = "batch",
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -696,6 +710,8 @@ def process_gnomad_dataset(
 
     :param test: Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
+        or "batch".
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     v4_ht = release_sites(data_type="genomes").ht()
@@ -707,7 +723,9 @@ def process_gnomad_dataset(
     )
 
     logger.info("Calculating frequencies and age histograms for consent samples...")
-    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(vds, test)
+    consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(
+        vds, test, environment=environment
+    )
 
     if test:
         v4_ht = v4_ht.filter(hl.is_defined(consent_freq_ht[v4_ht.key]))
@@ -724,7 +742,7 @@ def process_gnomad_dataset(
     freq_ht = _merge_updated_frequency_fields(v4_ht, updated_freq_ht)
 
     logger.info("Reannotating gnomAD's age distribution global annotation...")
-    freq_ht = _fix_v4_global_age_distribution(freq_ht)
+    freq_ht = _fix_v4_global_age_distribution(freq_ht, environment=environment)
 
     logger.info(
         "Duplicating gnomAD adj, raw, gen_anc, sex, and gen_anc-sex array entries with"
@@ -983,42 +1001,14 @@ def _initialize_hail(args) -> None:
 
     :param args: Parsed command-line arguments.
     """
-    environment = args.environment
-    tmp_dir_days = args.tmp_dir_days
-
-    if environment == "batch":
-        batch_kwargs = {
-            "backend": "batch",
-            "log": get_logging_path("v5_frequency_generation", environment="batch"),
-            "tmp_dir": (
-                f"{qc_temp_prefix(environment='dataproc', days=tmp_dir_days)}frequency_generation"
-            ),
-            "gcs_requester_pays_configuration": args.gcp_billing_project,
-            "regions": ["us-central1"],
-        }
-        # Add optional batch configuration parameters.
-        for param in [
-            "app_name",
-            "driver_cores",
-            "driver_memory",
-            "worker_cores",
-            "worker_memory",
-        ]:
-            value = getattr(args, param, None)
-            if value is not None:
-                batch_kwargs[param] = value
-
-        hl.init(**batch_kwargs)
-    else:
-        hl.init(
-            log=get_logging_path(
-                "v5_frequency_generation",
-                environment=environment,
-                tmp_dir_days=tmp_dir_days,
-            ),
-            tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
-        )
-    hl.default_reference("GRCh38")
+    _init_hail(
+        "v5_frequency_generation",
+        args.environment,
+        billing_project=getattr(args, "gcp_billing_project", None),
+        tmp_dir_days=args.tmp_dir_days,
+        tmp_dir=f"{qc_temp_prefix(environment=args.environment, days=args.tmp_dir_days)}frequency_generation",
+        **_get_batch_resource_kwargs(args),
+    )
 
 
 def main(args):
@@ -1053,6 +1043,7 @@ def main(args):
             gnomad_freq_ht = process_gnomad_dataset(
                 test=test,
                 test_partitions=test_partitions,
+                environment=environment,
             )
 
             logger.info(
@@ -1089,15 +1080,27 @@ def main(args):
                 "Merging frequency data and age histograms from both datasets..."
             )
 
-            merged_freq = get_freq(test=test, data_type="genomes", data_set="merged")
+            merged_freq = get_freq(
+                test=test,
+                data_type="genomes",
+                data_set="merged",
+                environment=environment,
+            )
 
             check_resource_existence(
                 output_step_resources={"merge-datasets": [merged_freq]},
                 overwrite=overwrite,
             )
 
-            gnomad_freq_ht = get_freq(data_type="genomes", test=test, data_set="gnomad")
-            aou_freq_ht = get_freq(data_type="genomes", test=test, data_set="aou")
+            gnomad_freq_ht = get_freq(
+                data_type="genomes",
+                test=test,
+                data_set="gnomad",
+                environment=environment,
+            )
+            aou_freq_ht = get_freq(
+                data_type="genomes", test=test, data_set="aou", environment=environment
+            )
 
             check_resource_existence(
                 input_step_resources={
@@ -1122,7 +1125,7 @@ def main(args):
                 merged_freq_ht, dataset="merged"
             )
 
-            logger.info(f"Writing merged frequency HT to {merged_freq.path}...")
+            logger.info("Writing merged frequency HT to %s...", merged_freq.path)
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
 
     finally:
@@ -1186,7 +1189,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     env_group.add_argument(
         "--environment",
         help="Environment to run in.",
-        choices=["rwb", "batch", "dataproc"],
+        choices=["rwb", "batch"],
         default="rwb",
     )
     env_group.add_argument(

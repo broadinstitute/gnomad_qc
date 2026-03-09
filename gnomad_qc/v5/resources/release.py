@@ -10,16 +10,14 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.utils.file_utils import file_exists
 
-from gnomad_qc.v5.resources.basics import qc_temp_prefix
+from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ALL_SITES_AN_RELEASES,
     COVERAGE_RELEASES,
     CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
-    GNOMAD_BUCKET,
     RELEASES,
-    WORKSPACE_BUCKET,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -75,18 +73,17 @@ def _release_root(
     :param version: Version of release path to return.
     :param test: Whether to use a tmp path for testing.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
-        Default is "exomes".
+        Default is "genomes".
     :param extension: File extension of release file. Default is "ht".
     :param environment: Environment to use. Default is "batch".
     :return: Root path of the release files.
     """
     path_suffix = f"release/{extension}/{data_type}"
-    base_bucket = WORKSPACE_BUCKET if environment == "rwb" else GNOMAD_BUCKET
     if test:
         return (
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
-    return f"gs://{base_bucket}/v{version}/{path_suffix}"
+    return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
 
 
 def release_coverage_path(
@@ -94,7 +91,7 @@ def release_coverage_path(
     public: bool = False,
     test: bool = False,
     coverage_type: str = "coverage",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch filepath for v5 (AoU + gnomAD v4 genomes) all sites coverage or allele number release Table.
@@ -104,7 +101,7 @@ def release_coverage_path(
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: File path for desired coverage Hail Table.
     """
     assert coverage_type in [
@@ -138,14 +135,14 @@ def release_coverage_path(
 def release_coverage_tsv_path(
     release_version: str = CURRENT_COVERAGE_RELEASE["genomes"],
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch path to coverage TSV file.
 
     :param release_version: Release version. Default is CURRENT_COVERAGE_RELEASE["genomes"].
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: Coverage TSV path.
     """
     return f"{_release_root(release_version, test=test, extension='tsv', environment=environment)}/gnomad.genomes.v{release_version}.coverage.tsv.bgz"
@@ -154,14 +151,14 @@ def release_coverage_tsv_path(
 def release_all_sites_an_tsv_path(
     release_version: str = None,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch path to all sites AN TSV file.
 
     :param release_version: Release version. Default is None.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: All sites AN TSV path.
     """
     release_version = (
@@ -175,7 +172,7 @@ def release_all_sites_an_tsv_path(
 def release_coverage(
     public: bool = False,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -183,7 +180,7 @@ def release_coverage(
     :param public: Determines whether release coverage Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: Coverage release Table.
     """
     return VersionedTableResource(
@@ -205,7 +202,7 @@ def release_coverage(
 def release_all_sites_an(
     public: bool = False,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for all sites allele number release Table.
@@ -213,7 +210,7 @@ def release_all_sites_an(
     :param public: Determines whether release allele number Table is read from public or
         private bucket. Default is private.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: All sites allele number release Table.
     """
     return VersionedTableResource(
@@ -272,8 +269,6 @@ def release_ht_path(
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/genomes/gnomad.genomes.v{release_version}.sites.ht"
     else:
-        # Note: This function was not used to write out the v4.0 joint release HT. That
-        # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
         return f"{_release_root(version=release_version, test=test,environment=environment)}/gnomad.genomes.v{release_version}.sites.ht"
 
 
