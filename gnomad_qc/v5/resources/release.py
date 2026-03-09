@@ -10,7 +10,12 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.utils.file_utils import file_exists
 
-from gnomad_qc.v5.resources.basics import _get_base_bucket, qc_temp_prefix
+from gnomad_qc.v5.resources.basics import (
+    _ALL_ENVIRONMENTS,
+    _get_base_bucket,
+    _validate_environment,
+    qc_temp_prefix,
+)
 from gnomad_qc.v5.resources.constants import (
     ALL_SITES_AN_RELEASES,
     COVERAGE_RELEASES,
@@ -75,9 +80,11 @@ def _release_root(
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "genomes".
     :param extension: File extension of release file. Default is "ht".
-    :param environment: Environment to use. Default is "batch".
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb", "batch", or "dataproc".
     :return: Root path of the release files.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     path_suffix = f"release/{extension}/{data_type}"
     if test:
         return (
