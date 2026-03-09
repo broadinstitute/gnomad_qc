@@ -267,6 +267,23 @@ def get_info_ht(
     )
 
 
+def info_vcf_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    environment: str = "batch",
+) -> str:
+    """
+    Path to sites VCF (input information for running VQSR).
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Must be one of "rwb" or "batch". Default is "batch".
+    :return: String for the path to the info VCF.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    return f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.vcf.bgz"
+
+
 def get_aou_vcf_header(environment: str = "batch") -> str:
     """
     Get path to AoU annotation sites-only VCF header.
