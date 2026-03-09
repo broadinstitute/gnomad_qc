@@ -6,7 +6,10 @@ from gnomad_qc.v5.resources.basics import qc_temp_prefix
 from gnomad_qc.v5.resources.constants import (
     ANNOTATION_VERSIONS,
     CURRENT_ANNOTATION_VERSION,
+    CURRENT_VEP_ANNOTATION_VERSION,
+    DEFAULT_VEP_VERSION,
     GNOMAD_BUCKET,
+    VEP_ANNOTATION_VERSIONS,
     WORKSPACE_BUCKET,
 )
 
@@ -250,3 +253,64 @@ aou_vcf_header = (
 aou_annotated_sites_only_vcf = (
     f"gs://{WORKSPACE_BUCKET}/echo_full_gnomad_annotated.sites-only.vcf.gz"
 )
+
+
+######################################################################
+# VEP resources
+######################################################################
+
+
+def get_vep(
+    test: bool = False,
+    vep_version: str = DEFAULT_VEP_VERSION,
+    environment: str = "batch",
+) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 VEP annotation VersionedTableResource.
+
+    :param test: Whether to use a tmp path for analysis of the test Table instead of
+        the full v5 Table.
+    :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :return: gnomAD v5 VEP VersionedTableResource.
+    """
+    vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
+    return VersionedTableResource(
+        CURRENT_VEP_ANNOTATION_VERSION[vep_version],
+        {
+            version: TableResource(
+                path=(
+                    f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.vep{vep_version_postfix}.ht"
+                )
+            )
+            for version in VEP_ANNOTATION_VERSIONS[vep_version]
+        },
+    )
+
+
+def validate_vep_path(
+    test: bool = False,
+    vep_version: str = DEFAULT_VEP_VERSION,
+    environment: str = "batch",
+) -> VersionedTableResource:
+    """
+    Get the gnomAD v5 VEP annotation VersionedTableResource for validation counts.
+
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v5 VDS.
+    :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :return: gnomAD v5 VEP VersionedTableResource containing validity check.
+    """
+    vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
+    return VersionedTableResource(
+        CURRENT_VEP_ANNOTATION_VERSION[vep_version],
+        {
+            version: TableResource(
+                path=(
+                    f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.vep{vep_version_postfix}.validate.ht"
+                )
+            )
+            for version in VEP_ANNOTATION_VERSIONS[vep_version]
+        },
+    )
