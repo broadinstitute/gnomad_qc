@@ -319,6 +319,7 @@ def get_vep(
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :return: gnomAD v5 VEP VersionedTableResource.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
     return VersionedTableResource(
         CURRENT_VEP_ANNOTATION_VERSION[vep_version],
@@ -347,6 +348,7 @@ def validate_vep_path(
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :return: gnomAD v5 VEP VersionedTableResource containing validity check.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
     return VersionedTableResource(
         CURRENT_VEP_ANNOTATION_VERSION[vep_version],
