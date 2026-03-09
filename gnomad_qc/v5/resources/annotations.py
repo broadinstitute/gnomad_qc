@@ -27,6 +27,7 @@ def _annotations_root(
     data_type: str = "genomes",
     data_set: str = "aou",
     environment: str = "rwb",
+    sample_data: bool = False,
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -37,6 +38,9 @@ def _annotations_root(
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
     :param data_set: Data set of annotation resource. Default is "aou".
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param sample_data: Whether the path is for sample-data resources. When True
+        and environment is "batch", the legacy sample-data bucket is used.
+        Default is False.
     :return: Root path of the variant annotation files.
     """
     path_suffix = f"annotations/{data_type}/{data_set}"
@@ -46,7 +50,7 @@ def _annotations_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    return f"gs://{_get_base_bucket(environment)}/v{version}/{path_suffix}"
+    return f"gs://{_get_base_bucket(environment, sample_data=sample_data)}/v{version}/{path_suffix}"
 
 
 ######################################################################
@@ -71,7 +75,7 @@ def get_trio_stats(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}."
+                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/aou.genomes.v{version}."
                 "trio_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
@@ -95,7 +99,7 @@ def get_sib_stats(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}.sib_stats.ht"
+                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/aou.genomes.v{version}.sib_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -125,7 +129,7 @@ def get_aou_downsampling(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.downsampling.aou.ht"
+                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.downsampling.aou.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -151,7 +155,7 @@ def group_membership(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, data_set=data_set, environment=environment)}/gnomad.genomes.v{version}.group_membership.ht"
+                f"{_annotations_root(version, test=test, data_set=data_set, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.group_membership.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -172,7 +176,7 @@ def qual_hists(test: bool = False, environment: str = "rwb") -> VersionedTableRe
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.qual_hists.ht"
+                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.qual_hists.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -260,7 +264,7 @@ def get_info_ht(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
+                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.info.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -280,7 +284,7 @@ def get_aou_vcf_header(environment: str = "batch") -> str:
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return (
-        f"{_annotations_root(version='5.0', environment=environment)}"
+        f"{_annotations_root(version='5.0', environment=environment, sample_data=True)}"
         "/aou_annotation_sites_only_header.vcf"
     )
 
@@ -294,7 +298,7 @@ def get_aou_annotated_sites_only_vcf(environment: str = "batch") -> str:
     :return: Path to the annotated sites-only VCF.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     if environment == "batch":
         return f"gs://{bucket}/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz"
     return f"gs://{bucket}/echo_full_gnomad_annotated.sites-only.vcf.gz"

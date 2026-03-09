@@ -26,7 +26,7 @@ def get_project_meta(environment: str = "rwb") -> VersionedTableResource:
     :return: VersionedTableResource for project metadata.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return VersionedTableResource(
         CURRENT_PROJECT_META_VERSION,
         {
@@ -46,7 +46,7 @@ def get_sample_id_collisions(environment: str = "rwb") -> TableResource:
     :return: TableResource of sample ID collisions.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.sample_id_collisions.ht"
     )
@@ -66,7 +66,7 @@ def get_low_quality_samples(environment: str = "rwb") -> ExpressionResource:
     :return: ExpressionResource of low-quality sample IDs.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.low_quality_samples.he",
     )
@@ -87,7 +87,7 @@ def get_failing_metrics_samples(environment: str = "rwb") -> ExpressionResource:
     :return: ExpressionResource of failing-metrics sample IDs.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.failing_genomic_metrics_samples.he",
     )
@@ -111,7 +111,7 @@ def get_samples_to_exclude_resource(environment: str = "rwb") -> ExpressionResou
     :return: ExpressionResource of sample IDs to exclude.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return ExpressionResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.samples_to_exclude.he",
     )
@@ -132,7 +132,7 @@ def get_consent_samples_to_drop(environment: str = "rwb") -> TableResource:
     :return: TableResource of consent-withdrawn sample IDs.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.consent_samples_to_drop.ht",
     )
@@ -160,7 +160,7 @@ def _meta_root_path(
     :return: String representation of the path to the root metadata directory.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment)
+    bucket = _get_base_bucket(environment, sample_data=True)
     return f"gs://{bucket}/v{version}/metadata/genomes"
 
 

@@ -18,6 +18,7 @@ from gnomad_qc.v5.resources.constants import (
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
     BATCH_BUCKET,
+    BATCH_SAMPLE_DATA_BUCKET,
     BATCH_TMP_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
@@ -52,19 +53,26 @@ def _validate_environment(
         )
 
 
-def _get_base_bucket(environment: str = "rwb") -> str:
+def _get_base_bucket(environment: str = "rwb", sample_data: bool = False) -> str:
     """
     Return the top-level GCS bucket for the given environment.
 
+    When `environment` is ``"batch"`` and `sample_data` is True, the legacy
+    sample-data bucket is returned so that previously-written sample QC
+    outputs are read from their original location.
+
     :param environment: Environment to use. Must be one of "rwb", "batch", or
         "dataproc".
+    :param sample_data: If True and environment is "batch", return the legacy
+        sample-data bucket instead of the primary batch bucket. Default is
+        False.
     :return: Bucket name string (without gs:// prefix).
     """
     _validate_environment(environment)
     if environment == "rwb":
         return WORKSPACE_BUCKET
     elif environment == "batch":
-        return BATCH_BUCKET
+        return BATCH_SAMPLE_DATA_BUCKET if sample_data else BATCH_BUCKET
     else:
         return GNOMAD_BUCKET
 
