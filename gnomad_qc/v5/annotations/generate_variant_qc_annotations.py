@@ -12,15 +12,14 @@ from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
-    aou_annotated_sites_only_vcf,
-    aou_vcf_header,
+    get_aou_annotated_sites_only_vcf,
+    get_aou_vcf_header,
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
     info_vcf_path,
 )
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
-from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -206,20 +205,8 @@ def run_generate_sib_stats(
 
 def main(args):
     """Generate all variant annotations needed for variant QC."""
-    if args.rwb:
-        environment = "rwb"
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/generate_variant_qc_annotations.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        environment = "batch"
-        hl.init(
-            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4day",
-            log="generate_variant_qc_annotations.log",
-        )
-        # TODO: Add machine configurations for Batch.
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("generate_variant_qc_annotations", environment)
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
@@ -233,6 +220,7 @@ def main(args):
         # NOTE: Using args.test here so that sibling stats test can be calculated from
         # a few partitions of the full (not test) VDS).
         test=args.test,
+        environment=environment,
     )
 
     try:
@@ -246,8 +234,8 @@ def main(args):
             )
 
             ht = create_info_ht(
-                vcf_path=aou_annotated_sites_only_vcf,
-                header_path=aou_vcf_header,
+                vcf_path=get_aou_annotated_sites_only_vcf(environment=environment),
+                header_path=get_aou_vcf_header(environment=environment),
                 lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
                 vds=vds,
                 test=test,
@@ -304,7 +292,9 @@ def main(args):
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
-            ht = run_generate_sib_stats(vds.variant_data, relatedness().ht())
+            ht = run_generate_sib_stats(
+                vds.variant_data, relatedness(environment=environment).ht()
+            )
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
     finally:
@@ -318,9 +308,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--rwb",
-        help="Run the script in RWB environment.",
-        action="store_true",
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch"],
+        default="rwb",
     )
     parser.add_argument(
         "--overwrite",
