@@ -67,7 +67,7 @@ def _release_root(
     test: bool = False,
     data_type: str = "genomes",
     extension: str = "ht",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Get root path to the release files.
@@ -77,7 +77,7 @@ def _release_root(
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
         Default is "exomes".
     :param extension: File extension of release file. Default is "ht".
-    :param environment: Environment to use. Default is "rwb". Must be "rwb" for AoU.
+    :param environment: Environment to use. Default is "batch". 
     :return: Root path of the release files.
     """
     path_suffix = f"release/{extension}/{data_type}"
@@ -236,14 +236,14 @@ def release_all_sites_an(
 def included_datasets_json_path(
     release_version: str = CURRENT_RELEASE,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch filepath for the JSON containing all datasets used in the release.
 
     :param release_version: Release version. Default is CURRENT_RELEASE.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: JSON file path for release version's included datasets.
     """
     return f"{_release_root(release_version, test=test, data_type='genomes', extension='json', environment=environment)}/gnomad.genomes.v{release_version}.included_datasets.json"
@@ -253,7 +253,7 @@ def release_ht_path(
     release_version: str = CURRENT_RELEASE,
     public: bool = True,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Fetch filepath for release (variant-only) Hail Tables.
@@ -262,7 +262,7 @@ def release_ht_path(
     :param public: Whether release sites Table path returned is from public instead of private
         bucket. Default is True.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: File path for desired release Hail Table.
     """
     if public:
@@ -274,13 +274,13 @@ def release_ht_path(
     else:
         # Note: This function was not used to write out the v4.0 joint release HT. That
         # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
-        return f"{_release_root(version=release_version, test=test, data_type='genomes', environment=environment)}/gnomad.genomes.v{release_version}.sites.ht"
+        return f"{_release_root(version=release_version, test=test,environment=environment)}/gnomad.genomes.v{release_version}.sites.ht"
 
 
 def release_sites(
     public: bool = True,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
@@ -288,7 +288,7 @@ def release_sites(
     :param public: Whether release sites Table path returned is from public or private
         bucket. Default is True.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param environment: Environment to use. Default is "rwb".
+    :param environment: Environment to use. Default is "batch".
     :return: Sites-only release Table.
     """
     return VersionedTableResource(

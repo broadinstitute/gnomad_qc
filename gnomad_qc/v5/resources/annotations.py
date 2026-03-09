@@ -261,7 +261,7 @@ aou_annotated_sites_only_vcf = (
 
 
 def get_vep(
-    test: bool = False, vep_version: str = DEFAULT_VEP_VERSION, environment: str = "rwb"
+    test: bool = False, vep_version: str = DEFAULT_VEP_VERSION, environment: str = "batch"
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 VEP annotation VersionedTableResource.
@@ -269,7 +269,7 @@ def get_vep(
     :param test: Whether to use a tmp path for analysis of the test Table instead of
         the full v5 Table.
     :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :return: gnomAD v5 VEP VersionedTableResource.
     """
     vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
@@ -287,7 +287,7 @@ def get_vep(
 
 
 def validate_vep_path(
-    test: bool = False, vep_version: str = DEFAULT_VEP_VERSION, environment: str = "rwb"
+    test: bool = False, vep_version: str = DEFAULT_VEP_VERSION, environment: str = "batch"
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 VEP annotation VersionedTableResource for validation counts.
@@ -295,7 +295,7 @@ def validate_vep_path(
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v5 VDS.
     :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :return: gnomAD v5 VEP VersionedTableResource containing validity check.
     """
     vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
