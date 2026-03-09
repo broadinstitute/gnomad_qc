@@ -267,7 +267,7 @@ def main(args):
                 overwrite=overwrite,
             )
             info_ht = hl.read_table(info_ht_path)
-            # TODO: v4 split vcf does not have added pipe delimited annotations, but check if these are needed for VQSR and add pipe to AS_QUALapprox and AS_VarDP if needed.
+            # TODO: Check if AS_QUALapprox and AS_VarDP are needed for v5 (not used for v4) and if so need preceeded pipe.
             # Reformat AS_SB_TABLE to be a nested array of arrays for proper use
             # within the 'adjust_vcf_incompatible_types' function.
             info_ht = info_ht.annotate(
