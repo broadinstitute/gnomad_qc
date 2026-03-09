@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.create_release_sites_ht &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.create_release_sites_ht</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.create_release_sites_ht</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to create release sites HT for v4.0 exomes and genomes.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+<span class="kn">from</span> <span class="nn">datetime</span> <span class="kn">import</span> <span class="n">datetime</span>
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">reduce</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="n">SUBSETS</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.reference_data</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">dbsnp</span><span class="p">,</span>
+    <span class="n">lcr_intervals</span><span class="p">,</span>
+    <span class="n">seg_dup_intervals</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">region_flag_expr</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.filtering</span> <span class="kn">import</span> <span class="n">filter_arrays_by_meta</span><span class="p">,</span> <span class="n">remove_fields_from_constant</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.release</span> <span class="kn">import</span> <span class="n">make_freq_index_dict_from_meta</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vcf</span> <span class="kn">import</span> <span class="n">ALLELE_TYPE_FIELDS</span><span class="p">,</span> <span class="n">AS_FIELDS</span><span class="p">,</span> <span class="n">SITE_FIELDS</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.vep</span> <span class="kn">import</span> <span class="n">update_loftee_end_trunc_filter</span>
+<span class="kn">from</span> <span class="nn">hail.utils</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v3.resources.annotations</span> <span class="kn">import</span> <span class="n">get_info</span> <span class="k">as</span> <span class="n">get_info_v3</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.annotations.insilico_predictors</span> <span class="kn">import</span> <span class="n">get_sift_polyphen_from_vep</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.create_release.create_release_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DBSNP_VERSION</span><span class="p">,</span>
+    <span class="n">GENCODE_VERSION</span><span class="p">,</span>
+    <span class="n">GENCODE_VERSIONS</span><span class="p">,</span>
+    <span class="n">MANE_SELECT_VERSION</span><span class="p">,</span>
+    <span class="n">MANE_SELECT_VERSIONS</span><span class="p">,</span>
+    <span class="n">POLYPHEN_VERSION</span><span class="p">,</span>
+    <span class="n">SEQREPO_VERSION</span><span class="p">,</span>
+    <span class="n">SIFT_VERSION</span><span class="p">,</span>
+    <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">,</span>
+    <span class="n">VRS_PYTHON_VERSION</span><span class="p">,</span>
+    <span class="n">VRS_SCHEMA_VERSION</span><span class="p">,</span>
+    <span class="n">remove_missing_vep_fields</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.annotations</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_freq</span><span class="p">,</span>
+    <span class="n">get_info</span><span class="p">,</span>
+    <span class="n">get_insilico_predictors</span><span class="p">,</span>
+    <span class="n">get_vep</span><span class="p">,</span>
+    <span class="n">get_vrs</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.basics</span> <span class="kn">import</span> <span class="n">calling_intervals</span><span class="p">,</span> <span class="n">qc_temp_prefix</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="n">CURRENT_RELEASE</span><span class="p">,</span> <span class="n">DEFAULT_VEP_VERSION</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.meta</span> <span class="kn">import</span> <span class="n">meta</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_freq_array_readme</span><span class="p">,</span>
+    <span class="n">included_datasets_json_path</span><span class="p">,</span>
+    <span class="n">release_sites</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="n">interval_qc_pass</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.variant_qc</span> <span class="kn">import</span> <span class="n">final_filter</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;create_release_ht&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="c1"># All v3 subsets except HGDP and TGP will be dropped from the v4.0 genomes.</span>
+<span class="n">SUBSETS_TO_DROP</span> <span class="o">=</span> <span class="n">remove_fields_from_constant</span><span class="p">(</span><span class="n">SUBSETS</span><span class="p">[</span><span class="s2">&quot;v3&quot;</span><span class="p">],</span> <span class="p">[</span><span class="s2">&quot;hgdp&quot;</span><span class="p">,</span> <span class="s2">&quot;tgp&quot;</span><span class="p">])</span>
+
+<span class="c1"># Remove InbreedingCoeff from allele-specific fields because it is processed separately</span>
+<span class="c1"># from the other fields.</span>
+<span class="n">AS_FIELDS</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">AS_FIELDS</span> <span class="k">if</span> <span class="n">x</span> <span class="o">!=</span> <span class="s2">&quot;InbreedingCoeff&quot;</span><span class="p">]</span>
+<span class="n">SITE_FIELDS</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">SITE_FIELDS</span><span class="p">)</span>
+
+<span class="c1"># Remove original_alleles for containing non-releasable alleles.</span>
+<span class="n">ALLELE_TYPE_FIELDS</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">ALLELE_TYPE_FIELDS</span><span class="p">)</span>
+<span class="n">ALLELE_TYPE_FIELDS</span> <span class="o">=</span> <span class="n">remove_fields_from_constant</span><span class="p">(</span>
+    <span class="n">ALLELE_TYPE_FIELDS</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;original_alleles&quot;</span><span class="p">,</span> <span class="s2">&quot;has_star&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_tables_for_release"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_tables_for_release">[docs]</a><span class="k">def</span> <span class="nf">get_tables_for_release</span><span class="p">(</span><span class="n">version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get list of tables to include in release based on version.</span>
+
+<span class="sd">    :param version: Release version (e.g., &quot;4.0&quot;, &quot;4.1&quot;, &quot;4.1.1&quot;).</span>
+<span class="sd">    :return: List of table names to include in release.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tables</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;dbsnp&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;filters&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;freq&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;info&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;region_flags&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;in_silico&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vep&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="c1"># Add additional VEP versions based on release version.</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">vep_version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">[</span><span class="n">version</span><span class="p">]:</span>
+            <span class="n">tables</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;vep</span><span class="si">{</span><span class="n">vep_version</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="c1"># &quot;joint_faf&quot;,  # NOTE: joint_faf was only included in the v4.0 release.</span>
+    <span class="k">return</span> <span class="n">tables</span></div>
+
+
+<span class="c1"># Default tables for backward compatibility.</span>
+<span class="n">TABLES_FOR_RELEASE</span> <span class="o">=</span> <span class="n">get_tables_for_release</span><span class="p">(</span><span class="n">CURRENT_RELEASE</span><span class="p">)</span>
+
+<span class="n">INSILICO_PREDICTORS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;cadd&quot;</span><span class="p">,</span> <span class="s2">&quot;revel&quot;</span><span class="p">,</span> <span class="s2">&quot;spliceai&quot;</span><span class="p">,</span> <span class="s2">&quot;pangolin&quot;</span><span class="p">,</span> <span class="s2">&quot;phylop&quot;</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="get_finalized_schema"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_finalized_schema">[docs]</a><span class="k">def</span> <span class="nf">get_finalized_schema</span><span class="p">(</span><span class="n">version</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get finalized schema for release HT based on version.</span>
+
+<span class="sd">    :param version: Release version (e.g., &quot;4.0&quot;, &quot;4.1&quot;, &quot;4.1.1&quot;).</span>
+<span class="sd">    :return: Dictionary with &quot;globals&quot; and &quot;rows&quot; lists of field names.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">globals_list</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;freq_meta&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;freq_index_dict&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;faf_meta&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;faf_index_dict&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_freq_meta&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_freq_index_dict&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_freq_meta_sample_count&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_faf_meta&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_faf_index_dict&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;age_distribution&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;downsamplings&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;filtering_model&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;inbreeding_coeff_cutoff&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;interval_qc_parameters&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;tool_versions&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vrs_versions&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vep_globals&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="n">rows_list</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;freq&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;grpmax&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;faf&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;fafmax&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_freq&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_grpmax&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_faf&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;joint_fafmax&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;a_index&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;was_split&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;rsid&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;filters&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;info&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vep&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;vqsr_results&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;region_flags&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;allele_info&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;histograms&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;in_silico_predictors&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Add additional VEP versions based on release version.</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">vep_version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">[</span><span class="n">version</span><span class="p">]:</span>
+            <span class="n">globals_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;vep</span><span class="si">{</span><span class="n">vep_version</span><span class="si">}</span><span class="s2">_globals&quot;</span><span class="p">)</span>
+            <span class="n">rows_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;vep</span><span class="si">{</span><span class="n">vep_version</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">globals_list</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="s2">&quot;frequency_README&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;date&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;version&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;globals&quot;</span><span class="p">:</span> <span class="n">globals_list</span><span class="p">,</span>
+        <span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="n">rows_list</span><span class="p">,</span>
+    <span class="p">}</span></div>
+
+
+<span class="c1"># Default schema for backward compatibility.</span>
+<span class="n">FINALIZED_SCHEMA</span> <span class="o">=</span> <span class="n">get_finalized_schema</span><span class="p">(</span><span class="n">CURRENT_RELEASE</span><span class="p">)</span>
+
+
+<span class="c1"># Config is added as a function, so it is not evaluated until the function is called.</span>
+<div class="viewcode-block" id="get_config"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_config">[docs]</a><span class="k">def</span> <span class="nf">get_config</span><span class="p">(</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tables_for_join</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">release_exists</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_RELEASE</span><span class="p">,</span>
+    <span class="n">base_release_version</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get configuration dictionary for specified data type.</span>
+
+<span class="sd">    Format:</span>
+
+<span class="sd">    .. code-block::</span>
+
+<span class="sd">        &#39;&lt;Name of dataset&gt;&#39;: {</span>
+<span class="sd">            &#39;ht&#39;: &#39;&lt;Optional Hail Table for direct annotation extraction. This is not used for the join.&gt;&#39;,</span>
+<span class="sd">            &#39;path&#39;: &#39;gs://path/to/hail_table.ht&#39;,</span>
+<span class="sd">            &#39;select&#39;: &#39;&lt;Optional list of fields to select or dict of new field name to location of old field in the dataset.&gt;&#39;,</span>
+<span class="sd">            &#39;field_name&#39;: &#39;&lt;Optional name of root annotation in combined dataset, defaults to name of dataset.&gt;&#39;,</span>
+<span class="sd">            &#39;custom_select&#39;: &#39;&lt;Optional function name of custom select function that is needed for more advanced logic&gt;&#39;,</span>
+<span class="sd">            &#39;custom_globals_select&#39;: &#39;&lt;Optional function name of custom globals select function that is needed for more advanced logic&gt;&#39;,</span>
+<span class="sd">            &#39;select_globals&#39;: &#39;&lt;Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.&gt;&#39;</span>
+<span class="sd">        },</span>
+
+<span class="sd">    .. warning::</span>
+
+<span class="sd">        The &#39;in_silico&#39; key&#39;s &#39;ht&#39; logic is handled separately because it is a list of</span>
+<span class="sd">        HTs. In this list, the phyloP HT is keyed by locus only and thus the &#39;ht&#39; code</span>
+<span class="sd">        below sets the join key to 1, which will grab the first key of</span>
+<span class="sd">        ht.key.dtype.values() e.g. &#39;locus&#39;, when an HT&#39;s keys are not {&#39;locus&#39;,</span>
+<span class="sd">        &#39;alleles&#39;}.</span>
+<span class="sd">        All future in_silico predictors should have the keys confirmed to be &#39;locus&#39;</span>
+<span class="sd">        with or without &#39;alleles&#39; before using this logic.</span>
+
+<span class="sd">    :param data_type: Dataset&#39;s data type: &#39;exomes&#39; or &#39;genomes&#39;.</span>
+<span class="sd">    :param tables_for_join: List of tables to join.</span>
+<span class="sd">    :param release_exists: Whether the release HT already exists. If True, uses the</span>
+<span class="sd">        specified `version` as the base release HT. Mutually exclusive with</span>
+<span class="sd">        `base_release_version`.</span>
+<span class="sd">    :param version: Release version for output (e.g., &quot;4.0&quot;, &quot;4.1&quot;, &quot;4.1.1&quot;).</span>
+<span class="sd">    :param base_release_version: Specific release version to use as the base HT</span>
+<span class="sd">        (e.g., &quot;4.1&quot;). When provided, loads that version&#39;s release HT as the base.</span>
+<span class="sd">        Mutually exclusive with `release_exists`.</span>
+<span class="sd">    :return: Dict of dataset&#39;s configs.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">base_release_version</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">release_exists</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Cannot specify both --release-exists and --base-release-version. &quot;</span>
+            <span class="s2">&quot;Use --base-release-version to specify a specific version to use as the &quot;</span>
+            <span class="s2">&quot;base, or use --release-exists to use the output version as the base.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">config</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="s2">&quot;dbsnp&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;dbsnp&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">dbsnp</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">dbsnp</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;rsid&quot;</span><span class="p">],</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;filters&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span> <span class="ow">or</span> <span class="s2">&quot;info&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">final_filter</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;filters&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_filters_select</span><span class="p">,</span>
+            <span class="s2">&quot;custom_globals_select&quot;</span><span class="p">:</span> <span class="n">custom_filters_select_globals</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;in_silico&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;in_silico&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">reduce</span><span class="p">(</span>
+                <span class="p">(</span>
+                    <span class="k">lambda</span> <span class="n">joined_ht</span><span class="p">,</span> <span class="n">ht</span><span class="p">:</span> <span class="p">(</span>
+                        <span class="n">joined_ht</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="s2">&quot;outer&quot;</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="nb">set</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">)</span> <span class="o">==</span> <span class="p">{</span><span class="s2">&quot;locus&quot;</span><span class="p">,</span> <span class="s2">&quot;alleles&quot;</span><span class="p">}</span>
+                        <span class="k">else</span> <span class="n">joined_ht</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="s2">&quot;outer&quot;</span><span class="p">,</span> <span class="n">_join_key</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="p">),</span>
+                <span class="p">[</span>
+                    <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="n">predictor</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                    <span class="k">for</span> <span class="n">predictor</span> <span class="ow">in</span> <span class="n">INSILICO_PREDICTORS</span>
+                <span class="p">],</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="n">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="o">=</span><span class="n">predictor</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+                <span class="k">for</span> <span class="n">predictor</span> <span class="ow">in</span> <span class="n">INSILICO_PREDICTORS</span>
+            <span class="p">],</span>
+            <span class="s2">&quot;field_name&quot;</span><span class="p">:</span> <span class="s2">&quot;in_silico_predictors&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="s2">&quot;cadd&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;revel_max&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;spliceai_ds_max&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;pangolin_largest_ds&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;phylop&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_in_silico_select</span><span class="p">,</span>
+            <span class="s2">&quot;select_globals&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="s2">&quot;cadd_version&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;revel_version&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;spliceai_version&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;pangolin_version&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;phylop_version&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+            <span class="s2">&quot;global_name&quot;</span><span class="p">:</span> <span class="s2">&quot;tool_versions&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;info&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;info&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">get_info</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span> <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span> <span class="k">else</span> <span class="n">get_info_v3</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">get_info</span><span class="p">()</span><span class="o">.</span><span class="n">path</span> <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span> <span class="k">else</span> <span class="n">get_info_v3</span><span class="p">()</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;was_split&quot;</span><span class="p">,</span> <span class="s2">&quot;a_index&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_info_select</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;freq&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span> <span class="ow">or</span> <span class="s2">&quot;info&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;freq&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="s2">&quot;freq&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;faf&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;histograms&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_freq_select</span><span class="p">,</span>
+            <span class="s2">&quot;custom_globals_select&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">custom_freq_globals_select</span> <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;genomes&quot;</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;select_globals&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="s2">&quot;freq_meta&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;freq_index_dict&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;faf_meta&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;faf_index_dict&quot;</span><span class="p">,</span>
+                <span class="p">]</span>
+                <span class="o">+</span> <span class="p">(</span>
+                    <span class="p">[</span><span class="s2">&quot;age_distribution&quot;</span><span class="p">,</span> <span class="s2">&quot;downsamplings&quot;</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span>
+                    <span class="k">else</span> <span class="p">[]</span>
+                <span class="p">)</span>
+            <span class="p">),</span>
+        <span class="p">}</span>
+    <span class="k">if</span> <span class="s2">&quot;vep&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;vep&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">get_vep</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">DEFAULT_VEP_VERSION</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">get_vep</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">DEFAULT_VEP_VERSION</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;vep&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">get_custom_vep_select</span><span class="p">(</span><span class="n">DEFAULT_VEP_VERSION</span><span class="p">),</span>
+            <span class="s2">&quot;custom_globals_select&quot;</span><span class="p">:</span> <span class="n">get_custom_vep_globals_select</span><span class="p">(),</span>
+            <span class="s2">&quot;global_name&quot;</span><span class="p">:</span> <span class="s2">&quot;vep_globals&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="c1"># Dynamically add additional VEP versions based on release version.</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">vep_version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">[</span><span class="n">version</span><span class="p">]:</span>
+            <span class="n">vep_table_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;vep</span><span class="si">{</span><span class="n">vep_version</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="k">if</span> <span class="n">vep_table_name</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+                <span class="n">config</span><span class="p">[</span><span class="n">vep_table_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">get_vep</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">vep_version</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+                    <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">get_vep</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">vep_version</span><span class="o">=</span><span class="n">vep_version</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+                    <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[],</span>
+                    <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">get_custom_vep_select</span><span class="p">(</span><span class="n">vep_version</span><span class="p">),</span>
+                    <span class="s2">&quot;custom_globals_select&quot;</span><span class="p">:</span> <span class="n">get_custom_vep_globals_select</span><span class="p">(),</span>
+                    <span class="s2">&quot;global_name&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">vep_table_name</span><span class="si">}</span><span class="s2">_globals&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;region_flags&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;region_flags&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">get_freq</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_region_flags_select</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;joint_faf&quot;</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;joint_faf&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;joint&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;joint&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;joint_freq&quot;</span><span class="p">,</span> <span class="s2">&quot;joint_faf&quot;</span><span class="p">,</span> <span class="s2">&quot;joint_fafmax&quot;</span><span class="p">],</span>
+            <span class="s2">&quot;custom_select&quot;</span><span class="p">:</span> <span class="n">custom_joint_faf_select</span><span class="p">,</span>
+            <span class="s2">&quot;select_globals&quot;</span><span class="p">:</span> <span class="p">[</span>
+                <span class="s2">&quot;joint_freq_meta&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;joint_freq_index_dict&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;joint_freq_meta_sample_count&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;joint_faf_meta&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;joint_faf_index_dict&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">release_exists</span> <span class="ow">or</span> <span class="n">base_release_version</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Determine which release version to use as the base HT.</span>
+        <span class="n">base_version</span> <span class="o">=</span> <span class="n">base_release_version</span> <span class="ow">or</span> <span class="n">version</span>
+        <span class="n">release_res</span> <span class="o">=</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">versions</span><span class="p">[</span><span class="n">base_version</span><span class="p">]</span>
+        <span class="n">release_ht</span> <span class="o">=</span> <span class="n">release_res</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;release&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;ht&quot;</span><span class="p">:</span> <span class="n">release_ht</span><span class="p">,</span>
+            <span class="s2">&quot;path&quot;</span><span class="p">:</span> <span class="n">release_res</span><span class="o">.</span><span class="n">path</span><span class="p">,</span>
+            <span class="s2">&quot;select&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">r</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">release_ht</span><span class="o">.</span><span class="n">row_value</span><span class="p">],</span>
+            <span class="s2">&quot;select_globals&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">g</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">release_ht</span><span class="o">.</span><span class="n">globals</span><span class="p">],</span>
+        <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">config</span></div>
+
+
+<div class="viewcode-block" id="drop_v3_subsets"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.drop_v3_subsets">[docs]</a><span class="k">def</span> <span class="nf">drop_v3_subsets</span><span class="p">(</span><span class="n">freq_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Drop the frequencies of all v3 subsets except &#39;hgdp&#39; and &#39;tgp&#39; from `freq_ht`.</span>
+
+<span class="sd">    :param freq_ht: v4.0 genomes freq Table.</span>
+<span class="sd">    :return: v4.0 genomes freq Table with some v3 subsets dropped.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">freq_meta</span><span class="p">,</span> <span class="n">array_exprs</span> <span class="o">=</span> <span class="n">filter_arrays_by_meta</span><span class="p">(</span>
+        <span class="n">freq_ht</span><span class="o">.</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;freq&quot;</span><span class="p">:</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">freq</span><span class="p">,</span>
+            <span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">:</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span><span class="o">.</span><span class="n">freq_meta_sample_count</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;subset&quot;</span><span class="p">:</span> <span class="n">SUBSETS_TO_DROP</span><span class="p">},</span>
+        <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">combine_operator</span><span class="o">=</span><span class="s2">&quot;or&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">freq</span><span class="o">=</span><span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq&quot;</span><span class="p">])</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">freq_ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">freq_meta</span><span class="o">=</span><span class="n">freq_meta</span><span class="p">,</span>
+        <span class="n">freq_index_dict</span><span class="o">=</span><span class="n">make_freq_index_dict_from_meta</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">freq_meta</span><span class="p">)),</span>
+        <span class="n">freq_meta_sample_count</span><span class="o">=</span><span class="n">array_exprs</span><span class="p">[</span><span class="s2">&quot;freq_meta_sample_count&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">freq_ht</span></div>
+
+
+<div class="viewcode-block" id="custom_joint_faf_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_joint_faf_select">[docs]</a><span class="k">def</span> <span class="nf">custom_joint_faf_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Drop faf95 from &#39;grpmax&#39;.</span>
+
+<span class="sd">    This annotation will be combined with the others from joint_faf&#39;s select in the config.</span>
+<span class="sd">    See note in `custom_freq_select` explaining why this field is removed.</span>
+
+<span class="sd">    :param ht: Joint FAF Hail Table.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;joint_grpmax&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">joint_grpmax</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;faf95&quot;</span><span class="p">)}</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_freq_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_select">[docs]</a><span class="k">def</span> <span class="nf">custom_freq_select</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Drop faf95 from both &#39;gnomad&#39; and &#39;non_ukb&#39; in &#39;grpmax&#39; and rename `gen_anc_faf_max` to `fafmax`.</span>
+
+<span class="sd">    These annotations will be combined with the others from freq&#39;s select in the config.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group</span>
+<span class="sd">          with the largest AF (grpmax AF).</span>
+<span class="sd">        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the</span>
+<span class="sd">          genetic ancestry group(s) with the largest FAFs</span>
+<span class="sd">        - These values aren&#39;t necessarily the same; the group with the highest AF for a</span>
+<span class="sd">          variant isn&#39;t necessarily the group with the highest FAF for a variant</span>
+<span class="sd">        - The filtering allele frequencies that are used by the community are the</span>
+<span class="sd">          values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are</span>
+<span class="sd">          dropping grpmax.faf95 and renaming gen_anc_faf_max</span>
+
+<span class="sd">    :param ht: Freq Hail Table</span>
+<span class="sd">    :param data_type: Dataset&#39;s data type: &#39;exomes&#39; or &#39;genomes&#39;.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;grpmax&quot;</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">grpmax</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;faf95&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">grpmax</span><span class="p">})</span>
+            <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span>
+            <span class="k">else</span> <span class="n">ht</span><span class="o">.</span><span class="n">grpmax</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;faf95&quot;</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;fafmax&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">gen_anc_faf_max</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_freq_globals_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_freq_globals_select">[docs]</a><span class="k">def</span> <span class="nf">custom_freq_globals_select</span><span class="p">(</span><span class="n">_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select freq table globals for genomes.</span>
+
+<span class="sd">    Recomputes age_distribution from meta table to ensure age_alt data is included</span>
+<span class="sd">    for samples where age is stored as a bin range.</span>
+
+<span class="sd">    :param _ht: Freq Hail Table (unused, but required by interface).</span>
+<span class="sd">    :return: Global select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Recomputing age_distribution for genomes from meta table...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Load genomes meta table and filter to release samples.</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="s2">&quot;genomes&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">meta_ht</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">release</span><span class="p">)</span>
+
+    <span class="n">age_distribution</span> <span class="o">=</span> <span class="n">meta_ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">age</span><span class="p">),</span>
+                <span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">age</span><span class="p">,</span>
+                <span class="n">meta_ht</span><span class="o">.</span><span class="n">project_meta</span><span class="o">.</span><span class="n">age_alt</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="mi">30</span><span class="p">,</span>
+            <span class="mi">80</span><span class="p">,</span>
+            <span class="mi">10</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Recomputed age_distribution: </span><span class="si">{</span><span class="n">age_distribution</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;age_distribution&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">age_distribution</span><span class="p">)}</span></div>
+
+
+<div class="viewcode-block" id="custom_in_silico_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_in_silico_select">[docs]</a><span class="k">def</span> <span class="nf">custom_in_silico_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get in silico predictors from VEP for release.</span>
+
+<span class="sd">    This function currently selects only SIFT and Polyphen from VEP.</span>
+
+<span class="sd">    :param ht: VEP Hail Table.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">vep_in_silico</span> <span class="o">=</span> <span class="n">get_sift_polyphen_from_vep</span><span class="p">(</span><span class="n">get_vep</span><span class="p">()</span><span class="o">.</span><span class="n">ht</span><span class="p">())</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;sift_max&quot;</span><span class="p">:</span> <span class="n">vep_in_silico</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">sift_max</span><span class="p">,</span>
+        <span class="s2">&quot;polyphen_max&quot;</span><span class="p">:</span> <span class="n">vep_in_silico</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">polyphen_max</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_region_flags_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_region_flags_select">[docs]</a><span class="k">def</span> <span class="nf">custom_region_flags_select</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select region flags for release.</span>
+
+<span class="sd">    :param ht: Hail Table.</span>
+<span class="sd">    :param data_type: Dataset&#39;s data type: &#39;exomes&#39; or &#39;genomes&#39;.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;region_flags&quot;</span><span class="p">:</span> <span class="n">region_flag_expr</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="n">non_par</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">prob_regions</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;lcr&quot;</span><span class="p">:</span> <span class="n">lcr_intervals</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="s2">&quot;segdup&quot;</span><span class="p">:</span> <span class="n">seg_dup_intervals</span><span class="o">.</span><span class="n">ht</span><span class="p">()},</span>
+        <span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;region_flags&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;region_flags&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">fail_interval_qc</span><span class="o">=~</span><span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span>
+            <span class="o">.</span><span class="n">pass_interval_qc</span><span class="p">,</span>
+            <span class="n">outside_ukb_capture_region</span><span class="o">=~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span>
+                <span class="n">calling_intervals</span><span class="p">(</span><span class="n">interval_name</span><span class="o">=</span><span class="s2">&quot;ukb&quot;</span><span class="p">,</span> <span class="n">calling_interval_padding</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span>
+                    <span class="n">ht</span><span class="o">.</span><span class="n">locus</span>
+                <span class="p">]</span>
+            <span class="p">),</span>
+            <span class="n">outside_broad_capture_region</span><span class="o">=~</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span>
+                <span class="n">calling_intervals</span><span class="p">(</span>
+                    <span class="n">interval_name</span><span class="o">=</span><span class="s2">&quot;broad&quot;</span><span class="p">,</span> <span class="n">calling_interval_padding</span><span class="o">=</span><span class="mi">0</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">ht</span><span class="o">.</span><span class="n">locus</span><span class="p">]</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_filters_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select">[docs]</a><span class="k">def</span> <span class="nf">custom_filters_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select gnomAD filter HT fields for release dataset.</span>
+
+<span class="sd">    Extract &quot;results&quot; field and rename based on filtering method.</span>
+
+<span class="sd">    :param ht: Filters Hail Table.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filter_name</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">filter_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">filter_name</span> <span class="o">==</span> <span class="s2">&quot;RF&quot;</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;random_forest_results&quot;</span>
+    <span class="k">elif</span> <span class="n">filter_name</span> <span class="o">==</span> <span class="s2">&quot;AS_VQSR&quot;</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;vqsr_results&quot;</span>
+    <span class="k">elif</span> <span class="n">filter_name</span> <span class="o">==</span> <span class="s2">&quot;IF&quot;</span><span class="p">:</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;isolation_forest_results&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Filtering method </span><span class="si">{</span><span class="n">filter_name</span><span class="si">}</span><span class="s2"> not recognized.&quot;</span><span class="p">)</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">training_info</span><span class="p">)}</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_filters_select_globals"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_filters_select_globals">[docs]</a><span class="k">def</span> <span class="nf">custom_filters_select_globals</span><span class="p">(</span>
+    <span class="n">globals_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select filter HT globals for release dataset.</span>
+
+<span class="sd">    :param globals_expr: Globals struct from a Filters Hail Table.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;filtering_model&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="s2">&quot;filter_name&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">filter_name</span><span class="p">,</span>
+                <span class="s2">&quot;score_name&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">score_name</span><span class="p">,</span>
+                <span class="s2">&quot;snv_cutoff&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">snv_cutoff</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;bin_id&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;indel_cutoff&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">indel_cutoff</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span>
+                    <span class="s2">&quot;bin_id&quot;</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;snv_training_variables&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="n">globals_expr</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">snv_training_variables</span>
+                <span class="p">),</span>
+                <span class="s2">&quot;indel_training_variables&quot;</span><span class="p">:</span> <span class="p">(</span>
+                    <span class="n">globals_expr</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">indel_training_variables</span>
+                <span class="p">),</span>
+            <span class="p">}</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;inbreeding_coeff_cutoff&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">inbreeding_coeff_cutoff</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="custom_info_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.custom_info_select">[docs]</a><span class="k">def</span> <span class="nf">custom_info_select</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select fields for info Hail Table annotation in release.</span>
+
+<span class="sd">    The info field requires fields from the freq HT and the filters HT so those are</span>
+<span class="sd">    pulled in here along with all info HT fields. It also adds the `allele_info` struct</span>
+<span class="sd">    to release HT.</span>
+
+<span class="sd">    :param ht: Info Hail Table.</span>
+<span class="sd">    :param data_type: Dataset&#39;s data type: &#39;exomes&#39; or &#39;genomes&#39;.</span>
+<span class="sd">    :return: Select expression dict.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create a dict of the fields from the filters HT that we want to add to the info.</span>
+    <span class="n">filters_ht</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;filters&quot;</span><span class="p">)[</span><span class="s2">&quot;ht&quot;</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="c1"># For more information on the selected compute_info_method, please see the</span>
+        <span class="c1"># run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py</span>
+        <span class="n">compute_info_method</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span>
+            <span class="n">filters_ht</span><span class="o">.</span><span class="n">filtering_model_specific_info</span><span class="o">.</span><span class="n">compute_info_method</span>
+        <span class="p">)</span>
+
+    <span class="n">score_name</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">filters_ht</span><span class="o">.</span><span class="n">filtering_model</span><span class="o">.</span><span class="n">score_name</span><span class="p">)</span>
+    <span class="n">filters_ht</span> <span class="o">=</span> <span class="n">filters_ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="o">**</span><span class="n">filters_ht</span><span class="o">.</span><span class="n">truth_sets</span><span class="p">)</span>
+    <span class="n">filters</span> <span class="o">=</span> <span class="n">filters_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">filters_info_fields</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sibling_singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;omni&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;mills&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;monoallelic&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;only_het&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;genomes&quot;</span><span class="p">:</span>
+        <span class="n">filters_info_fields</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;sibling_singleton&quot;</span><span class="p">)</span>
+    <span class="n">filters_info_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">field</span><span class="p">:</span> <span class="n">filters</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">filters_info_fields</span><span class="p">}</span>
+    <span class="n">filters_info_dict</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">score_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">filters</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">score_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]}})</span>
+
+    <span class="c1"># Create a dict of the fields from the freq HT that we want to add to the info.</span>
+    <span class="n">freq_ht</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;freq&quot;</span><span class="p">)[</span><span class="s2">&quot;ht&quot;</span><span class="p">]</span>
+    <span class="c1"># TODO: will change back to &#39;inbreeding_coeff&#39; once we have the new freq_ht</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">freq_info_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;inbreeding_coeff&quot;</span><span class="p">:</span> <span class="n">freq_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;inbreeding_coeff&quot;</span><span class="p">]}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">freq_info_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;inbreeding_coeff&quot;</span><span class="p">:</span> <span class="n">freq_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="s2">&quot;InbreedingCoeff&quot;</span><span class="p">]}</span>
+
+    <span class="c1"># Create a dict of the fields from the VRS HT that we want to add to the info.</span>
+    <span class="n">vrs_ht</span> <span class="o">=</span> <span class="n">get_vrs</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+
+    <span class="c1"># This is the schema of the updated VRS HT generated by Kyle for v4.1.1:</span>
+    <span class="c1">#     &#39;info&#39;: struct {</span>
+    <span class="c1">#         VRS_Allele_IDs: array&lt;str&gt;,</span>
+    <span class="c1">#         VRS_Starts: array&lt;int32&gt;,</span>
+    <span class="c1">#         VRS_Ends: array&lt;int32&gt;,</span>
+    <span class="c1">#         VRS_States: array&lt;str&gt;,</span>
+    <span class="c1">#         VRS_Lengths: array&lt;int32&gt;,</span>
+    <span class="c1">#         VRS_RepeatSubunitLengths: array&lt;int32&gt;</span>
+    <span class="c1">#     }</span>
+    <span class="c1"># Rename info to `vrs`.</span>
+    <span class="n">vrs_ht</span> <span class="o">=</span> <span class="n">vrs_ht</span><span class="o">.</span><span class="n">transmute</span><span class="p">(</span><span class="n">vrs</span><span class="o">=</span><span class="n">vrs_ht</span><span class="o">.</span><span class="n">info</span><span class="p">)</span>
+    <span class="n">vrs_info_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;vrs&quot;</span><span class="p">:</span> <span class="n">vrs_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">vrs</span><span class="p">}</span>
+
+    <span class="c1"># Create a dict of the fields from the info HT that we want keep in the info.</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">info_struct</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">site_info</span><span class="p">,</span> <span class="o">**</span><span class="n">ht</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">compute_info_method</span><span class="si">}</span><span class="s2">_info&quot;</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># v3 info HT has no SOR or AS_SOR fields. They are computed by VQSR, so we can</span>
+        <span class="c1"># grab them from the filters HT.</span>
+        <span class="n">info_struct</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">,</span> <span class="n">SOR</span><span class="o">=</span><span class="n">filters</span><span class="o">.</span><span class="n">SOR</span><span class="p">,</span> <span class="n">AS_SOR</span><span class="o">=</span><span class="n">filters</span><span class="o">.</span><span class="n">features</span><span class="o">.</span><span class="n">AS_SOR</span>
+        <span class="p">)</span>
+
+    <span class="n">info_dict</span> <span class="o">=</span> <span class="p">{</span><span class="n">field</span><span class="p">:</span> <span class="n">info_struct</span><span class="p">[</span><span class="n">field</span><span class="p">]</span> <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">SITE_FIELDS</span> <span class="o">+</span> <span class="n">AS_FIELDS</span><span class="p">}</span>
+    <span class="n">info_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">filters_info_dict</span><span class="p">)</span>
+    <span class="n">info_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">freq_info_dict</span><span class="p">)</span>
+    <span class="n">info_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">vrs_info_fields</span><span class="p">)</span>
+
+    <span class="c1"># Select the info and allele info annotations. We drop nonsplit_alleles from</span>
+    <span class="c1"># allele_info so that we don&#39;t release alleles that are found in non-releasable</span>
+    <span class="c1"># samples.</span>
+    <span class="n">selects</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;info&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">info_dict</span><span class="p">)}</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;allele_info&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">allele_info</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;nonsplit_alleles&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;genomes&quot;</span><span class="p">:</span>
+        <span class="n">selects</span><span class="p">[</span><span class="s2">&quot;allele_info&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">filters</span><span class="o">.</span><span class="n">allele_info</span>
+
+    <span class="k">return</span> <span class="n">selects</span></div>
+
+
+<div class="viewcode-block" id="get_custom_vep_globals_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_globals_select">[docs]</a><span class="k">def</span> <span class="nf">get_custom_vep_globals_select</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get custom globals select function for VEP globals.</span>
+
+<span class="sd">    :return: Custom globals select function.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">custom_vep_globals_select</span><span class="p">(</span>
+        <span class="n">globals_expr</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StructExpression</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Select globals for VEP Hail Table annotation in release.</span>
+
+<span class="sd">        :param globals_expr: Globals struct from a VEP Hail Table.</span>
+<span class="sd">        :return: Select expression dict.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s2">&quot;vep_version&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">vep_version</span><span class="p">,</span>
+            <span class="s2">&quot;vep_help&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">vep_help</span><span class="p">,</span>
+            <span class="s2">&quot;vep_config&quot;</span><span class="p">:</span> <span class="n">globals_expr</span><span class="o">.</span><span class="n">vep_config</span><span class="p">,</span>
+        <span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">custom_vep_globals_select</span></div>
+
+
+<div class="viewcode-block" id="get_custom_vep_select"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_custom_vep_select">[docs]</a><span class="k">def</span> <span class="nf">get_custom_vep_select</span><span class="p">(</span><span class="n">vep_version</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get custom VEP select function for a given VEP version.</span>
+
+<span class="sd">    :param vep_version: VEP version (e.g., &quot;105&quot;, &quot;115&quot;).</span>
+<span class="sd">    :return: Custom select function for the VEP version.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">custom_vep_version_select</span><span class="p">(</span><span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="o">**</span><span class="n">_</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Select fields for VEP Hail Table annotation in release.</span>
+
+<span class="sd">        This custom select function does the following:</span>
+
+<span class="sd">            - For VEP 105: Removes fields from VEP annotations that have been excluded</span>
+<span class="sd">              in past releases or are missing in all rows.</span>
+<span class="sd">            - Drops sift_prediction, sift_score, polyphen_prediction, and polyphen_score</span>
+<span class="sd">              fields from the transcript_consequences array.</span>
+<span class="sd">            - Updates the loftee annotations to use a GERP score threshold of 0 instead</span>
+<span class="sd">              of the default applied by the LOFTEE plugin.</span>
+
+<span class="sd">        :param ht: VEP Hail table.</span>
+<span class="sd">        :return: Select expression dict.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Only apply remove_missing_vep_fields for VEP 105.</span>
+        <span class="k">if</span> <span class="n">vep_version</span> <span class="o">==</span> <span class="s2">&quot;105&quot;</span><span class="p">:</span>
+            <span class="n">vep_expr</span> <span class="o">=</span> <span class="n">remove_missing_vep_fields</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">vep</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">vep_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">vep</span>
+
+        <span class="n">field_name</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;vep</span><span class="si">{</span><span class="n">vep_version</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">vep_version</span> <span class="o">!=</span> <span class="n">DEFAULT_VEP_VERSION</span> <span class="k">else</span> <span class="s2">&quot;vep&quot;</span>
+        <span class="p">)</span>
+        <span class="n">csqs_expr</span> <span class="o">=</span> <span class="n">vep_expr</span><span class="o">.</span><span class="n">transcript_consequences</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">update_loftee_end_trunc_filter</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Only drop sift/polyphen fields for default VEP version.</span>
+        <span class="k">if</span> <span class="n">vep_version</span> <span class="o">==</span> <span class="n">DEFAULT_VEP_VERSION</span><span class="p">:</span>
+            <span class="n">csqs_expr</span> <span class="o">=</span> <span class="n">csqs_expr</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span>
+                    <span class="s2">&quot;sift_prediction&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;sift_score&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;polyphen_prediction&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;polyphen_score&quot;</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="p">{</span><span class="n">field_name</span><span class="p">:</span> <span class="n">vep_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">transcript_consequences</span><span class="o">=</span><span class="n">csqs_expr</span><span class="p">)}</span>
+
+    <span class="k">return</span> <span class="n">custom_vep_version_select</span></div>
+
+
+<span class="c1"># TODO: REMINDER TO DO THE BELOW TODO or remove it.</span>
+<span class="c1"># TODO: Move all below functions to create_release_utils.py after approval.</span>
+<div class="viewcode-block" id="get_select_global_fields"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_select_global_fields">[docs]</a><span class="k">def</span> <span class="nf">get_select_global_fields</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="n">tables_for_join</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">TABLES_FOR_RELEASE</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate a dictionary of globals to select by checking the config of all tables joined.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        This function will place the globals within the select_globals value above</span>
+<span class="sd">        any globals returned from custom_select_globals. If ordering is important, use</span>
+<span class="sd">        only custom_select_globals.</span>
+
+<span class="sd">    :param ht: Final joined HT with globals.</span>
+<span class="sd">    :param config: Dictionary with configuration options for each dataset. Expects the</span>
+<span class="sd">        dataset name (matching values in `tables_for_join`) as the key and a dictionary</span>
+<span class="sd">        of options as the value, where the options include any of the following keys:</span>
+<span class="sd">        &#39;select_globals&#39;, &#39;custom_globals_select&#39;, &#39;global_name&#39;.</span>
+<span class="sd">    :param tables_for_join: List of tables to join into final release HT.</span>
+<span class="sd">    :return: select mapping from global annotation name to `ht` annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">t_globals</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tables_for_join</span><span class="p">:</span>
+        <span class="n">select_globals</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">t_config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;select_globals&quot;</span> <span class="ow">in</span> <span class="n">t_config</span><span class="p">:</span>
+            <span class="n">select_globals</span> <span class="o">=</span> <span class="n">get_select_fields</span><span class="p">(</span><span class="n">t_config</span><span class="p">[</span><span class="s2">&quot;select_globals&quot;</span><span class="p">],</span> <span class="n">ht</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">t_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;custom_globals_select&quot;</span><span class="p">):</span>
+            <span class="n">custom_globals_select_fn</span> <span class="o">=</span> <span class="n">t_config</span><span class="p">[</span><span class="s2">&quot;custom_globals_select&quot;</span><span class="p">]</span>
+            <span class="c1"># Use source HT&#39;s globals via index_globals() so</span>
+            <span class="c1"># custom_globals_select reads from the original table, not</span>
+            <span class="c1"># the joined HT where globals with the same name (e.g.,</span>
+            <span class="c1"># vep_version) may have been overwritten.</span>
+            <span class="n">source_globals</span> <span class="o">=</span> <span class="n">t_config</span><span class="p">[</span><span class="s2">&quot;ht&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span> <span class="k">if</span> <span class="s2">&quot;ht&quot;</span> <span class="ow">in</span> <span class="n">t_config</span> <span class="k">else</span> <span class="n">ht</span>
+            <span class="n">select_globals</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="o">**</span><span class="n">select_globals</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">custom_globals_select_fn</span><span class="p">(</span><span class="n">source_globals</span><span class="p">),</span>
+            <span class="p">}</span>
+        <span class="k">if</span> <span class="s2">&quot;global_name&quot;</span> <span class="ow">in</span> <span class="n">t_config</span><span class="p">:</span>
+            <span class="n">global_name</span> <span class="o">=</span> <span class="n">t_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;global_name&quot;</span><span class="p">)</span>
+            <span class="n">select_globals</span> <span class="o">=</span> <span class="p">{</span><span class="n">global_name</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">select_globals</span><span class="p">)}</span>
+        <span class="n">t_globals</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">select_globals</span><span class="p">)</span>
+
+    <span class="n">t_globals</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">b</span><span class="p">),</span> <span class="n">t_globals</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">t_globals</span></div>
+
+
+<div class="viewcode-block" id="get_select_fields"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_select_fields">[docs]</a><span class="k">def</span> <span class="nf">get_select_fields</span><span class="p">(</span>
+    <span class="n">selects</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">,</span> <span class="n">Dict</span><span class="p">],</span> <span class="n">base_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate a select dict from traversing the `base_ht` and extracting annotations.</span>
+
+<span class="sd">    :param selects: Mapping or list of selections.</span>
+<span class="sd">    :param base_ht: Base Hail Table to traverse.</span>
+<span class="sd">    :return: select Mapping from annotation name to `base_ht` annotation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">select_fields</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">selects</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">selects</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">select_fields</span> <span class="o">=</span> <span class="p">{</span><span class="n">selection</span><span class="p">:</span> <span class="n">base_ht</span><span class="p">[</span><span class="n">selection</span><span class="p">]</span> <span class="k">for</span> <span class="n">selection</span> <span class="ow">in</span> <span class="n">selects</span><span class="p">}</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">selects</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">selects</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="c1"># Grab the field and continually select it from the hail table.</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">base_ht</span>
+                <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">val</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;.&quot;</span><span class="p">):</span>
+                    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="p">[</span><span class="n">attr</span><span class="p">]</span>
+                <span class="n">select_fields</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span>
+    <span class="k">return</span> <span class="n">select_fields</span></div>
+
+
+<div class="viewcode-block" id="get_final_ht_fields"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_final_ht_fields">[docs]</a><span class="k">def</span> <span class="nf">get_final_ht_fields</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">schema</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">FINALIZED_SCHEMA</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the final fields for the release HT.</span>
+
+<span class="sd">    Create a dictionary of lists of fields that are in the `schema` and are</span>
+<span class="sd">    present in the HT. If a field is not present in the HT, log a warning.</span>
+
+<span class="sd">    :param ht: Hail Table.</span>
+<span class="sd">    :param schema: Schema for the release HT.</span>
+<span class="sd">    :return: Dict of final fields for the release HT.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">final_fields</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="p">[],</span> <span class="s2">&quot;globals&quot;</span><span class="p">:</span> <span class="p">[]}</span>
+    <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">schema</span><span class="p">[</span><span class="s2">&quot;rows&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">row</span><span class="p">:</span>
+            <span class="n">final_fields</span><span class="p">[</span><span class="s2">&quot;rows&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">field</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Field </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> from schema not found in HT.&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">schema</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">globals</span><span class="p">:</span>
+            <span class="n">final_fields</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">field</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Global </span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2"> from schema not found in HT.&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">final_fields</span></div>
+
+
+<div class="viewcode-block" id="get_ht"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.get_ht">[docs]</a><span class="k">def</span> <span class="nf">get_ht</span><span class="p">(</span>
+    <span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="n">use_config_ht</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">checkpoint</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">_intervals</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">base_ht_filter</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the appropriate Hail table with selects applied.</span>
+
+<span class="sd">    :param dataset: Hail Table to join.</span>
+<span class="sd">    :param data_type: Dataset&#39;s data type: &#39;exomes&#39; or &#39;genomes&#39;.</span>
+<span class="sd">    :param config: Dictionary with configuration options for each dataset. Expects the</span>
+<span class="sd">        dataset name as the key and a dictionary of options as the value, where the</span>
+<span class="sd">        options include some of the following: &#39;ht&#39;, &#39;path&#39;, &#39;select&#39;, &#39;field_name&#39;,</span>
+<span class="sd">        &#39;custom_select&#39;.</span>
+<span class="sd">    :param use_config_ht: Whether to use the &#39;ht&#39; in the dataset config instead of</span>
+<span class="sd">        reading in `path`. Default is False.</span>
+<span class="sd">    :param checkpoint: Whether to checkpoint the Hail Table. Default is False.</span>
+<span class="sd">    :param test: Whether call is for a test run. If True, the dataset will be filtered</span>
+<span class="sd">        to PCSK9. Default is False.</span>
+<span class="sd">    :param _intervals: Intervals for reading in hail Table. Used to optimize join.</span>
+<span class="sd">    :param base_ht_filter: Optional Hail Table to filter on before joining. Default is</span>
+<span class="sd">        None.</span>
+<span class="sd">    :return: Hail Table with fields to select.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Getting the </span><span class="si">%s</span><span class="s2"> dataset and its selected annotations...&quot;</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>
+    <span class="n">dataset_config</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="n">dataset</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">use_config_ht</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">dataset_config</span><span class="p">[</span><span class="s2">&quot;ht&quot;</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Reading in </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">dataset</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">dataset_config</span><span class="p">[</span><span class="s2">&quot;path&quot;</span><span class="p">],</span> <span class="n">_intervals</span><span class="o">=</span><span class="n">_intervals</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">dataset</span> <span class="o">==</span> <span class="s2">&quot;freq&quot;</span> <span class="ow">and</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;genomes&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">drop_v3_subsets</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="c1"># Keep only PCSK9.</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="p">[</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span>
+                    <span class="s2">&quot;chr1:55039447-55064852&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+                <span class="p">)</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">select_fields</span> <span class="o">=</span> <span class="n">get_select_fields</span><span class="p">(</span><span class="n">dataset_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;select&quot;</span><span class="p">),</span> <span class="n">ht</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s2">&quot;custom_select&quot;</span> <span class="ow">in</span> <span class="n">dataset_config</span><span class="p">:</span>
+        <span class="n">custom_select_fn</span> <span class="o">=</span> <span class="n">dataset_config</span><span class="p">[</span><span class="s2">&quot;custom_select&quot;</span><span class="p">]</span>
+        <span class="n">select_fields</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="o">**</span><span class="n">select_fields</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">custom_select_fn</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">),</span>
+        <span class="p">}</span>
+
+    <span class="k">if</span> <span class="s2">&quot;field_name&quot;</span> <span class="ow">in</span> <span class="n">dataset_config</span><span class="p">:</span>
+        <span class="n">field_name</span> <span class="o">=</span> <span class="n">dataset_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;field_name&quot;</span><span class="p">)</span>
+        <span class="n">select_query</span> <span class="o">=</span> <span class="p">{</span><span class="n">field_name</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">select_fields</span><span class="p">)}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">select_query</span> <span class="o">=</span> <span class="n">select_fields</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">**</span><span class="n">select_query</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">base_ht_filter</span><span class="p">:</span>
+        <span class="n">ht_key</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">list</span><span class="p">(</span><span class="n">base_ht_filter</span><span class="o">.</span><span class="n">key</span><span class="p">)</span> <span class="o">!=</span> <span class="n">ht_key</span><span class="p">:</span>
+            <span class="n">base_ht_filter</span> <span class="o">=</span> <span class="n">base_ht_filter</span><span class="o">.</span><span class="n">key_by</span><span class="p">(</span><span class="o">*</span><span class="n">ht_key</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">semi_join</span><span class="p">(</span><span class="n">base_ht_filter</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">checkpoint</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s2">.for_release&quot;</span><span class="p">,</span> <span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="join_hts"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.join_hts">[docs]</a><span class="k">def</span> <span class="nf">join_hts</span><span class="p">(</span>
+    <span class="n">base_table</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">tables</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">new_partition_percent</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">new_n_partitions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">checkpoint_tables</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">track_included_datasets</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">use_annotate</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Outer join a list of Hail Tables.</span>
+
+<span class="sd">    :param base_table: Dataset to use for interval partitioning.</span>
+<span class="sd">    :param tables: List of tables to join.</span>
+<span class="sd">    :param data_type: Dataset&#39;s data type: &#39;exomes&#39; or &#39;genomes&#39;.</span>
+<span class="sd">    :param config: Dictionary with configuration options for each dataset. Expects the</span>
+<span class="sd">        dataset name (matching values in `tables`) as the key and a dictionary of</span>
+<span class="sd">        options as the value, where the options include some of the following: &#39;ht&#39;,</span>
+<span class="sd">        &#39;path&#39;, &#39;select&#39;, &#39;field_name&#39;, &#39;custom_select&#39;, &#39;select_globals&#39;,</span>
+<span class="sd">        &#39;custom_globals_select&#39;, &#39;global_name&#39;.</span>
+<span class="sd">    :param version: Release version.</span>
+<span class="sd">    :param new_partition_percent: Percent of base_table partitions used for final</span>
+<span class="sd">        release Hail Table.</span>
+<span class="sd">    :param new_n_partitions: Number of partitions for final release Hail Table.</span>
+<span class="sd">    :param checkpoint_tables: Whether to checkpoint the tables before join. Default is</span>
+<span class="sd">        False.</span>
+<span class="sd">    :param track_included_datasets: Whether to track the datasets included in the</span>
+<span class="sd">        release. This is used to update the included_datasets json file. Default is</span>
+<span class="sd">        False.</span>
+<span class="sd">    :param use_annotate: Whether to use annotate instead of join. Default is False.</span>
+<span class="sd">    :param test: Whether this is for a test run. Default is False.</span>
+<span class="sd">    :return: Hail Table with datasets joined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Reading in </span><span class="si">%s</span><span class="s2"> to determine partition intervals for efficient join&quot;</span><span class="p">,</span>
+        <span class="n">base_table</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">partition_intervals</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">new_n_partitions</span> <span class="ow">or</span> <span class="n">new_partition_percent</span><span class="p">:</span>
+        <span class="n">base_ht</span> <span class="o">=</span> <span class="n">get_ht</span><span class="p">(</span>
+            <span class="n">base_table</span><span class="p">,</span>
+            <span class="n">data_type</span><span class="p">,</span>
+            <span class="n">config</span><span class="p">,</span>
+            <span class="n">use_config_ht</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">new_n_partitions</span> <span class="o">=</span> <span class="n">new_n_partitions</span> <span class="ow">or</span> <span class="n">base_ht</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">new_partition_percent</span><span class="p">:</span>
+            <span class="n">new_n_partitions</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">base_ht</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">()</span> <span class="o">*</span> <span class="n">new_partition_percent</span><span class="p">)</span>
+
+        <span class="n">partition_intervals</span> <span class="o">=</span> <span class="n">base_ht</span><span class="o">.</span><span class="n">_calculate_new_partitions</span><span class="p">(</span><span class="n">new_n_partitions</span><span class="p">)</span>
+
+    <span class="n">base_ht</span> <span class="o">=</span> <span class="n">get_ht</span><span class="p">(</span>
+        <span class="n">base_table</span><span class="p">,</span>
+        <span class="n">data_type</span><span class="p">,</span>
+        <span class="n">config</span><span class="p">,</span>
+        <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint_tables</span><span class="p">,</span>
+        <span class="n">_intervals</span><span class="o">=</span><span class="n">partition_intervals</span><span class="p">,</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Remove base_table from tables if it is in the list and add it to the front.</span>
+    <span class="k">if</span> <span class="n">base_table</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">:</span>
+        <span class="n">tables</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">base_table</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Joining datasets: </span><span class="si">%s</span><span class="s2">...&quot;</span><span class="p">,</span> <span class="n">tables</span><span class="p">)</span>
+    <span class="n">hts</span> <span class="o">=</span> <span class="p">[</span><span class="n">base_ht</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span>
+        <span class="n">get_ht</span><span class="p">(</span>
+            <span class="n">table</span><span class="p">,</span>
+            <span class="n">data_type</span><span class="p">,</span>
+            <span class="n">config</span><span class="p">,</span>
+            <span class="c1"># There is no single path for insilico predictors, so we need to handle</span>
+            <span class="c1"># this case separately.</span>
+            <span class="n">use_config_ht</span><span class="o">=</span><span class="kc">True</span> <span class="k">if</span> <span class="n">table</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;in_silico&quot;</span><span class="p">,</span> <span class="s2">&quot;exomes_an&quot;</span><span class="p">]</span> <span class="k">else</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">checkpoint</span><span class="o">=</span><span class="n">checkpoint_tables</span><span class="p">,</span>
+            <span class="n">_intervals</span><span class="o">=</span><span class="n">partition_intervals</span><span class="p">,</span>
+            <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+            <span class="n">base_ht_filter</span><span class="o">=</span><span class="n">base_ht</span><span class="o">.</span><span class="n">select</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">tables</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">use_annotate</span><span class="p">:</span>
+        <span class="n">joined_ht</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">joined_ht</span><span class="p">,</span> <span class="n">ht</span><span class="p">:</span> <span class="n">joined_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ht</span><span class="p">[</span><span class="n">joined_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]),</span>
+            <span class="n">hts</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">hts</span> <span class="o">=</span> <span class="p">[</span><span class="n">g_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span> <span class="k">for</span> <span class="n">g_ht</span> <span class="ow">in</span> <span class="n">hts</span><span class="p">]</span>
+        <span class="n">global_struct</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span><span class="k">lambda</span> <span class="n">g</span><span class="p">,</span> <span class="n">ann_g</span><span class="p">:</span> <span class="n">g</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ann_g</span><span class="p">),</span> <span class="n">hts</span><span class="p">)</span>
+        <span class="n">joined_ht</span> <span class="o">=</span> <span class="n">joined_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">**</span><span class="n">global_struct</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">joined_ht</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">((</span><span class="k">lambda</span> <span class="n">joined_ht</span><span class="p">,</span> <span class="n">ht</span><span class="p">:</span> <span class="n">joined_ht</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="s2">&quot;left&quot;</span><span class="p">)),</span> <span class="n">hts</span><span class="p">)</span>
+
+    <span class="n">joined_ht</span> <span class="o">=</span> <span class="n">joined_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">get_select_global_fields</span><span class="p">(</span><span class="n">joined_ht</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="p">[</span><span class="n">base_table</span><span class="p">]</span> <span class="o">+</span> <span class="n">tables</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">track_included_datasets</span><span class="p">:</span>
+        <span class="c1"># Track the datasets we&#39;ve added as well as the source paths.</span>
+        <span class="c1"># If release HT is included in tables, read in the included datasets json</span>
+        <span class="c1"># and update the keys to the path for any new tables</span>
+        <span class="n">included_datasets</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="s2">&quot;release&quot;</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span>
+                <span class="n">included_datasets_json_path</span><span class="p">(</span>
+                    <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span>
+                    <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                    <span class="n">release_version</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;release&quot;</span><span class="p">][</span><span class="s2">&quot;ht&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">version</span><span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">included_datasets</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+
+        <span class="n">included_datasets</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">t</span><span class="p">:</span> <span class="n">config</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s2">&quot;path&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">tables</span><span class="p">})</span>
+
+        <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span>
+            <span class="n">included_datasets_json_path</span><span class="p">(</span>
+                <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span> <span class="n">release_version</span><span class="o">=</span><span class="n">version</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;w&quot;</span><span class="p">,</span>
+        <span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">json</span><span class="p">(</span><span class="n">included_datasets</span><span class="p">)))</span>
+
+    <span class="k">return</span> <span class="n">joined_ht</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/create_release_sites_ht.html#gnomad_qc.v4.create_release.create_release_sites_ht.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create release ht.&quot;&quot;&quot;</span>
+    <span class="n">data_type</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">data_type</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;/create_release_ht_</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Determine tables to join based on version if not explicitly provided.</span>
+    <span class="n">tables_for_join</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">tables_for_join</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">tables_for_join</span>
+        <span class="k">else</span> <span class="n">get_tables_for_release</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Get schema based on version.</span>
+    <span class="n">finalized_schema</span> <span class="o">=</span> <span class="n">get_finalized_schema</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;genomes&quot;</span><span class="p">:</span>
+        <span class="n">finalized_schema</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;interval_qc_parameters&quot;</span><span class="p">)</span>
+        <span class="n">finalized_schema</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;downsamplings&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Getting config for </span><span class="si">%s</span><span class="s2"> release HT to check Tables for duplicate variants...&quot;</span><span class="p">,</span>
+        <span class="n">data_type</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">get_config</span><span class="p">(</span>
+        <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span>
+        <span class="n">tables_for_join</span><span class="o">=</span><span class="n">tables_for_join</span><span class="p">,</span>
+        <span class="n">release_exists</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">release_exists</span><span class="p">,</span>
+        <span class="n">version</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">,</span>
+        <span class="n">base_release_version</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">base_release_version</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">dup_errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">no_dup_check</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;ht&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">[</span><span class="n">c</span><span class="p">]:</span>
+                <span class="n">ht</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="n">c</span><span class="p">][</span><span class="s2">&quot;ht&quot;</span><span class="p">]</span>
+                <span class="n">distinct_count</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">()</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">distinct_count</span> <span class="o">!=</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">():</span>
+                    <span class="n">dup_errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;HT </span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2"> has </span><span class="si">{</span><span class="n">distinct_count</span><span class="si">}</span><span class="s2"> distinct rows but </span><span class="si">{</span><span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">()</span><span class="si">}</span><span class="s2"> total&quot;</span>
+                        <span class="s2">&quot; rows.&quot;</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;HT </span><span class="si">{</span><span class="n">c</span><span class="si">}</span><span class="s2"> has no duplicate rows.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">dup_errors</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dup_errors</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Creating </span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2"> release HT...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">join_hts</span><span class="p">(</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">base_table</span><span class="p">,</span>
+        <span class="n">tables_for_join</span><span class="p">,</span>
+        <span class="n">data_type</span><span class="p">,</span>
+        <span class="n">config</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">,</span>
+        <span class="n">new_partition_percent</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">new_partition_percent</span><span class="p">,</span>
+        <span class="n">track_included_datasets</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="c1"># Use annotate if the release exists or the base release version is specified</span>
+        <span class="c1"># because we want to replace the annotations instead of joining them.</span>
+        <span class="n">use_annotate</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">release_exists</span> <span class="ow">or</span> <span class="n">args</span><span class="o">.</span><span class="n">base_release_version</span><span class="p">,</span>
+        <span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT</span>
+    <span class="c1"># so will not have information in `filters`) and AC_raw == 0.</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering out chrM, AS_lowqual, and AC_raw == 0 sites...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span><span class="s2">&quot;chrM&quot;</span><span class="p">)],</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">filters</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">))</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Finalizing the release HT global and row fields...&quot;</span><span class="p">)</span>
+    <span class="c1"># Add additional globals that were not present on the joined HTs.</span>
+    <span class="n">globals_to_annotate</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;vep_globals&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">vep_globals</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">gencode_version</span><span class="o">=</span><span class="n">GENCODE_VERSION</span><span class="p">,</span>
+            <span class="n">mane_select_version</span><span class="o">=</span><span class="n">MANE_SELECT_VERSION</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;tool_versions&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="o">.</span><span class="n">tool_versions</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">dbsnp_version</span><span class="o">=</span><span class="n">DBSNP_VERSION</span><span class="p">,</span>
+            <span class="n">sift_version</span><span class="o">=</span><span class="n">SIFT_VERSION</span><span class="p">,</span>
+            <span class="n">polyphen_version</span><span class="o">=</span><span class="n">POLYPHEN_VERSION</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;vrs_versions&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="s2">&quot;vrs_schema_version&quot;</span><span class="p">:</span> <span class="n">VRS_SCHEMA_VERSION</span><span class="p">,</span>
+                <span class="s2">&quot;vrs_python_version&quot;</span><span class="p">:</span> <span class="n">VRS_PYTHON_VERSION</span><span class="p">,</span>
+                <span class="s2">&quot;seqrepo_version&quot;</span><span class="p">:</span> <span class="n">SEQREPO_VERSION</span><span class="p">,</span>
+            <span class="p">},</span>
+        <span class="p">),</span>
+        <span class="s2">&quot;date&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">(),</span>
+        <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">,</span>
+        <span class="s2">&quot;frequency_README&quot;</span><span class="p">:</span> <span class="n">get_freq_array_readme</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">),</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Add additional VEP version globals annotations if they exist</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">vep_version</span> <span class="ow">in</span> <span class="n">VEP_VERSIONS_TO_ADD</span><span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">]:</span>
+            <span class="n">vep_globals_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;vep</span><span class="si">{</span><span class="n">vep_version</span><span class="si">}</span><span class="s2">_globals&quot;</span>
+            <span class="k">if</span> <span class="n">vep_globals_name</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">globals</span><span class="p">:</span>
+                <span class="n">globals_to_annotate</span><span class="p">[</span><span class="n">vep_globals_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="p">[</span><span class="n">vep_globals_name</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+                    <span class="n">gencode_version</span><span class="o">=</span><span class="n">GENCODE_VERSIONS</span><span class="p">[</span><span class="n">vep_version</span><span class="p">],</span>
+                    <span class="n">mane_select_version</span><span class="o">=</span><span class="n">MANE_SELECT_VERSIONS</span><span class="p">[</span><span class="n">vep_version</span><span class="p">],</span>
+                <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="o">**</span><span class="n">globals_to_annotate</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">interval_qc_parameters</span><span class="o">=</span><span class="n">interval_qc_pass</span><span class="p">(</span><span class="n">all_platforms</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">high_qual_interval_parameters</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Organize the fields in the release HT to match the order of finalized_schema when</span>
+    <span class="c1"># the fields are present in the HT.</span>
+    <span class="n">final_fields</span> <span class="o">=</span> <span class="n">get_final_ht_fields</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">schema</span><span class="o">=</span><span class="n">finalized_schema</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">final_fields</span><span class="p">[</span><span class="s2">&quot;rows&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">*</span><span class="n">final_fields</span><span class="p">[</span><span class="s2">&quot;globals&quot;</span><span class="p">])</span>
+
+    <span class="n">output_path</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">release/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.sites.test.</span><span class="si">{</span><span class="n">datetime</span><span class="o">.</span><span class="n">today</span><span class="p">()</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s1">&#39;%Y-%m-</span><span class="si">%d</span><span class="s1">&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+        <span class="k">else</span> <span class="n">release_sites</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">public</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">path</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing out </span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2"> release HT to %s&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">naive_coalesce</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">n_partitions</span><span class="p">)</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span>
+        <span class="n">output_path</span><span class="p">,</span>
+        <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final release HT schema:&quot;</span><span class="p">)</span>
+    <span class="n">ht</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Final variant count: </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">ht</span><span class="o">.</span><span class="n">count</span><span class="p">())</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--new-partition-percent&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Percent of start dataset partitions to use for release HT. Default is 1.1&quot;</span>
+            <span class="s2">&quot; (110%)&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">1.1</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite data&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-v&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--version&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;The version of gnomAD.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">CURRENT_RELEASE</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-t&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Runs a test on PCSK9 region, chr1:55039447-55064852&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-d&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--data-type&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Data type to create release HT for.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-j&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--tables-for-join&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Tables to join for release&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-b&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--base-table&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Base table for interval partition calculation.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;freq&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--release-exists&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Use the release version specified by --version as the base HT. When &quot;</span>
+            <span class="s2">&quot;specified, loads the release HT for the version being updated and uses it &quot;</span>
+            <span class="s2">&quot;as the base for joining other tables. This is useful when updating an &quot;</span>
+            <span class="s2">&quot;existing release in place. Mutually exclusive with --base-release-version.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--base-release-version&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Specific release version to use as the base HT (e.g., &#39;4.1&#39;). When &quot;</span>
+            <span class="s2">&quot;specified, loads that version&#39;s release HT as the base for joining other &quot;</span>
+            <span class="s2">&quot;tables. This is useful when creating a new release version (specified by &quot;</span>
+            <span class="s2">&quot;--version) from an existing release version. For example, to create &quot;</span>
+            <span class="s2">&quot;v4.1.1 from v4.1 base, use --base-release-version 4.1 --version 4.1.1. &quot;</span>
+            <span class="s2">&quot;Mutually exclusive with --release-exists.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-partitions&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of partitions to naive coalesce the release Table to.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--no-dup-check&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Skip duplicate check.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
