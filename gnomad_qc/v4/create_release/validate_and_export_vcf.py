@@ -229,7 +229,7 @@ def get_export_resources(
         pipeline_input_steps=[validate_release_ht],
         add_input_resources={
             "create_release_sites_ht.py": {
-                "release_ht": release_sites(data_type=data_type)
+                "release_ht": release_sites(data_type=data_type, public=False)
             }
         },
         output_resources={
