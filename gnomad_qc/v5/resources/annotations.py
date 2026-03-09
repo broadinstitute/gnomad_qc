@@ -261,7 +261,9 @@ aou_annotated_sites_only_vcf = (
 
 
 def get_vep(
-    test: bool = False, vep_version: str = DEFAULT_VEP_VERSION, environment: str = "batch"
+    test: bool = False,
+    vep_version: str = DEFAULT_VEP_VERSION,
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 VEP annotation VersionedTableResource.
@@ -287,7 +289,9 @@ def get_vep(
 
 
 def validate_vep_path(
-    test: bool = False, vep_version: str = DEFAULT_VEP_VERSION, environment: str = "batch"
+    test: bool = False,
+    vep_version: str = DEFAULT_VEP_VERSION,
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 VEP annotation VersionedTableResource for validation counts.
