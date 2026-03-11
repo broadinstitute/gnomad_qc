@@ -27,7 +27,7 @@ def _annotations_root(
     data_type: str = "genomes",
     data_set: str = "aou",
     environment: str = "rwb",
-    sample_data: bool = False,
+    read_only: bool = False,
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -38,8 +38,8 @@ def _annotations_root(
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
     :param data_set: Data set of annotation resource. Default is "aou".
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
-    :param sample_data: Whether the path is for sample-data resources. When True
-        and environment is "batch", the legacy sample-data bucket is used.
+    :param read_only: Whether the path is for read-only resources. When True
+        and environment is "batch", the read-only bucket is used.
         Default is False.
     :return: Root path of the variant annotation files.
     """
@@ -50,7 +50,7 @@ def _annotations_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    return f"gs://{_get_base_bucket(environment, sample_data=sample_data)}/v{version}/{path_suffix}"
+    return f"gs://{_get_base_bucket(environment, read_only=read_only)}/v{version}/{path_suffix}"
 
 
 ######################################################################
@@ -286,7 +286,7 @@ def get_aou_vcf_header(environment: str = "batch") -> str:
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     return (
-        f"{_annotations_root(version='5.0', environment=environment, sample_data=True)}"
+        f"{_annotations_root(version='5.0', environment=environment, read_only=True)}"
         "/aou_annotation_sites_only_header.vcf"
     )
 
@@ -300,7 +300,7 @@ def get_aou_annotated_sites_only_vcf(environment: str = "batch") -> str:
     :return: Path to the annotated sites-only VCF.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    bucket = _get_base_bucket(environment, sample_data=True)
+    bucket = _get_base_bucket(environment, read_only=True)
     if environment == "batch":
         return f"gs://{bucket}/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz"
     return f"gs://{bucket}/echo_full_gnomad_annotated.sites-only.vcf.gz"

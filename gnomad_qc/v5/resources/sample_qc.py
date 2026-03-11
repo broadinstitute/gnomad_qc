@@ -47,7 +47,9 @@ def get_sample_qc_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    return f"gs://{_get_base_bucket(environment, sample_data=True)}/v{version}/{path_suffix}"
+    return (
+        f"gs://{_get_base_bucket(environment, read_only=True)}/v{version}/{path_suffix}"
+    )
 
 
 ######################################################################
