@@ -57,7 +57,7 @@ def _get_base_bucket(environment: str = "rwb", sample_data: bool = False) -> str
     """
     Return the top-level GCS bucket for the given environment.
 
-    When `environment` is ``"batch"`` and `sample_data` is True, the legacy
+    When `environment` is "batch" and `sample_data` is True, the legacy
     sample-data bucket is returned so that previously-written sample QC
     outputs are read from their original location.
 
