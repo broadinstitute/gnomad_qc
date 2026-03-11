@@ -53,11 +53,11 @@ def _validate_environment(
         )
 
 
-def _get_base_bucket(environment: str = "rwb", read_only: bool = False) -> str:
+def _get_base_bucket(environment: str = "batch", read_only: bool = False) -> str:
     """
     Return the top-level GCS bucket for the given environment.
 
-    :param environment: Environment to use. Must be one of "rwb", "batch", or
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or
         "dataproc".
     :param read_only: If True and environment is "batch", return the read-only
         bucket within the AoU authorizathion Domain instead of the primary batch bucket.
@@ -107,7 +107,7 @@ aou_test_dataset = VariantDatasetResource(
 
 def _init_hail(
     log_name: str,
-    environment: str = "rwb",
+    environment: str = "batch",
     billing_project: Optional[str] = None,
     tmp_dir_days: Optional[int] = 4,
     **kwargs,
@@ -116,7 +116,7 @@ def _init_hail(
     Initialize Hail with environment-appropriate settings and set GRCh38 as default reference.
 
     :param log_name: Base name for the log file (without path or extension).
-    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "rwb".
+    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "batch".
     :param billing_project: GCP billing project for requester-pays buckets (batch only).
         Defaults to "broad-mpg-gnomad".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
@@ -268,7 +268,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -297,8 +297,7 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
-        or "batch".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -649,7 +648,7 @@ def get_aou_failing_genomic_metrics_samples() -> Set[str]:
 def get_samples_to_exclude(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     overwrite: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> hl.expr.SetExpression:
     """
     Get set of AoU sample IDs to exclude.
@@ -660,7 +659,7 @@ def get_samples_to_exclude(
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
     :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """

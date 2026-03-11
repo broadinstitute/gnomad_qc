@@ -17,7 +17,7 @@ from gnomad_qc.v5.resources.constants import (
 )
 
 
-def get_project_meta(environment: str = "rwb") -> VersionedTableResource:
+def get_project_meta(environment: str = "batch") -> VersionedTableResource:
     """
     Get the VersionedTableResource for per-sample project-level metadata.
 
@@ -39,7 +39,7 @@ def get_project_meta(environment: str = "rwb") -> VersionedTableResource:
     )
 
 
-def get_sample_id_collisions(environment: str = "rwb") -> TableResource:
+def get_sample_id_collisions(environment: str = "batch") -> TableResource:
     """
     Get the TableResource for sample IDs that collide between AoU and gnomAD v4.
 
@@ -56,7 +56,7 @@ def get_sample_id_collisions(environment: str = "rwb") -> TableResource:
     )
 
 
-def get_low_quality_samples(environment: str = "rwb") -> ExpressionResource:
+def get_low_quality_samples(environment: str = "batch") -> ExpressionResource:
     """
     Get the ExpressionResource for AoU-flagged low-quality sample IDs.
 
@@ -78,7 +78,7 @@ def get_low_quality_samples(environment: str = "rwb") -> ExpressionResource:
     )
 
 
-def get_failing_metrics_samples(environment: str = "rwb") -> ExpressionResource:
+def get_failing_metrics_samples(environment: str = "batch") -> ExpressionResource:
     """
     Get the ExpressionResource for samples failing AoU genomic QC metrics.
 
@@ -101,7 +101,7 @@ def get_failing_metrics_samples(environment: str = "rwb") -> ExpressionResource:
     )
 
 
-def get_samples_to_exclude_resource(environment: str = "rwb") -> ExpressionResource:
+def get_samples_to_exclude_resource(environment: str = "batch") -> ExpressionResource:
     """
     Get the ExpressionResource for the combined set of samples to exclude.
 
@@ -127,7 +127,7 @@ def get_samples_to_exclude_resource(environment: str = "rwb") -> ExpressionResou
     )
 
 
-def get_consent_samples_to_drop(environment: str = "rwb") -> TableResource:
+def get_consent_samples_to_drop(environment: str = "batch") -> TableResource:
     """
     Get the TableResource for consent-withdrawn samples.
 
@@ -161,7 +161,7 @@ consent_samples_to_drop = get_consent_samples_to_drop()
 
 def _meta_root_path(
     version: str = CURRENT_PROJECT_META_VERSION,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> str:
     """
     Retrieve the path to the root metadata directory.
@@ -181,7 +181,7 @@ def _meta_root_path(
 def meta(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     data_type: str = "genomes",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get the v5 sample QC meta VersionedTableResource.

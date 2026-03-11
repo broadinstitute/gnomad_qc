@@ -26,7 +26,7 @@ def _annotations_root(
     test: bool = False,
     data_type: str = "genomes",
     data_set: str = "aou",
-    environment: str = "rwb",
+    environment: str = "batch",
     read_only: bool = False,
 ) -> str:
     """
@@ -37,7 +37,7 @@ def _annotations_root(
         full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "genomes".
     :param data_set: Data set of annotation resource. Default is "aou".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :param read_only: Whether the path is for read-only resources. When True
         and environment is "batch", the read-only bucket is used.
         Default is False.
