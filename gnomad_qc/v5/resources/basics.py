@@ -57,10 +57,6 @@ def _get_base_bucket(environment: str = "rwb", read_only: bool = False) -> str:
     """
     Return the top-level GCS bucket for the given environment.
 
-    When `environment` is "batch" and `read_only` is True, the read-only
-    bucket is returned so that previously-written outputs are read from within the AoU
-    authorizathion Domain.
-
     :param environment: Environment to use. Must be one of "rwb", "batch", or
         "dataproc".
     :param read_only: If True and environment is "batch", return the read-only
