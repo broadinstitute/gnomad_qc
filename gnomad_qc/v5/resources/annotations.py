@@ -60,13 +60,13 @@ def _annotations_root(
 
 def get_trio_stats(
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.
 
     :param test: Whether to use a temporary path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: AoU trio stats VersionedTableResource.
     """
@@ -75,7 +75,7 @@ def get_trio_stats(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/aou.genomes.v{version}."
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}."
                 "trio_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
@@ -84,13 +84,13 @@ def get_trio_stats(
 
 
 def get_sib_stats(
-    test: bool = False, environment: str = "rwb"
+    test: bool = False, environment: str = "batch"
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 (AoU genomes only) sibling stats VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: AoU sibling stats VersionedTableResource.
     """
@@ -99,7 +99,7 @@ def get_sib_stats(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/aou.genomes.v{version}.sib_stats.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}.sib_stats.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -112,7 +112,7 @@ def get_sib_stats(
 
 
 def get_aou_downsampling(
-    test: bool = False, environment: str = "rwb"
+    test: bool = False, environment: str = "batch"
 ) -> VersionedTableResource:
     """
     Get the downsampling annotation table.
@@ -120,7 +120,7 @@ def get_aou_downsampling(
     v5 downsamplings only applies to the AoU dataset.
 
     :param test: Whether to use a tmp path for tests. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Hail Table containing downsampling annotations.
     """
@@ -129,7 +129,7 @@ def get_aou_downsampling(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.downsampling.aou.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.downsampling.aou.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -139,14 +139,14 @@ def get_aou_downsampling(
 def group_membership(
     test: bool = False,
     data_set: str = "aou",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Get the group membership Table for coverage, AN, quality histograms, and frequency calculations.
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :param data_set: Data set of annotation resource. Default is "aou".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Hail Table containing group membership annotations.
     """
@@ -155,20 +155,22 @@ def group_membership(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, data_set=data_set, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.group_membership.ht"
+                f"{_annotations_root(version, test=test, data_set=data_set, environment=environment)}/gnomad.genomes.v{version}.group_membership.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
     )
 
 
-def qual_hists(test: bool = False, environment: str = "rwb") -> VersionedTableResource:
+def qual_hists(
+    test: bool = False, environment: str = "batch"
+) -> VersionedTableResource:
     """
     Get the quality histograms annotation table.
 
     :param test: Whether to use a tmp path for tests. Default is False.
-    :param environment: Environment to use for quality histograms. Must be one of "rwb"
-        or "batch".
+    :param environment: Environment to use for quality histograms. Default is "batch".
+        Must be one of "rwb" or "batch".
     :return: Hail Table containing quality histogram annotations.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -176,7 +178,7 @@ def qual_hists(test: bool = False, environment: str = "rwb") -> VersionedTableRe
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.qual_hists.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.qual_hists.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -186,7 +188,7 @@ def qual_hists(test: bool = False, environment: str = "rwb") -> VersionedTableRe
 def coverage_and_an_path(
     test: bool = False,
     data_set: str = "aou",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> VersionedTableResource:
     """
     Fetch filepath for all sites coverage or allele number Table.
@@ -197,7 +199,7 @@ def coverage_and_an_path(
 
     :param test: Whether to use a tmp path for testing. Default is False.
     :param data_set: Dataset identifier. Must be one of "aou" or "gnomad". Default is "aou".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb",
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb",
         "batch", or "dataproc".
     :return: Coverage and allele number Hail Table.
     """
@@ -220,7 +222,7 @@ def get_freq(
     data_type: str = "genomes",
     test: bool = False,
     data_set: str = "aou",
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> TableResource:
     """
     Get the frequency annotation Table for v5.
@@ -229,7 +231,7 @@ def get_freq(
     :param data_type: Data type of annotation resource ("genomes" or "exomes").
     :param test: Whether to use a tmp path for testing.
     :param data_set: Data set of annotation resource. Default is "aou".
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :return: Hail Table containing frequency annotations.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
@@ -264,7 +266,7 @@ def get_info_ht(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment, sample_data=True)}/gnomad.genomes.v{version}.info.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
