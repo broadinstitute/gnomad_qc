@@ -214,7 +214,7 @@ def release_all_sites_an(
     """
     Retrieve versioned resource for all sites allele number release Table.
 
-    :param public:Determines whether release coverage Table is read from public (True) or
+    :param public: Determines whether release coverage Table is read from public (True) or
         private (False) bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param environment: Environment to use. Default is "batch".
