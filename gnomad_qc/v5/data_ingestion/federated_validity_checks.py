@@ -512,7 +512,8 @@ def validate_required_fields(
 def check_fields_not_in_requirements(
     ht: hl.Table, field_types: Dict[str, Dict[str, Any]]
 ) -> None:
-    """Warn about fields in HT missing from requirements.
+    """
+    Warn about fields in HT missing from requirements.
 
     :param ht: Hail Table.
     :param field_types: Nested dictionary of both global and row fields and their expected types. There should be two keys: "global_field_types" and "row_field_types".
@@ -677,18 +678,14 @@ def run_row_to_globals_length_check(
     )
 
 
-def add_info_annotations(
-    ht: hl.Table,
-):
+def add_info_annotations(ht: hl.Table) -> hl.Table:
     """
-     Add select annotations to `info` if present in the Table.
+    Add select annotations to `info` if present in the Table.
 
     :param ht: Table to annotate.
     :return: Annotated Table with new `info` field.
     """
     info_dict = {}
-
-    # Add region_flag fields if present.
     missing_region_flags = []
 
     if "region_flags" in ht.row:
@@ -701,7 +698,6 @@ def add_info_annotations(
     if missing_region_flags:
         logger.warning("Missing region_flag fields: %s", missing_region_flags)
 
-    # Add allele_info fields if present.
     missing_allele_info = []
     if "allele_info" in ht.row:
         for field in ALLELE_TYPE_FIELDS:
@@ -713,14 +709,12 @@ def add_info_annotations(
     if missing_allele_info:
         logger.warning("Missing allele type fields: %s", missing_allele_info)
 
-    # Add monoallelic and only_het if present.
     if "monoallelic" in ht.row:
         info_dict["monoallelic"] = ht["monoallelic"]
 
     if "only_het" in ht.row:
         info_dict["only_het"] = ht["only_het"]
 
-    # Annotate info field.
     ht = ht.annotate(info=ht.info.annotate(**info_dict))
 
     return ht
