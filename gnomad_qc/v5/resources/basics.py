@@ -118,7 +118,7 @@ def _init_hail(
     :param log_name: Base name for the log file (without path or extension).
     :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "batch".
     :param billing_project: GCP billing project for requester-pays buckets (batch only).
-        Defaults to "broad-mpg-gnomad".
+        Default is None. When None, uses "broad-mpg-gnomad".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
     :param kwargs: Additional keyword arguments forwarded to hl.init() in all

@@ -215,7 +215,7 @@ def release_all_sites_an(
     Retrieve versioned resource for all sites allele number release Table.
 
     :param public: Determines whether release allele number Table is read from public or
-        private bucket. Default is private.
+        private bucket. Default is False.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param environment: Environment to use. Default is "batch".
     :return: All sites allele number release Table.
