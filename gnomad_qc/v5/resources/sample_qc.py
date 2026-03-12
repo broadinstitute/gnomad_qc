@@ -170,7 +170,7 @@ def get_joint_qc(
 def get_cuking_input_path(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
-    environment: str = "batch",
+    environment: str = "rwb",
 ) -> str:
     """
     Return the path containing the input files read by cuKING.
@@ -179,7 +179,7 @@ def get_cuking_input_path(
 
     :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
     :param test: Whether to return a path corresponding to a test subset. Default is False.
-    :param environment: Compute environment. Default is 'batch'. Must be one of 'rwb'
+    :param environment: Compute environment. Default is 'rwb'. Must be one of 'rwb'
         or 'batch'.
     :return: Temporary path to hold Parquet input tables for running cuKING.
     """
@@ -190,7 +190,7 @@ def get_cuking_input_path(
 def get_cuking_output_path(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
-    environment: str = "batch",
+    environment: str = "rwb",
 ) -> str:
     """
     Return the path containing the output files written by cuKING.
@@ -199,7 +199,7 @@ def get_cuking_output_path(
 
     :param version: Sample QC version (default: `CURRENT_SAMPLE_QC_VERSION`).
     :param test: Whether to return a path corresponding to a test subset. Default is False.
-    :param environment: Compute environment. Default is 'batch'. Must be one of 'rwb'
+    :param environment: Compute environment. Default is 'rwb'. Must be one of 'rwb'
         or 'batch'.
     :return: Temporary path to hold Parquet output tables for running cuKING.
     """
