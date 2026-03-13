@@ -63,7 +63,6 @@ def _get_base_bucket(environment: str = "batch", read_only: bool = False) -> str
         bucket within the AoU authorizathion Domain instead of the primary batch bucket.
         Default is False.
     :return: Bucket name string (without gs:// prefix).
-    :raises ValueError: If `read_only` is True and environment is not "batch".
     """
     _validate_environment(environment)
     if read_only and environment != "batch":
