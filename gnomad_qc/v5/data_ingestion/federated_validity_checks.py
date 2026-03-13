@@ -1186,6 +1186,7 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     config_path = args.config_path
     verbose = args.verbose
+    output_base = args.output_base
 
     if args.exclude_xnonpar_y_in_logtest and not args.use_logtest_ht:
         raise ValueError(
@@ -1225,13 +1226,14 @@ def main(args):
         else:
             # Load data from the specified gnomAD resource function.
             ht = load_gnomad_data(
-                args.gnomad_input_file,
-                data_type,
-                args.gnomad_version,
-                args.gnomad_test,
-                args.gnomad_data_set,
-                arg.gnomad_public_release,
+                gnomad_input_file=args.gnomad_input_file,
+                version=args.gnomad_version,
+                data_type=data_type,
+                test=args.gnomad_test,
+                data_set=args.gnomad_data_set,
+                public_release=args.gnomad_public_release,
             )
+            output_base = f"{output_base}/{data_type}/{args.gnomad_input_file}"
 
             # Check that fields specified in the config are present in the Table.
             validate_config_fields_in_ht(ht=ht, config=config)
@@ -1328,8 +1330,8 @@ def main(args):
         log_output = log_stream.getvalue()
 
         # TODO: Create resource functions when know organization of federated data.
-        log_file = args.output_base + ".log"
-        output_file = args.output_base + ".html"
+        log_file = output_base + ".log"
+        output_file = output_base + ".html"
 
         # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
@@ -1412,7 +1414,7 @@ if __name__ == "__main__":
             "Base path for output files. Will be used to create a log file and an html file."
         ),
         type=str,
-        default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks/exomes",
+        default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks",
     )
     parser.add_argument(
         "--missingness-threshold",
