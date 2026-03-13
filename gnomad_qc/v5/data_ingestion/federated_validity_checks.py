@@ -1,6 +1,7 @@
 """Script to perform validity checks on input federated data or final release files."""
 
 import argparse
+from copy import deepcopy
 import json
 import logging
 import re
@@ -61,8 +62,9 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["genomes"]
-REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["genomes"]
+# Keep a local copy of data-type keyed field mappings.
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 
 
 def get_table_kind(lines, header_index) -> str:
@@ -348,7 +350,7 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
 
-    # Check that specified info annotations are present.
+    # Check that specified info annotations are present when configured.
     if config.get("check_mono_and_only_het"):
         info_annotations = ["monoallelic", "only_het"]
         info_fields = list(ht.info.dtype)
@@ -643,7 +645,7 @@ def check_missingness(
 
 def run_row_to_globals_length_check(
     ht: hl.Table,
-    config: dict,
+    config: Dict[str, Any],
     check_all_rows: bool = True,
 ) -> None:
     """
@@ -1126,6 +1128,11 @@ def main(args):
 
         validate_config(config, schema)
 
+        data_type = config["data_type"]
+        global ALLELE_TYPE_FIELDS, REGION_FLAG_FIELDS
+        ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS[data_type]
+        REGION_FLAG_FIELDS = REGION_FLAG_FIELDS[data_type]
+
         # Read in field necessity markdown file.
         # When submitting hail dataproc job, include "--files field_requirements.md".
         try:
@@ -1224,7 +1231,7 @@ def main(args):
 
         validate_federated_data(
             ht=ht,
-            missingness_threshold=config["missingness_threshold"],
+            missingness_threshold=args.missingness_threshold,
             struct_annotations_for_missingness=config[
                 "struct_annotations_for_missingness"
             ],
@@ -1293,7 +1300,6 @@ if __name__ == "__main__":
         "--config-path",
         help=(
             "Path to JSON config file for defining parameters. Paramters to define are as follows:"
-            "missingness_threshold: Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'."
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
             "freq_fields: Dictionary containing the names of frequency-related fields ('freq': Name of annotation containing the array of frequency metric objects "
             "corresponding to each frequency metadata group; 'freq_meta': Name of annotation containing allele frequency metadata, an ordered list containing the frequency aggregation group for "
@@ -1306,7 +1312,8 @@ if __name__ == "__main__":
             "nhomalt_metric: Name of metric denoting homozygous alternate count."
             "subsets: List of sample subsets to include for the subset validity check."
             "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
-            "check_mono_and_only_het: Boolean indicating whether to check for monoallelic and 100 percent heterozygous sites in the Table ('monoallelic' and 'only_het' annotations must be present)."
+            "data_type: Data type to run checks on. One of 'exomes' or 'genomes'."
+            "check_mono_and_only_het: Whether to skip the check for monoallelic and 100 percent heterozygous sites in the Table('monoallelic' and 'only_het' annotations must be present)."
         ),
         type=str,
     )
@@ -1328,6 +1335,11 @@ if __name__ == "__main__":
         type=str,
         default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks/exomes",
     )
-
+    parser.add_argument(
+        "--missingness-threshold",
+        help="Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'.",
+        type=float,
+        default=0.50,
+    )
     args = parser.parse_args()
     main(args)
