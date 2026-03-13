@@ -4,6 +4,8 @@ import argparse
 from copy import deepcopy
 import json
 import logging
+import importlib
+import inspect
 import re
 from collections import defaultdict
 from io import StringIO
@@ -26,7 +28,6 @@ from gnomad.assessment.validity_checks import (
     summarize_variants,
     unfurl_array_annotations,
 )
-from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
@@ -1105,6 +1106,76 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     return ht
 
 
+def load_gnomad_data(
+    gnomad_input_file: str,
+    version: str = "5.0",
+    data_type: str = "genomes",
+    test: bool = False,
+    data_set: str = None,
+    public_release: bool = None,
+) -> hl.Table:
+    """
+    Load gnomAD data with based on specified inpute file and parameeters
+
+    :param gnomad_input_file: Name of resource to load. One of "freq", "release_sites", or "public_release".
+    :param version: Version to load. For example "v4.0", "v4.1", "v5.0". Default is "v5.0".
+    :param data_type: Type of gnomAD data to load, either "exomes" or "genomes".
+    :param test: If True, load test version of the data. Default is False.
+    :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". Default is None.
+    :param public_release: Whether or not to use the public version of the release. Default is None.
+    :return: Hail Table of the specified gnomAD data.
+    """
+    # Extract the first digit before any dot, ignoring a leading 'v'.
+    major_v = version.lstrip("v").split(".")[0]
+
+    # Define module mapping based on major version.
+    module_mapping = {
+        "4": {
+            "freq": ("gnomad_qc.v4.resources.annotations", "get_freq"),
+            "release_sites": ("gnomad_qc.v4.resources.release", "release_sites"),
+            "public_release": ("gnomad.resources.grch38.gnomad", "public_release"),
+        },
+        "5": {
+            "freq": ("gnomad_qc.v5.resources.annotations", "get_freq"),
+            "release_sites": ("gnomad_qc.v5.resources.release", "release_sites"),
+            "public_release": ("gnomad.resources.grch38.gnomad", "public_release"),
+        },
+    }
+
+    if major_v not in module_mapping:
+        raise ValueError(f"Major version {major_v} not supported.")
+
+    if gnomad_input_file not in module_mapping[major_v]:
+        raise ValueError(f"Input '{gnomad_input_file}' not found for v{major_v}")
+
+    module_path, function_name = module_mapping[major_v][gnomad_input_file]
+
+    # Import the module and get the function to call.
+    module = importlib.import_module(module_path)
+    resource_func = getattr(module, function_name)
+
+    logger.info(f"Loading {gnomad_input_file} version {major_v} ({data_type})...")
+
+    # Collect all possible params for the fucntion.
+    all_params = {
+        "data_type": data_type,
+        "test": test,
+        "version": version,
+        "data_set": data_set,
+        "public_release": public_release,
+    }
+
+    # Filter to only the parameter that function can accept.
+    sig_params = inspect.signature(resource_func).parameters
+    valid_args = {k: v for k, v in all_params.items() if k in sig_params}
+
+    # Log specifcally which file and params are being used.
+    arg_preview = ", ".join([f"{k}={v}" for k, v in valid_args.items()])
+    logger.info(f"Calling {module_path}.{function_name}({arg_preview})")
+
+    return resource_func(**valid_args).ht()
+
+
 def main(args):
     """Perform validity checks for federated data."""
     hl.init(
@@ -1152,8 +1223,15 @@ def main(args):
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
         else:
-            # TODO: Add resources to intake federated data once obtained.
-            ht = public_release(data_type="exomes").ht()
+            # Load data from the specified gnomAD resource function.
+            ht = load_gnomad_data(
+                args.gnomad_input_file,
+                data_type,
+                args.gnomad_version,
+                args.gnomad_test,
+                args.gnomad_data_set,
+                arg.gnomad_public_release,
+            )
 
             # Check that fields specified in the config are present in the Table.
             validate_config_fields_in_ht(ht=ht, config=config)
@@ -1296,6 +1374,7 @@ if __name__ == "__main__":
         help="Check only the first row when checking that the lengths of row annotations match the lengths of associated global annotations.",
         action="store_true",
     )
+
     parser.add_argument(
         "--config-path",
         help=(
@@ -1340,6 +1419,38 @@ if __name__ == "__main__":
         help="Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'.",
         type=float,
         default=0.50,
+    )
+    # Create a group for gnomAD input arguments.
+    gnomad_group = parser.add_argument_group("gnomad", "gnomAD input options")
+    gnomad_group.add_argument(
+        "--gnomad-input-file",
+        help="Source to load gnomAD data from. 'freq' loads from get_freq, 'public_release' loads from public_release, 'release_sites' loads from release_sites.",
+        choices=["freq", "public_release", "release_sites"],
+        default="public_release",
+        type=str,
+    )
+    gnomad_group.add_argument(
+        "--gnomad-version",
+        help="Version of gnomAD resources to use.",
+        choices=["v4.0", "v4.1", "v4.1.1", "v5.0"],
+        default="v5",
+        type=str,
+    )
+    gnomad_group.add_argument(
+        "--gnomad-test",
+        help="Load test dataset (smaller subset for testing).",
+        action="store_true",
+    )
+    gnomad_group.add_argument(
+        "--gnomad-data-set",
+        help="Data set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'.",
+        choices=["aou", "gnomad", "merged"],
+        default=None,
+    )
+    gnomad_group.add_argument(
+        "--gnomad-public-release",
+        help="Whether or not to use the public version of the release when loading data. Only applicable when loading 'public_release' or 'release_sites'.",
+        action="store_true",
     )
     args = parser.parse_args()
     main(args)
