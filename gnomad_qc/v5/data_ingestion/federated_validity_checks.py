@@ -1,13 +1,13 @@
 """Script to perform validity checks on input federated data or final release files."""
 
 import argparse
-from copy import deepcopy
-import json
-import logging
 import importlib
 import inspect
+import json
+import logging
 import re
 from collections import defaultdict
+from copy import deepcopy
 from io import StringIO
 from typing import Any, Dict, List, Tuple
 
