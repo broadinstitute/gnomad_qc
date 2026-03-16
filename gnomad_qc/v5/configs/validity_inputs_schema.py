@@ -47,6 +47,7 @@ schema = {
         "variant_filter_field": {"type": "string"},
         "data_type": {"type": "string", "enum": ["exomes", "genomes"]},
         "check_mono_and_only_het": {"type": "boolean"},
+        "data_type": {"type": "string", "enum": ["exomes", "genomes"]},
     },
     "required": [
         "freq_fields",
@@ -55,8 +56,8 @@ schema = {
         "nhomalt_metric",
         "subsets",
         "variant_filter_field",
-        "data_type",
         "check_mono_and_only_het",
+        "data_type",
     ],
     "additionalProperties": False,
 }
