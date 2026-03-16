@@ -671,10 +671,10 @@ def run_row_to_globals_length_check(
         row_to_globals_check[config["faf_fields"]["faf"]] = [
             config["faf_fields"]["faf_meta"],
         ]
-    if config["faf_fields"].get("faf_index_dict"):
-        row_to_globals_check[config["faf_fields"]["faf"]].append(
-            config["faf_fields"]["faf_index_dict"]
-        )
+        if config["faf_fields"].get("faf_index_dict"):
+            row_to_globals_check[config["faf_fields"]["faf"]].append(
+                config["faf_fields"]["faf_index_dict"]
+            )
 
     check_global_and_row_annot_lengths(
         t=ht, row_to_globals_check=row_to_globals_check, check_all_rows=check_all_rows
