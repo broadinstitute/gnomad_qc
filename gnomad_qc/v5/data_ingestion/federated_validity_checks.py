@@ -1115,7 +1115,7 @@ def load_gnomad_data(
     public_release: bool = None,
 ) -> hl.Table:
     """
-    Load gnomAD data with based on specified inpute file and parameeters
+    Load gnomAD data with based on specified inpute file and parameeters.
 
     :param gnomad_input_file: Name of resource to load. One of "freq", "release_sites", or "public_release".
     :param version: Version to load. For example "v4.0", "v4.1", "v5.0". Default is "v5.0".
@@ -1338,6 +1338,7 @@ def main(args):
             f.write(log_output)
 
         parsed_logs = parse_log_file(log_file)
+        logger.info("Writing html file to %s...", output_file)
         generate_html_report(parsed_logs, output_file)
 
     finally:
