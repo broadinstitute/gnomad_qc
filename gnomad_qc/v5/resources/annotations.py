@@ -43,6 +43,7 @@ def _annotations_root(
         Default is False.
     :return: Root path of the variant annotation files.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     path_suffix = f"annotations/{data_type}/{data_set}"
 
     if test:

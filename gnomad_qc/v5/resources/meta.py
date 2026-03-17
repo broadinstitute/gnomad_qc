@@ -206,6 +206,7 @@ def meta(
         or "batch".
     :return: Sample QC meta VersionedTableResource.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     if data_type == "exomes":
         raise ValueError(
             "Exome sample QC metadata is not supported in v5. "
