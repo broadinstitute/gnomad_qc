@@ -151,12 +151,6 @@ def get_consent_samples_to_drop(environment: str = "batch") -> TableResource:
 
 
 # Backward-compatible aliases — resolve to the default rwb environment.
-project_meta = get_project_meta()
-sample_id_collisions = get_sample_id_collisions()
-low_quality_samples = get_low_quality_samples()
-failing_metrics_samples = get_failing_metrics_samples()
-samples_to_exclude = get_samples_to_exclude_resource()
-# Backward-compatible aliases — resolve to the default rwb environment.
 project_meta = get_project_meta(environment="rwb")
 sample_id_collisions = get_sample_id_collisions(environment="rwb")
 low_quality_samples = get_low_quality_samples(environment="rwb")
