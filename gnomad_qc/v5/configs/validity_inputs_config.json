@@ -1,5 +1,4 @@
 {
-    "missingness_threshold": 0.5,
     "struct_annotations_for_missingness": [],
     "freq_fields": {"freq": "freq", "freq_meta": "freq_meta", "freq_meta_sample_count": "freq_meta_sample_count"},
     "faf_fields": {},

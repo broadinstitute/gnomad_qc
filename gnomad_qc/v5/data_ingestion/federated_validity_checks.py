@@ -1,10 +1,13 @@
 """Script to perform validity checks on input federated data or final release files."""
 
 import argparse
+import importlib
+import inspect
 import json
 import logging
 import re
 from collections import defaultdict
+from copy import deepcopy
 from io import StringIO
 from typing import Any, Dict, List, Tuple
 
@@ -25,7 +28,6 @@ from gnomad.assessment.validity_checks import (
     summarize_variants,
     unfurl_array_annotations,
 )
-from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
@@ -61,8 +63,9 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS["genomes"]
-REGION_FLAG_FIELDS = REGION_FLAG_FIELDS["genomes"]
+# Keep a local copy of data-type keyed field mappings.
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 
 
 def get_table_kind(lines, header_index) -> str:
@@ -348,7 +351,7 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
 
-    # Check that specified info annotations are present.
+    # Check that specified info annotations are present when configured.
     if config.get("check_mono_and_only_het"):
         info_annotations = ["monoallelic", "only_het"]
         info_fields = list(ht.info.dtype)
@@ -509,6 +512,84 @@ def validate_required_fields(
     return field_issues, type_issues, fields_validated, types_validated
 
 
+def check_fields_not_in_requirements(
+    ht: hl.Table, field_types: Dict[str, Dict[str, Any]]
+) -> None:
+    """
+    Warn about fields in HT missing from requirements.
+
+    :param ht: Hail Table.
+    :param field_types: Nested dictionary of both global and row fields and their expected types. There should be two keys: "global_field_types" and "row_field_types".
+    :return: None.
+    """
+
+    def _flatten_dtype(dtype: hl.expr.types.HailType, prefix: str = "") -> List[str]:
+        """Recursively extract nested names from a Hail DataType."""
+        names = []
+
+        # Handle structs.
+        if isinstance(dtype, hl.tstruct):
+            for field, field_dtype in dtype.items():
+                name = f"{prefix}.{field}" if prefix else field
+                # Check if this field itself is a struct or container
+                names.extend(_flatten_dtype(field_dtype, name))
+        # Handle arrays and sets.
+        elif isinstance(dtype, (hl.tarray, hl.tset)):
+            names.extend(_flatten_dtype(dtype.element_type, prefix))
+        # Handle dicts.
+        elif isinstance(dtype, hl.tdict):
+            names.extend(_flatten_dtype(dtype.value_type, prefix))
+        else:
+            if prefix:
+                names.append(prefix)
+
+        return names
+
+    # Define the mapping between HT components and the requirements dict.
+    tasks = [
+        ("Global", ht.globals.dtype, "global_field_types"),
+        ("Row", ht.row.dtype, "row_field_types"),
+    ]
+
+    for label, dtype, req_key in tasks:
+        table_fields = set(_flatten_dtype(dtype))
+        required_fields = set(field_types.get(req_key, {}).keys())
+
+        unexpected = table_fields - required_fields
+
+        if unexpected:
+            logger.warning(
+                "%s fields present in Table but missing from requirements: %s",
+                label,
+                ", ".join(sorted(unexpected)),
+            )
+
+
+def filter_to_test_partitions(
+    ht: hl.Table,
+    test_n_partitions: int = 2,
+) -> hl.Table:
+    """
+    Filter the Table to a specified number of partitions on autosomes and sex chromosomes for testing purposes.
+
+    :param ht: Input Table.
+    :param test_n_partitions: Number of partitions to filter to. Default is 2.
+    :return: Filtered Table with only the specified number of partitions.
+    """
+    test_ht = ht._filter_partitions(range(test_n_partitions))
+    x_ht = hl.filter_intervals(
+        ht, [hl.parse_locus_interval("chrX")]
+    )._filter_partitions(range(test_n_partitions))
+
+    y_ht = hl.filter_intervals(
+        ht, [hl.parse_locus_interval("chrY")]
+    )._filter_partitions(range(test_n_partitions))
+
+    ht = test_ht.union(x_ht, y_ht)
+
+    return ht
+
+
 def check_missingness(
     ht: hl.Table,
     missingness_threshold: float = 0.5,
@@ -561,6 +642,85 @@ def check_missingness(
     compute_missingness(
         ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
     )
+
+
+def run_row_to_globals_length_check(
+    ht: hl.Table,
+    config: Dict[str, Any],
+    check_all_rows: bool = True,
+) -> None:
+    """
+    Build the row_to_globals_check mapping from config and run check_global_and_row_annot_lengths.
+
+    :param ht: Hail table to check.
+    :param config: Configuration dictionary containing freq_fields and optional faf_fields.
+    :param check_all_rows: Whether to check all rows. If False, only checks first rows. Default is True.
+    :return: None
+    """
+    row_to_globals_check = {
+        config["freq_fields"]["freq"]: [
+            config["freq_fields"]["freq_meta"],
+            config["freq_fields"]["freq_meta_sample_count"],
+        ]
+    }
+    if config["freq_fields"].get("freq_index_dict"):
+        row_to_globals_check[config["freq_fields"]["freq"]].append(
+            config["freq_fields"]["freq_index_dict"]
+        )
+    if config.get("faf_fields"):
+        row_to_globals_check[config["faf_fields"]["faf"]] = [
+            config["faf_fields"]["faf_meta"],
+        ]
+        if config["faf_fields"].get("faf_index_dict"):
+            row_to_globals_check[config["faf_fields"]["faf"]].append(
+                config["faf_fields"]["faf_index_dict"]
+            )
+
+    check_global_and_row_annot_lengths(
+        t=ht, row_to_globals_check=row_to_globals_check, check_all_rows=check_all_rows
+    )
+
+
+def add_info_annotations(ht: hl.Table) -> hl.Table:
+    """
+    Add select annotations to `info` if present in the Table.
+
+    :param ht: Table to annotate.
+    :return: Annotated Table with new `info` field.
+    """
+    info_dict = {}
+    missing_region_flags = []
+
+    if "region_flags" in ht.row:
+        for field in REGION_FLAG_FIELDS:
+            if field in ht["region_flags"]:
+                info_dict[field] = ht["region_flags"][field]
+            else:
+                missing_region_flags.append(field)
+
+    if missing_region_flags:
+        logger.warning("Missing region_flag fields: %s", missing_region_flags)
+
+    missing_allele_info = []
+    if "allele_info" in ht.row:
+        for field in ALLELE_TYPE_FIELDS:
+            if field in ht["allele_info"]:
+                info_dict[field] = ht["allele_info"][field]
+            else:
+                missing_allele_info.append(field)
+
+    if missing_allele_info:
+        logger.warning("Missing allele type fields: %s", missing_allele_info)
+
+    if "monoallelic" in ht.row:
+        info_dict["monoallelic"] = ht["monoallelic"]
+
+    if "only_het" in ht.row:
+        info_dict["only_het"] = ht["only_het"]
+
+    ht = ht.annotate(info=ht.info.annotate(**info_dict))
+
+    return ht
 
 
 def validate_federated_data(
@@ -885,6 +1045,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
         faf_meta=faf_meta,
         freq_meta_sample_count=freq_meta_sample_count,
         faf_meta_sample_count=faf_meta_sample_count,
+        extra_global_field="extra_global_field",
     )
 
     # Add in retired terms to globals.
@@ -945,6 +1106,76 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
     return ht
 
 
+def load_gnomad_data(
+    gnomad_input_file: str,
+    version: str = "5.0",
+    data_type: str = "genomes",
+    test: bool = False,
+    data_set: str = None,
+    public_release: bool = None,
+) -> hl.Table:
+    """
+    Load gnomAD data with based on specified input file and parameters.
+
+    :param gnomad_input_file: Name of resource to load. One of "freq", "release_sites", or "public_release".
+    :param version: Version to load. For example "v4.0", "v4.1", "v5.0". Default is "v5.0".
+    :param data_type: Type of gnomAD data to load, either "exomes" or "genomes".
+    :param test: If True, load test version of the data. Default is False.
+    :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". Default is None.
+    :param public_release: Whether or not to use the public version of the release. Default is None.
+    :return: Hail Table of the specified gnomAD data.
+    """
+    # Extract the first digit before any dot, ignoring a leading 'v'.
+    major_v = version.lstrip("v").split(".")[0]
+
+    # Define module mapping based on major version.
+    module_mapping = {
+        "4": {
+            "freq": ("gnomad_qc.v4.resources.annotations", "get_freq"),
+            "release_sites": ("gnomad_qc.v4.resources.release", "release_sites"),
+            "public_release": ("gnomad.resources.grch38.gnomad", "public_release"),
+        },
+        "5": {
+            "freq": ("gnomad_qc.v5.resources.annotations", "get_freq"),
+            "release_sites": ("gnomad_qc.v5.resources.release", "release_sites"),
+            "public_release": ("gnomad.resources.grch38.gnomad", "public_release"),
+        },
+    }
+
+    if major_v not in module_mapping:
+        raise ValueError(f"Major version {major_v} not supported.")
+
+    if gnomad_input_file not in module_mapping[major_v]:
+        raise ValueError(f"Input '{gnomad_input_file}' not found for v{major_v}")
+
+    module_path, function_name = module_mapping[major_v][gnomad_input_file]
+
+    # Import the module and get the function to call.
+    module = importlib.import_module(module_path)
+    resource_func = getattr(module, function_name)
+
+    logger.info(f"Loading {gnomad_input_file} version {major_v} ({data_type})...")
+
+    # Collect all possible params for the function.
+    all_params = {
+        "data_type": data_type,
+        "test": test,
+        "version": version,
+        "data_set": data_set,
+        "public_release": public_release,
+    }
+
+    # Filter to only the parameter that function can accept.
+    sig_params = inspect.signature(resource_func).parameters
+    valid_args = {k: v for k, v in all_params.items() if k in sig_params}
+
+    # Log which file and params are being used.
+    arg_preview = ", ".join([f"{k}={v}" for k, v in valid_args.items()])
+    logger.info(f"Calling {module_path}.{function_name}({arg_preview})")
+
+    return resource_func(**valid_args).ht()
+
+
 def main(args):
     """Perform validity checks for federated data."""
     hl.init(
@@ -955,6 +1186,7 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     config_path = args.config_path
     verbose = args.verbose
+    output_base = args.output_base
 
     if args.exclude_xnonpar_y_in_logtest and not args.use_logtest_ht:
         raise ValueError(
@@ -967,6 +1199,11 @@ def main(args):
             config = json.load(f)
 
         validate_config(config, schema)
+
+        data_type = config["data_type"]
+        global ALLELE_TYPE_FIELDS, REGION_FLAG_FIELDS
+        ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS[data_type]
+        REGION_FLAG_FIELDS = REGION_FLAG_FIELDS[data_type]
 
         # Read in field necessity markdown file.
         # When submitting hail dataproc job, include "--files field_requirements.md".
@@ -987,8 +1224,16 @@ def main(args):
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
 
         else:
-            # TODO: Add resources to intake federated data once obtained.
-            ht = public_release(data_type="genomes").ht()
+            # Load data from the specified gnomAD resource function.
+            ht = load_gnomad_data(
+                gnomad_input_file=args.gnomad_input_file,
+                version=args.gnomad_version,
+                data_type=data_type,
+                test=args.gnomad_test,
+                data_set=args.gnomad_data_set,
+                public_release=args.gnomad_public_release,
+            )
+            output_base = f"{output_base}/{data_type}/{args.gnomad_input_file}"
 
             # Check that fields specified in the config are present in the Table.
             validate_config_fields_in_ht(ht=ht, config=config)
@@ -998,48 +1243,17 @@ def main(args):
             if build != "GRCh38":
                 raise ValueError(f"Reference genome is {build}, not GRCh38!")
 
-            # Filter to test partitions if specified.
             if test_n_partitions:
                 logger.info(
                     "Filtering to %d partitions and sex chromosomes...",
                     test_n_partitions,
                 )
-                test_ht = ht._filter_partitions(range(test_n_partitions))
-
-                x_ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval("chrX")]
-                )._filter_partitions(range(test_n_partitions))
-
-                y_ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval("chrY")]
-                )._filter_partitions(range(test_n_partitions))
-
-                ht = test_ht.union(x_ht, y_ht)
-
-        row_to_globals_check = {
-            config["freq_fields"]["freq"]: [
-                config["freq_fields"]["freq_meta"],
-                config["freq_fields"]["freq_meta_sample_count"],
-            ]
-        }
-        if config["freq_fields"].get("freq_index_dict"):
-            row_to_globals_check[config["freq_fields"]["freq"]].append(
-                config["freq_fields"]["freq_index_dict"]
-            )
-
-        if config.get("faf_fields"):
-            row_to_globals_check[config["faf_fields"]["faf"]] = [
-                config["faf_fields"]["faf_meta"],
-            ]
-            if config["faf_fields"].get("faf_index_dict"):
-                row_to_globals_check[config["faf_fields"]["faf"]].append(
-                    config["faf_fields"]["faf_index_dict"]
-                )
+                ht = filter_to_test_partitions(ht, test_n_partitions)
 
         logger.info("Check that row and global annotations lengths match...")
-        check_global_and_row_annot_lengths(
-            t=ht,
-            row_to_globals_check=row_to_globals_check,
+        run_row_to_globals_length_check(
+            ht=ht,
+            config=config,
             check_all_rows=not args.check_only_first_rows_to_globals,
         )
         check_globals_for_retired_terms(ht)
@@ -1069,6 +1283,8 @@ def main(args):
             field_issues, fields_validated, type_issues, types_validated
         )
 
+        check_fields_not_in_requirements(ht, field_types)
+
         # TODO: Add in lof per person check.
         logger.info("Unfurl array annotations...")
         annotations = unfurl_array_annotations(
@@ -1078,38 +1294,8 @@ def main(args):
         )
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
-        info_dict = {}
-
-        # Add region_flag fields if present.
-        missing_region_flags = []
-        if "region_flags" in ht.row:
-            for field in REGION_FLAG_FIELDS:
-                if field in ht["region_flags"]:
-                    info_dict[field] = ht["region_flags"][field]
-                else:
-                    missing_region_flags.append(field)
-        region_flags = [f for f in REGION_FLAG_FIELDS if f not in missing_region_flags]
-        if missing_region_flags:
-            logger.warning("Missing region_flag fields: %s", missing_region_flags)
-
-        # Add allele_info fields if present.
-        missing_allele_info = []
-        if "allele_info" in ht.row:
-            for field in ALLELE_TYPE_FIELDS:
-                if field in ht["allele_info"]:
-                    info_dict[field] = ht["allele_info"][field]
-                else:
-                    missing_allele_info.append(field)
-        if missing_allele_info:
-            logger.warning("Missing allele type fields: %s", missing_allele_info)
-
-        # Add monoallelic and only_het fields to info dict.
-        if "monoallelic" in ht.row:
-            info_dict["monoallelic"] = ht["monoallelic"]
-        if "only_het" in ht.row:
-            info_dict["only_het"] = ht["only_het"]
-
-        ht = ht.annotate(info=ht.info.annotate(**info_dict))
+        logger.info("Creating info annotations...")
+        ht = add_info_annotations(ht)
 
         # If config specifies to check for monoallelic and only heterozygous sites,
         # create the site_gt_check_expr to pass to validate_federated_data.
@@ -1121,9 +1307,11 @@ def main(args):
         else:
             site_gt_check_expr = None
 
+        region_flags = [f for f in REGION_FLAG_FIELDS if f in ht.info]
+
         validate_federated_data(
             ht=ht,
-            missingness_threshold=config["missingness_threshold"],
+            missingness_threshold=args.missingness_threshold,
             struct_annotations_for_missingness=config[
                 "struct_annotations_for_missingness"
             ],
@@ -1142,14 +1330,15 @@ def main(args):
         log_output = log_stream.getvalue()
 
         # TODO: Create resource functions when know organization of federated data.
-        log_file = args.output_base + ".log"
-        output_file = args.output_base + ".html"
+        log_file = output_base + ".log"
+        output_file = output_base + ".html"
 
         # Write parsed log to html file.
         with hl.hadoop_open(log_file, "w") as f:
             f.write(log_output)
 
         parsed_logs = parse_log_file(log_file)
+        logger.info("Writing html file to %s...", output_file)
         generate_html_report(parsed_logs, output_file)
 
     finally:
@@ -1188,11 +1377,11 @@ if __name__ == "__main__":
         help="Check only the first row when checking that the lengths of row annotations match the lengths of associated global annotations.",
         action="store_true",
     )
+
     parser.add_argument(
         "--config-path",
         help=(
-            "Path to JSON config file for defining parameters. Paramters to define are as follows:"
-            "missingness_threshold: Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'."
+            "Path to JSON config file for defining parameters. Parameters to define are as follows:"
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
             "freq_fields: Dictionary containing the names of frequency-related fields ('freq': Name of annotation containing the array of frequency metric objects "
             "corresponding to each frequency metadata group; 'freq_meta': Name of annotation containing allele frequency metadata, an ordered list containing the frequency aggregation group for "
@@ -1205,7 +1394,8 @@ if __name__ == "__main__":
             "nhomalt_metric: Name of metric denoting homozygous alternate count."
             "subsets: List of sample subsets to include for the subset validity check."
             "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
-            "check_mono_and_only_het: Boolean indicating whether to check for monoallelic and 100 percent heterozygous sites in the Table ('monoallelic' and 'only_het' annotations must be present)."
+            "data_type: Data type to run checks on. One of 'exomes' or 'genomes'."
+            "check_mono_and_only_het: Whether to skip the check for monoallelic and 100 percent heterozygous sites in the Table('monoallelic' and 'only_het' annotations must be present)."
         ),
         type=str,
     )
@@ -1227,6 +1417,43 @@ if __name__ == "__main__":
         type=str,
         default="gs://gnomad-tmp/federated_validity_checks/federated_validity_checks",
     )
-
+    parser.add_argument(
+        "--missingness-threshold",
+        help="Float defining upper cutoff for allowed amount of missingness. Missingness above this value will be flagged as 'FAILED'.",
+        type=float,
+        default=0.50,
+    )
+    # Create a group for gnomAD input arguments.
+    gnomad_group = parser.add_argument_group("gnomad", "gnomAD input options")
+    gnomad_group.add_argument(
+        "--gnomad-input-file",
+        help="Source to load gnomAD data from. 'freq' loads from get_freq, 'public_release' loads from public_release, 'release_sites' loads from release_sites.",
+        choices=["freq", "public_release", "release_sites"],
+        default="public_release",
+        type=str,
+    )
+    gnomad_group.add_argument(
+        "--gnomad-version",
+        help="Version of gnomAD resources to use.",
+        choices=["v4.0", "v4.1", "v4.1.1", "v5.0"],
+        default="v5.0",
+        type=str,
+    )
+    gnomad_group.add_argument(
+        "--gnomad-test",
+        help="Load test dataset (smaller subset for testing).",
+        action="store_true",
+    )
+    gnomad_group.add_argument(
+        "--gnomad-data-set",
+        help="Data set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'.",
+        choices=["aou", "gnomad", "merged"],
+        default=None,
+    )
+    gnomad_group.add_argument(
+        "--gnomad-public-release",
+        help="Whether or not to use the public version of the release when loading data. Only applicable when loading 'public_release' or 'release_sites'.",
+        action="store_true",
+    )
     args = parser.parse_args()
     main(args)
