@@ -1115,7 +1115,7 @@ def load_gnomad_data(
     public_release: bool = None,
 ) -> hl.Table:
     """
-    Load gnomAD data with based on specified inpute file and parameeters.
+    Load gnomAD data with based on specified input file and parameters.
 
     :param gnomad_input_file: Name of resource to load. One of "freq", "release_sites", or "public_release".
     :param version: Version to load. For example "v4.0", "v4.1", "v5.0". Default is "v5.0".
@@ -1156,7 +1156,7 @@ def load_gnomad_data(
 
     logger.info(f"Loading {gnomad_input_file} version {major_v} ({data_type})...")
 
-    # Collect all possible params for the fucntion.
+    # Collect all possible params for the function.
     all_params = {
         "data_type": data_type,
         "test": test,
@@ -1169,7 +1169,7 @@ def load_gnomad_data(
     sig_params = inspect.signature(resource_func).parameters
     valid_args = {k: v for k, v in all_params.items() if k in sig_params}
 
-    # Log specifcally which file and params are being used.
+    # Log which file and params are being used.
     arg_preview = ", ".join([f"{k}={v}" for k, v in valid_args.items()])
     logger.info(f"Calling {module_path}.{function_name}({arg_preview})")
 
@@ -1381,7 +1381,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config-path",
         help=(
-            "Path to JSON config file for defining parameters. Paramters to define are as follows:"
+            "Path to JSON config file for defining parameters. Parameters to define are as follows:"
             "struct_annotations_for_missingness: List of struct annotations to check for missingness."
             "freq_fields: Dictionary containing the names of frequency-related fields ('freq': Name of annotation containing the array of frequency metric objects "
             "corresponding to each frequency metadata group; 'freq_meta': Name of annotation containing allele frequency metadata, an ordered list containing the frequency aggregation group for "
@@ -1436,7 +1436,7 @@ if __name__ == "__main__":
         "--gnomad-version",
         help="Version of gnomAD resources to use.",
         choices=["v4.0", "v4.1", "v4.1.1", "v5.0"],
-        default="v5",
+        default="v5.0",
         type=str,
     )
     gnomad_group.add_argument(

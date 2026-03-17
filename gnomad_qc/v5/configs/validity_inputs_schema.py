@@ -45,7 +45,6 @@ schema = {
             "items": {"type": "string"},
         },
         "variant_filter_field": {"type": "string"},
-        "data_type": {"type": "string", "enum": ["exomes", "genomes"]},
         "check_mono_and_only_het": {"type": "boolean"},
         "data_type": {"type": "string", "enum": ["exomes", "genomes"]},
     },
