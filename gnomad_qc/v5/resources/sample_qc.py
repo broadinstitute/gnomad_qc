@@ -114,7 +114,7 @@ def get_hard_filtered_samples(
 
 
 # Backward-compatible alias resolving to the default rwb environment.
-hard_filtered_samples = get_hard_filtered_samples()
+hard_filtered_samples = get_hard_filtered_samples(environment="rwb")
 
 
 ######################################################################
