@@ -60,7 +60,7 @@ def _get_base_bucket(environment: str = "batch", read_only: bool = False) -> str
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or
         "dataproc".
     :param read_only: If True and environment is "batch", return the read-only
-        bucket within the AoU authorizathion Domain instead of the primary batch bucket.
+        bucket within the AoU authorization Domain instead of the primary batch bucket.
         Default is False.
     :return: Bucket name string (without gs:// prefix).
     """
