@@ -150,7 +150,7 @@ def get_consent_samples_to_drop(environment: str = "batch") -> TableResource:
     )
 
 
-# Backward-compatible aliases — resolve to the default rwb environment.
+# Backward-compatible aliases — resolve rwb environment.
 project_meta = get_project_meta(environment="rwb")
 sample_id_collisions = get_sample_id_collisions(environment="rwb")
 low_quality_samples = get_low_quality_samples(environment="rwb")
