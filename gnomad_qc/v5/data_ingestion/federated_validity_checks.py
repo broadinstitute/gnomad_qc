@@ -63,10 +63,6 @@ formatter = logging.Formatter(
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
 
-# Keep a local copy of data-type keyed field mappings.
-ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
-REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
-
 
 def get_table_kind(lines, header_index) -> str:
     """Determine whether a markdown table corresponds to "global" or "row" fields by scanning upward from the table header line.
@@ -681,18 +677,22 @@ def run_row_to_globals_length_check(
     )
 
 
-def add_info_annotations(ht: hl.Table) -> hl.Table:
+def add_info_annotations(
+    ht: hl.Table, region_flag_fields: List[str], allele_type_fields: List[str]
+) -> hl.Table:
     """
     Add select annotations to `info` if present in the Table.
 
     :param ht: Table to annotate.
+    :param region_flag_fields: List of region flag fields to check for and add to info if present in the Table.
+    :param allele_type_fields: List of allele type fields to check for and add to info if present in the Table.
     :return: Annotated Table with new `info` field.
     """
     info_dict = {}
     missing_region_flags = []
 
     if "region_flags" in ht.row:
-        for field in REGION_FLAG_FIELDS:
+        for field in region_flag_fields:
             if field in ht["region_flags"]:
                 info_dict[field] = ht["region_flags"][field]
             else:
@@ -703,7 +703,7 @@ def add_info_annotations(ht: hl.Table) -> hl.Table:
 
     missing_allele_info = []
     if "allele_info" in ht.row:
-        for field in ALLELE_TYPE_FIELDS:
+        for field in allele_type_fields:
             if field in ht["allele_info"]:
                 info_dict[field] = ht["allele_info"][field]
             else:
@@ -1133,12 +1133,10 @@ def load_gnomad_data(
         "4": {
             "freq": ("gnomad_qc.v4.resources.annotations", "get_freq"),
             "release_sites": ("gnomad_qc.v4.resources.release", "release_sites"),
-            "public_release": ("gnomad.resources.grch38.gnomad", "public_release"),
         },
         "5": {
             "freq": ("gnomad_qc.v5.resources.annotations", "get_freq"),
             "release_sites": ("gnomad_qc.v5.resources.release", "release_sites"),
-            "public_release": ("gnomad.resources.grch38.gnomad", "public_release"),
         },
     }
 
@@ -1154,7 +1152,7 @@ def load_gnomad_data(
     module = importlib.import_module(module_path)
     resource_func = getattr(module, function_name)
 
-    logger.info(f"Loading {gnomad_input_file} version {major_v} ({data_type})...")
+    logger.info(f"Loading %s version %s (%s)...", gnomad_input_file, major_v, data_type)
 
     # Collect all possible params for the function.
     all_params = {
@@ -1167,7 +1165,9 @@ def load_gnomad_data(
 
     # Filter to only the parameter that function can accept.
     sig_params = inspect.signature(resource_func).parameters
-    valid_args = {k: v for k, v in all_params.items() if k in sig_params}
+    valid_args = {
+        k: v for k, v in all_params.items() if k in sig_params and v is not None
+    }
 
     # Log which file and params are being used.
     arg_preview = ", ".join([f"{k}={v}" for k, v in valid_args.items()])
@@ -1201,9 +1201,8 @@ def main(args):
         validate_config(config, schema)
 
         data_type = config["data_type"]
-        global ALLELE_TYPE_FIELDS, REGION_FLAG_FIELDS
-        ALLELE_TYPE_FIELDS = ALLELE_TYPE_FIELDS[data_type]
-        REGION_FLAG_FIELDS = REGION_FLAG_FIELDS[data_type]
+        allele_type_fields = ALLELE_TYPE_FIELDS[data_type]
+        region_flag_fields = REGION_FLAG_FIELDS[data_type]
 
         # Read in field necessity markdown file.
         # When submitting hail dataproc job, include "--files field_requirements.md".
@@ -1295,7 +1294,7 @@ def main(args):
         ht = ht.annotate(info=ht.info.annotate(**annotations))
 
         logger.info("Creating info annotations...")
-        ht = add_info_annotations(ht)
+        ht = add_info_annotations(ht, region_flag_fields, allele_type_fields)
 
         # If config specifies to check for monoallelic and only heterozygous sites,
         # create the site_gt_check_expr to pass to validate_federated_data.
@@ -1307,7 +1306,7 @@ def main(args):
         else:
             site_gt_check_expr = None
 
-        region_flags = [f for f in REGION_FLAG_FIELDS if f in ht.info]
+        region_flags = [f for f in region_flag_fields if f in ht.info]
 
         validate_federated_data(
             ht=ht,
@@ -1436,9 +1435,9 @@ if __name__ == "__main__":
     gnomad_group = parser.add_argument_group("gnomad", "gnomAD input options")
     gnomad_group.add_argument(
         "--gnomad-input-file",
-        help="Source to load gnomAD data from. 'freq' loads from get_freq, 'public_release' loads from public_release, 'release_sites' loads from release_sites.",
-        choices=["freq", "public_release", "release_sites"],
-        default="public_release",
+        help="Source to load gnomAD data from. 'freq' loads from get_freq, and 'release_sites' loads from release_sites.",
+        choices=["freq", "release_sites"],
+        default="release_sites",
         type=str,
     )
     gnomad_group.add_argument(
@@ -1461,7 +1460,7 @@ if __name__ == "__main__":
     )
     gnomad_group.add_argument(
         "--gnomad-public-release",
-        help="Whether or not to use the public version of the release when loading data. Only applicable when loading 'public_release' or 'release_sites'.",
+        help="Whether or not to use the public version of the release when loading data. Only applicable when loading 'release_sites'.",
         action="store_true",
     )
     args = parser.parse_args()
