@@ -1347,7 +1347,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     # Create a mutually exclusive group for --test-n-partitions and --use-test-ht.
     test_group = parser.add_mutually_exclusive_group()
@@ -1377,25 +1377,34 @@ if __name__ == "__main__":
         help="Check only the first row when checking that the lengths of row annotations match the lengths of associated global annotations.",
         action="store_true",
     )
-
     parser.add_argument(
         "--config-path",
         help=(
-            "Path to JSON config file for defining parameters. Parameters to define are as follows:"
-            "struct_annotations_for_missingness: List of struct annotations to check for missingness."
-            "freq_fields: Dictionary containing the names of frequency-related fields ('freq': Name of annotation containing the array of frequency metric objects "
-            "corresponding to each frequency metadata group; 'freq_meta': Name of annotation containing allele frequency metadata, an ordered list containing the frequency aggregation group for "
-            "each element of the 'freq' array row annotation, with at least the following groups: ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype).; 'freq_meta_sample_count': Name of "
-            "annotation containing sample count per sample grouping defined in the 'freq_meta' global annotation."
-            "faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields ('faf': Name of annotation containing structs of FAF information; 'faf_meta': Name of annotation "
-            "for FAF metadata, an ordered list containing the frequency aggregation group for each element of the 'faf' arrays, with at least the following groups: ('group': adj/raw, 'gen_anc': inferred genetic ancestry group, 'sex': sex karyotype). "
-            "freq_annotations_to_sum: List of annotation fields within `freq_meta` to sum. Example: ['AC', 'AN', 'homozygote_count']."
-            "sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group']."
-            "nhomalt_metric: Name of metric denoting homozygous alternate count."
-            "subsets: List of sample subsets to include for the subset validity check."
-            "variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR')."
-            "data_type: Data type to run checks on. One of 'exomes' or 'genomes'."
-            "check_mono_and_only_het: Whether to skip the check for monoallelic and 100 percent heterozygous sites in the Table('monoallelic' and 'only_het' annotations must be present)."
+            "Path to JSON config file for defining parameters. Parameters to define are as follows:\n"
+            " - struct_annotations_for_missingness: List of struct annotations to check for missingness.\n"
+            " - freq_fields: Dictionary containing the names of frequency-related fields:\n"
+            "      * freq: Name of annotation containing the array of frequency metric objects\n"
+            "        corresponding to each frequency metadata group.\n"
+            "      * freq_meta: Name of annotation containing allele frequency metadata, an\n"
+            "        ordered list containing the frequency aggregation group for each element\n"
+            "        of the freq array row annotation, with at least the following groups:\n"
+            "        group (adj/raw), gen_anc (inferred genetic ancestry group), and sex\n"
+            "        (sex karyotype).\n"
+            "      * freq_meta_sample_count: Name of annotation containing sample count per\n"
+            "        sample grouping defined in the freq_meta global annotation.\n"
+            " -faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields:\n"
+            "      * faf: Name of annotation containing structs of FAF information.\n"
+            "      * faf_meta: Name of annotation for FAF metadata, an ordered list\n"
+            "        containing the frequency aggregation group for each element of the faf\n"
+            "        arrays, with at least the following groups: group (adj/raw), gen_anc\n"
+            "        (inferred genetic ancestry group), and sex (sex karyotype).\n"
+            " - freq_annotations_to_sum: List of annotation fields within `freq_meta` to sum. Example: ['AC', 'AN', 'homozygote_count'].\n"
+            " - sort_order: Order in which groupings are unfurled into flattened annotations. Default is ['gen_anc', 'sex', 'group'].\n"
+            " - nhomalt_metric: Name of metric denoting homozygous alternate count.\n"
+            " - subsets: List of sample subsets to include for the subset validity check.\n"
+            " - variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR').\n"
+            " - data_type: Data type to run checks on. One of 'exomes' or 'genomes'.\n"
+            " - check_mono_and_only_het: Whether to skip the check for monoallelic and 100 percent heterozygous sites in the Table('monoallelic' and 'only_het' annotations must be present)."
         ),
         type=str,
     )
