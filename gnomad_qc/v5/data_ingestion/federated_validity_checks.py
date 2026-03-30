@@ -7,7 +7,6 @@ import json
 import logging
 import re
 from collections import defaultdict
-from copy import deepcopy
 from io import StringIO
 from typing import Any, Dict, List, Tuple
 
@@ -28,6 +27,7 @@ from gnomad.assessment.validity_checks import (
     summarize_variants,
     unfurl_array_annotations,
 )
+from gnomad.resources.resource_utils import VersionedTableResource
 from gnomad.utils.reference_genome import get_reference_genome
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
@@ -1118,7 +1118,7 @@ def load_gnomad_data(
     Load gnomAD data with based on specified input file and parameters.
 
     :param gnomad_input_file: Name of resource to load. One of "freq", "release_sites", or "public_release".
-    :param version: Version to load. For example "v4.0", "v4.1", "v5.0". Default is "v5.0".
+    :param version: Version to load. For example "4.0", "4.1", "5.0". Default is "5.0".
     :param data_type: Type of gnomAD data to load, either "exomes" or "genomes".
     :param test: If True, load test version of the data. Default is False.
     :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". Default is None.
@@ -1126,7 +1126,7 @@ def load_gnomad_data(
     :return: Hail Table of the specified gnomAD data.
     """
     # Extract the first digit before any dot, ignoring a leading 'v'.
-    major_v = version.lstrip("v").split(".")[0]
+    major_v = version.split(".")[0]
 
     # Define module mapping based on major version.
     module_mapping = {
@@ -1160,7 +1160,7 @@ def load_gnomad_data(
         "test": test,
         "version": version,
         "data_set": data_set,
-        "public_release": public_release,
+        "public": public_release,
     }
 
     # Filter to only the parameter that function can accept.
@@ -1173,7 +1173,27 @@ def load_gnomad_data(
     arg_preview = ", ".join([f"{k}={v}" for k, v in valid_args.items()])
     logger.info(f"Calling {module_path}.{function_name}({arg_preview})")
 
-    return resource_func(**valid_args).ht()
+    resource = resource_func(**valid_args)
+
+    # Some resources (e.g. v4 release_sites) return a VersionedTableResource and do
+    # not accept a version argument in their function signature. Select the requested
+    # version explicitly instead of relying on the resource default.
+    if isinstance(resource, VersionedTableResource):
+        if version not in resource.versions:
+            available_versions = ", ".join(sorted(resource.versions.keys()))
+            raise ValueError(
+                f"Requested version '{version}' is not available for "
+                f"{gnomad_input_file}. Available versions: {available_versions}"
+            )
+
+        logger.info(
+            "Using resource version '%s' for %s.",
+            version,
+            gnomad_input_file,
+        )
+        return resource.versions[version].ht()
+
+    return resource.ht()
 
 
 def main(args):
@@ -1443,8 +1463,8 @@ if __name__ == "__main__":
     gnomad_group.add_argument(
         "--gnomad-version",
         help="Version of gnomAD resources to use.",
-        choices=["v4.0", "v4.1", "v4.1.1", "v5.0"],
-        default="v5.0",
+        choices=["4.0", "4.1", "4.1.1", "5.0"],
+        default="5.0",
         type=str,
     )
     gnomad_group.add_argument(
