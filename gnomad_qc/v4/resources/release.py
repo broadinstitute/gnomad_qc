@@ -139,8 +139,9 @@ def release_ht_path(
     :return: File path for desired release Hail Table.
     """
     if public:
-        if file_exists(public_release(data_type).versions[release_version].path):
-            return public_release(data_type).versions[release_version].path
+        res = public_release(data_type).versions
+        if release_version in res and file_exists(res[release_version].path):
+            return res[release_version].path
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:

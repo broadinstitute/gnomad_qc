@@ -19,11 +19,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
-from gnomad_qc.v5.resources.basics import (
-    WORKSPACE_BUCKET,
-    get_aou_vds,
-    get_logging_path,
-)
+from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -223,6 +219,7 @@ def create_dense_trio_mt(
     meta_ht: hl.Table,
     test: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
+    environment: str = "rwb",
 ) -> hl.MatrixTable:
     """
     Create a dense MatrixTable for high quality trios.
@@ -232,6 +229,8 @@ def create_dense_trio_mt(
     :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Dense MatrixTable with high quality trios.
     """
     # Filter the metadata table to only high quality AoU samples.
@@ -262,46 +261,35 @@ def create_dense_trio_mt(
         chrom="chr20" if test else None,
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
+        environment=environment,
     )
     return hl.vds.to_dense_mt(vds)
 
 
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
-    if args.rwb:
-        environment = "rwb"
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        environment = "batch"
-        hl.init(
-            backend="batch",
-            log="/identify_trios.log",
-            tmp_dir="gs://gnomad-tmp-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            default_reference="GRCh38",
-            regions=["us-central1"],
-            # TODO: Add machine configurations for Batch.
-        )
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("identify_trios", environment)
 
     overwrite = args.overwrite
     test = args.test
 
     try:
 
-        rel_ht = relatedness().ht()
-        meta_ht = meta().ht()
+        rel_ht = relatedness(environment=environment).ht()
+        meta_ht = meta(environment=environment).ht()
         dup_ht_path = duplicates(environment=environment).path
-        raw_ped_path = pedigree(finalized=False).path
-        fake_ped_path = pedigree(finalized=False, fake=True).path
-        mendel_err_ht_path = ped_mendel_errors(test=test).path
-        final_ped_path = pedigree(test=test).path
-        filter_json_path = ped_filter_param_json_path(test=test)
-        trios_path = trios(test=test).path
-        dense_trio_mt_path = dense_trios(test=test).path
+        raw_ped_path = pedigree(finalized=False, environment=environment).path
+        fake_ped_path = pedigree(
+            finalized=False, fake=True, environment=environment
+        ).path
+        mendel_err_ht_path = ped_mendel_errors(test=test, environment=environment).path
+        final_ped_path = pedigree(test=test, environment=environment).path
+        filter_json_path = ped_filter_param_json_path(
+            test=test, environment=environment
+        )
+        trios_path = trios(test=test, environment=environment).path
+        dense_trio_mt_path = dense_trios(test=test, environment=environment).path
 
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
@@ -316,7 +304,7 @@ def main(args):
             )
             ht = get_duplicated_samples_ht(
                 get_duplicated_samples(rel_ht),
-                sample_rankings(release=True).ht(),
+                sample_rankings(release=True, environment=environment).ht(),
             )
             ht.write(dup_ht_path, overwrite=overwrite)
 
@@ -371,6 +359,7 @@ def main(args):
                 remove_dead_alleles=False,
                 filter_partitions=range(5) if test else None,
                 chrom="chr20",
+                environment=environment,
             )
             mendel_err_ht = run_mendel_errors(
                 vds,
@@ -427,6 +416,7 @@ def main(args):
                 meta_ht,
                 test=test,
                 naive_coalesce_partitions=naive_coalesce_partitions,
+                environment=environment,
             )
             dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 
@@ -439,16 +429,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--rwb",
-        help="Run the script in RWB environment.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--batch",
-        help="Run the script in Batch environment.",
-        action="store_true",
-    )
-    parser.add_argument(
         "--overwrite",
         help="Overwrite existing data.",
         action="store_true",
@@ -457,6 +437,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Run script on subset of dataset. Applies to Mendel errors and dense trio MT creation.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch"],
+        default="rwb",
     )
 
     identify_dup_args = parser.add_argument_group("Duplicate identification")

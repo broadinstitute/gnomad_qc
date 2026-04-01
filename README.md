@@ -1,6 +1,6 @@
 # gnomad_qc
 
-This repo contains the complete set of scripts used to perform sample and variant QC for the gnomAD v2 and v3 releases. We will continue to update and improve upon the code to handle new releases as they grow in size and complexity and as they require increasingly sophisticated QC treatment. The current code therefore represents the most recent iteration of our pipelines and is guaranteed to change over time.
+This repo contains the complete set of scripts used to perform sample and variant QC for the gnomAD v2, v3, and v4 releases. We will continue to update and improve upon the code to handle new releases as they grow in size and complexity and as they require increasingly sophisticated QC treatment. The current code therefore represents the most recent iteration of our pipelines and is guaranteed to change over time.
 
 NB: The scripts make reference to gnomAD-related metadata files (not public) and may perform procedures that are not strictly necessary for quality control of all germline datasets. For example, the gnomAD v2 dataset comprises both exomes and genomes, and a substantial portion of the code is written to handle technical differences between those call sets, as well as to perform relevant joint analyses (such as inferring cryptically related individuals across exomes and genomes). These steps may not be relevant for all call sets.
 
@@ -11,5 +11,6 @@ A more extensive overview and explanation of the gnomAD QC process is available 
   * [v3](https://gnomad.broadinstitute.org/news/2019-10-gnomad-v3-0/)
   * [v3.1](https://gnomad.broadinstitute.org/news/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/)
   * [v4.0](https://gnomad.broadinstitute.org/news/2023-11-gnomad-v4-0/)
+  * [v4.1](https://gnomad.broadinstitute.org/news/2024-04-gnomad-v4-1/)
 
 Note also that many basic functions and file paths used in the code are imported from a separate repo, [gnomad_methods](https://github.com/broadinstitute/gnomad_methods).

@@ -19,16 +19,16 @@ from gnomad_qc.v4.sample_qc.create_sample_qc_metadata_ht import (
     get_relationship_filter_expr,
 )
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     get_logging_path,
     get_samples_to_exclude,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
-from gnomad_qc.v5.resources.meta import meta, project_meta, sample_id_collisions
+from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions, meta
 from gnomad_qc.v5.resources.sample_qc import (
     finalized_outlier_filtering,
     get_gen_anc_ht,
-    hard_filtered_samples,
+    get_hard_filtered_samples,
     related_samples_to_drop,
     relatedness,
 )
@@ -270,12 +270,18 @@ def add_sample_filter_annotations(
     return meta_ht
 
 
-def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl.Table:
+def add_relatedness_inference(
+    meta_ht: hl.Table,
+    relatedness_ht: hl.Table,
+    environment: str = "rwb",
+) -> hl.Table:
     """
     Add relationship inference and filters to metadata Table.
 
     :param meta_ht: Hail Table containing sample metadata, hard-filter flag, and outlier-filter flag.
     :param relatedness_ht: Table containing relatedness inference results.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Hail Table annotated with relatedness filter fields.
     """
     # Obtain relationships from relatedness inference Table.
@@ -287,6 +293,7 @@ def add_relatedness_inference(meta_ht: hl.Table, relatedness_ht: hl.Table) -> hl
         relationship_ht=relatedness_inference_ht,
         hard_filtered_expr=meta_ht.sample_filters.hard_filtered,
         outlier_filtered_expr=meta_ht.sample_filters.outlier_filtered,
+        environment=environment,
     )
 
     # Annotate metadata Table with relatedness inference and filters.
@@ -401,6 +408,7 @@ def annotate_relatedness_filters(
     relationship_ht: hl.Table,
     hard_filtered_expr: hl.expr.BooleanExpression,
     outlier_filtered_expr: hl.expr.BooleanExpression,
+    environment: str = "rwb",
 ) -> hl.Table:
     """
     Get relatedness filtering Table for the combined meta Table.
@@ -426,6 +434,8 @@ def annotate_relatedness_filters(
         hard-filtered.
     :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
         outlier-filtered.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb" or
+        "batch".
     :return: Table of relatedness filters.
     """
     rel_dict = {
@@ -442,7 +452,9 @@ def annotate_relatedness_filters(
                     rel: get_relationship_filter_expr(
                         hard_filtered_expr,
                         hl.is_defined(
-                            related_samples_to_drop(release=False).ht()[ht.key]
+                            related_samples_to_drop(
+                                release=False, environment=environment
+                            ).ht()[ht.key]
                         ),
                         relationships.relationships,
                         rel_val,
@@ -455,7 +467,9 @@ def annotate_relatedness_filters(
                     rel: get_relationship_filter_expr(
                         hard_filtered_expr | outlier_filtered_expr,
                         hl.is_defined(
-                            related_samples_to_drop(release=True).ht()[ht.key]
+                            related_samples_to_drop(
+                                release=True, environment=environment
+                            ).ht()[ht.key]
                         ),
                         relationships.relationships_high_quality,
                         rel_val,
@@ -471,34 +485,34 @@ def annotate_relatedness_filters(
 
 def main(args):
     """Merge the output of all sample QC modules into a single Table."""
-    hl.init(
-        log="/home/jupyter/workspaces/gnomadproduction/create_sample_meta.log",
-        tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-    )
+    environment = args.environment
+    _init_hail("create_sample_meta", environment)
 
     try:
         check_resource_existence(
             output_step_resources={
-                "sample_qc_meta": [meta().path],
+                "sample_qc_meta": [meta(environment=environment).path],
             },
             overwrite=args.overwrite,
         )
 
         # Restructure metadata fields.
-        meta_ht = restructure_meta_fields(meta_ht=project_meta.ht())
+        meta_ht = restructure_meta_fields(
+            meta_ht=get_project_meta(environment=environment).ht()
+        )
 
         # Add AoU hard filters to the meta Table.
         meta_ht = annotate_hard_filters(
             meta_ht=meta_ht,
-            samples_to_exclude=get_samples_to_exclude(),
-            aou_hard_filters_ht=hard_filtered_samples.ht(),
+            samples_to_exclude=get_samples_to_exclude(environment=environment),
+            aou_hard_filters_ht=get_hard_filtered_samples(environment=environment).ht(),
         )
 
         # Add "gnomad" prefix to gnomAD v4 meta Table.
         v4_meta_ht = v4_meta("4.0", "genomes").ht()
         v4_meta_ht = add_project_prefix_to_sample_collisions(
             t=v4_meta_ht,
-            sample_collisions=sample_id_collisions.ht(),
+            sample_collisions=get_sample_id_collisions(environment=environment).ht(),
             project="gnomad",
         )
 
@@ -506,7 +520,9 @@ def main(args):
         meta_ht = annotate_genetic_ancestry(
             meta_ht=meta_ht,
             v4_meta_ht=v4_meta_ht,
-            aou_gen_anc_ht=get_gen_anc_ht(projection_only=True).ht(),
+            aou_gen_anc_ht=get_gen_anc_ht(
+                projection_only=True, environment=environment
+            ).ht(),
         )
 
         meta_ht = update_hgdp_tgp_outlier_annotation(
@@ -515,13 +531,17 @@ def main(args):
 
         # Add sample outlier and filter annotations.
         meta_ht = add_sample_filter_annotations(
-            meta_ht=meta_ht, outlier_filters_ht=finalized_outlier_filtering().ht()
+            meta_ht=meta_ht,
+            outlier_filters_ht=finalized_outlier_filtering(
+                environment=environment
+            ).ht(),
         )
 
         # Add relatedness inference and filters to the metadata Table.
         meta_ht = add_relatedness_inference(
             meta_ht=meta_ht,
-            relatedness_ht=relatedness().ht(),
+            relatedness_ht=relatedness(environment=environment).ht(),
+            environment=environment,
         )
 
         # Move high_quality to the end of the Table.
@@ -542,7 +562,9 @@ def main(args):
         )
 
         meta_ht = meta_ht.filter(meta_ht.project_meta.data_type == "genomes")
-        meta_ht = meta_ht.checkpoint(meta().path, overwrite=args.overwrite)
+        meta_ht = meta_ht.checkpoint(
+            meta(environment=environment).path, overwrite=args.overwrite
+        )
 
         logger.info("Total genome sample count: %s", meta_ht.count())
 
@@ -552,7 +574,7 @@ def main(args):
         )
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("create_sample_meta", environment="rwb"))
+        hl.copy_log(get_logging_path("create_sample_meta", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -562,6 +584,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overwrite",
         help="Overwrite output files.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch"],
+        default="rwb",
     )
     return parser
 
