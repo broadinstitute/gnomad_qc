@@ -12,6 +12,7 @@ from gnomad.utils.annotations import (
     pab_max_expr,
 )
 from gnomad.utils.sparse_mt import split_info_annotation
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad.variant_qc.random_forest import median_impute_features
 
@@ -24,16 +25,16 @@ from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
 )
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
-    aou_annotated_sites_only_vcf,
-    aou_vcf_header,
+    get_aou_annotated_sites_only_vcf,
+    get_aou_vcf_header,
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
     get_true_positive_vcf_path,
     get_variant_qc_annotations,
+    info_vcf_path,
 )
-from gnomad_qc.v5.resources.basics import get_aou_vds, get_logging_path
-from gnomad_qc.v5.resources.constants import GNOMAD_TMP_BUCKET, WORKSPACE_BUCKET
+from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -345,20 +346,8 @@ def create_variant_qc_annotation_ht(
 
 def main(args):
     """Generate all variant annotations needed for variant QC."""
-    if args.rwb:
-        environment = "rwb"
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/generate_variant_qc_annotations.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        environment = "batch"
-        hl.init(
-            tmp_dir=f"gs://{GNOMAD_TMP_BUCKET}-4day",
-            log="generate_variant_qc_annotations.log",
-        )
-        # TODO: Add machine configurations for Batch.
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("generate_variant_qc_annotations", environment)
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
@@ -379,6 +368,7 @@ def main(args):
         # NOTE: Using args.test here so that sibling stats test can be calculated from
         # a few partitions of the full (not test) VDS).
         test=args.test,
+        environment=environment,
     )
 
     try:
@@ -391,13 +381,41 @@ def main(args):
             )
 
             ht = create_info_ht(
-                vcf_path=aou_annotated_sites_only_vcf,
-                header_path=aou_vcf_header,
+                vcf_path=get_aou_annotated_sites_only_vcf(environment=environment),
+                header_path=get_aou_vcf_header(environment=environment),
                 lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
                 vds=vds,
                 test=test,
             )
             ht.write(info_ht_path, overwrite=overwrite)
+        if args.export_info_vcf:
+            logger.info("Exporting info ht as VCF...")
+            info_ht_path = get_info_ht(test=test, environment=environment).path
+            out_info_vcf_path = info_vcf_path(test=test, environment=environment)
+            check_resource_existence(
+                input_step_resources={
+                    "info_ht": [info_ht_path],
+                },
+                output_step_resources={
+                    "info_vcf_path": [out_info_vcf_path],
+                },
+                overwrite=overwrite,
+            )
+            info_ht = hl.read_table(info_ht_path)
+            # TODO: Check if AS_QUALapprox and AS_VarDP are needed for v5 (not used for v4) and if so need preceeded pipe.
+            # Reformat AS_SB_TABLE to be a nested array of arrays for proper use
+            # within the 'adjust_vcf_incompatible_types' function.
+            info_ht = info_ht.annotate(
+                info=info_ht.info.annotate(
+                    AS_SB_TABLE=hl.array(
+                        [info_ht.info.AS_SB_TABLE[0:2], info_ht.info.AS_SB_TABLE[2:4]]
+                    )
+                )
+            )
+            info_ht = adjust_vcf_incompatible_types(
+                info_ht, pipe_delimited_annotations=[]
+            )
+            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
 
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
@@ -419,7 +437,9 @@ def main(args):
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
-            ht = run_generate_sib_stats(vds.variant_data, relatedness().ht())
+            ht = run_generate_sib_stats(
+                vds.variant_data, relatedness(environment=environment).ht()
+            )
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
         if args.create_variant_qc_annotation_ht:
@@ -483,9 +503,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--rwb",
-        help="Run the script in RWB environment.",
-        action="store_true",
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch"],
+        default="rwb",
     )
     parser.add_argument(
         "--overwrite",
@@ -524,6 +545,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.",
         default=40,
         type=int,
+    )
+    parser.add_argument(
+        "--export-info-vcf", help="Export info ht as VCF.", action="store_true"
     )
 
     variant_qc_annotation_args = parser.add_argument_group(

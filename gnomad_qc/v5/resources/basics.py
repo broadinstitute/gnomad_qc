@@ -17,21 +17,57 @@ from gnomad_qc.v5.resources.constants import (
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
+    BATCH_BUCKET,
+    BATCH_TMP_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
+    GNOMAD_BUCKET,
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
-)
-from gnomad_qc.v5.resources.meta import (
-    failing_metrics_samples,
-    low_quality_samples,
-    meta,
-    sample_id_collisions,
-    samples_to_exclude,
 )
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
+
+# Constants for environment validation.
+_SAMPLE_DATA_ENVIRONMENTS = frozenset({"rwb", "batch"})
+_ALL_ENVIRONMENTS = frozenset({"rwb", "batch", "dataproc"})
+
+
+def _validate_environment(
+    environment: str,
+    allowed: frozenset = _ALL_ENVIRONMENTS,
+) -> None:
+    """
+    Raise ValueError if `environment` is not in `allowed`.
+
+    :param environment: Environment string to validate.
+    :param allowed: Set of permitted environment strings. Defaults to
+        `_ALL_ENVIRONMENTS`.
+    """
+    if environment not in allowed:
+        raise ValueError(
+            f"Environment '{environment}' is not allowed for this resource. "
+            f"Must be one of: {sorted(allowed)}"
+        )
+
+
+def _get_base_bucket(environment: str = "rwb") -> str:
+    """
+    Return the top-level GCS bucket for the given environment.
+
+    :param environment: Environment to use. Must be one of "rwb", "batch", or
+        "dataproc".
+    :return: Bucket name string (without gs:// prefix).
+    """
+    _validate_environment(environment)
+    if environment == "rwb":
+        return WORKSPACE_BUCKET
+    elif environment == "batch":
+        return BATCH_BUCKET
+    else:
+        return GNOMAD_BUCKET
+
 
 # v5 DRAGEN TGP test VDS.
 dragen_tgp_vds = VariantDatasetResource(
@@ -59,6 +95,53 @@ aou_test_dataset = VariantDatasetResource(
 )
 
 
+def _init_hail(
+    log_name: str,
+    environment: str = "rwb",
+    billing_project: Optional[str] = None,
+    tmp_dir_days: Optional[int] = 4,
+    **kwargs,
+) -> None:
+    """
+    Initialize Hail with environment-appropriate settings and set GRCh38 as default reference.
+
+    :param log_name: Base name for the log file (without path or extension).
+    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "rwb".
+    :param billing_project: GCP billing project for requester-pays buckets (batch only).
+        Defaults to "broad-mpg-gnomad".
+    :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
+        Must be None, 4, or 30. Default is 4.
+    :param kwargs: Additional keyword arguments forwarded to hl.init() in all
+        environments. None values are silently dropped, so optional params (e.g.
+        batch resource params from :func:`_get_batch_resource_kwargs`, or
+        ``spark_conf`` for dataproc) can be passed unconditionally.
+    """
+    log = (
+        f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
+        if environment == "rwb"
+        else get_logging_path(
+            log_name, environment=environment, tmp_dir_days=tmp_dir_days
+        )
+    )
+    init_kwargs = {
+        "log": log,
+        "tmp_dir": qc_temp_prefix(environment=environment, days=tmp_dir_days),
+        **{k: v for k, v in kwargs.items() if v is not None},
+    }
+    if environment == "batch":
+        init_kwargs.update(
+            {
+                "backend": "batch",
+                "gcs_requester_pays_configuration": (
+                    billing_project or "broad-mpg-gnomad"
+                ),
+                "regions": ["us-central1"],
+            }
+        )
+    hl.init(**init_kwargs)
+    hl.default_reference("GRCh38")
+
+
 def qc_temp_prefix(
     version: str = CURRENT_VERSION,
     environment: str = "dataproc",
@@ -80,7 +163,10 @@ def qc_temp_prefix(
             f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
         )
     elif environment in ("dataproc", "batch"):
-        env_bucket = f"{GNOMAD_TMP_BUCKET}{f'-{days}day' if days is not None else ''}"
+        tmp_bucket = (
+            GNOMAD_TMP_BUCKET if environment == "dataproc" else BATCH_TMP_BUCKET
+        )
+        env_bucket = f"{tmp_bucket}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
             f"Environment {environment} not recognized. Choose 'rwb', 'dataproc', or 'batch'."
@@ -125,6 +211,33 @@ def get_logging_path(
     return f"{qc_temp_prefix(version, environment, tmp_dir_days)}{name}.log"
 
 
+_BATCH_RESOURCE_PARAMS = [
+    "app_name",
+    "driver_cores",
+    "driver_memory",
+    "worker_cores",
+    "worker_memory",
+]
+
+
+def _get_batch_resource_kwargs(args) -> dict:
+    """
+    Extract optional Hail Batch resource parameters from parsed args, omitting None values.
+
+    Intended for use with scripts that expose ``--app-name``, ``--driver-cores``,
+    ``--driver-memory``, ``--worker-cores``, and ``--worker-memory`` arguments. The
+    result can be unpacked directly into :func:`_init_hail`.
+
+    :param args: Parsed command-line arguments.
+    :return: Dict of non-None batch resource kwargs.
+    """
+    return {
+        p: getattr(args, p)
+        for p in _BATCH_RESOURCE_PARAMS
+        if getattr(args, p, None) is not None
+    }
+
+
 def get_aou_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
@@ -145,6 +258,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
+    environment: str = "rwb",
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -173,8 +287,11 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: AoU v8 VDS.
     """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
     vds = aou_v8_resource.vds()
 
@@ -202,11 +319,17 @@ def get_aou_vds(
     # and samples with non-XX/XY ploidies.
     hard_filtered_samples_ht = None
     if remove_hard_filtered_samples:
-        from gnomad_qc.v5.resources.sample_qc import hard_filtered_samples
+        from gnomad_qc.v5.resources.sample_qc import get_hard_filtered_samples
 
         logger.info("Removing hard filtered samples from AoU VDS...")
-        hard_filtered_samples_ht = hard_filtered_samples.ht()
-    s_to_exclude = list(hl.eval(get_samples_to_exclude(hard_filtered_samples_ht)))
+        hard_filtered_samples_ht = get_hard_filtered_samples(
+            environment=environment
+        ).ht()
+    s_to_exclude = list(
+        hl.eval(
+            get_samples_to_exclude(hard_filtered_samples_ht, environment=environment)
+        )
+    )
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
@@ -254,12 +377,15 @@ def get_aou_vds(
     rmt = vds.reference_data
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
-        meta_ht = meta(data_type="genomes").ht()
+        # Import here to avoid circular imports.
+        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+
+        meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions = sample_id_collisions.ht()
+        sample_collisions = get_sample_id_collisions(environment=environment).ht()
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
@@ -513,6 +639,7 @@ def get_aou_failing_genomic_metrics_samples() -> Set[str]:
 def get_samples_to_exclude(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     overwrite: bool = False,
+    environment: str = "rwb",
 ) -> hl.expr.SetExpression:
     """
     Get set of AoU sample IDs to exclude.
@@ -523,11 +650,25 @@ def get_samples_to_exclude(
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
     :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
-    if not file_exists(samples_to_exclude.path) or overwrite:
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    # Import here to avoid circular imports.
+    from gnomad_qc.v5.resources.meta import (
+        get_failing_metrics_samples,
+        get_low_quality_samples,
+        get_samples_to_exclude_resource,
+    )
 
-        if not file_exists(low_quality_samples.path):
+    lq_resource = get_low_quality_samples(environment=environment)
+    fm_resource = get_failing_metrics_samples(environment=environment)
+    ste_resource = get_samples_to_exclude_resource(environment=environment)
+
+    if not file_exists(ste_resource.path) or overwrite:
+
+        if not file_exists(lq_resource.path):
             # Load samples flagged in AoU Known Issues #1.
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
             low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
@@ -535,9 +676,9 @@ def get_samples_to_exclude(
                 hl.agg.collect_as_set(low_quality_ht.research_id)
             )
             hl.experimental.write_expression(
-                hl.set(low_quality_sample_ids), low_quality_samples.path
+                hl.set(low_quality_sample_ids), lq_resource.path
             )
-        if not file_exists(failing_metrics_samples.path):
+        if not file_exists(fm_resource.path):
             # Load and count samples failing genomic metrics filters.
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(
@@ -545,22 +686,20 @@ def get_samples_to_exclude(
                 len(failing_genomic_metrics_samples),
             )
             hl.experimental.write_expression(
-                hl.set(failing_genomic_metrics_samples), failing_metrics_samples.path
+                hl.set(failing_genomic_metrics_samples), fm_resource.path
             )
 
         # Union all samples to exclude and write out.
-        low_quality_sample_ids = hl.experimental.read_expression(
-            low_quality_samples.path
-        )
+        low_quality_sample_ids = hl.experimental.read_expression(lq_resource.path)
         failing_genomic_metrics_samples = hl.experimental.read_expression(
-            failing_metrics_samples.path
+            fm_resource.path
         )
         s_to_exclude = low_quality_sample_ids.union(failing_genomic_metrics_samples)
         hl.experimental.write_expression(
-            s_to_exclude, samples_to_exclude.path, overwrite=True
+            s_to_exclude, ste_resource.path, overwrite=True
         )
 
-    s_to_exclude = hl.experimental.read_expression(samples_to_exclude.path)
+    s_to_exclude = hl.experimental.read_expression(ste_resource.path)
 
     if filter_samples is None:
         additional_samples = hl.empty_set(hl.tstr)

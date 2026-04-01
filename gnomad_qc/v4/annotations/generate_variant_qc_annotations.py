@@ -41,9 +41,11 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
+    get_gnomad_v4_genomes_vds,
     get_gnomad_v4_vds,
     get_logging_path,
 )
+from gnomad_qc.v4.resources.constants import DEFAULT_VEP_VERSION
 from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
@@ -681,6 +683,8 @@ def get_variant_qc_annotation_resources(
     combine_compute_info: bool = False,
     true_positive_type: Optional[str] = None,
     releasable_trios_only: bool = False,
+    vep_data_type: str = "exomes",
+    vep_version: str = DEFAULT_VEP_VERSION,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
@@ -697,7 +701,10 @@ def get_variant_qc_annotation_resources(
         produced by running --compute-info with --compute-info-split-n-alleles.
     :param true_positive_type: Type of true positive variants to use for true positive
         VCF path resource. Default is None.
-    :param releasable_trios_only: Whether to only include releasable trios in the trio stats.
+    :param releasable_trios_only: Whether to only include releasable trios in the trio
+        stats. Default is False.
+    :param vep_data_type: Data type to use for VEP annotations. Default is exomes.
+    :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
@@ -758,11 +765,19 @@ def get_variant_qc_annotation_resources(
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
-        output_resources={"vep_ht": get_vep(data_type="exomes", test=test)},
+        output_resources={
+            "vep_ht": get_vep(
+                test=test, data_type=vep_data_type, vep_version=vep_version
+            )
+        },
     )
     validate_vep = PipelineStepResourceCollection(
         "--validate-vep",
-        output_resources={"vep_count_ht": validate_vep_path(test=test)},
+        output_resources={
+            "vep_count_ht": validate_vep_path(
+                test=test, data_type=vep_data_type, vep_version=vep_version
+            )
+        },
         pipeline_input_steps=[run_vep],
     )
     trio_stats = PipelineStepResourceCollection(
@@ -834,6 +849,8 @@ def main(args):
     split_n_alleles = args.compute_info_split_n_alleles
     combine_compute_info = args.combine_compute_info
     run_vep = args.run_vep
+    vep_data_type = args.vep_data_type
+    vep_version = args.vep_version
     overwrite = args.overwrite
     transmitted_singletons = args.transmitted_singletons
     sibling_singletons = args.sibling_singletons
@@ -866,18 +883,21 @@ def main(args):
         combine_compute_info=combine_compute_info,
         true_positive_type=true_positive_type,
         releasable_trios_only=releasable_trios_only,
+        vep_data_type=vep_data_type,
+        vep_version=vep_version,
     )
-    vds = get_gnomad_v4_vds(
-        test=test_dataset,
-        high_quality_only=True,
-        # Keep control/truth samples because they are used in variant QC.
-        keep_controls=True,
-        annotate_meta=True,
-    )
-    mt = vds.variant_data
+    if args.compute_info or args.generate_trio_stats or args.generate_sibling_stats:
+        vds = get_gnomad_v4_vds(
+            test=test_dataset,
+            high_quality_only=True,
+            # Keep control/truth samples because they are used in variant QC.
+            keep_controls=True,
+            annotate_meta=True,
+        )
+        mt = vds.variant_data
 
-    if test_n_partitions:
-        mt = mt._filter_partitions(range(test_n_partitions))
+        if test_n_partitions:
+            mt = mt._filter_partitions(range(test_n_partitions))
 
     try:
         if args.compute_info:
@@ -930,17 +950,30 @@ def main(args):
         if run_vep:
             res = vqc_resources.run_vep
             res.check_resource_existence()
-            ht = hl.split_multi(
-                get_gnomad_v4_vds(test=test_dataset).variant_data.rows()
-            )
-            ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
+
+            if vep_data_type == "exomes":
+                ht = get_gnomad_v4_vds(
+                    test=test_dataset, remove_hard_filtered_samples=False
+                ).variant_data.rows()
+            else:
+                ht = get_gnomad_v4_genomes_vds(
+                    test=test_dataset, remove_hard_filtered_samples=False
+                ).variant_data.rows()
+
+            if test_n_partitions:
+                ht = ht._filter_partitions(range(test_n_partitions))
+
+            ht = hl.split_multi(ht)
+            ht = vep_or_lookup_vep(ht, vep_version=vep_version)
             ht.write(res.vep_ht.path, overwrite=overwrite)
 
         if args.validate_vep:
             res = vqc_resources.validate_vep
             res.check_resource_existence()
             count_ht = count_vep_annotated_variants_per_interval(
-                res.vep_ht.ht(), ensembl_interval.ht()
+                # TODO: Does the ensembl_interval HT need to be updated for 115?
+                res.vep_ht.ht(),
+                ensembl_interval.ht(),
             )
             count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
 
@@ -1082,6 +1115,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--run-vep", help="Generates vep annotations.", action="store_true"
     )
     parser.add_argument(
+        "--vep-data-type",
+        help="Data type to use for VEP annotations. Default is exomes.",
+        default="exomes",
+        choices=["exomes", "genomes"],
+    )
+    parser.add_argument(
         "--validate-vep",
         help=(
             "Validate that variants in protein-coding genes are correctly annotated by"
@@ -1092,7 +1131,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vep-version",
         help="Version of VEPed context Table to use in vep_or_lookup_vep.",
-        default="105",
+        default=DEFAULT_VEP_VERSION,
     )
     trio_stat_args = parser.add_argument_group("Arguments used to generate trio stats.")
     trio_stat_args.add_argument(

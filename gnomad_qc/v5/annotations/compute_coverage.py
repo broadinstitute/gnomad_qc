@@ -40,12 +40,12 @@ from gnomad_qc.v5.resources.annotations import (
     qual_hists,
 )
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
     qc_temp_prefix,
 )
-from gnomad_qc.v5.resources.constants import WORKSPACE_BUCKET
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.release import (
     release_all_sites_an_tsv_path,
@@ -645,18 +645,8 @@ def join_aou_and_gnomad_qual_hists_ht(
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
-    environment = "rwb" if project == "aou" else "dataproc"
-    if environment == "rwb":
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/compute_coverage.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        hl.init(
-            log="compute_coverage.log",
-            tmp_dir="gs://gnomad-tmp-4day",
-        )
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("compute_coverage", environment)
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
@@ -677,7 +667,7 @@ def main(args):
         downsampling_ht_path = get_aou_downsampling(
             test=test, environment=environment
         ).path
-        meta_ht_path = meta(data_type="genomes").path
+        meta_ht_path = meta(data_type="genomes", environment=environment).path
         group_membership_ht_path = group_membership(
             test=test, data_set=project, environment=environment
         ).path
@@ -769,6 +759,7 @@ def main(args):
                     filter_partitions=range(2) if test_2_partitions else None,
                     annotate_meta=True,
                     chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
+                    environment=environment,
                 )
                 # NOTE: AoU v8 VDS does not have DP annotation, so using custom function
                 # to annotate adj.
@@ -812,9 +803,7 @@ def main(args):
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
-            merged_gnomad_coverage_ht_path = (
-                f"{(qc_temp_prefix())}gnomad_v5_genomes_coverage.ht"
-            )
+            merged_gnomad_coverage_ht_path = f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
                 output_step_resources={
                     "merged_gnomad_coverage_ht": [merged_gnomad_coverage_ht_path],
@@ -840,7 +829,9 @@ def main(args):
             ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_an:
-            merged_gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
+            merged_gnomad_an_ht_path = (
+                f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
+            )
             check_resource_existence(
                 output_step_resources={
                     "merged_gnomad_an_ht": [merged_gnomad_an_ht_path],
@@ -872,9 +863,10 @@ def main(args):
                 public=False,
                 test=test,
                 coverage_type="coverage",
+                environment=environment,
             )
-            cov_tsv_path = release_coverage_tsv_path(test=test)
-            gnomad_coverage_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_coverage.ht"
+            cov_tsv_path = release_coverage_tsv_path(test=test, environment=environment)
+            gnomad_coverage_ht_path = f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_coverage.ht"
             check_resource_existence(
                 input_step_resources={
                     "gnomad_coverage_ht": [gnomad_coverage_ht_path],
@@ -902,9 +894,14 @@ def main(args):
                 public=False,
                 test=test,
                 coverage_type="allele_number",
+                environment=environment,
             )
-            an_tsv_path = release_all_sites_an_tsv_path(test=test)
-            gnomad_an_ht_path = f"{qc_temp_prefix()}gnomad_v5_genomes_an.ht"
+            an_tsv_path = release_all_sites_an_tsv_path(
+                test=test, environment=environment
+            )
+            gnomad_an_ht_path = (
+                f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
+            )
             check_resource_existence(
                 input_step_resources={
                     "gnomad_an_ht": [gnomad_an_ht_path],
@@ -972,10 +969,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--project-name",
-        help="Project name. Determines environment where script will run.",
+        help="Project name.",
         default="aou",
         type=str,
         choices=["aou", "gnomad"],
+    )
+    parser.add_argument(
+        "--environment",
+        help="Compute environment.",
+        default="rwb",
+        choices=["rwb", "batch"],
     )
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
