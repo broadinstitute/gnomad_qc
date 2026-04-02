@@ -55,7 +55,7 @@ def _annotations_root(
 
 
 ######################################################################
-# Variant QC annotation resources
+# Trio and sibling stats resources
 ######################################################################
 
 
