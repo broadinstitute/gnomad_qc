@@ -196,7 +196,7 @@ def get_checkpoint_path(
     :param str name: Name of intermediate Table/MatrixTable.
     :param version: Version of annotation path to return.
     :param bool mt: Whether path is for a MatrixTable, default is False.
-    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Default is 'dataproc'.
     :return: Output checkpoint path.
     """
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'
@@ -213,8 +213,8 @@ def get_logging_path(
 
     :param name: Name of log file.
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
-    :param tmp_dir_days: Number of days to keep temporary data. Defaults to None.
+    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Default is 'dataproc'.
+    :param tmp_dir_days: Number of days to keep temporary data. Default is None.
     :return: Output log path.
     """
     return f"{qc_temp_prefix(version, environment, tmp_dir_days)}{name}.log"
