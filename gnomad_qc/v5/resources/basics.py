@@ -18,6 +18,7 @@ from gnomad_qc.v5.resources.constants import (
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
     BATCH_BUCKET,
+    BATCH_READ_ONLY_BUCKET,
     BATCH_TMP_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
@@ -42,7 +43,7 @@ def _validate_environment(
     Raise ValueError if `environment` is not in `allowed`.
 
     :param environment: Environment string to validate.
-    :param allowed: Set of permitted environment strings. Defaults to
+    :param allowed: Set of permitted environment strings. Default is
         `_ALL_ENVIRONMENTS`.
     """
     if environment not in allowed:
@@ -52,19 +53,27 @@ def _validate_environment(
         )
 
 
-def _get_base_bucket(environment: str = "rwb") -> str:
+def _get_base_bucket(environment: str = "batch", read_only: bool = False) -> str:
     """
     Return the top-level GCS bucket for the given environment.
 
-    :param environment: Environment to use. Must be one of "rwb", "batch", or
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or
         "dataproc".
+    :param read_only: If True and environment is "batch", return the read-only
+        bucket within the AoU authorization Domain instead of the primary batch bucket.
+        Default is False.
     :return: Bucket name string (without gs:// prefix).
     """
     _validate_environment(environment)
+    if read_only and environment != "batch":
+        raise ValueError(
+            f"read_only=True is only supported when environment is 'batch', "
+            f"got '{environment}'."
+        )
     if environment == "rwb":
         return WORKSPACE_BUCKET
     elif environment == "batch":
-        return BATCH_BUCKET
+        return BATCH_READ_ONLY_BUCKET if read_only else BATCH_BUCKET
     else:
         return GNOMAD_BUCKET
 
@@ -97,7 +106,7 @@ aou_test_dataset = VariantDatasetResource(
 
 def _init_hail(
     log_name: str,
-    environment: str = "rwb",
+    environment: str = "batch",
     billing_project: Optional[str] = None,
     tmp_dir_days: Optional[int] = 4,
     **kwargs,
@@ -106,9 +115,9 @@ def _init_hail(
     Initialize Hail with environment-appropriate settings and set GRCh38 as default reference.
 
     :param log_name: Base name for the log file (without path or extension).
-    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "rwb".
+    :param environment: Compute environment. One of "rwb", "batch", or "dataproc". Default is "batch".
     :param billing_project: GCP billing project for requester-pays buckets (batch only).
-        Defaults to "broad-mpg-gnomad".
+        Default is None. When None, uses "broad-mpg-gnomad".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
     :param kwargs: Additional keyword arguments forwarded to hl.init() in all
@@ -151,8 +160,8 @@ def qc_temp_prefix(
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
-    :param days: Number of days to keep temporary data. Defaults to None.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Default is 'dataproc'.
+    :param days: Number of days to keep temporary data. Default is None.
     :return: Path to bucket with temporary QC data.
     """
     if days not in [None, 4, 30]:
@@ -187,7 +196,7 @@ def get_checkpoint_path(
     :param str name: Name of intermediate Table/MatrixTable.
     :param version: Version of annotation path to return.
     :param bool mt: Whether path is for a MatrixTable, default is False.
-    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Default is 'dataproc'.
     :return: Output checkpoint path.
     """
     return f'{qc_temp_prefix(version, environment)}{name}.{"mt" if mt else "ht"}'
@@ -204,8 +213,8 @@ def get_logging_path(
 
     :param name: Name of log file.
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Defaults to 'dataproc'.
-    :param tmp_dir_days: Number of days to keep temporary data. Defaults to None.
+    :param environment: Compute environment, 'dataproc', 'rwb', or 'batch'. Default is 'dataproc'.
+    :param tmp_dir_days: Number of days to keep temporary data. Default is None.
     :return: Output log path.
     """
     return f"{qc_temp_prefix(version, environment, tmp_dir_days)}{name}.log"
@@ -258,7 +267,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -287,8 +296,7 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
-        or "batch".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -639,7 +647,7 @@ def get_aou_failing_genomic_metrics_samples() -> Set[str]:
 def get_samples_to_exclude(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     overwrite: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> hl.expr.SetExpression:
     """
     Get set of AoU sample IDs to exclude.
@@ -650,7 +658,7 @@ def get_samples_to_exclude(
 
     :param filter_samples: Optional additional samples to remove. Can be a list of sample IDs or a Table with sample IDs.
     :param overwrite: Whether to overwrite the existing `samples_to_exclude` resource. Default is False.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: SetExpression containing IDs of samples to exclude from v5 analysis.
     """
