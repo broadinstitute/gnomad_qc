@@ -43,7 +43,7 @@ def _validate_environment(
     Raise ValueError if `environment` is not in `allowed`.
 
     :param environment: Environment string to validate.
-    :param allowed: Set of permitted environment strings. Defaults to
+    :param allowed: Set of permitted environment strings. Default is
         `_ALL_ENVIRONMENTS`.
     """
     if environment not in allowed:
@@ -160,8 +160,8 @@ def qc_temp_prefix(
     Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return.
-    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Defaults to 'dataproc'.
-    :param days: Number of days to keep temporary data. Defaults to None.
+    :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Default is 'dataproc'.
+    :param days: Number of days to keep temporary data. Default is None.
     :return: Path to bucket with temporary QC data.
     """
     if days not in [None, 4, 30]:
