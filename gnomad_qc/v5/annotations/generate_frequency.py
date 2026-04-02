@@ -119,7 +119,7 @@ def _prepare_aou_vds(
     aou_vds: hl.vds.VariantDataset,
     use_all_sites_ans: bool = False,
     test: bool = False,
-    environment: str = "rwb",
+    environment: str = "batch",
 ) -> hl.vds.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
@@ -127,7 +127,7 @@ def _prepare_aou_vds(
     :param aou_vds: AoU VariantDataset.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param test: Whether running in test mode.
-    :param environment: Environment being used. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment being used. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Prepared AoU VariantDataset.
     """
@@ -196,14 +196,14 @@ def _prepare_aou_vds(
 
 
 def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
-    aou_variant_mt: hl.MatrixTable, test: bool = False, environment: str = "rwb"
+    aou_variant_mt: hl.MatrixTable, test: bool = False, environment: str = "batch"
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using all sites ANs.
 
     :param aou_variant_mt: Prepared variant MatrixTable.
     :param test: Whether to use test resources.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Table with freq and age_hists annotations.
     """
@@ -300,7 +300,7 @@ def _calculate_aou_frequencies_and_hists_using_densify(
 
 
 def process_aou_dataset(
-    test: bool = False, use_all_sites_ans: bool = False, environment: str = "rwb"
+    test: bool = False, use_all_sites_ans: bool = False, environment: str = "batch"
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -311,7 +311,7 @@ def process_aou_dataset(
 
     :param test: Whether to run in test mode.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
@@ -1190,7 +1190,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--environment",
         help="Environment to run in.",
         choices=["rwb", "batch"],
-        default="rwb",
+        default="batch",
     )
     env_group.add_argument(
         "--tmp-dir-days",
