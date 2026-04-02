@@ -107,64 +107,6 @@ def get_sib_stats(
     )
 
 
-def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableResource:
-    """
-    Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.
-
-    :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
-    :return: Info VersionedTableResource.
-    """
-    return VersionedTableResource(
-        CURRENT_ANNOTATION_VERSION,
-        {
-            version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
-            )
-            for version in ANNOTATION_VERSIONS
-        },
-    )
-
-
-def get_variant_qc_annotations(
-    test: bool = False, environment: str = "rwb"
-) -> VersionedTableResource:
-    """
-    Return the VersionedTableResource to the variant QC annotation Table.
-
-    Annotations that are included in the Table:
-
-        Features for RF:
-            - variant_type
-            - allele_type
-            - n_alt_alleles
-            - has_star
-            - AS_QD
-            - AS_pab_max
-            - AS_MQRankSum
-            - AS_SOR
-            - AS_ReadPosRankSum
-
-        Training sites (bool):
-            - transmitted_singleton
-            - sibling_singleton
-            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
-
-    :param test: Whether to use a tmp path for testing.
-    :param environment: Environment to use. Default is "rwb". Must be one of "rwb", "batch", or "dataproc".
-    :return: Table with variant QC annotations.
-    """
-    return VersionedTableResource(
-        CURRENT_ANNOTATION_VERSION,
-        {
-            version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
-            )
-            for version in ANNOTATION_VERSIONS
-        },
-    )
-
-
 ######################################################################
 # Frequency, coverage, and AN annotation resources
 ######################################################################
@@ -380,6 +322,46 @@ def get_aou_annotated_sites_only_vcf(environment: str = "batch") -> str:
     if environment == "batch":
         return f"gs://{bucket}/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz"
     return f"gs://{bucket}/echo_full_gnomad_annotated.sites-only.vcf.gz"
+
+
+def get_variant_qc_annotations(
+    test: bool = False, environment: str = "batch"
+) -> VersionedTableResource:
+    """
+    Return the VersionedTableResource to the variant QC annotation Table.
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :return: Table with variant QC annotations.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
 
 
 ######################################################################
