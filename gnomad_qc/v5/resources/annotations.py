@@ -126,18 +126,6 @@ def get_info_ht(test: bool = False, environment: str = "rwb") -> VersionedTableR
     )
 
 
-# Header for AoU annotation sites-only VCF. This is needed for proper import of the sites-only VCF as the QUALapprox annotation
-# is stated in the previous header as an int but it is actually a float.
-aou_vcf_header = (
-    f"{_annotations_root(version='5.0')}/aou_annotation_sites_only_header.vcf"
-)
-
-# AoU sites-only VCF with annotations needed for variant QC.
-aou_annotated_sites_only_vcf = (
-    f"gs://{WORKSPACE_BUCKET}/echo_full_gnomad_annotated.sites-only.vcf.gz"
-)
-
-
 def get_variant_qc_annotations(
     test: bool = False, environment: str = "rwb"
 ) -> VersionedTableResource:
