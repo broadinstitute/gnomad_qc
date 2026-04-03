@@ -1111,13 +1111,13 @@ def load_gnomad_data(
     version: str = "5.0",
     data_type: str = "genomes",
     test: bool = False,
-    data_set: str = None,
-    public_release: bool = None,
+    data_set: Optional[str] = None,
+    public_release: Optional[bool] = None,
 ) -> hl.Table:
     """
-    Load gnomAD data with based on specified input file and parameters.
+    Load gnomAD data based on specified input file and parameters.
 
-    :param gnomad_input_file: Name of resource to load. One of "freq", "release_sites", or "public_release".
+    :param gnomad_input_file: Name of resource to load, either "freq" or "release_sites".
     :param version: Version to load. For example "4.0", "4.1", "5.0". Default is "5.0".
     :param data_type: Type of gnomAD data to load, either "exomes" or "genomes".
     :param test: If True, load test version of the data. Default is False.
@@ -1152,7 +1152,7 @@ def load_gnomad_data(
     module = importlib.import_module(module_path)
     resource_func = getattr(module, function_name)
 
-    logger.info(f"Loading %s version %s (%s)...", gnomad_input_file, major_v, data_type)
+    logger.info("Loading %s version %s (%s)...", gnomad_input_file, major_v, data_type)
 
     # Collect all possible params for the function.
     all_params = {
@@ -1411,7 +1411,7 @@ if __name__ == "__main__":
             "        (sex karyotype).\n"
             "      * freq_meta_sample_count: Name of annotation containing sample count per\n"
             "        sample grouping defined in the freq_meta global annotation.\n"
-            " -faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields:\n"
+            " - faf_fields: Dictionary containing the names of filtering allele frequency (FAF) related fields:\n"
             "      * faf: Name of annotation containing structs of FAF information.\n"
             "      * faf_meta: Name of annotation for FAF metadata, an ordered list\n"
             "        containing the frequency aggregation group for each element of the faf\n"
@@ -1455,7 +1455,7 @@ if __name__ == "__main__":
     gnomad_group = parser.add_argument_group("gnomad", "gnomAD input options")
     gnomad_group.add_argument(
         "--gnomad-input-file",
-        help="Source to load gnomAD data from. 'freq' loads from get_freq, and 'release_sites' loads from release_sites.",
+        help="Source to load gnomAD data from. 'freq' loads from get_freq and 'release_sites' loads from release_sites.",
         choices=["freq", "release_sites"],
         default="release_sites",
         type=str,
