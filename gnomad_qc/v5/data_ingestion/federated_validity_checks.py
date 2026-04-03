@@ -31,10 +31,7 @@ from gnomad.assessment.validity_checks import (
 from gnomad.resources.resource_utils import VersionedTableResource
 from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.reference_genome import get_reference_genome
-from gnomad.utils.vcf import (
-    ALLELE_TYPE_FIELDS,
-    REGION_FLAG_FIELDS,
-)
+from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, REGION_FLAG_FIELDS
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
