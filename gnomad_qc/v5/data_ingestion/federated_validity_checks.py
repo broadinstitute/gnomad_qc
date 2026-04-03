@@ -7,8 +7,9 @@ import json
 import logging
 import re
 from collections import defaultdict
+from copy import deepcopy
 from io import StringIO
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
 from bs4 import BeautifulSoup
@@ -28,14 +29,15 @@ from gnomad.assessment.validity_checks import (
     unfurl_array_annotations,
 )
 from gnomad.resources.resource_utils import VersionedTableResource
+from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.reference_genome import get_reference_genome
-from jsonschema import validate
-from jsonschema.exceptions import ValidationError
-
-from gnomad_qc.v4.create_release.validate_and_export_vcf import (
+from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     REGION_FLAG_FIELDS,
 )
+from jsonschema import validate
+from jsonschema.exceptions import ValidationError
+
 from gnomad_qc.v5.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.resources.basics import get_logging_path
 
@@ -62,6 +64,34 @@ formatter = logging.Formatter(
 )
 memory_handler.setFormatter(formatter)
 logger.addHandler(memory_handler)
+
+# Remove original alleles for containing non-releasable alleles.
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(
+    ALLELE_TYPE_FIELDS, ["original_alleles"]
+)
+
+ALLELE_TYPE_FIELDS = {
+    "exomes": ALLELE_TYPE_FIELDS,
+    "genomes": remove_fields_from_constant(ALLELE_TYPE_FIELDS, ["has_star"]),
+}
+
+# Drop decoy, still doesn't exist on 38.
+REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
+REGION_FLAG_FIELDS = remove_fields_from_constant(
+    REGION_FLAG_FIELDS, ["decoy", "nonpar"]
+)
+REGION_FLAG_FIELDS = {
+    "exomes": (
+        REGION_FLAG_FIELDS
+        + [
+            "fail_interval_qc",
+            "outside_ukb_capture_region",
+            "outside_broad_capture_region",
+        ]
+    ),
+    "genomes": REGION_FLAG_FIELDS,
+}
 
 
 def get_table_kind(lines, header_index) -> str:
@@ -1113,6 +1143,7 @@ def load_gnomad_data(
     test: bool = False,
     data_set: Optional[str] = None,
     public_release: Optional[bool] = None,
+    environment: Optional[str] = None,
 ) -> hl.Table:
     """
     Load gnomAD data based on specified input file and parameters.
@@ -1123,6 +1154,8 @@ def load_gnomad_data(
     :param test: If True, load test version of the data. Default is False.
     :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". Default is None.
     :param public_release: Whether or not to use the public version of the release. Default is None.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or
+        "dataproc". Default is None.
     :return: Hail Table of the specified gnomAD data.
     """
     # Extract the first digit before any dot, ignoring a leading 'v'.
@@ -1161,6 +1194,7 @@ def load_gnomad_data(
         "version": version,
         "data_set": data_set,
         "public": public_release,
+        "environment": environment,
     }
 
     # Filter to only the parameter that function can accept.
@@ -1168,6 +1202,8 @@ def load_gnomad_data(
     valid_args = {
         k: v for k, v in all_params.items() if k in sig_params and v is not None
     }
+
+    logger.info("Using valid parameters %s for function %s", valid_args, function_name)
 
     # Log which file and params are being used.
     arg_preview = ", ".join([f"{k}={v}" for k, v in valid_args.items()])
@@ -1251,6 +1287,7 @@ def main(args):
                 test=args.gnomad_test,
                 data_set=args.gnomad_data_set,
                 public_release=args.gnomad_public_release,
+                environment=args.gnomad_environment,
             )
             output_base = f"{output_base}/{data_type}/{args.gnomad_input_file}"
 
@@ -1345,7 +1382,7 @@ def main(args):
             site_gt_check_expr=site_gt_check_expr,
         )
 
-        handler.flush()
+        memory_handler.flush()
         log_output = log_stream.getvalue()
 
         # TODO: Create resource functions when know organization of federated data.
@@ -1423,7 +1460,7 @@ if __name__ == "__main__":
             " - subsets: List of sample subsets to include for the subset validity check.\n"
             " - variant_filter_field: String of variant filtration used in the filters annotation of the Hail Table (e.g. 'RF', 'VQSR', 'AS_VQSR').\n"
             " - data_type: Data type to run checks on. One of 'exomes' or 'genomes'.\n"
-            " - check_mono_and_only_het: Whether to skip the check for monoallelic and 100 percent heterozygous sites in the Table('monoallelic' and 'only_het' annotations must be present)."
+            " - check_mono_and_only_het: Whether to run the check for monoallelic and 100 percent heterozygous sites in the Table('monoallelic' and 'only_het' annotations must be present)."
         ),
         type=str,
     )
@@ -1482,6 +1519,14 @@ if __name__ == "__main__":
         "--gnomad-public-release",
         help="Whether or not to use the public version of the release when loading data. Only applicable when loading 'release_sites'.",
         action="store_true",
+    )
+    gnomad_group.add_argument(
+        "--gnomad-environment",
+        help=(
+            "Environment to use when loading gnomAD data. Default is 'batch'. Must be one of 'rwb', 'batch', or 'dataproc'."
+        ),
+        choices=["rwb", "batch", "dataproc"],
+        default="batch",
     )
     args = parser.parse_args()
     main(args)
