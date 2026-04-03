@@ -1375,7 +1375,7 @@ if __name__ == "__main__":
         "--test-n-partitions",
         help=(
             "Use only N partitions of the input (as well as sex chromosomes) for testing purposes. Defaults"
-            "to 2 if passed without a value. Cannot be used if --use-logtest-ht is set."
+            " to 2 if passed without a value. Cannot be used if --use-logtest-ht is set."
         ),
         nargs="?",
         const=2,
