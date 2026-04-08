@@ -8,10 +8,10 @@ from gnomad.resources.resource_utils import (
     TableResource,
     VersionedTableResource,
 )
-from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v5.resources.basics import (
     _ALL_ENVIRONMENTS,
+    _file_exists_for_env,
     _get_base_bucket,
     _validate_environment,
     qc_temp_prefix,
@@ -270,7 +270,9 @@ def release_ht_path(
     """
     if public:
         res = public_release(data_type="genomes").versions
-        if release_version in res and file_exists(res[release_version].path):
+        if release_version in res and _file_exists_for_env(
+            res[release_version].path, environment
+        ):
             return res[release_version].path
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/genomes/gnomad.genomes.v{release_version}.sites.ht"
