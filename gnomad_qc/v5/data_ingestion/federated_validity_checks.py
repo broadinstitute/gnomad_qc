@@ -1234,7 +1234,6 @@ def main(args):
     hl.init(
         log="/federated_validity_checks.log",
         tmp_dir="gs://gnomad-tmp-4day",
-        gcs_requester_pays_configuration=args.gcp_billing_project,
     )
     hl.default_reference("GRCh38")
     test_n_partitions = args.test_n_partitions
@@ -1486,26 +1485,20 @@ if __name__ == "__main__":
         type=float,
         default=0.50,
     )
-    parser.add_argument(
-        "--gcp-billing-project",
-        type=str,
-        default="broad-mpg-gnomad",
-        help="Google Cloud billing project for reading requester pays buckets.",
-    )
     # Create a group for gnomAD input arguments.
     gnomad_group = parser.add_argument_group("gnomad", "gnomAD input options")
     gnomad_group.add_argument(
         "--gnomad-input-file",
-        help="Source to load gnomAD data from. 'freq' loads from get_freq and 'release_sites' loads from release_sites.",
+        help="Source to load gnomAD data from. 'freq' loads from get_freq and 'release_sites' loads from release_sites. Default is None.",
         choices=["freq", "release_sites"],
-        default="release_sites",
         type=str,
+        default=None,
     )
     gnomad_group.add_argument(
         "--gnomad-version",
-        help="Version of gnomAD resources to use.",
+        help="Version of gnomAD resources to use. Default is None.",
         choices=["4.0", "4.1", "4.1.1", "5.0"],
-        default="5.0",
+        default=None,
         type=str,
     )
     gnomad_group.add_argument(
@@ -1517,6 +1510,7 @@ if __name__ == "__main__":
         "--gnomad-data-set",
         help="Data set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'. Default is None.",
         choices=["aou", "gnomad", "merged"],
+        type=str,
         default=None,
     )
     gnomad_group.add_argument(
@@ -1530,6 +1524,7 @@ if __name__ == "__main__":
             "Environment to use when loading gnomAD data. Must be one of 'rwb', 'batch', or 'dataproc'. Default is None."
         ),
         choices=["rwb", "batch", "dataproc"],
+        type=str,
         default=None,
     )
     args = parser.parse_args()
