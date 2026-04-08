@@ -1234,6 +1234,7 @@ def main(args):
     hl.init(
         log="/federated_validity_checks.log",
         tmp_dir="gs://gnomad-tmp-4day",
+        gcs_requester_pays_configuration=args.gcp_billing_project,
     )
     hl.default_reference("GRCh38")
     test_n_partitions = args.test_n_partitions
@@ -1485,6 +1486,12 @@ if __name__ == "__main__":
         type=float,
         default=0.50,
     )
+    parser.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        default="broad-mpg-gnomad",
+        help="Google Cloud billing project for reading requester pays buckets.",
+    )
     # Create a group for gnomAD input arguments.
     gnomad_group = parser.add_argument_group("gnomad", "gnomAD input options")
     gnomad_group.add_argument(
@@ -1508,7 +1515,7 @@ if __name__ == "__main__":
     )
     gnomad_group.add_argument(
         "--gnomad-data-set",
-        help="Data set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'.",
+        help="Data set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'. Default is None.",
         choices=["aou", "gnomad", "merged"],
         default=None,
     )
@@ -1520,10 +1527,10 @@ if __name__ == "__main__":
     gnomad_group.add_argument(
         "--gnomad-environment",
         help=(
-            "Environment to use when loading gnomAD data. Default is 'batch'. Must be one of 'rwb', 'batch', or 'dataproc'."
+            "Environment to use when loading gnomAD data. Must be one of 'rwb', 'batch', or 'dataproc'. Default is None."
         ),
         choices=["rwb", "batch", "dataproc"],
-        default="batch",
+        default=None,
     )
     args = parser.parse_args()
     main(args)
