@@ -300,7 +300,10 @@ def _calculate_aou_frequencies_and_hists_using_densify(
 
 
 def process_aou_dataset(
-    test: bool = False, use_all_sites_ans: bool = False, environment: str = "batch"
+    test_vds: bool = False,
+    test_partitions: int = None,
+    use_all_sites_ans: bool = False,
+    environment: str = "batch",
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -309,15 +312,22 @@ def process_aou_dataset(
     1. Computing complete frequency struct (uses imported AN from AoU all site ANs if requested)
     2. Generating age histograms within the frequency calculation
 
-    :param test: Whether to run in test mode.
+    :param test_vds: Whether to run in test mode on test VDS.
+    :param test_partitions: Number of partitions to use in test mode. Default is None.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
+    test = test_vds or test_partitions is not None
     aou_vds = get_aou_vds(
-        annotate_meta=True, release_only=True, test=test, environment=environment
+        annotate_meta=True,
+        release_only=True,
+        test=test_vds,
+        filter_partitions=list(range(test_partitions)) if test_partitions else None,
+        environment=environment,
     )
+
     aou_vds = _prepare_aou_vds(
         aou_vds, use_all_sites_ans=use_all_sites_ans, test=test, environment=environment
     )
@@ -339,7 +349,7 @@ def process_aou_dataset(
 
 def _prepare_consent_vds(
     v4_ht: hl.Table,
-    test: bool = False,
+    test_vds: bool = False,
     test_partitions: int = 2,
 ) -> hl.vds.VariantDataset:
     """
@@ -354,9 +364,10 @@ def _prepare_consent_vds(
 
     vds = get_gnomad_v5_genomes_vds(
         release_only=True,
+        test=test_vds,
         consent_drop_only=True,
         annotate_meta=True,
-        filter_partitions=list(range(test_partitions)) if test else None,
+        filter_partitions=list(range(test_partitions)),
     )
 
     logger.info(
@@ -427,14 +438,14 @@ def _prepare_consent_vds(
 
 def _calculate_consent_frequencies_and_age_histograms(
     vds: hl.vds.VariantDataset,
-    test: bool = False,
+    test_run: bool = False,
     environment: str = "batch",
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for consent withdrawal samples.
 
     :param vds: Prepared VDS with consent samples.
-    :param test: Whether running in test mode.
+    :param test_run: Whether running in test mode.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Table with freq and age_hists annotations for consent samples.
@@ -443,7 +454,7 @@ def _calculate_consent_frequencies_and_age_histograms(
     mt = hl.vds.to_dense_mt(vds)
     # Group membership table is already filtered to consent drop samples and is in GCS.
     group_membership_ht = group_membership(
-        test=test, data_set="gnomad", environment=environment
+        test=test_run, data_set="gnomad", environment=environment
     ).ht()
 
     mt = mt.annotate_cols(
@@ -693,7 +704,7 @@ def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
 
 
 def process_gnomad_dataset(
-    test: bool = False,
+    test_vds: bool = False,
     test_partitions: int = 2,
     environment: str = "batch",
 ) -> hl.Table:
@@ -708,26 +719,27 @@ def process_gnomad_dataset(
     5. Subtracting both frequencies and age histograms from v4 frequency HT
     6. Only overwriting fields that were actually updated in the final output
 
-    :param test: Whether to run in test mode. If True, filters full v4 vds to first N partitions (N controlled by test_partitions).
-    :param test_partitions: Number of partitions to use in test mode. Default is 2.
+    :param test_vds: Whether to run on test vds. Default is False.
+    :param test_partitions: Number of partitions to filter to in test mode. Default is 2.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
+    test_run = test_vds or test_partitions is not None
     v4_ht = release_sites(data_type="genomes").ht()
 
     vds = _prepare_consent_vds(
         v4_ht,
-        test=test,
+        test=test_vds,
         test_partitions=test_partitions,
     )
 
     logger.info("Calculating frequencies and age histograms for consent samples...")
     consent_freq_ht = _calculate_consent_frequencies_and_age_histograms(
-        vds, test, environment=environment
+        vds, test_run=test_run, environment=environment
     )
 
-    if test:
+    if test_run:
         v4_ht = v4_ht.filter(hl.is_defined(consent_freq_ht[v4_ht.key]))
         v4_ht = v4_ht.naive_coalesce(100).checkpoint(
             new_temp_file("v4_ht_filtered_test", "ht")
@@ -1015,10 +1027,11 @@ def main(args):
     """Generate v5 frequency data."""
     environment = args.environment
     use_all_sites_ans = args.use_all_sites_ans
-    test = args.test
+    test_vds = args.test_vds
     test_partitions = args.test_partitions
     overwrite = args.overwrite
     tmp_dir_days = args.tmp_dir_days
+    test_run = test_vds or test_partitions is not None
 
     _initialize_hail(args)
 
@@ -1029,7 +1042,7 @@ def main(args):
             logger.info("Processing gnomAD dataset...")
 
             gnomad_freq = get_freq(
-                test=test,
+                test=test_run,
                 data_type="genomes",
                 data_set="gnomad",
                 environment=environment,
@@ -1041,7 +1054,7 @@ def main(args):
             )
 
             gnomad_freq_ht = process_gnomad_dataset(
-                test=test,
+                test=test_vds,
                 test_partitions=test_partitions,
                 environment=environment,
             )
@@ -1055,7 +1068,7 @@ def main(args):
         if args.process_aou:
             logger.info("Processing All of Us dataset...")
             aou_freq = get_freq(
-                test=test,
+                test=test_run,
                 data_type="genomes",
                 data_set="aou",
                 environment=environment,
@@ -1067,7 +1080,8 @@ def main(args):
             )
 
             aou_freq_ht = process_aou_dataset(
-                test=test,
+                test_vds=test_vds,
+                test_partitions=test_partitions,
                 use_all_sites_ans=use_all_sites_ans,
                 environment=environment,
             )
@@ -1081,7 +1095,7 @@ def main(args):
             )
 
             merged_freq = get_freq(
-                test=test,
+                test=test_run,
                 data_type="genomes",
                 data_set="merged",
                 environment=environment,
@@ -1094,12 +1108,15 @@ def main(args):
 
             gnomad_freq_ht = get_freq(
                 data_type="genomes",
-                test=test,
+                test=test_run,
                 data_set="gnomad",
                 environment=environment,
             )
             aou_freq_ht = get_freq(
-                data_type="genomes", test=test, data_set="aou", environment=environment
+                data_type="genomes",
+                test=test_run,
+                data_set="aou",
+                environment=environment,
             )
 
             check_resource_existence(
@@ -1150,15 +1167,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     # Test/debug arguments.
     test_group = parser.add_argument_group("testing options")
     test_group.add_argument(
-        "--test",
-        help="Filter to the first N partitions of full VDS for testing (N controlled by --test-partitions).",
+        "--test-vds",
+        help="Use the test VDS for given project.",
         action="store_true",
     )
     test_group.add_argument(
         "--test-partitions",
         type=int,
         default=2,
-        help="Number of partitions to use in test mode. Default is 2.",
+        help="If supplied, filter full or test VDS to N partitions in test mode. Default is 2.",
     )
 
     # Processing step arguments.
@@ -1199,9 +1216,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Number of days for temp directory retention. Default is 4.",
     )
     env_group.add_argument(
-        "--gcp-billing-project",
+        "--billing-project",
         type=str,
-        default="broad-mpg-gnomad",
+        default="gnomad-production",
         help="Google Cloud billing project for reading requester pays buckets.",
     )
 

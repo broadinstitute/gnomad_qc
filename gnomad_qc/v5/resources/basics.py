@@ -1,6 +1,7 @@
 """Script containing generic resources."""
 
 import logging
+import os
 from typing import List, Optional, Set, Union
 
 import hail as hl
@@ -33,6 +34,35 @@ logger.setLevel(logging.INFO)
 # Constants for environment validation.
 _SAMPLE_DATA_ENVIRONMENTS = frozenset({"rwb", "batch"})
 _ALL_ENVIRONMENTS = frozenset({"rwb", "batch", "dataproc"})
+
+
+def _file_exists_for_env(path: str, environment: str) -> bool:
+    """Check if a file exists, handling permission errors in batch mode.
+
+    When running with the batch ServiceBackend, ``file_exists`` executes
+    locally on the driver via hailtop's GCS client, which may lack access to
+    Terra workspace buckets that batch workers can reach.  In that case, assume
+    the resource already exists so that downstream ``read_expression`` calls
+    (which run on batch) succeed.
+
+    :param path: GCS path to check.
+    :param environment: Compute environment (``"rwb"``, ``"batch"``, or
+        ``"dataproc"``).
+    :return: True if the file exists (or existence cannot be verified in batch
+        mode), False otherwise.
+    """
+    try:
+        return file_exists(path)
+    except Exception:
+        if environment != "batch":
+            raise
+        logger.warning(
+            "Unable to verify existence of '%s' from the local driver in "
+            "batch mode. Assuming the resource exists; use --overwrite to "
+            "force recomputation.",
+            path,
+        )
+        return True
 
 
 def _validate_environment(
@@ -125,25 +155,27 @@ def _init_hail(
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
-    log = (
-        f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
-        if environment == "rwb"
-        else get_logging_path(
+    if environment == "rwb":
+        log = f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
+    elif environment == "batch":
+        log = f"/tmp/{log_name}.log"
+    else:
+        log = get_logging_path(
             log_name, environment=environment, tmp_dir_days=tmp_dir_days
         )
-    )
     init_kwargs = {
         "log": log,
         "tmp_dir": qc_temp_prefix(environment=environment, days=tmp_dir_days),
         **{k: v for k, v in kwargs.items() if v is not None},
     }
     if environment == "batch":
+        os.environ["HAIL_BATCH_BILLING_PROJECT"] = (
+            billing_project or "gnomad-production"
+        )
         init_kwargs.update(
             {
                 "backend": "batch",
-                "gcs_requester_pays_configuration": (
-                    billing_project or "broad-mpg-gnomad"
-                ),
+                "gcs_requester_pays_configuration": "broad-mpg-gnomad",
                 "regions": ["us-central1"],
             }
         )
@@ -674,9 +706,9 @@ def get_samples_to_exclude(
     fm_resource = get_failing_metrics_samples(environment=environment)
     ste_resource = get_samples_to_exclude_resource(environment=environment)
 
-    if not file_exists(ste_resource.path) or overwrite:
+    if overwrite or not _file_exists_for_env(ste_resource.path, environment):
 
-        if not file_exists(lq_resource.path):
+        if not _file_exists_for_env(lq_resource.path, environment):
             # Load samples flagged in AoU Known Issues #1.
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
             low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
@@ -686,7 +718,7 @@ def get_samples_to_exclude(
             hl.experimental.write_expression(
                 hl.set(low_quality_sample_ids), lq_resource.path
             )
-        if not file_exists(fm_resource.path):
+        if not _file_exists_for_env(fm_resource.path, environment):
             # Load and count samples failing genomic metrics filters.
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(
