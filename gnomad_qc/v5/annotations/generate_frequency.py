@@ -45,6 +45,7 @@ python generate_frequency.py --merge-datasets --environment batch --app-name "me
 import argparse
 import copy
 import logging
+from typing import Optional
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
@@ -172,14 +173,19 @@ def _prepare_aou_vds(
         aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
         aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
         aou_vmt = aou_vds.variant_data
+        # Defer sex-ploidy adjustment and adj computation to
+        # `_calculate_aou_frequencies_and_hists_using_densify` so they run on
+        # the dense MT and apply to ref-block fill-ins as well as variant
+        # entries (matches the v4 convention in
+        # gnomad_qc/v4/annotations/generate_freq.py:534-548). Doing it here
+        # would be wasted work — the var-only `adj` field gets filled with
+        # missing on ref-block samples by `to_dense_mt` and would have to be
+        # recomputed anyway.
         aou_vmt = aou_vmt.select_entries(
-            GT=adjusted_sex_ploidy_expr(
-                aou_vmt.locus, aou_vmt.GT, aou_vmt.sex_karyotype
-            ),
+            GT=aou_vmt.GT,
             GQ=aou_vmt.GQ,
             AD=aou_vmt.AD,
         )
-        aou_vmt = annotate_adj_no_dp(aou_vmt)
 
     logger.info("Annotating globals...")
     group_membership_globals = group_membership_ht.index_globals()
@@ -190,7 +196,20 @@ def _prepare_aou_vds(
         downsamplings=group_membership_globals.downsamplings,
     )
 
-    aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
+    # Drop GT from the reference data to work around a hail 0.2.130 bug in
+    # `vds.to_dense_mt`: its `coalesce_join` builds shared_fields by prepending
+    # the call_field and then re-adding any field present in both ref and var,
+    # which crashes with "duplicate identifier 'GT'" when (as with the AoU VDS)
+    # the reference data already carries GT. Fixed in 0.2.130.post1 (hail-is/hail
+    # commit 9b8e322379-area; see PR #14695). The drop is also safe on fixed
+    # versions: `_calculate_aou_frequencies_and_hists_using_densify` re-applies
+    # `adjusted_sex_ploidy_expr` to the dense MT, which restores the same
+    # sex-aware ploidy on ref-block fill-ins that the fixed `coalesce_join`
+    # would have preserved from ref's GT.
+    ref_data = aou_vds.reference_data
+    if "GT" in ref_data.entry:
+        ref_data = ref_data.drop("GT")
+    aou_vds = hl.vds.VariantDataset(ref_data, aou_vmt)
 
     return aou_vds
 
@@ -280,6 +299,29 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
     aou_mt = hl.vds.to_dense_mt(aou_vds)
+    # Apply sex-ploidy adjustment and (re)compute adj on the dense MT so they
+    # cover both variant entries and ref-block fill-ins. This matches the
+    # convention in gnomad_qc/v4/annotations/generate_freq.py:534-548.
+    #
+    # Why post-densify rather than on the variant data:
+    #   - On hail 0.2.130, `to_dense_mt`'s buggy `coalesce_join` overwrites
+    #     every ref-block GT with diploid `hl.call(0, 0)` regardless of
+    #     karyotype; on 0.2.130.post1+ the ref's own GT is preserved.
+    #     Adjusting here normalizes the two versions: chrX/chrY non-PAR
+    #     hom-ref calls become haploid for XY, chrY calls become missing for
+    #     XX, autosomes are unchanged.
+    #   - `adj` is a variant-only entry field, so `to_dense_mt` fills it with
+    #     missing on ref-block samples on every hail version. Without
+    #     recomputing here, hom-ref calls inside ref blocks would be silently
+    #     excluded from adj-filtered aggregations in `compute_freq_by_strata`
+    #     (which uses `hl.agg.filter(adj[i], ...)`, and missing → False).
+    #     `get_adj_expr` short-circuits via `~is_het()` for hom-ref calls and
+    #     only gates on `gq_expr >= adj_gq`, so the missing AD on ref-block
+    #     fill-ins is not a problem.
+    aou_mt = aou_mt.annotate_entries(
+        GT=adjusted_sex_ploidy_expr(aou_mt.locus, aou_mt.GT, aou_mt.sex_karyotype)
+    )
+    aou_mt = annotate_adj_no_dp(aou_mt)
     aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
     # hl.agg.call_stats is used within compute_freq_by_strata which returns int32s for
     # AC, AN, and homozygote_count so do not need to convert to int32 here.
@@ -1007,12 +1049,43 @@ def calculate_faf_and_grpmax_annotations(
     return ht
 
 
+def _get_default_app_name(args) -> Optional[str]:
+    """
+    Derive a Hail Batch app name from the processing-step args.
+
+    Combines the requested processing steps (``--process-gnomad``,
+    ``--process-aou``, ``--merge-datasets``) into a single name so the run is
+    easy to identify in the Hail Batch UI. Returns ``None`` when no processing
+    step is selected.
+
+    :param args: Parsed command-line arguments.
+    :return: Default app name, or ``None`` if no steps were requested.
+    """
+    steps = []
+    if args.process_gnomad:
+        steps.append("gnomad")
+    if args.process_aou:
+        steps.append("aou")
+    if args.merge_datasets:
+        steps.append("merge")
+
+    if not steps:
+        return None
+
+    return f"v5_freq_{'_'.join(steps)}"
+
+
 def _initialize_hail(args) -> None:
     """
     Initialize Hail with appropriate configuration for the environment.
 
     :param args: Parsed command-line arguments.
     """
+    # Auto-derive an app name from the requested processing steps if the user
+    # did not pass one explicitly. Only relevant for the batch backend.
+    if args.environment == "batch" and args.app_name is None:
+        args.app_name = _get_default_app_name(args)
+
     _init_hail(
         "v5_frequency_generation",
         args.environment,
