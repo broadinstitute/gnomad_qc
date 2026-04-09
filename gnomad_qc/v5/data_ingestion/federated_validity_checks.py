@@ -656,9 +656,13 @@ def check_missingness(
                 metric_missingness[field] = hl.agg.sum(hl.is_missing(field_expr))
             else:
                 struct_annotations_checked.append(field)
-                metric_missingness.update(
-                    check_missingness_of_struct(field_expr, field)
-                )
+                struct_frac_exprs = check_missingness_of_struct(field_expr, field)
+                # Convert fractions to counts (to keep consistent with value types in metric_missingness) by multiplying by n_sites.
+                struct_count_exprs = {
+                    k: v * n_sites for k, v in struct_frac_exprs.items()
+                }
+                # Update metric_missingness with counts.
+                metric_missingness.update(struct_count_exprs)
         else:
             non_struct_annotations_checked.append(field)
             metric_missingness[field] = hl.agg.sum(hl.is_missing(field_expr))
@@ -703,74 +707,6 @@ def check_missingness(
             )
 
     logger.warning("%d missingness checks failed.", n_fail)
-
-
-def check_missingness_old(
-    ht: hl.Table,
-    missingness_threshold: float = 0.5,
-    struct_annotations_to_skip: Optional[List[str]] = None,
-) -> None:
-    """
-    Check for and report the fraction of missing data in the Table.
-
-    :param ht: Input Table.
-    :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
-    :param struct_annotations_to_skip: Optional list of top-level struct row
-        annotations to skip when automatically selecting struct annotations for
-        missingness checks. Default is ['info'].
-    :return: None
-    """
-
-    # By default, skip `info` because top-level info missingness is checked
-    # separately via compute_missingness.
-    if struct_annotations_to_skip is None:
-        struct_annotations_to_skip = ["info"]
-
-    struct_annotations = [
-        field
-        for field, dtype in ht.row.dtype.items()
-        if isinstance(dtype, hl.tstruct) and field not in struct_annotations_to_skip
-    ]
-
-    logger.info("Checking for missingness within struct annotations...")
-    logger.info("Struct annotations being checked: %s.", struct_annotations)
-    # Determine missingness of each struct annotation.
-    metric_missingness = {}
-    for metric in struct_annotations:
-        metric_missingness.update(check_missingness_of_struct(ht[metric], metric))
-
-    missingness_struct = ht.aggregate(hl.struct(**metric_missingness))
-    missingness_dict = flatten_missingness_struct(missingness_struct)
-
-    # Report whether or not each metric pass or fails the missingness check
-    # based on the missingness_threshold.
-    for field, missingness in missingness_dict.items():
-        if missingness > missingness_threshold:
-            logger.info(
-                "FAILED missingness check for %s: %.2f%% missing",
-                field,
-                100 * missingness,
-            )
-        else:
-            logger.info(
-                "Passed missingness check for %s: %.2f%% missing",
-                field,
-                100 * missingness,
-            )
-
-    logger.info("Checking for missingness of info and non-info fields...")
-    # Gather info and non-info metrics (or if doesn't exist, set to an empty list)
-    # and substract missingness dict.
-    info_metrics = (
-        set(ht.row.info) - missingness_dict.keys() if "info" in ht.row else set()
-    )
-    non_info_metrics = set(ht.row) - {"info"} - missingness_dict.keys()
-    n_sites = ht.count()
-    logger.info("Info metrics are %s", info_metrics)
-    logger.info("Non-info metrics are %s", non_info_metrics)
-    compute_missingness(
-        ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
-    )
 
 
 def run_row_to_globals_length_check(
