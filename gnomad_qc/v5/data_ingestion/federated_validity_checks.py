@@ -656,13 +656,9 @@ def check_missingness(
                 metric_missingness[field] = hl.agg.sum(hl.is_missing(field_expr))
             else:
                 struct_annotations_checked.append(field)
-                struct_frac_exprs = check_missingness_of_struct(field_expr, field)
-                # Convert fractions to counts (to keep consistent with value types in metric_missingness) by multiplying by n_sites.
-                struct_count_exprs = {
-                    k: v * n_sites for k, v in struct_frac_exprs.items()
-                }
-                # Update metric_missingness with counts.
-                metric_missingness.update(struct_count_exprs)
+                metric_missingness.update(
+                    check_missingness_of_struct(field_expr, field)
+                )
         else:
             non_struct_annotations_checked.append(field)
             metric_missingness[field] = hl.agg.sum(hl.is_missing(field_expr))
