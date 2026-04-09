@@ -3,7 +3,7 @@
 schema = {
     "type": "object",
     "properties": {
-        "struct_annotations_for_missingness": {
+        "struct_annotations_to_skip_missingness": {
             "type": "array",
             "items": {"type": "string"},
         },

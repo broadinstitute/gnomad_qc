@@ -369,7 +369,9 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["globals"] = missing_global_fields
 
     # Check that specified row annotations are present.
-    row_fields = array_struct_annotations + config["struct_annotations_for_missingness"]
+    row_fields = array_struct_annotations + config.get(
+        "struct_annotations_to_skip_missingness"
+    )
 
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
@@ -616,16 +618,120 @@ def filter_to_test_partitions(
 def check_missingness(
     ht: hl.Table,
     missingness_threshold: float = 0.5,
-    struct_annotations: List[str] = ["grpmax", "fafmax", "histograms"],
+    structs_to_not_traverse: Optional[Tuple[str]] = ("vep",),
+) -> None:
+    """
+    Check for and report the fraction of missing data in row annotations.
+
+    For struct annotations, missingness is checked recursively unless the
+    annotation name is included in `structs_to_not_traverse`, in which case
+    only top-level missingness of the struct itself is checked.
+
+    :param ht: Input Table.
+    :param missingness_threshold: Upper cutoff for allowed amount of
+        missingness. Default is 0.50.
+    :param structs_to_not_traverse: Optional tuple of top-level struct row
+        annotations that should be treated as a single field rather than
+        recursively traversed. Default is ("vep",).
+    :return: None
+    """
+    n_sites = ht.count()
+
+    logger.info(
+        "Missingness threshold (upper cutoff for allowed missingness): %.2f",
+        missingness_threshold,
+    )
+
+    metric_missingness = {}
+    struct_annotations_checked = []
+    non_struct_annotations_checked = []
+    non_traversed_struct_annotations = []
+
+    for field, dtype in ht.row.dtype.items():
+        field_expr = ht[field]
+
+        if isinstance(dtype, hl.tstruct):
+            if field in structs_to_not_traverse:
+                non_traversed_struct_annotations.append(field)
+                metric_missingness[field] = hl.agg.sum(hl.is_missing(field_expr))
+            else:
+                struct_annotations_checked.append(field)
+                metric_missingness.update(
+                    check_missingness_of_struct(field_expr, field)
+                )
+        else:
+            non_struct_annotations_checked.append(field)
+            metric_missingness[field] = hl.agg.sum(hl.is_missing(field_expr))
+
+    logger.info(
+        "Struct annotations being recursively checked: %s.",
+        struct_annotations_checked,
+    )
+    logger.info(
+        "Struct annotations checked only at the top level: %s.",
+        non_traversed_struct_annotations,
+    )
+    logger.info(
+        "Non-struct annotations being checked: %s.",
+        non_struct_annotations_checked,
+    )
+    logger.info(
+        "Checking missingness for %d annotations.",
+        len(metric_missingness),
+    )
+
+    output = flatten_missingness_struct(ht.aggregate(hl.struct(**metric_missingness)))
+
+    n_fail = 0
+    for field, n_missing in output.items():
+        frac_missing = n_missing / n_sites
+
+        if frac_missing > missingness_threshold:
+            logger.info(
+                "FAILED missingness check for %s: %d sites or %.2f%% missing",
+                field,
+                n_missing,
+                100 * frac_missing,
+            )
+            n_fail += 1
+        else:
+            logger.info(
+                "Passed missingness check for %s: %d sites or %.2f%% missing",
+                field,
+                n_missing,
+                100 * frac_missing,
+            )
+
+    logger.warning("%d missingness checks failed.", n_fail)
+
+
+def check_missingness_old(
+    ht: hl.Table,
+    missingness_threshold: float = 0.5,
+    struct_annotations_to_skip: Optional[List[str]] = None,
 ) -> None:
     """
     Check for and report the fraction of missing data in the Table.
 
     :param ht: Input Table.
     :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.50.
-    :param struct_annotations: List of struct annotations to check for missingness. Default is ['grpmax', 'fafmax', 'histograms'].
+    :param struct_annotations_to_skip: Optional list of top-level struct row
+        annotations to skip when automatically selecting struct annotations for
+        missingness checks. Default is ['info'].
     :return: None
     """
+
+    # By default, skip `info` because top-level info missingness is checked
+    # separately via compute_missingness.
+    if struct_annotations_to_skip is None:
+        struct_annotations_to_skip = ["info"]
+
+    struct_annotations = [
+        field
+        for field, dtype in ht.row.dtype.items()
+        if isinstance(dtype, hl.tstruct) and field not in struct_annotations_to_skip
+    ]
+
     logger.info("Checking for missingness within struct annotations...")
     logger.info("Struct annotations being checked: %s.", struct_annotations)
     # Determine missingness of each struct annotation.
@@ -754,7 +860,7 @@ def validate_federated_data(
     ht: hl.Table,
     freq_meta_expr: hl.expr.ArrayExpression,
     missingness_threshold: float = 0.50,
-    struct_annotations_for_missingness: List[str] = ["grpmax", "fafmax", "histograms"],
+    struct_annotations_to_skip_missingness: Optional[List[str]] = None,
     freq_annotations_to_sum: List[str] = ["AC", "AN", "homozygote_count"],
     sort_order: List[str] = ["subset", "downsampling", "gen_anc", "sex", "group"],
     nhomalt_metric: str = "nhomalt",
@@ -800,7 +906,7 @@ def validate_federated_data(
     check_missingness(
         ht,
         missingness_threshold,
-        struct_annotations=struct_annotations_for_missingness,
+        structs_to_not_traverse=struct_annotations_to_skip_missingness,
     )
 
     # Check that subset totals sum to expected totals.
@@ -1365,9 +1471,9 @@ def main(args):
         validate_federated_data(
             ht=ht,
             missingness_threshold=args.missingness_threshold,
-            struct_annotations_for_missingness=config[
-                "struct_annotations_for_missingness"
-            ],
+            struct_annotations_to_skip_missingness=config.get(
+                "struct_annotations_to_skip_missingness"
+            ),
             freq_meta_expr=ht[config["freq_fields"]["freq_meta"]],
             freq_annotations_to_sum=config["freq_annotations_to_sum"],
             sort_order=config["sort_order"],
@@ -1434,7 +1540,7 @@ if __name__ == "__main__":
         "--config-path",
         help=(
             "Path to JSON config file for defining parameters. Parameters to define are as follows:\n"
-            " - struct_annotations_for_missingness: List of struct annotations to check for missingness.\n"
+            " - struct_annotations_to_skip_missingness: Optional list of top-level struct annotations to skip during missingness checks.\n"
             " - freq_fields: Dictionary containing the names of frequency-related fields:\n"
             "      * freq: Name of annotation containing the array of frequency metric objects\n"
             "        corresponding to each frequency metadata group.\n"
