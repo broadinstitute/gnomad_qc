@@ -268,6 +268,7 @@ def get_aou_vds(
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
     environment: str = "batch",
+    log_sample_counts: bool = True,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -297,6 +298,8 @@ def get_aou_vds(
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
+    :param log_sample_counts: Whether to log sample counts before/after filtering.
+        When False, skips the ``count_cols`` calls used for logging. Default is True.
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -319,10 +322,6 @@ def get_aou_vds(
     elif chrom and len(chrom) > 0:
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
-
-    # --- Row filtering first, before any sample operations. ---
-    # Narrowing rows early means downstream sample filtering (especially
-    # filter_samples with remove_dead_alleles) operates on less data.
 
     # Apply partition filtering.
     if filter_partitions and len(filter_partitions) > 0:
@@ -353,16 +352,9 @@ def get_aou_vds(
             vds, filter_intervals, split_reference_blocks=split_reference_blocks
         )
 
-    if naive_coalesce_partitions:
-        vds = hl.vds.VariantDataset(
-            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
-            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
-        )
-
-    # --- Sample filtering, now on the row-narrowed VDS. ---
-
     # Count initial number of samples.
-    n_samples_before = vds.variant_data.count_cols()
+    if log_sample_counts:
+        n_samples_before = vds.variant_data.count_cols()
 
     # Remove samples that should have been excluded from the AoU v8 release
     # and samples with non-XX/XY ploidies.
@@ -382,10 +374,16 @@ def get_aou_vds(
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
-
     # Report final sample exclusion count.
-    n_samples_after = vds.variant_data.count_cols()
-    logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
+    if log_sample_counts:
+        n_samples_after = vds.variant_data.count_cols()
+        logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
+
+    if naive_coalesce_partitions:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.naive_coalesce(naive_coalesce_partitions),
+            vds.variant_data.naive_coalesce(naive_coalesce_partitions),
+        )
 
     vmt = vds.variant_data
     rmt = vds.reference_data
