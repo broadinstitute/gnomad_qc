@@ -1219,11 +1219,17 @@ def main(args):
             merged_freq_ht.write(merged_freq.path, overwrite=overwrite)
 
     finally:
-        hl.copy_log(
-            get_logging_path(
-                "v5_frequency_run", environment=environment, tmp_dir_days=tmp_dir_days
+        # Skip in batch mode: the JVM runs remotely so there is no local log
+        # file to copy, and Hail Batch already retains the full driver/worker
+        # logs (accessible via the Batch UI or `hailctl batch log`).
+        if environment != "batch":
+            hl.copy_log(
+                get_logging_path(
+                    "v5_frequency_run",
+                    environment=environment,
+                    tmp_dir_days=tmp_dir_days,
+                )
             )
-        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
