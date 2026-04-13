@@ -38,7 +38,8 @@ def get_sample_qc_root(
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
-    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is True.
+    :param read_only: Whether to use the read-only AoU batch bucket. Ignored unless
+        environment is "batch". Default is True.
     :return: GCS path to the sample QC directory.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -49,7 +50,10 @@ def get_sample_qc_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    return f"gs://{_get_base_bucket(environment, read_only=read_only)}/v{version}/{path_suffix}"
+    ro = read_only if environment == "batch" else False
+    return (
+        f"gs://{_get_base_bucket(environment, read_only=ro)}/v{version}/{path_suffix}"
+    )
 
 
 ######################################################################
