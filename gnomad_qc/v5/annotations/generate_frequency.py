@@ -55,7 +55,9 @@ from gnomad.utils.annotations import (
     agg_by_strata,
     bi_allelic_site_inbreeding_expr,
     compute_freq_by_strata,
+    expand_strata_array_from_leaves,
     faf_expr,
+    find_minimal_strata_groups,
     gen_anc_faf_max_expr,
     get_adj_expr,
     grpmax_expr,
@@ -290,11 +292,17 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
 
 def _calculate_aou_frequencies_and_hists_using_densify(
     aou_vds: hl.vds.VariantDataset,
+    reduce_to_minimal_groups: bool = False,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using densify.
 
     :param aou_vds: Prepared AoU VariantDataset.
+    :param reduce_to_minimal_groups: When True, only compute call stats for the
+        minimal "leaf" stratification groups and reconstruct the rest by
+        element-wise summation. Reduces the cost of the per-variant
+        aggregation proportionally to the reduction in group count.
+        Default is False.
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
@@ -323,9 +331,53 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     )
     aou_mt = annotate_adj_no_dp(aou_mt)
     aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
+
+    # Optionally reduce group_membership to only the leaf groups before the
+    # expensive per-variant aggregation.
+    if reduce_to_minimal_groups:
+        freq_meta_full = hl.eval(aou_mt.freq_meta)
+        freq_meta_sample_count_full = hl.eval(aou_mt.freq_meta_sample_count)
+        leaf_indices, decomposition = find_minimal_strata_groups(freq_meta_full)
+        n_full = len(freq_meta_full)
+
+        logger.info(
+            "Reducing freq_meta from %d to %d leaf groups for aggregation.",
+            n_full,
+            len(leaf_indices),
+        )
+
+        aou_mt = aou_mt.annotate_cols(
+            group_membership=hl.array(
+                [aou_mt.group_membership[i] for i in leaf_indices]
+            )
+        )
+        aou_mt = aou_mt.annotate_globals(
+            freq_meta=[freq_meta_full[i] for i in leaf_indices],
+            freq_meta_sample_count=[
+                freq_meta_sample_count_full[i] for i in leaf_indices
+            ],
+        )
+
     # hl.agg.call_stats is used within compute_freq_by_strata which returns int32s for
     # AC, AN, and homozygote_count so do not need to convert to int32 here.
     aou_freq_ht = compute_freq_by_strata(aou_mt, select_fields=["hist_fields"])
+
+    # Expand the leaf-only freq array back to the full set of groups and
+    # restore the original freq_meta globals.
+    if reduce_to_minimal_groups:
+        aou_freq_ht = aou_freq_ht.annotate(
+            freq=expand_strata_array_from_leaves(
+                aou_freq_ht.freq,
+                leaf_indices,
+                decomposition,
+                n_full,
+                is_freq_struct=True,
+            )
+        )
+        aou_freq_ht = aou_freq_ht.annotate_globals(
+            freq_meta=freq_meta_full,
+            freq_meta_sample_count=freq_meta_sample_count_full,
+        )
 
     # Nest histograms to match gnomAD structure.
     # Note: hist_fields.qual_hists already contains raw_qual_hists and qual_hists
@@ -346,6 +398,7 @@ def process_aou_dataset(
     test_partitions: int = None,
     use_all_sites_ans: bool = False,
     environment: str = "batch",
+    reduce_to_minimal_groups: bool = False,
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -359,6 +412,9 @@ def process_aou_dataset(
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param reduce_to_minimal_groups: When True, only compute call stats for
+        the minimal "leaf" stratification groups and reconstruct the rest by
+        summation. Reduces per-variant aggregation cost. Default is False.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     test = test_vds or test_partitions is not None
@@ -383,7 +439,9 @@ def process_aou_dataset(
         )
     else:
         logger.info("Using densify for frequency calculations...")
-        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(aou_vds)
+        aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
+            aou_vds, reduce_to_minimal_groups=reduce_to_minimal_groups
+        )
     aou_freq_ht = select_final_dataset_fields(aou_freq_ht, dataset="aou")
 
     return aou_freq_ht
@@ -1157,6 +1215,7 @@ def main(args):
                 test_partitions=test_partitions,
                 use_all_sites_ans=use_all_sites_ans,
                 environment=environment,
+                reduce_to_minimal_groups=args.reduce_to_minimal_groups,
             )
 
             logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
@@ -1272,6 +1331,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     processing_group.add_argument(
         "--use-all-sites-ans",
         help="Use all sites ANs in frequency calculations to avoid a densify.",
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--reduce-to-minimal-groups",
+        help=(
+            "Only compute call stats for the minimal 'leaf' stratification "
+            "groups and reconstruct the rest by summation. Reduces the cost "
+            "of per-variant aggregation. Only applies to the densify path "
+            "(--process-aou without --use-all-sites-ans)."
+        ),
         action="store_true",
     )
     processing_group.add_argument(
