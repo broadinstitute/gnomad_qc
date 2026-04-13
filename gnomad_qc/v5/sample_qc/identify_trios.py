@@ -32,7 +32,11 @@ from gnomad_qc.v5.resources.sample_qc import (
     trios,
 )
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
 logger = logging.getLogger("identify_trios")
 logger.setLevel(logging.INFO)
 
