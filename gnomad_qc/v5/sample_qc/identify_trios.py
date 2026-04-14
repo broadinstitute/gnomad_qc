@@ -571,7 +571,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--naive-coalesce-partitions",
         help=("Number of partitions to coalesce the VDS to."),
         type=int,
-        default=5000,
     )
 
     return parser
