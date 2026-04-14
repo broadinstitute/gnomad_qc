@@ -435,8 +435,8 @@ def main(args):
             dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 
     finally:
-        logger.info("Copying hail log to logging bucket...")
         if environment == "rwb":
+            logger.info("Copying hail log to logging bucket...")
             hl.copy_log(get_logging_path("identify_trios", environment=environment))
 
 
