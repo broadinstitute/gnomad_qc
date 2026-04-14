@@ -16,7 +16,6 @@ from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 from gnomad.variant_qc.random_forest import median_impute_features
 
-from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
     INFO_FEATURES,
     NON_INFO_FEATURES,
@@ -32,7 +31,12 @@ from gnomad_qc.v5.resources.annotations import (
     get_variant_qc_annotations,
     info_vcf_path,
 )
-from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
+from gnomad_qc.v5.resources.basics import (
+    _check_resource_existence,
+    _init_hail,
+    get_aou_vds,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(
@@ -382,7 +386,8 @@ def main(args):
 
     try:
         if args.create_info_ht:
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={
                     "info_ht": [info_ht_path],
                 },
@@ -401,7 +406,8 @@ def main(args):
             logger.info("Exporting info ht as VCF...")
             info_ht_path = get_info_ht(test=test, environment=environment).path
             out_info_vcf_path = info_vcf_path(test=test, environment=environment)
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 input_step_resources={
                     "info_ht": [info_ht_path],
                 },
@@ -428,7 +434,8 @@ def main(args):
 
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
             )
@@ -441,7 +448,8 @@ def main(args):
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
             )
@@ -453,7 +461,8 @@ def main(args):
 
         if args.create_variant_qc_annotation_ht:
             logger.info("Creating variant QC annotation HT...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={
                     "variant_qc_annotation_ht": [variant_qc_annotation_ht_path]
                 },
