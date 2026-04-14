@@ -1,6 +1,12 @@
 """Script containing annotation related resources."""
 
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from typing import Optional
+
+from gnomad.resources.resource_utils import (
+    TableResource,
+    VariantDatasetResource,
+    VersionedTableResource,
+)
 
 from gnomad_qc.v5.resources.basics import (
     _ALL_ENVIRONMENTS,
@@ -224,6 +230,7 @@ def get_freq(
     test: bool = False,
     data_set: str = "aou",
     environment: str = "batch",
+    suffix: Optional[str] = None,
 ) -> TableResource:
     """
     Get the frequency annotation Table for v5.
@@ -233,6 +240,11 @@ def get_freq(
     :param test: Whether to use a tmp path for testing.
     :param data_set: Data set of annotation resource. Default is "aou".
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :param suffix: Optional suffix inserted before the ``.ht`` extension, e.g.
+        ``"split_vds"`` → ``...frequencies.split_vds.ht``. Useful for
+        distinguishing outputs of different pipeline variants (e.g. the
+        densify path that writes a persistent split VDS checkpoint) from
+        the default path. Default is None (no suffix).
     :return: Hail Table containing frequency annotations.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
@@ -241,8 +253,38 @@ def get_freq(
         "gnomad",
         "merged",
     ], "data_set must be either 'aou', 'gnomad', or 'merged'"
+    suffix_str = f".{suffix}" if suffix else ""
     return TableResource(
-        f"{_annotations_root(version, test, data_type, data_set, environment)}/{data_set}.genomes.v{version}.frequencies.ht"
+        f"{_annotations_root(version, test, data_type, data_set, environment)}/{data_set}.genomes.v{version}.frequencies{suffix_str}.ht"
+    )
+
+
+def get_split_aou_vds(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    data_type: str = "genomes",
+    test: bool = False,
+    environment: str = "batch",
+) -> VariantDatasetResource:
+    """
+    Get the prepared/split AoU VariantDataset resource for v5 frequency computation.
+
+    This is a persistent checkpoint of the AoU VDS after `_prepare_aou_vds` has
+    been applied (column/entry narrowing, `hl.vds.split_multi`, ref-GT drop).
+    Checkpointing it to a persistent path (instead of a tmp path that is reaped
+    after a few days) eliminates the need to re-run `split_multi` on every
+    downstream scan of the densify pipeline and survives multi-day runs or
+    reruns of the freq step.
+
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource ("genomes" or "exomes").
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb", "batch", or "dataproc".
+    :return: VariantDatasetResource for the prepared split AoU VDS.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    return VariantDatasetResource(
+        f"{_annotations_root(version, test=test, data_type=data_type, data_set='aou', environment=environment)}/aou.genomes.v{version}.split_prepared.vds"
     )
 
 

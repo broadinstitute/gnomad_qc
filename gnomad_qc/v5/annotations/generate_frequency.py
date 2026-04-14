@@ -77,9 +77,11 @@ from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_freq,
+    get_split_aou_vds,
     group_membership,
 )
 from gnomad_qc.v5.resources.basics import (
+    _file_exists_for_env,
     _get_batch_resource_kwargs,
     _init_hail,
     get_aou_vds,
@@ -89,7 +91,16 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.meta import meta
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+# Use force=True so that our root handler wins over any handler that
+# Hail / hailtop / absl / other deps installed during their imports above.
+# Without force=True, basicConfig is a no-op when the root logger already has
+# a handler, and all `logger.info` calls get silently dropped when running
+# locally against the batch backend (Mode 1 QoB).
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
 logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
 
@@ -399,6 +410,7 @@ def process_aou_dataset(
     use_all_sites_ans: bool = False,
     environment: str = "batch",
     reduce_to_minimal_groups: bool = False,
+    overwrite_split_aou_vds: bool = False,
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -415,20 +427,55 @@ def process_aou_dataset(
     :param reduce_to_minimal_groups: When True, only compute call stats for
         the minimal "leaf" stratification groups and reconstruct the rest by
         summation. Reduces per-variant aggregation cost. Default is False.
+    :param overwrite_split_aou_vds: Whether to overwrite the persistent split
+        AoU VDS checkpoint (only used on the densify path). When False and
+        the checkpoint already exists, it is read back instead of recomputed.
+        This is independent of the general ``--overwrite`` flag that controls
+        the final freq HT so you can rebuild the freq HT from an existing
+        split VDS without paying to recompute it. Default is False.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     test = test_vds or test_partitions is not None
-    aou_vds = get_aou_vds(
-        annotate_meta=True,
-        release_only=True,
-        test=test_vds,
-        filter_partitions=list(range(test_partitions)) if test_partitions else None,
-        environment=environment,
-    )
 
-    aou_vds = _prepare_aou_vds(
-        aou_vds, use_all_sites_ans=use_all_sites_ans, test=test, environment=environment
-    )
+    # On the densify path, check whether the persistent prepared/split AoU VDS
+    # checkpoint already exists. If so, skip the raw load + _prepare_aou_vds
+    # work entirely and read from the checkpoint. This survives multi-day runs
+    # and script reruns (the tmp bucket used by `new_temp_file` expires every
+    # few days, which is too short for a full AoU freq run).
+    split_vds_resource = None
+    use_cached_split_vds = False
+    if not use_all_sites_ans:
+        split_vds_resource = get_split_aou_vds(test=test, environment=environment)
+        if (
+            _file_exists_for_env(split_vds_resource.path, environment)
+            and not overwrite_split_aou_vds
+        ):
+            use_cached_split_vds = True
+
+    if use_cached_split_vds:
+        logger.info(
+            "Prepared split AoU VDS already exists at %s; reading from "
+            "persistent checkpoint. Pass --overwrite-split-aou-vds to force "
+            "recomputation.",
+            split_vds_resource.path,
+        )
+        aou_vds = split_vds_resource.vds()
+    else:
+        aou_vds = get_aou_vds(
+            annotate_meta=True,
+            release_only=True,
+            test=test_vds,
+            filter_partitions=(
+                list(range(test_partitions)) if test_partitions else None
+            ),
+            environment=environment,
+        )
+        aou_vds = _prepare_aou_vds(
+            aou_vds,
+            use_all_sites_ans=use_all_sites_ans,
+            test=test,
+            environment=environment,
+        )
 
     # Calculate frequencies and age histograms together
     logger.info("Calculating AoU frequencies and age histograms...")
@@ -438,6 +485,23 @@ def process_aou_dataset(
             aou_vds.variant_data, test=test, environment=environment
         )
     else:
+        # Persist the prepared split VDS to a durable (non-tmp) resource so
+        # `hl.vds.split_multi` and the pre-densify col/entry/ref transforms in
+        # `_prepare_aou_vds` run exactly once. Without this checkpoint, every
+        # downstream scan of the dense MT (hists + freq) would re-run
+        # split_multi from the raw VDS. This is a sparse-VDS write (not a
+        # dense MT), so the cost is bounded by the raw VDS size and is
+        # one-time. Skipped when we already loaded the cached VDS above.
+        if not use_cached_split_vds:
+            logger.info(
+                "Checkpointing prepared split AoU VDS to persistent resource "
+                "at %s (one-time write; re-used on rerun unless "
+                "--overwrite-split-aou-vds)...",
+                split_vds_resource.path,
+            )
+            aou_vds = aou_vds.checkpoint(
+                split_vds_resource.path, overwrite=overwrite_split_aou_vds
+            )
         logger.info("Using densify for frequency calculations...")
         aou_freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
             aou_vds, reduce_to_minimal_groups=reduce_to_minimal_groups
@@ -1161,6 +1225,8 @@ def main(args):
     test_vds = args.test_vds
     test_partitions = args.test_partitions
     overwrite = args.overwrite
+    overwrite_split_aou_vds = args.overwrite_split_aou_vds
+    aou_freq_suffix = args.aou_freq_ht_suffix
     tmp_dir_days = args.tmp_dir_days
     test_run = test_vds or test_partitions is not None
 
@@ -1203,6 +1269,7 @@ def main(args):
                 data_type="genomes",
                 data_set="aou",
                 environment=environment,
+                suffix=aou_freq_suffix,
             )
 
             check_resource_existence(
@@ -1216,6 +1283,7 @@ def main(args):
                 use_all_sites_ans=use_all_sites_ans,
                 environment=environment,
                 reduce_to_minimal_groups=args.reduce_to_minimal_groups,
+                overwrite_split_aou_vds=overwrite_split_aou_vds,
             )
 
             logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
@@ -1249,6 +1317,7 @@ def main(args):
                 test=test_run,
                 data_set="aou",
                 environment=environment,
+                suffix=aou_freq_suffix,
             )
 
             check_resource_existence(
@@ -1300,6 +1369,31 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     # General arguments.
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
+    )
+    parser.add_argument(
+        "--overwrite-split-aou-vds",
+        help=(
+            "Overwrite the persistent split AoU VDS checkpoint (the prepared/"
+            "split_multi VDS written by --process-aou on the densify path). "
+            "Independent of --overwrite so you can rebuild the freq HT from "
+            "an existing split VDS without paying to recompute it. Only "
+            "relevant with --process-aou (without --use-all-sites-ans)."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--aou-freq-ht-suffix",
+        type=str,
+        default=None,
+        help=(
+            "Optional filename suffix inserted before the '.ht' extension on "
+            "the AoU frequency HT, e.g. 'split_vds' -> "
+            "'...frequencies.split_vds.ht'. Useful for tagging test / "
+            "experimental runs so they don't collide with the default output "
+            "path. Applied to both --process-aou and --merge-datasets reads "
+            "of the AoU freq HT so the merge picks up the same file. Default "
+            "is None (no suffix)."
+        ),
     )
 
     # Test/debug arguments.
