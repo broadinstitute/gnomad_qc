@@ -298,7 +298,7 @@ def get_aou_vds(
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
-    :param log_sample_counts: Whether to log sample counts before/after filtering.
+    :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude.
         When False, skips the ``count_cols`` calls used for logging. Default is True.
     :return: AoU v8 VDS.
     """
