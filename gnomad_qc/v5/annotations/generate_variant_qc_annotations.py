@@ -35,7 +35,11 @@ from gnomad_qc.v5.resources.annotations import (
 from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
 logger = logging.getLogger("generate_variant_qc_annotations")
 logger.setLevel(logging.INFO)
 
