@@ -478,10 +478,13 @@ def main(args):
             ht.write(variant_qc_annotation_ht_path, overwrite=overwrite)
 
     finally:
-        logger.info("Copying log to logging bucket...")
-        hl.copy_log(
-            get_logging_path("generate_variant_qc_annotations", environment=environment)
-        )
+        if environment == "rwb":
+            logger.info("Copying log to logging bucket...")
+            hl.copy_log(
+                get_logging_path(
+                    "generate_variant_qc_annotations", environment=environment
+                )
+            )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
