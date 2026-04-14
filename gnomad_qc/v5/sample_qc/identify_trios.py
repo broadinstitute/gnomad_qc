@@ -426,7 +426,8 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("identify_trios", environment=environment))
+        if environment == "rwb":
+            hl.copy_log(get_logging_path("identify_trios", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
