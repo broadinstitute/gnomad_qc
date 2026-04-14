@@ -707,10 +707,9 @@ def get_samples_to_exclude(
     fm_resource = get_failing_metrics_samples(environment=environment)
     ste_resource = get_samples_to_exclude_resource(environment=environment)
 
-    if not file_exists(ste_resource.path) or overwrite:
+    if overwrite or (environment != "batch" and not file_exists(ste_resource.path)):
 
-        if not file_exists(lq_resource.path):
-            # Load samples flagged in AoU Known Issues #1.
+        if overwrite or not file_exists(lq_resource.path):
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
             low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
             low_quality_sample_ids = low_quality_ht.aggregate(
@@ -719,8 +718,7 @@ def get_samples_to_exclude(
             hl.experimental.write_expression(
                 hl.set(low_quality_sample_ids), lq_resource.path
             )
-        if not file_exists(fm_resource.path):
-            # Load and count samples failing genomic metrics filters.
+        if overwrite or not file_exists(fm_resource.path):
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(
                 "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
