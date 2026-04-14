@@ -27,6 +27,7 @@ def get_sample_qc_root(
     data_type: str = "genomes",
     data_set: str = "aou",
     environment: str = "batch",
+    read_only: bool = True,
 ) -> str:
     """
     Return the root GCS path to sample QC results.
@@ -37,6 +38,8 @@ def get_sample_qc_root(
     :param data_set: Dataset identifier (e.g., "aou", "hgdp_tgp").
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only AoU batch bucket. Ignored unless
+        environment is "batch". Default is True.
     :return: GCS path to the sample QC directory.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -47,7 +50,10 @@ def get_sample_qc_root(
             f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
         )
 
-    return f"gs://{_get_base_bucket(environment, read_only=True if environment == 'batch' else False)}/v{version}/{path_suffix}"
+    ro = read_only if environment == "batch" else False
+    return (
+        f"gs://{_get_base_bucket(environment, read_only=ro)}/v{version}/{path_suffix}"
+    )
 
 
 ######################################################################
@@ -672,12 +678,15 @@ def finalized_outlier_filtering(
 ######################################################################
 
 
-def duplicates(environment: str = "batch") -> VersionedTableResource:
+def duplicates(
+    environment: str = "batch", read_only: bool = False
+) -> VersionedTableResource:
     """
     Get the VersionedTableResource for duplicated (or twin) samples.
 
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is False.
     :return: VersionedTableResource of duplicate samples.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -685,7 +694,7 @@ def duplicates(environment: str = "batch") -> VersionedTableResource:
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, environment=environment)}/relatedness/trios/aou.genomes.v{version}.duplicates.ht"
+                f"{get_sample_qc_root(version, environment=environment, read_only=read_only)}/relatedness/trios/aou.genomes.v{version}.duplicates.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -697,6 +706,7 @@ def pedigree(
     fake: bool = False,
     test: bool = False,
     environment: str = "batch",
+    read_only: bool = False,
 ) -> VersionedPedigreeResource:
     """
     Get the VersionedPedigreeResource for the trio pedigree including multiple trios per family.
@@ -707,6 +717,7 @@ def pedigree(
         for the finalized pedigree, which depends on `ped_mendel_errors`.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is False.
     :return: VersionedPedigreeResource of trio pedigree including multiple trios per
         family.
     """
@@ -722,7 +733,7 @@ def pedigree(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, test, environment=environment)}/relatedness/trios/aou.genomes.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
+                f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}/relatedness/trios/aou.genomes.v{version}.families{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam",
                 delimiter="\t",
             )
             for version in SAMPLE_QC_VERSIONS
@@ -731,7 +742,9 @@ def pedigree(
 
 
 def ped_mendel_errors(
-    test: bool = False, environment: str = "batch"
+    test: bool = False,
+    environment: str = "batch",
+    read_only: bool = False,
 ) -> VersionedTableResource:
     """
     Get the VersionedTableResource for the number of mendel errors per trio.
@@ -739,13 +752,14 @@ def ped_mendel_errors(
     :param test: Whether to use a tmp path for a test resource.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is False.
     :return: VersionedTableResource of number of mendel errors per trio.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, environment=environment)}/relatedness/trios/aou.genomes.v{version}.mendel_errors.samples.ht"
+                f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}/relatedness/trios/aou.genomes.v{version}.mendel_errors.samples.ht"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -756,6 +770,7 @@ def ped_filter_param_json_path(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     environment: str = "batch",
+    read_only: bool = False,
 ):
     """
     Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.
@@ -764,13 +779,17 @@ def ped_filter_param_json_path(
     :param test: Whether to use a tmp path for a test resource.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is False.
     :return: Path to Pedigree filter JSON.
     """
-    return f"{get_sample_qc_root(version, test, environment=environment)}/relatedness/trios/aou.genomes.v{version}.ped_filters.json"
+    return f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}/relatedness/trios/aou.genomes.v{version}.ped_filters.json"
 
 
 def trios(
-    fake: bool = False, test: bool = False, environment: str = "batch"
+    fake: bool = False,
+    test: bool = False,
+    environment: str = "batch",
+    read_only: bool = False,
 ) -> VersionedPedigreeResource:
     """
     Get the VersionedPedigreeResource for finalized trio samples.
@@ -780,13 +799,14 @@ def trios(
         for the finalized Pedigree, which depends on `ped_mendel_errors`.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is False.
     :return: VersionedPedigreeResource of trio samples.
     """
     return VersionedPedigreeResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, test, environment=environment)}/relatedness/trios/aou.genomes.v{version}.trios{'.fake' if fake else ''}.fam"
+                f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}/relatedness/trios/aou.genomes.v{version}.trios{'.fake' if fake else ''}.fam"
             )
             for version in SAMPLE_QC_VERSIONS
         },
@@ -797,6 +817,7 @@ def dense_trios(
     split: bool = False,
     test: bool = False,
     environment: str = "batch",
+    read_only: bool = False,
 ) -> VersionedMatrixTableResource:
     """
     Get the VersionedMatrixTableResource for the dense trio MatrixTable.
@@ -805,13 +826,14 @@ def dense_trios(
     :param test: Whether to use a tmp path for a test resource.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param read_only: Whether to use the read-only bucket. Only applies if environment is "batch". Default is False.
     :return: VersionedMatrixTableResource of dense trio MatrixTable.
     """
     return VersionedMatrixTableResource(
         CURRENT_SAMPLE_QC_VERSION,
         {
             version: MatrixTableResource(
-                f"{get_sample_qc_root(version, test, environment=environment)}"
+                f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}"
                 f"/relatedness/trios/aou.genomes.v{version}.trios.dense"
                 f"{'.split' if split else ''}.mt"
             )
