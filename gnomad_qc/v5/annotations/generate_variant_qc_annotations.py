@@ -499,8 +499,26 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="rwb",
     )
     parser.add_argument(
+        "--driver-cores",
+        help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--driver-memory",
+        help="Memory for driver node. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--worker-cores",
+        help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
         "--worker-memory",
-        help="Memory for worker nodes. Applies to Batch environment only.",
+        help="Memory for worker nodes. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
         type=str,
         default=None,
     )
