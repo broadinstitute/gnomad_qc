@@ -1,7 +1,7 @@
 """Script containing generic resources."""
 
 import logging
-from typing import List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -12,6 +12,7 @@ from gnomad.resources.resource_utils import (
 from gnomad.utils.file_utils import file_exists
 from hail.utils import new_temp_file
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
 from gnomad_qc.v5.resources.constants import (
     AOU_GENOMIC_METRICS_PATH,
@@ -149,6 +150,41 @@ def _init_hail(
         )
     hl.init(**init_kwargs)
     hl.default_reference("GRCh38")
+
+
+def _check_resource_existence(
+    environment: str,
+    input_step_resources: Optional[Dict[str, List]] = None,
+    output_step_resources: Optional[Dict[str, List]] = None,
+    overwrite: bool = False,
+) -> None:
+    """
+    Check resource existence only when the environment is not 'batch'.
+
+    `hailtop.fs.exists` and `hl.hadoop_exists` use our user emails to check for file existence,
+    and our user emails do not have access to the read-only Batch bucket for v5.
+
+    :param environment: The environment to check. If 'batch', no checks are performed.
+    :param input_step_resources: A dictionary with keys as pipeline steps that generate
+        input files and the value as a list of the input files to check the existence
+        of. Default is None.
+    :param output_step_resources: A dictionary with keys as pipeline step that generate
+        output files and the value as a list of the output files to check the existence
+        of. Default is None.
+    :param overwrite: The overwrite parameter used when writing the output files.
+        Default is False.
+    :return: None.
+    """
+    if environment == "batch":
+        logger.info(
+            "Skipping resource existence check for Batch environment. To replace any existing outputs, run with --overwrite."
+        )
+        return
+    check_resource_existence(
+        input_step_resources=input_step_resources,
+        output_step_resources=output_step_resources,
+        overwrite=overwrite,
+    )
 
 
 def qc_temp_prefix(
@@ -674,10 +710,9 @@ def get_samples_to_exclude(
     fm_resource = get_failing_metrics_samples(environment=environment)
     ste_resource = get_samples_to_exclude_resource(environment=environment)
 
-    if not file_exists(ste_resource.path) or overwrite:
+    if overwrite or (environment != "batch" and not file_exists(ste_resource.path)):
 
-        if not file_exists(lq_resource.path):
-            # Load samples flagged in AoU Known Issues #1.
+        if overwrite or not file_exists(lq_resource.path):
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
             low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
             low_quality_sample_ids = low_quality_ht.aggregate(
@@ -686,8 +721,7 @@ def get_samples_to_exclude(
             hl.experimental.write_expression(
                 hl.set(low_quality_sample_ids), lq_resource.path
             )
-        if not file_exists(fm_resource.path):
-            # Load and count samples failing genomic metrics filters.
+        if overwrite or not file_exists(fm_resource.path):
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(
                 "Removing %d samples failing genomic QC (low coverage or ambiguous sex)...",
