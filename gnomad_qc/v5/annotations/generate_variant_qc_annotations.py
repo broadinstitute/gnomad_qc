@@ -360,7 +360,9 @@ def create_variant_qc_annotation_ht(
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     environment = args.environment
-    _init_hail("generate_variant_qc_annotations", environment)
+    _init_hail(
+        "generate_variant_qc_annotations", environment, worker_memory=args.worker_memory
+    )
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
@@ -495,6 +497,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment where script will run.",
         choices=["rwb", "batch"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Memory for worker nodes. Applies to Batch environment only.",
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--overwrite",
