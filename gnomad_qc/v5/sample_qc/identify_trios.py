@@ -277,7 +277,7 @@ def create_dense_trio_mt(
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     environment = args.environment
-    _init_hail("identify_trios", environment)
+    _init_hail("identify_trios", environment, worker_memory=args.worker_memory)
 
     overwrite = args.overwrite
     test = args.test
@@ -458,6 +458,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment where script will run.",
         choices=["rwb", "batch"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Memory for worker nodes. Applies to Batch environment only.",
+        type=str,
+        default=None,
     )
 
     identify_dup_args = parser.add_argument_group("Duplicate identification")
