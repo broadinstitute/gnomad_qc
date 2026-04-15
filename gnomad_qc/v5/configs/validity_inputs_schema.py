@@ -7,6 +7,10 @@ schema = {
             "type": "array",
             "items": {"type": "string"},
         },
+        "struct_annotations_for_missingness": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
         "freq_fields": {
             "type": "object",
             "properties": {

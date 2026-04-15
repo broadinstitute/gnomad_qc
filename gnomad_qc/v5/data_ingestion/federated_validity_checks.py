@@ -9,6 +9,7 @@ import re
 from collections import defaultdict
 from copy import deepcopy
 from io import StringIO
+from pprint import pformat
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
@@ -21,8 +22,8 @@ from gnomad.assessment.validity_checks import (
     check_raw_and_adj_callstats,
     check_sex_chr_metrics,
     compare_subset_freqs,
-    compute_missingness,
     flatten_missingness_struct,
+    pprint_global_anns,
     sum_group_callstats,
     summarize_variant_filters,
     summarize_variants,
@@ -636,6 +637,7 @@ def check_missingness(
     :return: None
     """
     n_sites = ht.count()
+    structs_to_not_traverse = tuple(structs_to_not_traverse or ())
 
     logger.info(
         "Missingness threshold (upper cutoff for allowed missingness): %.2f",
@@ -905,6 +907,16 @@ def validate_federated_data(
             metric_first_field=True,
             metrics=freq_annotations_to_sum,
         )
+
+    logger.info("Printing schema of annotations and globals...")
+
+    full_description = ht._type.pretty()
+    logger.info("Table describe:\n%s", full_description)
+    global_eval = {g: hl.eval(ht[g]) for g in ht.globals}
+    logger.info(
+        "Globals eval:\n%s",
+        pformat(global_eval, sort_dicts=False, compact=True, width=160),
+    )
 
 
 def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
