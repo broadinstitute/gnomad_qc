@@ -176,6 +176,9 @@ def _check_resource_existence(
     :return: None.
     """
     if environment == "batch":
+        logger.info(
+            "Skipping resource existence check for Batch environment. To replace any existing outputs, run with --overwrite."
+        )
         return
     check_resource_existence(
         input_step_resources=input_step_resources,
