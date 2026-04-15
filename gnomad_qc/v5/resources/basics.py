@@ -177,7 +177,7 @@ def _check_resource_existence(
     """
     if environment == "batch":
         logger.info(
-            "Skipping resource existence check for Batch environment. Please rerun with --overwrite to overwrite existing resources."
+            "Skipping resource existence check for Batch environment. To replace any existing outputs, run with --overwrite."
         )
         return
     check_resource_existence(
