@@ -33,6 +33,7 @@ from gnomad_qc.v5.resources.annotations import (
 )
 from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
+    _get_batch_resource_kwargs,
     _init_hail,
     get_aou_vds,
     get_logging_path,
@@ -361,7 +362,9 @@ def main(args):
     """Generate all variant annotations needed for variant QC."""
     environment = args.environment
     _init_hail(
-        "generate_variant_qc_annotations", environment, worker_memory=args.worker_memory
+        "generate_variant_qc_annotations",
+        environment,
+        **_get_batch_resource_kwargs(args),
     )
 
     overwrite = args.overwrite
