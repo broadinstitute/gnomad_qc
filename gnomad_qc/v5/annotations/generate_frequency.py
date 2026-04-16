@@ -407,6 +407,7 @@ def _calculate_aou_frequencies_and_hists_using_densify(
 def process_aou_dataset(
     test_vds: bool = False,
     test_partitions: int = None,
+    repartition_after_filter: Optional[int] = None,
     use_all_sites_ans: bool = False,
     environment: str = "batch",
     reduce_to_minimal_groups: bool = False,
@@ -421,6 +422,8 @@ def process_aou_dataset(
 
     :param test_vds: Whether to run in test mode on test VDS.
     :param test_partitions: Number of partitions to use in test mode. Default is None.
+    :param repartition_after_filter: Optional number of partitions to repartition
+        the filtered VDS into after applying ``filter_partitions``. Default is None.
     :param use_all_sites_ans: Whether to use all sites ANs for frequency calculations.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
@@ -468,6 +471,7 @@ def process_aou_dataset(
             filter_partitions=(
                 list(range(test_partitions)) if test_partitions else None
             ),
+            repartition_after_filter=repartition_after_filter,
             environment=environment,
         )
         aou_vds = _prepare_aou_vds(
@@ -1280,6 +1284,7 @@ def main(args):
             aou_freq_ht = process_aou_dataset(
                 test_vds=test_vds,
                 test_partitions=test_partitions,
+                repartition_after_filter=args.repartition_after_filter,
                 use_all_sites_ans=use_all_sites_ans,
                 environment=environment,
                 reduce_to_minimal_groups=args.reduce_to_minimal_groups,
@@ -1408,6 +1413,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=2,
         help="If supplied, filter full or test VDS to N partitions in test mode. Default is 2.",
+    )
+    test_group.add_argument(
+        "--repartition-after-filter",
+        type=int,
+        default=None,
+        help=(
+            "Number of partitions to repartition the VDS into after applying"
+            " partition filtering. Useful when filtered partitions are too large"
+            " for parallelism on preemptible VMs."
+        ),
     )
 
     # Processing step arguments.

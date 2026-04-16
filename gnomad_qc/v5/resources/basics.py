@@ -179,8 +179,10 @@ def _init_hail(
                 "regions": ["us-central1"],
             }
         )
-    hl.init(**init_kwargs)
-    hl.default_reference("GRCh38")
+    hl.init(**init_kwargs, default_reference="GRCh38")
+
+
+# hl.default_reference("GRCh38")
 
 
 def qc_temp_prefix(
@@ -286,7 +288,9 @@ def get_aou_vds(
     release_only: bool = False,
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
+    n_partitions_on_read: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
+    repartition_after_filter: Optional[int] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -315,7 +319,14 @@ def get_aou_vds(
         If `filter_samples` contains sample IDs with collisions with gnomAD samples,
         `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
+    :param n_partitions_on_read: Optional number of partitions to repartition the VDS
+        into on read. This increases parallelism so individual tasks are small enough
+        to complete before preemption on GCP preemptible VMs. Default is None.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
+    :param repartition_after_filter: Optional number of partitions to repartition the
+        filtered VDS into after applying ``filter_partitions``. Useful for testing
+        when original partitions are too large for parallelism. Requires
+        ``filter_partitions`` to be set. Default is None.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
@@ -333,10 +344,24 @@ def get_aou_vds(
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
-    vds = aou_v8_resource.vds()
 
     if isinstance(chrom, str):
         chrom = [chrom]
+
+    if n_partitions_on_read and (
+        chrom or autosomes_only or sex_chr_only or filter_intervals
+    ):
+        logger.warning(
+            "n_partitions_on_read is set with chromosome or interval filtering. "
+            "Partition boundaries will be computed over the entire genome before "
+            "filtering, which may result in many empty partitions."
+        )
+
+    vds = aou_v8_resource.vds(
+        read_args=(
+            {"n_partitions": n_partitions_on_read} if n_partitions_on_read else None
+        )
+    )
 
     if autosomes_only and sex_chr_only:
         raise ValueError(
@@ -362,6 +387,21 @@ def get_aou_vds(
         vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(filter_partitions),
             vds.variant_data._filter_partitions(filter_partitions),
+        )
+
+    # Repartition filtered VDS into smaller partitions for parallelism.
+    if repartition_after_filter:
+        if not filter_partitions:
+            raise ValueError(
+                "'repartition_after_filter' requires 'filter_partitions' to be set."
+            )
+        logger.info(
+            "Repartitioning filtered VDS into %s partitions...",
+            repartition_after_filter,
+        )
+        vds = hl.vds.VariantDataset(
+            vds.reference_data.repartition(repartition_after_filter),
+            vds.variant_data.repartition(repartition_after_filter),
         )
 
     # Remove the chr4 site with excessive numbers of alleles (n=22233) to

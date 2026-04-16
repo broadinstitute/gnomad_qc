@@ -284,7 +284,7 @@ def get_split_aou_vds(
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
     return VariantDatasetResource(
-        f"{_annotations_root(version, test=test, data_type=data_type, data_set='aou', environment=environment)}/aou.genomes.v{version}.split_prepared.vds"
+        f"{_annotations_root(version, test=test, data_type=data_type, data_set='aou', environment=environment)}/aou.genomes.v{version}.split_prepared.repart.vds"
     )
 
 
