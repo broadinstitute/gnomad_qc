@@ -304,6 +304,7 @@ def get_aou_vds(
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
     environment: str = "batch",
+    log_sample_counts: bool = True,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -333,6 +334,8 @@ def get_aou_vds(
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
+    :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude.
+        When False, skips the ``count_cols`` calls used for logging. Default is True.
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -356,8 +359,38 @@ def get_aou_vds(
         logger.info("Filtering to chromosome(s) %s...", chrom)
         vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
+    # Apply partition filtering.
+    if filter_partitions and len(filter_partitions) > 0:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
+
+    # Remove the chr4 site with excessive numbers of alleles (n=22233) to
+    # avoid memory issues with `split_multi`.
+    logger.info("Dropping excessively multi-allelic site at chr4:12237652...")
+    vds = hl.vds.filter_intervals(
+        vds,
+        [hl.parse_locus_interval("chr4:12237652-12237653", reference_genome="GRCh38")],
+        keep=False,
+    )
+
+    # Apply interval filtering.
+    if filter_intervals and len(filter_intervals) > 0:
+        logger.info("Filtering to %s intervals...", len(filter_intervals))
+        if isinstance(filter_intervals[0], str):
+            filter_intervals = [
+                hl.parse_locus_interval(x, reference_genome="GRCh38")
+                for x in filter_intervals
+            ]
+        vds = hl.vds.filter_intervals(
+            vds, filter_intervals, split_reference_blocks=split_reference_blocks
+        )
+
     # Count initial number of samples.
-    n_samples_before = vds.variant_data.count_cols()
+    if log_sample_counts:
+        n_samples_before = vds.variant_data.count_cols()
 
     # Remove samples that should have been excluded from the AoU v8 release
     # and samples with non-XX/XY ploidies.
@@ -377,44 +410,15 @@ def get_aou_vds(
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
-
     # Report final sample exclusion count.
-    n_samples_after = vds.variant_data.count_cols()
-    logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
-
-    # Remove the chr4 site with excessive numbers of alleles (n=22233) to
-    # avoid memory issues with `split_multi`.
-    logger.info("Dropping excessively multi-allelic site at chr4:12237652...")
-    vds = hl.vds.filter_intervals(
-        vds,
-        [hl.parse_locus_interval("chr4:12237652-12237653", reference_genome="GRCh38")],
-        keep=False,
-    )
+    if log_sample_counts:
+        n_samples_after = vds.variant_data.count_cols()
+        logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
 
     if naive_coalesce_partitions:
         vds = hl.vds.VariantDataset(
             vds.reference_data.naive_coalesce(naive_coalesce_partitions),
             vds.variant_data.naive_coalesce(naive_coalesce_partitions),
-        )
-
-    # Apply interval filtering.
-    if filter_intervals and len(filter_intervals) > 0:
-        logger.info("Filtering to %s intervals...", len(filter_intervals))
-        if isinstance(filter_intervals[0], str):
-            filter_intervals = [
-                hl.parse_locus_interval(x, reference_genome="GRCh38")
-                for x in filter_intervals
-            ]
-        vds = hl.vds.filter_intervals(
-            vds, filter_intervals, split_reference_blocks=split_reference_blocks
-        )
-
-    # Apply partition filtering.
-    if filter_partitions and len(filter_partitions) > 0:
-        logger.info("Filtering to %s partitions...", len(filter_partitions))
-        vds = hl.vds.VariantDataset(
-            vds.reference_data._filter_partitions(filter_partitions),
-            vds.variant_data._filter_partitions(filter_partitions),
         )
 
     vmt = vds.variant_data
