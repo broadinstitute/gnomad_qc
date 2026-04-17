@@ -3,7 +3,10 @@
 schema = {
     "type": "object",
     "properties": {
-        "missingness_threshold": {"type": "number"},
+        "struct_annotations_to_skip_missingness": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
         "struct_annotations_for_missingness": {
             "type": "array",
             "items": {"type": "string"},
@@ -46,10 +49,10 @@ schema = {
             "items": {"type": "string"},
         },
         "variant_filter_field": {"type": "string"},
+        "data_type": {"type": "string", "enum": ["exomes", "genomes"]},
         "check_mono_and_only_het": {"type": "boolean"},
     },
     "required": [
-        "missingness_threshold",
         "freq_fields",
         "freq_annotations_to_sum",
         "sort_order",
@@ -57,6 +60,7 @@ schema = {
         "subsets",
         "variant_filter_field",
         "check_mono_and_only_het",
+        "data_type",
     ],
     "additionalProperties": False,
 }
