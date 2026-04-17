@@ -8,7 +8,7 @@ astroid==3.0.1
     # via pylint
 autopep8==2.0.2
     # via -r requirements-dev.in
-black==24.3.0
+black==26.3.1
     # via -r requirements-dev.in
 cfgv==3.4.0
     # via pre-commit
@@ -18,7 +18,7 @@ dill==0.3.7
     # via pylint
 distlib==0.3.7
     # via virtualenv
-filelock==3.12.4
+filelock==3.20.3
     # via virtualenv
 identify==2.5.30
     # via pre-commit
@@ -34,7 +34,7 @@ nodeenv==1.8.0
     # via pre-commit
 packaging==23.2
     # via black
-pathspec==0.11.2
+pathspec==1.0.4
     # via black
 platformdirs==3.11.0
     # via
@@ -49,13 +49,15 @@ pydocstyle==6.3.0
     # via -r requirements-dev.in
 pylint==3.0.1
     # via -r requirements-dev.in
+pytokens==0.4.1
+    # via black
 pyyaml==6.0.1
     # via pre-commit
 snowballstemmer==2.2.0
     # via pydocstyle
 tomlkit==0.12.1
     # via pylint
-virtualenv==20.24.5
+virtualenv==20.36.1
     # via pre-commit
 
 # The following packages are considered to be unsafe in a requirements file:
