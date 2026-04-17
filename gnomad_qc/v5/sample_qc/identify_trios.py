@@ -17,9 +17,13 @@ from gnomad.sample_qc.relatedness import (
 from gnomad.utils.vcf import SEXES
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
-from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
+from gnomad_qc.v5.resources.basics import (
+    _check_resource_existence,
+    _init_hail,
+    get_aou_vds,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
     dense_trios,
@@ -32,7 +36,11 @@ from gnomad_qc.v5.resources.sample_qc import (
     trios,
 )
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
 logger = logging.getLogger("identify_trios")
 logger.setLevel(logging.INFO)
 
@@ -269,7 +277,7 @@ def create_dense_trio_mt(
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     environment = args.environment
-    _init_hail("identify_trios", environment)
+    _init_hail("identify_trios", environment, worker_memory=args.worker_memory)
 
     overwrite = args.overwrite
     test = args.test
@@ -298,7 +306,8 @@ def main(args):
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"duplicates_ht": [dup_ht_path]},
                 overwrite=overwrite,
             )
@@ -310,7 +319,8 @@ def main(args):
 
         if args.infer_families:
             logger.info("Inferring families...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"raw_pedigree": [raw_ped_path]},
                 overwrite=overwrite,
             )
@@ -336,7 +346,8 @@ def main(args):
 
         if args.create_fake_pedigree:
             logger.info("Creating fake Pedigree...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"fake_pedigree": [fake_ped_path]},
                 overwrite=overwrite,
             )
@@ -350,7 +361,8 @@ def main(args):
 
         if args.run_mendel_errors:
             logger.info("Running Mendel errors on chr20...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"mendel_err_ht": [mendel_err_ht_path]},
                 overwrite=overwrite,
             )
@@ -370,7 +382,8 @@ def main(args):
 
         if args.finalize_ped:
             logger.info("Finalizing Pedigree...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={
                     "final_pedigree": [final_ped_path],
                     "final_trios": [trios_path],
@@ -400,7 +413,8 @@ def main(args):
         if args.create_dense_trio_mt:
             logger.info("Creating dense trio MT...")
             logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
                 overwrite=overwrite,
             )
@@ -421,8 +435,9 @@ def main(args):
             dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 
     finally:
-        logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("identify_trios", environment=environment))
+        if environment == "rwb":
+            logger.info("Copying hail log to logging bucket...")
+            hl.copy_log(get_logging_path("identify_trios", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -443,6 +458,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment where script will run.",
         choices=["rwb", "batch"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Memory for worker nodes. Applies to Batch environment only.",
+        type=str,
+        default=None,
     )
 
     identify_dup_args = parser.add_argument_group("Duplicate identification")
@@ -556,7 +577,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--naive-coalesce-partitions",
         help=("Number of partitions to coalesce the VDS to."),
         type=int,
-        default=5000,
     )
 
     return parser
