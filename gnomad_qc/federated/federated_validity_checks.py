@@ -781,12 +781,6 @@ def add_info_annotations(
     if missing_allele_info:
         logger.warning("Missing allele type fields: %s", missing_allele_info)
 
-    if "monoallelic" in ht.row:
-        info_dict["monoallelic"] = ht["monoallelic"]
-
-    if "only_het" in ht.row:
-        info_dict["only_het"] = ht["only_het"]
-
     ht = ht.annotate(info=ht.info.annotate(**info_dict))
 
     return ht
