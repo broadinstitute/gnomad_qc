@@ -35,7 +35,7 @@ from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, REGION_FLAG_FIELDS
 from jsonschema import validate
 from jsonschema.exceptions import ValidationError
 
-from gnomad_qc.v5.configs.validity_inputs_schema import schema
+from gnomad_qc.federated.configs.validity_inputs_schema import schema
 from gnomad_qc.v5.resources.basics import get_logging_path
 
 for handler in logging.root.handlers[:]:
