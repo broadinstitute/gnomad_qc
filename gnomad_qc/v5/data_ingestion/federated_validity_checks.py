@@ -23,7 +23,6 @@ from gnomad.assessment.validity_checks import (
     check_sex_chr_metrics,
     compare_subset_freqs,
     flatten_missingness_struct,
-    pprint_global_anns,
     sum_group_callstats,
     summarize_variant_filters,
     summarize_variants,
@@ -371,9 +370,11 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["globals"] = missing_global_fields
 
     # Check that specified row annotations are present.
-    row_fields = array_struct_annotations + config.get(
-        "struct_annotations_to_skip_missingness"
+    structs_to_skip_missingness = (
+        config.get("struct_annotations_to_skip_missingness") or []
     )
+
+    row_fields = array_struct_annotations + structs_to_skip_missingness
 
     missing_row_fields = [i for i in row_fields if i not in ht.row]
     missing_fields["rows"] = missing_row_fields
@@ -812,6 +813,9 @@ def validate_federated_data(
     :param freq_meta_expr: Metadata expression that contains the values of the elements in
         `meta_indexed_expr`. The most often used expression is `freq_meta` to index into
         a 'freq' array (example: ht.freq_meta).
+    :param missingness_threshold: Upper cutoff for allowed amount of
+        missingness. Default is 0.50.
+    :param struct_annotations_to_skip_missingness: Optional list of top-level struct row annotations that should be treated as a single field rather than recursively traversed when checking missingness. Default is None.
     :param freq_annotations_to_sum: List of annotation fields within `meta_expr` to sum. Default is ['AC', 'AN', 'homozygote_count'].
     :param sort_order: Order in which groupings are unfurled into flattened annotations. Default is ["subset", "downsampling", gen_anc", "sex", "group"].
     :param nhomalt_metric: Name of metric denoting homozygous alternate count. Default is "nhomalt".
@@ -1178,7 +1182,11 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
 
     ht = ht.annotate(grpmax=grpmax, fafmax=fafmax)
     # Add monoallelic and only_het annotations.
-    ht = ht.annotate(monoallelic=hl.rand_bool(0.50), only_het=hl.rand_bool(0.10))
+    ht = ht.annotate(
+        info=ht.info.annotate(
+            monoallelic=hl.rand_bool(0.50), only_het=hl.rand_bool(0.10)
+        )
+    )
     ht = ht.key_by("locus", "alleles")
 
     return ht
@@ -1186,7 +1194,7 @@ def create_logtest_ht(exclude_xnonpar_y: bool = False) -> hl.Table:
 
 def load_gnomad_data(
     gnomad_input_file: str,
-    version: str = "5.0",
+    version: str,
     data_type: str = "genomes",
     test: bool = False,
     data_set: Optional[str] = None,
@@ -1200,10 +1208,10 @@ def load_gnomad_data(
     :param version: Version to load. For example "4.0", "4.1", "5.0". Default is "5.0".
     :param data_type: Type of gnomAD data to load, either "exomes" or "genomes".
     :param test: If True, load test version of the data. Default is False.
-    :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". Default is None.
-    :param public_release: Whether or not to use the public version of the release. Default is None.
+    :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". If None, uses the default defined by the underlying resource function. Default is None.
+    :param public_release: Whether or not to use the public version of the release. If None, uses the default defined by the underlying resource function.Default is None.
     :param environment: Environment to use. Must be one of "rwb", "batch", or
-        "dataproc". Default is None.
+        "dataproc". If None, uses the default defined by the underlying resource function. Default is None.
     :return: Hail Table of the specified gnomAD data.
     """
     major_v = version.split(".")[0]
@@ -1296,6 +1304,14 @@ def main(args):
             "exclude_xnonpar_y_in_logtest can only be used with use_logtest_ht."
         )
 
+    if not args.use_logtest_ht and (
+        args.gnomad_input_file is None or args.gnomad_version is None
+    ):
+        raise ValueError(
+            "When --use-logtest-ht is not set, both --gnomad-input-file and "
+            "--gnomad-version are required."
+        )
+
     try:
         # Read in config file and validate.
         with hl.hadoop_open(config_path, "r") as f:
@@ -1324,6 +1340,7 @@ def main(args):
         if args.use_logtest_ht:
             logger.info("Using logtest ht...")
             ht = create_logtest_ht(args.exclude_xnonpar_y_in_logtest)
+            validate_config_fields_in_ht(ht=ht, config=config)
 
         else:
             # Load data from the specified gnomAD resource function.
