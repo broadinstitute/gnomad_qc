@@ -1201,7 +1201,7 @@ def load_gnomad_data(
     :param test: If True, load test version of the data. Default is False.
     :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". Default is None.
     :param public_release: Whether or not to use the public version of the release. Default is None.
-    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or
+    :param environment: Environment to use. Must be one of "rwb", "batch", or
         "dataproc". Default is None.
     :return: Hail Table of the specified gnomAD data.
     """
