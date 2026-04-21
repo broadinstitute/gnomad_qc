@@ -1206,7 +1206,6 @@ def load_gnomad_data(
         "dataproc". Default is None.
     :return: Hail Table of the specified gnomAD data.
     """
-    # Extract the first digit before any dot, ignoring a leading 'v'.
     major_v = version.split(".")[0]
 
     # Define module mapping based on major version.
