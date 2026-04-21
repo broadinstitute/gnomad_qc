@@ -93,7 +93,8 @@ REGION_FLAG_FIELDS = {
 
 
 def get_table_kind(lines, header_index) -> str:
-    """Determine whether a markdown table corresponds to "global" or "row" fields by scanning upward from the table header line.
+    """
+    Determine whether a markdown table corresponds to "global" or "row" fields by scanning upward from the table header line.
 
     :param lines: The full list of lines from the markdown document.
     :param header_index: The index of the table header line (the line with column names).
