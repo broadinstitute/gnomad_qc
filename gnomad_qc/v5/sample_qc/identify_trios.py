@@ -20,6 +20,7 @@ from hail.utils.misc import new_temp_file
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
+    _get_batch_resource_kwargs,
     _init_hail,
     get_aou_vds,
     get_logging_path,
@@ -277,7 +278,7 @@ def create_dense_trio_mt(
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
     environment = args.environment
-    _init_hail("identify_trios", environment, worker_memory=args.worker_memory)
+    _init_hail("identify_trios", environment, **_get_batch_resource_kwargs(args))
 
     overwrite = args.overwrite
     test = args.test
