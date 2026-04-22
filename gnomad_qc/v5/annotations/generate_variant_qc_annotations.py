@@ -264,7 +264,7 @@ def create_variant_qc_annotation_ht(
         Training sites (bool):
             - transmitted_singleton
             - sibling_singleton
-            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+            - fail_hard_filters - (ht.AS_QD < 0.5) | (ht.AS_FS > 60) | (ht.AS_MQ < 30)
 
     :param info_ht: Info Table with split multi-allelics.
     :param trio_stats_ht: Table with trio statistics.
@@ -314,7 +314,7 @@ def create_variant_qc_annotation_ht(
         {
             f"{tp}_{group}": hl.or_else(
                 (ht[f"{n}_{group}"] == 1)
-                & (ht[f"AC_high_quality{'' if group == 'adj' else f'_raw'}"] == 2),
+                & (ht[f"AC_high_quality{'' if group == 'adj' else '_raw'}"] == 2),
                 False,
             )
             for tp, n in tp_map.items()
@@ -504,7 +504,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--driver-cores",
         help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
-        type=str,
+        type=int,
         default=None,
     )
     parser.add_argument(
@@ -516,7 +516,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--worker-cores",
         help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
-        type=str,
+        type=int,
         default=None,
     )
     parser.add_argument(
@@ -524,6 +524,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Memory for worker nodes. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
         type=str,
         default=None,
+    )
+    parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
     )
     parser.add_argument(
         "--overwrite",
@@ -568,7 +574,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
 
     variant_qc_annotation_args = parser.add_argument_group(
-        "Variant QC annotation HT parameters"
+        "Variant QC annotation HT parameters."
     )
     variant_qc_annotation_args.add_argument(
         "--create-variant-qc-annotation-ht",
@@ -582,7 +588,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     variant_qc_annotation_args.add_argument(
         "--n-partitions",
-        help="Desired number of partitions for variant QC annotation HT .",
+        help="Desired number of partitions for variant QC annotation HT.",
         type=int,
         default=5000,
     )

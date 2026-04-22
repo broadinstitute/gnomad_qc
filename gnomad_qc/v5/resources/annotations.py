@@ -346,7 +346,7 @@ def get_variant_qc_annotations(
         Training sites (bool):
             - transmitted_singleton
             - sibling_singleton
-            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+            - fail_hard_filters - (ht.AS_QD < 0.5) | (ht.AS_FS > 60) | (ht.AS_MQ < 30)
 
     :param test: Whether to use a tmp path for testing.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
