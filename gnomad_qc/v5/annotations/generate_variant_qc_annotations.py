@@ -409,7 +409,6 @@ def main(args):
             ht.write(info_ht_path, overwrite=overwrite)
         if args.export_info_vcf:
             logger.info("Exporting info ht as VCF...")
-            info_ht_path = get_info_ht(test=test, environment=environment).path
             out_info_vcf_path = info_vcf_path(test=test, environment=environment)
             _check_resource_existence(
                 environment=environment,
