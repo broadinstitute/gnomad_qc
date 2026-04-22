@@ -13,14 +13,15 @@ from gnomad.utils.annotations import (
 )
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
-from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
-from gnomad.variant_qc.random_forest import median_impute_features
-
-from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
+from gnomad.variant_qc.pipeline import (
     INFO_FEATURES,
     NON_INFO_FEATURES,
     TRUTH_DATA,
+    generate_sib_stats,
+    generate_trio_stats,
 )
+from gnomad.variant_qc.random_forest import median_impute_features
+
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     get_aou_annotated_sites_only_vcf,
