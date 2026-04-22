@@ -461,6 +461,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="rwb",
     )
     parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    parser.add_argument(
         "--worker-memory",
         help="Memory for worker nodes. Applies to Batch environment only.",
         type=str,
