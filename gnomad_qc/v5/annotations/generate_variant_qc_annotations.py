@@ -501,6 +501,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="rwb",
     )
     parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    parser.add_argument(
         "--driver-cores",
         help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
         type=int,
@@ -523,12 +529,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Memory for worker nodes. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
         type=str,
         default=None,
-    )
-    parser.add_argument(
-        "--app-name",
-        type=str,
-        default=None,
-        help="Job name for batch/QoB backend.",
     )
     parser.add_argument(
         "--overwrite",
