@@ -707,7 +707,13 @@ def run_aou_freq_as_batch(
         billing_project=billing_project,
         remote_tmpdir=remote_tmpdir,
     )
-    batch = hb.Batch(name="v5_freq_aou_fanout", backend=backend)
+    batch_name = (
+        f"v5_freq_aou_{n_partitions}p_{partitions_per_job}ppj"
+        f"_repart{repartition_after_filter or 0}"
+    )
+    if suffix:
+        batch_name += f"_{suffix}"
+    batch = hb.Batch(name=batch_name, backend=backend)
 
     def _configure(j, cpu, memory, storage):
         j.image(image)
