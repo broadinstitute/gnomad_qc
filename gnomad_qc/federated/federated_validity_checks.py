@@ -370,8 +370,8 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
     missing_fields["globals"] = missing_global_fields
 
     # Check that specified row annotations are present.
-    structs_to_skip_missingness = (
-        config.get("struct_annotations_to_skip_missingness", [])
+    structs_to_skip_missingness = config.get(
+        "struct_annotations_to_skip_missingness", []
     )
 
     row_fields = array_struct_annotations + structs_to_skip_missingness
@@ -1191,7 +1191,7 @@ def load_gnomad_data(
     version: str,
     data_type: str = "genomes",
     test: bool = False,
-    data_set: Optional[str] = None,
+    sample_set: Optional[str] = None,
     public_release: Optional[bool] = None,
     environment: Optional[str] = None,
 ) -> hl.Table:
@@ -1202,7 +1202,7 @@ def load_gnomad_data(
     :param version: Version to load. For example "4.0", "4.1", "5.0". Default is "5.0".
     :param data_type: Type of gnomAD data to load, either "exomes" or "genomes".
     :param test: If True, load test version of the data. Default is False.
-    :param data_set: Data set of annotation resource. One of "aou", "gnomad", or "merged". If None, uses the default defined by the underlying resource function. Default is None.
+    :param sample_set: Sample set of annotation resource. One of "aou", "gnomad", or "merged". If None, uses the default defined by the underlying resource function. Default is None.
     :param public_release: Whether or not to use the public version of the release. If None, uses the default defined by the underlying resource function.Default is None.
     :param environment: Environment to use. Must be one of "rwb", "batch", or
         "dataproc". If None, uses the default defined by the underlying resource function. Default is None.
@@ -1241,7 +1241,7 @@ def load_gnomad_data(
         "data_type": data_type,
         "test": test,
         "version": version,
-        "data_set": data_set,
+        "sample_set": sample_set,
         "public": public_release,
         "environment": environment,
     }
@@ -1343,7 +1343,7 @@ def main(args):
                 version=args.gnomad_version,
                 data_type=data_type,
                 test=args.gnomad_test,
-                data_set=args.gnomad_data_set,
+                sample_set=args.gnomad_sample_set,
                 public_release=args.gnomad_public_release,
                 environment=args.gnomad_environment,
             )
@@ -1463,7 +1463,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
-    # Create a mutually exclusive group for --test-n-partitions and --use-test-ht.
+    # Create a mutually exclusive group for --test-n-partitions and --use-logtest-ht.
     test_group = parser.add_mutually_exclusive_group()
 
     test_group.add_argument(
@@ -1568,8 +1568,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     gnomad_group.add_argument(
-        "--gnomad-data-set",
-        help="Data set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'. Default is None.",
+        "--gnomad-sample-set",
+        help="Sample set of annotation resource to load, if applicable. One of 'aou', 'gnomad', or 'merged'. Default is None.",
         choices=["aou", "gnomad", "merged"],
         type=str,
         default=None,
