@@ -584,17 +584,128 @@ def _run_aou_freq_merge(input_paths: List[str], output_path: str) -> None:
     """
     Union a list of partial AoU frequency HTs and write the result.
 
-    Runs inside a Hail Batch PythonJob. Globals are identical across
-    all inputs (produced from the same split VDS), so the union inherits
-    them from the first HT.
+    Globals are identical across all inputs (produced from the same VDS),
+    so the union inherits them from the first HT.
 
     :param input_paths: GCS paths of the partial HTs to union.
     :param output_path: GCS path to write the merged HT.
     """
-    _init_hail_local_spark("v5_freq_aou_merge")
     hts = [hl.read_table(p) for p in input_paths]
     merged = hl.Table.union(*hts) if len(hts) > 1 else hts[0]
     merged.write(output_path, overwrite=True)
+
+
+def run_aou_freq_sequential(
+    final_output_path: str,
+    n_partitions: int,
+    test_vds: bool = False,
+    test: bool = False,
+    environment: str = "batch",
+    partitions_per_job: int = 2,
+    repartition_after_filter: Optional[int] = 100,
+    reduce_to_minimal_groups: bool = False,
+    suffix: Optional[str] = None,
+    overwrite: bool = False,
+) -> None:
+    """
+    Compute AoU frequencies by looping through partition chunks sequentially.
+
+    Each chunk is a small QoB job using the already-initialized Hail session.
+    Completed chunks (whose output HTs exist on GCS) are skipped on rerun,
+    providing resume-after-preemption. After all chunks are done, merges them
+    hierarchically into ``final_output_path``.
+
+    :param final_output_path: GCS path for the final merged AoU freq HT.
+    :param n_partitions: Total number of VDS partitions to process.
+    :param test_vds: Whether to use the test VDS.
+    :param test: Whether running in test mode.
+    :param environment: Resource environment string.
+    :param partitions_per_job: Partitions per chunk. Default 2.
+    :param repartition_after_filter: Partitions each chunk repartitions into
+        before densifying. Default 100.
+    :param reduce_to_minimal_groups: Forwarded to chunk compute.
+    :param suffix: Optional suffix for intermediate chunk paths.
+    :param overwrite: If True, recompute all chunks even if they exist.
+    """
+    from gnomad.utils.file_utils import file_exists
+
+    chunk_paths = []
+    total_chunks = (n_partitions + partitions_per_job - 1) // partitions_per_job
+    skipped = 0
+
+    for chunk_idx, start in enumerate(range(0, n_partitions, partitions_per_job)):
+        stop = min(start + partitions_per_job, n_partitions)
+        chunk_path = get_aou_freq_chunk_path(
+            chunk_idx, kind="chunk", test=test, environment=environment, suffix=suffix
+        )
+        chunk_paths.append(chunk_path)
+
+        if not overwrite and _file_exists_for_env(chunk_path, environment):
+            logger.info(
+                "Chunk %s/%s (partitions [%s, %s)) already exists, skipping.",
+                chunk_idx + 1,
+                total_chunks,
+                start,
+                stop,
+            )
+            skipped += 1
+            continue
+
+        logger.info(
+            "Processing chunk %s/%s (partitions [%s, %s))...",
+            chunk_idx + 1,
+            total_chunks,
+            start,
+            stop,
+        )
+        vds = get_aou_vds(
+            test=test_vds,
+            filter_partitions=list(range(start, stop)),
+            repartition_after_filter=repartition_after_filter,
+            annotate_meta=True,
+            release_only=True,
+            environment=environment,
+        )
+        vds = _prepare_aou_vds(vds, test=test, environment=environment)
+        freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
+            vds, reduce_to_minimal_groups=reduce_to_minimal_groups
+        )
+        freq_ht = select_final_dataset_fields(freq_ht, dataset="aou")
+        freq_ht.write(chunk_path, overwrite=True)
+        logger.info(
+            "Chunk %s/%s written to %s.", chunk_idx + 1, total_chunks, chunk_path
+        )
+
+    logger.info(
+        "All %s chunks complete (%s skipped, %s computed). Merging...",
+        total_chunks,
+        skipped,
+        total_chunks - skipped,
+    )
+
+    # Hierarchical merge: group chunks, merge each group, then merge groups.
+    merge_group_size = 500
+    if len(chunk_paths) <= merge_group_size:
+        _run_aou_freq_merge(chunk_paths, final_output_path)
+    else:
+        group_paths = []
+        for group_idx, group_start in enumerate(
+            range(0, len(chunk_paths), merge_group_size)
+        ):
+            group_end = min(group_start + merge_group_size, len(chunk_paths))
+            group_inputs = chunk_paths[group_start:group_end]
+            group_path = get_aou_freq_chunk_path(
+                group_idx,
+                kind="group",
+                test=test,
+                environment=environment,
+                suffix=suffix,
+            )
+            _run_aou_freq_merge(group_inputs, group_path)
+            group_paths.append(group_path)
+        _run_aou_freq_merge(group_paths, final_output_path)
+
+    logger.info("Final merged freq HT written to %s.", final_output_path)
 
 
 def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
@@ -1630,9 +1741,9 @@ def main(args):
                 logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
                 aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
             else:
-                # Densify path: fan out via Hail Batch PythonJobs. Each
-                # chunk reads the raw VDS, filters to its partition slice,
-                # prepares (split_multi etc.), densifies, and aggregates.
+                # Densify path: loop through partition chunks
+                # sequentially using the current QoB session. Completed
+                # chunks are skipped on rerun (resume-after-preemption).
                 if test_partitions:
                     n_partitions = test_partitions
                 elif args.n_partitions:
@@ -1644,11 +1755,14 @@ def main(args):
                         "many partitions to process."
                     )
                 logger.info(
-                    "Fanning out %s partitions via Hail Batch...",
+                    "Processing %s partitions sequentially "
+                    "(%s per chunk, repart %s)...",
                     n_partitions,
+                    args.partitions_per_job,
+                    args.repartition_after_filter,
                 )
 
-                run_aou_freq_as_batch(
+                run_aou_freq_sequential(
                     final_output_path=aou_freq.path,
                     n_partitions=n_partitions,
                     test_vds=test_vds,
@@ -1656,21 +1770,9 @@ def main(args):
                     environment=environment,
                     partitions_per_job=args.partitions_per_job,
                     repartition_after_filter=args.repartition_after_filter,
-                    merge_group_size=args.merge_group_size,
                     reduce_to_minimal_groups=args.reduce_to_minimal_groups,
-                    chunk_cpu=args.chunk_cpu,
-                    chunk_memory=args.chunk_memory,
-                    chunk_storage=args.chunk_storage,
-                    merge_cpu=args.merge_cpu,
-                    merge_memory=args.merge_memory,
-                    merge_storage=args.merge_storage,
-                    final_merge_storage=args.final_merge_storage,
-                    billing_project=args.billing_project,
-                    remote_tmpdir=args.batch_remote_tmpdir,
-                    **({"image": args.batch_image} if args.batch_image else {}),
-                    methods_branch=args.methods_branch,
                     suffix=aou_freq_suffix,
-                    dry_run=args.batch_dry_run,
+                    overwrite=overwrite,
                 )
 
         if args.merge_datasets:
