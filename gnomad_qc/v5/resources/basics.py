@@ -186,6 +186,7 @@ def _init_hail_local_spark(
     log_name: str,
     tmp_dir: Optional[str] = None,
     driver_memory: str = "10g",
+    local_cores: int = 2,
 ) -> None:
     """
     Initialize Hail in single-node local-Spark mode.
@@ -197,11 +198,14 @@ def _init_hail_local_spark(
     :param tmp_dir: Optional temporary directory prefix for Hail.
     :param driver_memory: JVM heap size for the local Spark driver.
         Default ``"10g"``.
+    :param local_cores: Number of Spark threads. Fewer threads means less
+        concurrent memory pressure. Default ``2``.
     """
     init_kwargs = {
         "log": f"/tmp/{log_name}.log",
         "default_reference": "GRCh38",
         "gcs_requester_pays_configuration": "broad-mpg-gnomad",
+        "master": f"local[{local_cores}]",
         "spark_conf": {
             "spark.driver.memory": driver_memory,
         },
