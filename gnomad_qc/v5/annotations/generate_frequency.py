@@ -607,7 +607,7 @@ def _build_setup_command(commit: str) -> str:
         "set -euxo pipefail\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
-        "export PYTHONPATH=/tmp/gnomad_qc:$PYTHONPATH\n"
+        "export PYTHONPATH=/tmp/gnomad_qc:${PYTHONPATH:-}\n"
     )
 
 
