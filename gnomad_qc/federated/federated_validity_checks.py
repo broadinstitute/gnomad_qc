@@ -371,7 +371,7 @@ def validate_config_fields_in_ht(ht: hl.Table, config: Dict[str, Any]) -> None:
 
     # Check that specified row annotations are present.
     structs_to_skip_missingness = (
-        config.get("struct_annotations_to_skip_missingness") or []
+        config.get("struct_annotations_to_skip_missingness", [])
     )
 
     row_fields = array_struct_annotations + structs_to_skip_missingness
