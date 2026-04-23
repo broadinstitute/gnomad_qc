@@ -173,6 +173,7 @@ def _init_hail(
             billing_project or "gnomad-production"
         )
         os.environ["HAIL_BATCH_REMOTE_TMPDIR"] = f"gs://{BATCH_TMP_BUCKET}"
+        os.environ["HAIL_GCS_REQUESTER_PAYS_PROJECT"] = "broad-mpg-gnomad"
         init_kwargs.update(
             {
                 "backend": "batch",
