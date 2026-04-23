@@ -266,6 +266,7 @@ def get_aou_freq_chunk_path(
     data_type: str = "genomes",
     test: bool = False,
     environment: str = "batch",
+    suffix: Optional[str] = None,
 ) -> str:
     """
     Get GCS path for a per-chunk / per-group AoU frequency HT.
@@ -280,6 +281,7 @@ def get_aou_freq_chunk_path(
     :param data_type: Data type of annotation resource ("genomes" or "exomes").
     :param test: Whether to use a tmp path for testing.
     :param environment: Environment to use. Default is "batch".
+    :param suffix: Optional suffix to namespace parallel runs. Default is None.
     :return: GCS path to the per-chunk or per-group HT.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
@@ -288,7 +290,8 @@ def get_aou_freq_chunk_path(
     root = _annotations_root(
         version, test=test, data_type=data_type, data_set="aou", environment=environment
     )
-    return f"{root}/freq_chunks/aou.genomes.v{version}.freq.{kind}_{chunk_idx:06d}.ht"
+    suffix_str = f".{suffix}" if suffix else ""
+    return f"{root}/freq_chunks{suffix_str}/aou.genomes.v{version}.freq.{kind}_{chunk_idx:06d}.ht"
 
 
 def get_split_aou_vds(

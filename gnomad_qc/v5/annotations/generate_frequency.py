@@ -637,6 +637,7 @@ def run_aou_freq_as_batch(
     remote_tmpdir: Optional[str] = None,
     image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest",
     methods_branch: str = "main",
+    suffix: Optional[str] = None,
     dry_run: bool = False,
 ) -> None:
     """
@@ -724,7 +725,7 @@ def run_aou_freq_as_batch(
     for chunk_idx, start in enumerate(range(0, n_partitions, partitions_per_job)):
         stop = min(start + partitions_per_job, n_partitions)
         chunk_path = get_aou_freq_chunk_path(
-            chunk_idx, kind="chunk", test=test, environment=environment
+            chunk_idx, kind="chunk", test=test, environment=environment, suffix=suffix
         )
         j = batch.new_job(name=f"aou_freq_chunk_{chunk_idx:06d}")
         _configure(j, chunk_cpu, chunk_memory, chunk_storage)
@@ -747,7 +748,7 @@ def run_aou_freq_as_batch(
         group_end = min(group_start + merge_group_size, len(chunk_paths))
         group_inputs = chunk_paths[group_start:group_end]
         group_path = get_aou_freq_chunk_path(
-            group_idx, kind="group", test=test, environment=environment
+            group_idx, kind="group", test=test, environment=environment, suffix=suffix
         )
         j = batch.new_job(name=f"aou_freq_group_{group_idx:04d}")
         _configure(j, merge_cpu, merge_memory, merge_storage)
@@ -1625,6 +1626,7 @@ def main(args):
                     remote_tmpdir=args.batch_remote_tmpdir,
                     **({"image": args.batch_image} if args.batch_image else {}),
                     methods_branch=args.methods_branch,
+                    suffix=aou_freq_suffix,
                     dry_run=args.batch_dry_run,
                 )
 
