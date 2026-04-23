@@ -182,6 +182,30 @@ def _init_hail(
     hl.init(**init_kwargs, default_reference="GRCh38")
 
 
+def _init_hail_local_spark(
+    log_name: str,
+    tmp_dir: Optional[str] = None,
+) -> None:
+    """
+    Initialize Hail in single-node local-Spark mode.
+
+    Intended for use inside a Hail Batch PythonJob container so each job runs
+    its Hail Query work locally on its own cores (no recursive QoB). Also
+    usable from an orchestrator process that only needs to read VDS metadata.
+
+    :param log_name: Base name for the log file (without path or extension).
+    :param tmp_dir: Optional temporary directory prefix for Hail.
+    """
+    init_kwargs = {
+        "log": f"/tmp/{log_name}.log",
+        "default_reference": "GRCh38",
+        "gcs_requester_pays_configuration": "broad-mpg-gnomad",
+    }
+    if tmp_dir is not None:
+        init_kwargs["tmp_dir"] = tmp_dir
+    hl.init(**init_kwargs)
+
+
 # hl.default_reference("GRCh38")
 
 

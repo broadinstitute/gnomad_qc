@@ -259,6 +259,38 @@ def get_freq(
     )
 
 
+def get_aou_freq_chunk_path(
+    chunk_idx: int,
+    kind: str = "chunk",
+    version: str = CURRENT_ANNOTATION_VERSION,
+    data_type: str = "genomes",
+    test: bool = False,
+    environment: str = "batch",
+) -> str:
+    """
+    Get GCS path for a per-chunk / per-group AoU frequency HT.
+
+    Used by the Hail Batch fan-out orchestration: each chunk worker writes its
+    partial freq HT to ``kind="chunk"``, each group-merge worker writes to
+    ``kind="group"``.
+
+    :param chunk_idx: Zero-based chunk or group index.
+    :param kind: One of ``"chunk"`` or ``"group"``. Default is ``"chunk"``.
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource ("genomes" or "exomes").
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "batch".
+    :return: GCS path to the per-chunk or per-group HT.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    if kind not in ("chunk", "group"):
+        raise ValueError(f"'kind' must be 'chunk' or 'group', got {kind!r}.")
+    root = _annotations_root(
+        version, test=test, data_type=data_type, data_set="aou", environment=environment
+    )
+    return f"{root}/freq_chunks/aou.genomes.v{version}.freq.{kind}_{chunk_idx:06d}.ht"
+
+
 def get_split_aou_vds(
     version: str = CURRENT_ANNOTATION_VERSION,
     data_type: str = "genomes",

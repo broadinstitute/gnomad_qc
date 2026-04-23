@@ -14,11 +14,12 @@ gnomAD (--process-gnomad):
 4. Subtract from v4 frequencies to get updated gnomAD v5 frequencies
 
 AoU (--process-aou):
-1. Load AoU VDS with metadata
-2. Prepare VDS (annotate group membership, adjust for ploidy, split multi-allelics)
-3. Calculate frequencies using either: All sites ANs (efficient, requires pre-computed
-AN values) or Densify approach (standard, more resource intensive)
-4. Generate age histograms during frequency calculation
+  Densify path (default):
+  1. Ensure split/prepared AoU VDS checkpoint exists (one-off prepare step)
+  2. Fan out frequency computation via Hail Batch PythonJobs
+     (one per partition slice, hierarchical merge)
+  All-sites-AN path (--use-all-sites-ans):
+  1. Load AoU VDS with metadata, single-job frequency computation
 
 Merged dataset (--merge-datasets):
 1. Merge frequency data and histograms from both gnomAD and AoU datasets.
@@ -26,11 +27,11 @@ Merged dataset (--merge-datasets):
 
 Usage Examples:
 ---------------
-# Process AoU dataset using all-sites ANs.
-python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
+# Process AoU (densify path, batch fan-out).
+python generate_frequency.py --process-aou --environment batch
 
-# Process AoU on batch/QoB with custom resources.
-python generate_frequency.py --process-aou --environment batch --app-name "aou_freq" --driver-cores 8 --worker-memory highmem
+# Process AoU using all-sites ANs (single-job, no fan-out).
+python generate_frequency.py --process-aou --use-all-sites-ans --environment rwb
 
 # Process gnomAD consent withdrawals
 python generate_frequency.py --process-gnomad --environment batch
@@ -45,9 +46,10 @@ python generate_frequency.py --merge-datasets --environment batch --app-name "me
 import argparse
 import copy
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import hail as hl
+import hailtop.batch as hb
 from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
@@ -76,6 +78,7 @@ from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
+    get_aou_freq_chunk_path,
     get_freq,
     get_split_aou_vds,
     group_membership,
@@ -84,6 +87,7 @@ from gnomad_qc.v5.resources.basics import (
     _file_exists_for_env,
     _get_batch_resource_kwargs,
     _init_hail,
+    _init_hail_local_spark,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
     get_logging_path,
@@ -513,6 +517,266 @@ def process_aou_dataset(
     aou_freq_ht = select_final_dataset_fields(aou_freq_ht, dataset="aou")
 
     return aou_freq_ht
+
+
+# ---------------------------------------------------------------------------
+# Hail Batch fan-out for --process-aou
+# ---------------------------------------------------------------------------
+
+
+def _run_aou_freq_chunk(
+    start: int,
+    stop: int,
+    output_path: str,
+    test_vds: bool,
+    test: bool,
+    environment: str,
+    reduce_to_minimal_groups: bool,
+    repartition_after_filter: Optional[int],
+) -> None:
+    """
+    Compute the AoU frequency HT for a single partition slice.
+
+    Runs inside a Hail Batch PythonJob container. Loads the AoU VDS via
+    ``get_aou_vds`` (which handles requester-pays and environment routing),
+    filters to partitions ``[start, stop)``, prepares, densifies, and writes
+    a partial frequency HT.
+
+    :param start: First partition index (inclusive).
+    :param stop: Last partition index (exclusive).
+    :param output_path: GCS path for this chunk's partial freq HT.
+    :param test_vds: Whether to use the test VDS (10-sample subset).
+    :param test: Whether running in test mode (for group_membership lookup).
+    :param environment: Resource environment string.
+    :param reduce_to_minimal_groups: Forwarded to
+        ``_calculate_aou_frequencies_and_hists_using_densify``.
+    :param repartition_after_filter: Optional number of partitions to
+        repartition this chunk's slice into for intra-container parallelism.
+    """
+    _init_hail_local_spark(f"v5_freq_aou_chunk_{start:06d}_{stop:06d}")
+
+    vds = get_aou_vds(
+        test=test_vds,
+        filter_partitions=list(range(start, stop)),
+        repartition_after_filter=repartition_after_filter,
+        annotate_meta=True,
+        release_only=True,
+        environment=environment,
+    )
+
+    vds = _prepare_aou_vds(vds, test=test, environment=environment)
+
+    freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
+        vds, reduce_to_minimal_groups=reduce_to_minimal_groups
+    )
+    freq_ht = select_final_dataset_fields(freq_ht, dataset="aou")
+    freq_ht.write(output_path, overwrite=True)
+
+
+def _run_aou_freq_merge(input_paths: List[str], output_path: str) -> None:
+    """
+    Union a list of partial AoU frequency HTs and write the result.
+
+    Runs inside a Hail Batch PythonJob. Globals are identical across
+    all inputs (produced from the same split VDS), so the union inherits
+    them from the first HT.
+
+    :param input_paths: GCS paths of the partial HTs to union.
+    :param output_path: GCS path to write the merged HT.
+    """
+    _init_hail_local_spark("v5_freq_aou_merge")
+    hts = [hl.read_table(p) for p in input_paths]
+    merged = hl.Table.union(*hts) if len(hts) > 1 else hts[0]
+    merged.write(output_path, overwrite=True)
+
+
+def _build_setup_command(commit: str) -> str:
+    """
+    Build shell commands to download gnomad_qc at a pinned commit.
+
+    The Docker image (``freq-batch``) already has ``hail`` and
+    ``gnomad_methods`` installed. This function only downloads and
+    extracts the ``gnomad_qc`` repo tarball and adds it to
+    ``PYTHONPATH``.
+
+    :param commit: Git commit hash to pin to.
+    :return: Shell command string.
+    """
+    qc_tarball = f"https://github.com/broadinstitute/gnomad_qc/archive/{commit}.tar.gz"
+    return (
+        "set -euxo pipefail\n"
+        f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
+        f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
+        "export PYTHONPATH=/tmp/gnomad_qc:$PYTHONPATH\n"
+    )
+
+
+def run_aou_freq_as_batch(
+    final_output_path: str,
+    n_partitions: int,
+    test_vds: bool = False,
+    test: bool = False,
+    environment: str = "batch",
+    partitions_per_job: int = 2,
+    repartition_after_filter: Optional[int] = 100,
+    merge_group_size: int = 500,
+    reduce_to_minimal_groups: bool = False,
+    chunk_cpu: int = 2,
+    chunk_memory: str = "highmem",
+    chunk_storage: str = "25Gi",
+    merge_cpu: int = 4,
+    merge_memory: str = "standard",
+    merge_storage: str = "50Gi",
+    final_merge_storage: str = "100Gi",
+    regions: Optional[List[str]] = None,
+    billing_project: str = "gnomad-production",
+    remote_tmpdir: Optional[str] = None,
+    image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5-freq-batch:latest",
+    dry_run: bool = False,
+) -> None:
+    """
+    Submit a Hail Batch that computes the AoU frequency HT via fan-out.
+
+    Each chunk job clones ``gnomad_qc`` at the current commit, installs
+    dependencies, then runs ``generate_frequency.py --run-chunk``. Chunks
+    are merged hierarchically via ``--run-merge`` jobs.
+
+    :param final_output_path: GCS path for the final merged AoU freq HT.
+    :param n_partitions: Total number of VDS partitions to process.
+    :param test_vds: Whether to use the test VDS (10-sample subset).
+    :param test: Whether running in test mode.
+    :param environment: Resource environment string.
+    :param partitions_per_job: Partitions per chunk job. Default 2.
+    :param repartition_after_filter: Partitions each chunk explodes into
+        before densifying. Default 100.
+    :param merge_group_size: Chunk HTs per group-merge job. Default 500.
+    :param reduce_to_minimal_groups: Forwarded to chunk workers.
+    :param chunk_cpu: CPU request per chunk job.
+    :param chunk_memory: Hail Batch memory preset per chunk job.
+    :param chunk_storage: Extra ``/io`` storage per chunk job.
+    :param merge_cpu: CPU request per merge job.
+    :param merge_memory: Memory preset for merge jobs.
+    :param merge_storage: Extra storage per group-merge job.
+    :param final_merge_storage: Extra storage for the final merge job.
+    :param regions: GCP regions for jobs. Default ``["us-central1"]``.
+    :param billing_project: Hail Batch billing project.
+    :param remote_tmpdir: ``gs://`` scratch path for the ServiceBackend.
+    :param image: Docker image for BashJobs.
+    :param dry_run: If True, validate the DAG without submitting.
+    """
+    import subprocess
+
+    if regions is None:
+        regions = ["us-central1"]
+    if remote_tmpdir is None:
+        from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
+
+        remote_tmpdir = f"gs://{BATCH_TMP_BUCKET}"
+        logger.info("Using default remote_tmpdir: %s", remote_tmpdir)
+
+    # Pin to the current commit so every job runs the same code.
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+    setup_cmd = _build_setup_command(commit)
+
+    # Base args shared by all chunk jobs.
+    script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/generate_frequency.py"
+    chunk_base_flags = f"--environment {environment}"
+    if test_vds:
+        chunk_base_flags += " --test-vds"
+    if reduce_to_minimal_groups:
+        chunk_base_flags += " --reduce-to-minimal-groups"
+    if repartition_after_filter:
+        chunk_base_flags += f" --repartition-after-filter {repartition_after_filter}"
+
+    logger.info(
+        "Processing %s partitions; submitting %s-partition chunks (~%s jobs), "
+        "pinned to commit %s...",
+        n_partitions,
+        partitions_per_job,
+        (n_partitions + partitions_per_job - 1) // partitions_per_job,
+        commit[:12],
+    )
+
+    backend = hb.ServiceBackend(
+        billing_project=billing_project,
+        remote_tmpdir=remote_tmpdir,
+    )
+    batch = hb.Batch(name="v5_freq_aou_fanout", backend=backend)
+
+    def _configure(j, cpu, memory, storage):
+        j.image(image)
+        j.cpu(cpu)
+        j.memory(memory)
+        j.storage(storage)
+        j.regions(regions)
+        j.spot(True)
+        j.n_max_attempts(5)
+        return j
+
+    # --- Chunk jobs ---
+    chunk_jobs = []
+    chunk_paths = []
+    for chunk_idx, start in enumerate(range(0, n_partitions, partitions_per_job)):
+        stop = min(start + partitions_per_job, n_partitions)
+        chunk_path = get_aou_freq_chunk_path(
+            chunk_idx, kind="chunk", test=test, environment=environment
+        )
+        j = batch.new_job(name=f"aou_freq_chunk_{chunk_idx:06d}")
+        _configure(j, chunk_cpu, chunk_memory, chunk_storage)
+        j.command(
+            f"{setup_cmd}"
+            f"{script} --run-chunk"
+            f" --chunk-start {start} --chunk-stop {stop}"
+            f" --chunk-output {chunk_path}"
+            f" {chunk_base_flags}"
+        )
+        chunk_jobs.append(j)
+        chunk_paths.append(chunk_path)
+
+    # --- Group-merge jobs (hierarchical to avoid blowing up Spark plans) ---
+    group_jobs = []
+    group_paths = []
+    for group_idx, group_start in enumerate(
+        range(0, len(chunk_paths), merge_group_size)
+    ):
+        group_end = min(group_start + merge_group_size, len(chunk_paths))
+        group_inputs = chunk_paths[group_start:group_end]
+        group_path = get_aou_freq_chunk_path(
+            group_idx, kind="group", test=test, environment=environment
+        )
+        j = batch.new_job(name=f"aou_freq_group_{group_idx:04d}")
+        _configure(j, merge_cpu, merge_memory, merge_storage)
+        j.depends_on(*chunk_jobs[group_start:group_end])
+        paths_arg = " ".join(group_inputs)
+        j.command(
+            f"{setup_cmd}"
+            f"{script} --run-merge"
+            f" --merge-inputs {paths_arg}"
+            f" --merge-output {group_path}"
+        )
+        group_jobs.append(j)
+        group_paths.append(group_path)
+
+    # --- Final merge ---
+    final = batch.new_job(name="aou_freq_final_merge")
+    _configure(final, merge_cpu, merge_memory, final_merge_storage)
+    final.depends_on(*group_jobs)
+    paths_arg = " ".join(group_paths)
+    final.command(
+        f"{setup_cmd}"
+        f"{script} --run-merge"
+        f" --merge-inputs {paths_arg}"
+        f" --merge-output {final_output_path}"
+    )
+
+    logger.info(
+        "Submitting Hail Batch: %s chunk jobs, %s group-merge jobs, "
+        "1 final merge (dry_run=%s)...",
+        len(chunk_jobs),
+        len(group_jobs),
+        dry_run,
+    )
+    batch.run(dry_run=dry_run)
 
 
 def _prepare_consent_vds(
@@ -1224,6 +1488,28 @@ def _initialize_hail(args) -> None:
 
 def main(args):
     """Generate v5 frequency data."""
+    # --- Batch worker subcommands (run inside Hail Batch containers) ---
+    if args.run_chunk:
+        _run_aou_freq_chunk(
+            start=args.chunk_start,
+            stop=args.chunk_stop,
+            output_path=args.chunk_output,
+            test_vds=args.test_vds,
+            test=args.test_vds or args.test_partitions is not None,
+            environment=args.environment,
+            reduce_to_minimal_groups=args.reduce_to_minimal_groups,
+            repartition_after_filter=args.repartition_after_filter,
+        )
+        return
+
+    if args.run_merge:
+        _run_aou_freq_merge(
+            input_paths=args.merge_inputs,
+            output_path=args.merge_output,
+        )
+        return
+
+    # --- Normal orchestrator flow ---
     environment = args.environment
     use_all_sites_ans = args.use_all_sites_ans
     test_vds = args.test_vds
@@ -1281,18 +1567,60 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            aou_freq_ht = process_aou_dataset(
-                test_vds=test_vds,
-                test_partitions=test_partitions,
-                repartition_after_filter=args.repartition_after_filter,
-                use_all_sites_ans=use_all_sites_ans,
-                environment=environment,
-                reduce_to_minimal_groups=args.reduce_to_minimal_groups,
-                overwrite_split_aou_vds=overwrite_split_aou_vds,
-            )
+            if use_all_sites_ans:
+                # All-sites-AN path: cheap single-job, no fan-out needed.
+                aou_freq_ht = process_aou_dataset(
+                    test_vds=test_vds,
+                    test_partitions=test_partitions,
+                    repartition_after_filter=args.repartition_after_filter,
+                    use_all_sites_ans=True,
+                    environment=environment,
+                    reduce_to_minimal_groups=args.reduce_to_minimal_groups,
+                    overwrite_split_aou_vds=overwrite_split_aou_vds,
+                )
+                logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
+                aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
+            else:
+                # Densify path: fan out via Hail Batch PythonJobs. Each
+                # chunk reads the raw VDS, filters to its partition slice,
+                # prepares (split_multi etc.), densifies, and aggregates.
+                if test_partitions:
+                    n_partitions = test_partitions
+                elif args.n_partitions:
+                    n_partitions = args.n_partitions
+                else:
+                    raise ValueError(
+                        "The densify fan-out path requires either "
+                        "--test-partitions or --n-partitions to know how "
+                        "many partitions to process."
+                    )
+                logger.info(
+                    "Fanning out %s partitions via Hail Batch...",
+                    n_partitions,
+                )
 
-            logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
-            aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
+                run_aou_freq_as_batch(
+                    final_output_path=aou_freq.path,
+                    n_partitions=n_partitions,
+                    test_vds=test_vds,
+                    test=test_run,
+                    environment=environment,
+                    partitions_per_job=args.partitions_per_job,
+                    repartition_after_filter=args.repartition_after_filter,
+                    merge_group_size=args.merge_group_size,
+                    reduce_to_minimal_groups=args.reduce_to_minimal_groups,
+                    chunk_cpu=args.chunk_cpu,
+                    chunk_memory=args.chunk_memory,
+                    chunk_storage=args.chunk_storage,
+                    merge_cpu=args.merge_cpu,
+                    merge_memory=args.merge_memory,
+                    merge_storage=args.merge_storage,
+                    final_merge_storage=args.final_merge_storage,
+                    billing_project=args.billing_project,
+                    remote_tmpdir=args.batch_remote_tmpdir,
+                    **({"image": args.batch_image} if args.batch_image else {}),
+                    dry_run=args.batch_dry_run,
+                )
 
         if args.merge_datasets:
             logger.info(
@@ -1434,7 +1762,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     processing_group.add_argument(
         "--process-aou",
-        help="Process All of Us dataset for frequency calculations.",
+        help=(
+            "Process AoU dataset for frequency calculations. Ensures the "
+            "split/prepared VDS checkpoint exists, then fans out frequency "
+            "computation via Hail Batch PythonJobs."
+        ),
         action="store_true",
     )
     processing_group.add_argument(
@@ -1456,6 +1788,52 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--merge-datasets",
         help="Merge frequency data from both gnomAD and AoU datasets.",
         action="store_true",
+    )
+
+    # Batch worker subcommands (invoked by Hail Batch jobs, not by users).
+    worker_group = parser.add_argument_group(
+        "batch worker subcommands",
+        "Internal subcommands run by Hail Batch chunk/merge jobs.",
+    )
+    worker_group.add_argument(
+        "--run-chunk",
+        help=argparse.SUPPRESS,
+        action="store_true",
+    )
+    worker_group.add_argument(
+        "--chunk-start",
+        type=int,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    worker_group.add_argument(
+        "--chunk-stop",
+        type=int,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    worker_group.add_argument(
+        "--chunk-output",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    worker_group.add_argument(
+        "--run-merge",
+        help=argparse.SUPPRESS,
+        action="store_true",
+    )
+    worker_group.add_argument(
+        "--merge-inputs",
+        nargs="+",
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    worker_group.add_argument(
+        "--merge-output",
+        type=str,
+        default=None,
+        help=argparse.SUPPRESS,
     )
 
     # Environment configuration.
@@ -1513,6 +1891,102 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Memory type for worker nodes (e.g., 'highmem').",
+    )
+
+    # Batch fan-out configuration (used by --process-aou densify path).
+    fanout_group = parser.add_argument_group(
+        "batch fan-out configuration",
+        "Parameters for --process-aou Hail Batch PythonJob fan-out (densify path).",
+    )
+    fanout_group.add_argument(
+        "--n-partitions",
+        type=int,
+        default=None,
+        help=(
+            "Total number of VDS partitions to process. Required for "
+            "production runs (the AoU VDS has ~145000). For test runs, "
+            "--test-partitions is used instead."
+        ),
+    )
+    fanout_group.add_argument(
+        "--partitions-per-job",
+        type=int,
+        default=2,
+        help=(
+            "Partitions of the split VDS to process per chunk job. Default 2"
+            " keeps each job well under the ~30min GCP preemption window."
+        ),
+    )
+    fanout_group.add_argument(
+        "--merge-group-size",
+        type=int,
+        default=500,
+        help="Number of chunk HTs unioned per group-merge job. Default 500.",
+    )
+    fanout_group.add_argument(
+        "--chunk-cpu",
+        type=int,
+        default=2,
+        help="CPU request per chunk job. Default 2.",
+    )
+    fanout_group.add_argument(
+        "--chunk-memory",
+        type=str,
+        default="highmem",
+        help="Memory preset per chunk job. Default 'highmem'.",
+    )
+    fanout_group.add_argument(
+        "--chunk-storage",
+        type=str,
+        default="25Gi",
+        help="Extra /io storage per chunk job. Default '25Gi'.",
+    )
+    fanout_group.add_argument(
+        "--merge-cpu",
+        type=int,
+        default=4,
+        help="CPU request per merge job. Default 4.",
+    )
+    fanout_group.add_argument(
+        "--merge-memory",
+        type=str,
+        default="standard",
+        help="Memory preset for merge jobs. Default 'standard'.",
+    )
+    fanout_group.add_argument(
+        "--merge-storage",
+        type=str,
+        default="50Gi",
+        help="Extra storage per group-merge job. Default '50Gi'.",
+    )
+    fanout_group.add_argument(
+        "--final-merge-storage",
+        type=str,
+        default="100Gi",
+        help="Extra storage for the final merge job. Default '100Gi'.",
+    )
+    fanout_group.add_argument(
+        "--batch-image",
+        type=str,
+        default=None,
+        help=(
+            "Docker image for chunk and merge jobs. Defaults to"
+            " hailgenetics/hail matching the current Hail version."
+        ),
+    )
+    fanout_group.add_argument(
+        "--batch-remote-tmpdir",
+        type=str,
+        default=None,
+        help=(
+            "gs:// path used by the Hail Batch ServiceBackend for its"
+            " scratch. Defaults to the standard batch tmp bucket."
+        ),
+    )
+    fanout_group.add_argument(
+        "--batch-dry-run",
+        help="Validate the fan-out DAG without actually running jobs.",
+        action="store_true",
     )
 
     return parser
