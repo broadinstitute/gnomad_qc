@@ -175,6 +175,7 @@ def _init_hail(
         init_kwargs.update(
             {
                 "backend": "batch",
+                "remote_tmpdir": f"gs://{BATCH_TMP_BUCKET}",
                 "gcs_requester_pays_configuration": "broad-mpg-gnomad",
                 "regions": ["us-central1"],
             }
