@@ -631,7 +631,7 @@ def run_aou_freq_as_batch(
     regions: Optional[List[str]] = None,
     billing_project: str = "gnomad-production",
     remote_tmpdir: Optional[str] = None,
-    image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5-freq-batch:latest",
+    image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest",
     dry_run: bool = False,
 ) -> None:
     """
