@@ -185,21 +185,26 @@ def _init_hail(
 def _init_hail_local_spark(
     log_name: str,
     tmp_dir: Optional[str] = None,
+    driver_memory: str = "10g",
 ) -> None:
     """
     Initialize Hail in single-node local-Spark mode.
 
-    Intended for use inside a Hail Batch PythonJob container so each job runs
-    its Hail Query work locally on its own cores (no recursive QoB). Also
-    usable from an orchestrator process that only needs to read VDS metadata.
+    Intended for use inside a Hail Batch BashJob container so each job runs
+    its Hail Query work locally on its own cores (no recursive QoB).
 
     :param log_name: Base name for the log file (without path or extension).
     :param tmp_dir: Optional temporary directory prefix for Hail.
+    :param driver_memory: JVM heap size for the local Spark driver.
+        Default ``"10g"``.
     """
     init_kwargs = {
         "log": f"/tmp/{log_name}.log",
         "default_reference": "GRCh38",
         "gcs_requester_pays_configuration": "broad-mpg-gnomad",
+        "spark_conf": {
+            "spark.driver.memory": driver_memory,
+        },
     }
     if tmp_dir is not None:
         init_kwargs["tmp_dir"] = tmp_dir
