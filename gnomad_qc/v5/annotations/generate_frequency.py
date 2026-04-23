@@ -590,24 +590,28 @@ def _run_aou_freq_merge(input_paths: List[str], output_path: str) -> None:
     merged.write(output_path, overwrite=True)
 
 
-def _build_setup_command(commit: str) -> str:
+def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
     """
-    Build shell commands to download gnomad_qc at a pinned commit.
+    Build shell commands to download gnomad_qc and gnomad_methods.
 
-    The Docker image (``freq-batch``) already has ``hail`` and
-    ``gnomad_methods`` installed. This function only downloads and
-    extracts the ``gnomad_qc`` repo tarball and adds it to
-    ``PYTHONPATH``.
+    Both repos are actively developed, so we pull them at runtime rather
+    than relying on what's baked into the Docker image. The image provides
+    ``hail`` and system dependencies (g++, curl).
 
-    :param commit: Git commit hash to pin to.
+    :param commit: Git commit hash to pin gnomad_qc to.
+    :param methods_branch: Branch/commit of gnomad_methods to pull.
+        Default is ``"main"``.
     :return: Shell command string.
     """
     qc_tarball = f"https://github.com/broadinstitute/gnomad_qc/archive/{commit}.tar.gz"
+    methods_tarball = f"https://github.com/broadinstitute/gnomad_methods/archive/{methods_branch}.tar.gz"
     return (
         "set -euxo pipefail\n"
+        f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
+        f"mv /tmp/gnomad_methods-{methods_branch} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
-        "export PYTHONPATH=/tmp/gnomad_qc:${PYTHONPATH:-}\n"
+        "export PYTHONPATH=/tmp/gnomad_qc:/tmp/gnomad_methods:${PYTHONPATH:-}\n"
     )
 
 
