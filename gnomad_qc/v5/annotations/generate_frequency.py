@@ -533,7 +533,7 @@ def _run_aou_freq_chunk(
     environment: str,
     reduce_to_minimal_groups: bool,
     repartition_after_filter: Optional[int],
-    driver_memory: str = "8g",
+    driver_memory: str = "standard",
     worker_cores: Optional[int] = None,
     worker_memory: Optional[str] = None,
 ) -> None:
