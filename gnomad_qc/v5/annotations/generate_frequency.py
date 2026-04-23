@@ -533,11 +533,12 @@ def _run_aou_freq_chunk(
     environment: str,
     reduce_to_minimal_groups: bool,
     repartition_after_filter: Optional[int],
+    driver_memory: str = "10g",
 ) -> None:
     """
     Compute the AoU frequency HT for a single partition slice.
 
-    Runs inside a Hail Batch PythonJob container. Loads the AoU VDS via
+    Runs inside a Hail Batch BashJob container. Loads the AoU VDS via
     ``get_aou_vds`` (which handles requester-pays and environment routing),
     filters to partitions ``[start, stop)``, prepares, densifies, and writes
     a partial frequency HT.
@@ -552,8 +553,12 @@ def _run_aou_freq_chunk(
         ``_calculate_aou_frequencies_and_hists_using_densify``.
     :param repartition_after_filter: Optional number of partitions to
         repartition this chunk's slice into for intra-container parallelism.
+    :param driver_memory: JVM heap size for the local Spark driver.
     """
-    _init_hail_local_spark(f"v5_freq_aou_chunk_{start:06d}_{stop:06d}")
+    _init_hail_local_spark(
+        f"v5_freq_aou_chunk_{start:06d}_{stop:06d}",
+        driver_memory=driver_memory,
+    )
 
     vds = get_aou_vds(
         test=test_vds,
@@ -684,9 +689,22 @@ def run_aou_freq_as_batch(
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
     setup_cmd = _build_setup_command(commit, methods_branch=methods_branch)
 
+    # Compute JVM heap from container resources. Reserve ~4GB for Python/OS.
+    mem_per_core = {"highmem": 7, "standard": 4, "lowmem": 1}.get(chunk_memory, 4)
+    total_mem_gb = chunk_cpu * mem_per_core
+    jvm_heap_gb = max(total_mem_gb - 4, 4)
+    driver_memory = f"{jvm_heap_gb}g"
+    logger.info(
+        "Chunk jobs: cpu=%s, memory=%s (~%sGB total), JVM heap=%s",
+        chunk_cpu,
+        chunk_memory,
+        total_mem_gb,
+        driver_memory,
+    )
+
     # Base args shared by all chunk jobs.
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/generate_frequency.py"
-    chunk_base_flags = f"--environment {environment}"
+    chunk_base_flags = f"--environment {environment} --jvm-heap {driver_memory}"
     if test_vds:
         chunk_base_flags += " --test-vds"
     if reduce_to_minimal_groups:
@@ -1511,6 +1529,7 @@ def main(args):
             environment=args.environment,
             reduce_to_minimal_groups=args.reduce_to_minimal_groups,
             repartition_after_filter=args.repartition_after_filter,
+            driver_memory=args.jvm_heap,
         )
         return
 
@@ -1830,6 +1849,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--chunk-output",
         type=str,
         default=None,
+        help=argparse.SUPPRESS,
+    )
+    worker_group.add_argument(
+        "--jvm-heap",
+        type=str,
+        default="10g",
         help=argparse.SUPPRESS,
     )
     worker_group.add_argument(
