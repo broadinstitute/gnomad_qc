@@ -533,15 +533,18 @@ def _run_aou_freq_chunk(
     environment: str,
     reduce_to_minimal_groups: bool,
     repartition_after_filter: Optional[int],
-    driver_memory: str = "10g",
+    driver_memory: str = "8g",
+    worker_cores: Optional[int] = None,
+    worker_memory: Optional[str] = None,
 ) -> None:
     """
     Compute the AoU frequency HT for a single partition slice.
 
-    Runs inside a Hail Batch BashJob container. Loads the AoU VDS via
-    ``get_aou_vds`` (which handles requester-pays and environment routing),
-    filters to partitions ``[start, stop)``, prepares, densifies, and writes
-    a partial frequency HT.
+    Runs inside a Hail Batch BashJob container as a QoB mini-job. Each
+    chunk gets its own QoB driver+workers for the densify, so the heavy
+    computation is distributed — not squeezed into one local JVM. Batch
+    provides the retry/isolation layer; QoB provides the distributed
+    compute.
 
     :param start: First partition index (inclusive).
     :param stop: Last partition index (exclusive).
@@ -553,11 +556,24 @@ def _run_aou_freq_chunk(
         ``_calculate_aou_frequencies_and_hists_using_densify``.
     :param repartition_after_filter: Optional number of partitions to
         repartition this chunk's slice into for intra-container parallelism.
-    :param driver_memory: JVM heap size for the local Spark driver.
+    :param driver_memory: QoB driver memory. Default ``"8g"``.
+    :param worker_cores: QoB worker cores. Default ``None`` (Hail default).
+    :param worker_memory: QoB worker memory preset. Default ``None``.
     """
-    _init_hail_local_spark(
+    init_kwargs = {
+        k: v
+        for k, v in {
+            "driver_memory": driver_memory,
+            "worker_cores": worker_cores,
+            "worker_memory": worker_memory,
+        }.items()
+        if v is not None
+    }
+    _init_hail(
         f"v5_freq_aou_chunk_{start:06d}_{stop:06d}",
-        driver_memory=driver_memory,
+        environment="batch",
+        app_name=f"freq_chunk_{start:06d}_{stop:06d}",
+        **init_kwargs,
     )
 
     vds = get_aou_vds(
@@ -689,28 +705,21 @@ def run_aou_freq_as_batch(
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
     setup_cmd = _build_setup_command(commit, methods_branch=methods_branch)
 
-    # Compute JVM heap from container resources. Reserve ~4GB for Python/OS.
-    mem_per_core = {"highmem": 7, "standard": 4, "lowmem": 1}.get(chunk_memory, 4)
-    total_mem_gb = chunk_cpu * mem_per_core
-    jvm_heap_gb = max(total_mem_gb - 4, 4)
-    driver_memory = f"{jvm_heap_gb}g"
-    logger.info(
-        "Chunk jobs: cpu=%s, memory=%s (~%sGB total), JVM heap=%s",
-        chunk_cpu,
-        chunk_memory,
-        total_mem_gb,
-        driver_memory,
-    )
-
-    # Base args shared by all chunk jobs.
+    # Base args shared by all chunk jobs. Each chunk runs as a QoB
+    # mini-job — the Batch container is just the driver; QoB spawns its
+    # own workers for the heavy densify/aggregate compute.
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/generate_frequency.py"
-    chunk_base_flags = f"--environment {environment} --jvm-heap {driver_memory}"
+    chunk_base_flags = f"--environment {environment}"
     if test_vds:
         chunk_base_flags += " --test-vds"
     if reduce_to_minimal_groups:
         chunk_base_flags += " --reduce-to-minimal-groups"
     if repartition_after_filter:
         chunk_base_flags += f" --repartition-after-filter {repartition_after_filter}"
+    if chunk_cpu:
+        chunk_base_flags += f" --qob-worker-cores {chunk_cpu}"
+    if chunk_memory:
+        chunk_base_flags += f" --qob-worker-memory {chunk_memory}"
 
     logger.info(
         "Processing %s partitions; submitting %s-partition chunks (~%s jobs), "
@@ -752,7 +761,8 @@ def run_aou_freq_as_batch(
             chunk_idx, kind="chunk", test=test, environment=environment, suffix=suffix
         )
         j = batch.new_job(name=f"aou_freq_chunk_{chunk_idx:06d}")
-        _configure(j, chunk_cpu, chunk_memory, chunk_storage)
+        # The Batch container is just a QoB driver — lightweight.
+        _configure(j, 2, "standard", "10Gi")
         j.command(
             f"{setup_cmd}"
             f"{script} --run-chunk"
@@ -1529,7 +1539,8 @@ def main(args):
             environment=args.environment,
             reduce_to_minimal_groups=args.reduce_to_minimal_groups,
             repartition_after_filter=args.repartition_after_filter,
-            driver_memory=args.jvm_heap,
+            worker_cores=args.qob_worker_cores,
+            worker_memory=args.qob_worker_memory,
         )
         return
 
@@ -1852,9 +1863,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     worker_group.add_argument(
-        "--jvm-heap",
+        "--qob-worker-cores",
+        type=int,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+    worker_group.add_argument(
+        "--qob-worker-memory",
         type=str,
-        default="10g",
+        default=None,
         help=argparse.SUPPRESS,
     )
     worker_group.add_argument(
