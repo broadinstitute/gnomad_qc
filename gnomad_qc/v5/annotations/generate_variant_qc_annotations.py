@@ -4,12 +4,24 @@ import argparse
 import logging
 
 import hail as hl
-from gnomad.utils.annotations import annotate_allele_info, get_lowqual_expr
+from gnomad.resources.grch38.gnomad import GROUPS
+from gnomad.resources.grch38.reference_data import get_truth_ht
+from gnomad.utils.annotations import (
+    annotate_allele_info,
+    get_lowqual_expr,
+    pab_max_expr,
+)
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
-from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
+from gnomad.variant_qc.pipeline import (
+    INFO_FEATURES,
+    NON_INFO_FEATURES,
+    TRUTH_DATA,
+    generate_sib_stats,
+    generate_trio_stats,
+)
+from gnomad.variant_qc.random_forest import median_impute_features
 
-from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     get_aou_annotated_sites_only_vcf,
@@ -17,12 +29,23 @@ from gnomad_qc.v5.resources.annotations import (
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
+    get_variant_qc_annotations,
     info_vcf_path,
 )
-from gnomad_qc.v5.resources.basics import _init_hail, get_aou_vds, get_logging_path
+from gnomad_qc.v5.resources.basics import (
+    _check_resource_existence,
+    _get_batch_resource_kwargs,
+    _init_hail,
+    get_aou_vds,
+    get_logging_path,
+)
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
 logger = logging.getLogger("generate_variant_qc_annotations")
 logger.setLevel(logging.INFO)
 
@@ -30,6 +53,8 @@ logger.setLevel(logging.INFO)
 def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
     """
     Compute AC and AC_raw annotations for each allele count filter group.
+
+    Function also adds `AS_pab_max` and `allele_info` annotations.
 
     :param vds: VariantDataset to use for computing AC and AC_raw annotations.
     :return: Table with AC and AC_raw annotations split by high quality, release, and unrelated.
@@ -79,6 +104,10 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
             f"AC{'_' + f if f else f}": grp.map(lambda i: hl.int32(i.get(True, 0)))
             for f, grp in grp_ac_expr.items()
         },
+    )
+
+    ac_info_expr = ac_info_expr.annotate(
+        AS_pab_max=pab_max_expr(mt.LGT, mt.LAD, mt.LA, hl.len(mt.alleles))
     )
 
     ac_info_ht = mt.select_rows(AC_info=ac_info_expr).rows()
@@ -164,8 +193,15 @@ def create_info_ht(
 
     logger.info("Adding AC info annotations to info ht...")
     ac_info_ht = generate_ac_info_ht(vds)
-    ht = ht.annotate(**ac_info_ht[ht.key])
-    return ht
+    ac_info_ht = ac_info_ht.checkpoint(hl.utils.new_temp_file("ac_info_ht", "ht"))
+    # Annotate ac_info_ht with info annotations because info VCF
+    # provided by AoU has variants not present in samples we consider high quality.
+    info_ht = ac_info_ht.annotate(**ht[ac_info_ht.key])
+    info_ht = info_ht.annotate(
+        info=info_ht.info.annotate(AS_pab_max=info_ht.AC_info.AS_pab_max),
+        AC_info=info_ht.AC_info.drop("AS_pab_max"),
+    )
+    return info_ht
 
 
 def run_generate_trio_stats(
@@ -203,14 +239,145 @@ def run_generate_sib_stats(
     return generate_sib_stats(mt, relatedness_ht)
 
 
+def create_variant_qc_annotation_ht(
+    info_ht: hl.Table,
+    trio_stats_ht: hl.Table,
+    sib_stats_ht: hl.Table,
+    impute_features: bool = True,
+    n_partitions: int = 5000,
+) -> hl.Table:
+    """
+    Create a Table with all necessary annotations for variant QC.
+
+    Annotations that are included:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.AS_QD < 0.5) | (ht.AS_FS > 60) | (ht.AS_MQ < 30)
+
+    :param info_ht: Info Table with split multi-allelics.
+    :param trio_stats_ht: Table with trio statistics.
+    :param sib_stats_ht: Table with sibling statistics.
+    :param impute_features: Whether to impute features using feature medians (this is
+        done by variant type).
+    :param n_partitions: Number of partitions to use for final annotated Table.
+    :return: Hail Table with all annotations needed for variant QC.
+    """
+    truth_data_ht = get_truth_ht()
+
+    ht = info_ht.transmute(**info_ht.AC_info, **info_ht.allele_info)
+    ht = ht.annotate(**ht.info.select(*INFO_FEATURES))
+
+    if impute_features:
+        impute_ht = ht.select("variant_type", **ht.info)
+        impute_ht = median_impute_features(
+            impute_ht, {"variant_type": impute_ht.variant_type}
+        ).checkpoint(hl.utils.new_temp_file("median_impute", "ht"))
+
+        impute_result = impute_ht[ht.key]
+        ht = ht.annotate(
+            info=impute_result.drop("feature_imputed", "variant_type"),
+            feature_imputed=impute_result.feature_imputed,
+        )
+        ht = ht.annotate_globals(feature_medians=hl.eval(impute_ht.feature_medians))
+
+    logger.info("Annotating Table with trio and sibling stats and reference truth data")
+    trio_stats_ht = trio_stats_ht.select(
+        *[f"{a}_{group}" for a in ["n_transmitted", "ac_children"] for group in GROUPS]
+    )
+    ht = ht.annotate(
+        **trio_stats_ht[ht.key],
+        **sib_stats_ht[ht.key],
+        **truth_data_ht[ht.key],
+    )
+    tp_map = {
+        "transmitted_singleton": "n_transmitted",
+        "sibling_singleton": "n_sib_shared_variants",
+    }
+
+    # Filter to only variants found in high quality samples and are not lowqual.
+    ht = ht.filter((ht.AC_high_quality_raw > 0) & ~ht.AS_lowqual)
+
+    select_dict = {tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA}
+    select_dict.update(
+        {
+            f"{tp}_{group}": hl.or_else(
+                (ht[f"{n}_{group}"] == 1)
+                & (ht[f"AC_high_quality{'' if group == 'adj' else '_raw'}"] == 2),
+                False,
+            )
+            for tp, n in tp_map.items()
+            for group in GROUPS
+        }
+    )
+    select_dict.update(
+        {
+            # NOTE: Previous versions used QD < 2, but we decided this was too
+            # stringent based on the distribution of this metric in AoU.
+            "fail_hard_filters": (ht.AS_QD < 0.5) | (ht.AS_FS > 60) | (ht.AS_MQ < 30),
+            "singleton": ht.AC_release_raw == 1,
+            "ac_raw": ht.AC_high_quality_raw,
+            "ac": ht.AC_release,
+            "ac_unrelated_raw": ht.AC_unrelated_raw,
+        }
+    )
+
+    if impute_features:
+        select_dict["feature_imputed"] = ht.feature_imputed
+
+    ht = ht.select(
+        "a_index",
+        "was_split",
+        *NON_INFO_FEATURES,
+        "info",
+        **select_dict,
+    )
+
+    temp_path = hl.utils.new_temp_file("variant_qc_annotations", "ht")
+    ht.write(temp_path)
+    ht = hl.read_table(temp_path, _n_partitions=n_partitions)
+    ht.describe()
+
+    summary = ht.group_by(
+        *TRUTH_DATA, *[f"{tp}_{group}" for tp in tp_map for group in GROUPS]
+    ).aggregate(n=hl.agg.count())
+    logger.info("Summary of truth data annotations:")
+    summary.show(-1)
+
+    return ht
+
+
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     environment = args.environment
-    _init_hail("generate_variant_qc_annotations", environment)
+    _init_hail(
+        "generate_variant_qc_annotations",
+        environment,
+        **_get_batch_resource_kwargs(args),
+    )
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
     test = args.test or test_n_partitions is not None
+
+    info_ht_path = get_info_ht(test=test, environment=environment).path
+    trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
+    sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
+    variant_qc_annotation_ht_path = get_variant_qc_annotations(
+        test=test, environment=environment
+    ).path
 
     # NOTE: VDS will have 'aou_' prefix on sample IDs.
     vds = get_aou_vds(
@@ -225,8 +392,8 @@ def main(args):
 
     try:
         if args.create_info_ht:
-            info_ht_path = get_info_ht(test=test, environment=environment).path
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={
                     "info_ht": [info_ht_path],
                 },
@@ -243,9 +410,9 @@ def main(args):
             ht.write(info_ht_path, overwrite=overwrite)
         if args.export_info_vcf:
             logger.info("Exporting info ht as VCF...")
-            info_ht_path = get_info_ht(test=test, environment=environment).path
             out_info_vcf_path = info_vcf_path(test=test, environment=environment)
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 input_step_resources={
                     "info_ht": [info_ht_path],
                 },
@@ -272,8 +439,8 @@ def main(args):
 
         if args.generate_trio_stats:
             logger.info("Generating trio stats...")
-            trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
             )
@@ -286,8 +453,8 @@ def main(args):
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
-            sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
             )
@@ -297,11 +464,32 @@ def main(args):
             )
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
+        if args.create_variant_qc_annotation_ht:
+            logger.info("Creating variant QC annotation HT...")
+            _check_resource_existence(
+                environment=environment,
+                output_step_resources={
+                    "variant_qc_annotation_ht": [variant_qc_annotation_ht_path]
+                },
+                overwrite=overwrite,
+            )
+            ht = create_variant_qc_annotation_ht(
+                hl.read_table(info_ht_path),
+                hl.read_table(trio_stats_ht_path),
+                hl.read_table(sib_stats_ht_path),
+                impute_features=args.impute_features,
+                n_partitions=args.n_partitions,
+            )
+            ht.write(variant_qc_annotation_ht_path, overwrite=overwrite)
+
     finally:
-        logger.info("Copying log to logging bucket...")
-        hl.copy_log(
-            get_logging_path("generate_variant_qc_annotations", environment=environment)
-        )
+        if environment == "rwb":
+            logger.info("Copying log to logging bucket...")
+            hl.copy_log(
+                get_logging_path(
+                    "generate_variant_qc_annotations", environment=environment
+                )
+            )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -312,6 +500,36 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Environment where script will run.",
         choices=["rwb", "batch"],
         default="rwb",
+    )
+    parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    parser.add_argument(
+        "--driver-cores",
+        help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--driver-memory",
+        help="Memory for driver node. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--worker-cores",
+        help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Memory for worker nodes. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--overwrite",
@@ -353,6 +571,26 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--export-info-vcf", help="Export info ht as VCF.", action="store_true"
+    )
+
+    variant_qc_annotation_args = parser.add_argument_group(
+        "Variant QC annotation HT parameters."
+    )
+    variant_qc_annotation_args.add_argument(
+        "--create-variant-qc-annotation-ht",
+        help="Creates an annotated HT with features for variant QC.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--impute-features",
+        help="If set, imputation is performed for variant QC features.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--n-partitions",
+        help="Desired number of partitions for variant QC annotation HT.",
+        type=int,
+        default=5000,
     )
 
     return parser
