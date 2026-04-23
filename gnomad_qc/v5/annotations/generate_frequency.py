@@ -628,6 +628,16 @@ def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
     methods_tarball = f"https://github.com/broadinstitute/gnomad_methods/archive/{methods_branch}.tar.gz"
     return (
         "set -euxo pipefail\n"
+        # Write hailctl config so nested QoB driver jobs can read
+        # requester-pays and remote_tmpdir settings.
+        "mkdir -p ~/.hail\n"
+        "cat > ~/.hail/config.ini <<'HAILCFG'\n"
+        "[batch]\n"
+        "billing_project = gnomad-production\n"
+        "remote_tmpdir = gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp\n"
+        "[gcs_requester_pays]\n"
+        "project = broad-mpg-gnomad\n"
+        "HAILCFG\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_branch.replace('/', '-')} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
