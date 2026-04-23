@@ -608,7 +608,7 @@ def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
     return (
         "set -euxo pipefail\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
-        f"mv /tmp/gnomad_methods-{methods_branch} /tmp/gnomad_methods\n"
+        f"mv /tmp/gnomad_methods-{methods_branch.replace('/', '-')} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
         "export PYTHONPATH=/tmp/gnomad_qc:/tmp/gnomad_methods:${PYTHONPATH:-}\n"
@@ -636,6 +636,7 @@ def run_aou_freq_as_batch(
     billing_project: str = "gnomad-production",
     remote_tmpdir: Optional[str] = None,
     image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest",
+    methods_branch: str = "main",
     dry_run: bool = False,
 ) -> None:
     """
@@ -680,7 +681,7 @@ def run_aou_freq_as_batch(
 
     # Pin to the current commit so every job runs the same code.
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-    setup_cmd = _build_setup_command(commit)
+    setup_cmd = _build_setup_command(commit, methods_branch=methods_branch)
 
     # Base args shared by all chunk jobs.
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/generate_frequency.py"
@@ -1623,6 +1624,7 @@ def main(args):
                     billing_project=args.billing_project,
                     remote_tmpdir=args.batch_remote_tmpdir,
                     **({"image": args.batch_image} if args.batch_image else {}),
+                    methods_branch=args.methods_branch,
                     dry_run=args.batch_dry_run,
                 )
 
@@ -1985,6 +1987,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "gs:// path used by the Hail Batch ServiceBackend for its"
             " scratch. Defaults to the standard batch tmp bucket."
+        ),
+    )
+    fanout_group.add_argument(
+        "--methods-branch",
+        type=str,
+        default="main",
+        help=(
+            "Branch or commit of gnomad_methods to pull at runtime." " Default 'main'."
         ),
     )
     fanout_group.add_argument(
