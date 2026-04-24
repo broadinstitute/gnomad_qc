@@ -533,6 +533,7 @@ def _run_aou_freq_chunk(
     environment: str,
     reduce_to_minimal_groups: bool,
     repartition_after_filter: Optional[int],
+    n_partitions_on_read: Optional[int] = None,
     driver_memory: str = "10g",
     local_cores: int = 2,
 ) -> None:
@@ -553,6 +554,9 @@ def _run_aou_freq_chunk(
         ``_calculate_aou_frequencies_and_hists_using_densify``.
     :param repartition_after_filter: Optional number of partitions to
         repartition this chunk's slice into for intra-container parallelism.
+    :param n_partitions_on_read: Optional number of partitions to repartition
+        the VDS into at read time. When set, the VDS is split into many tiny
+        partitions before ``filter_partitions`` selects this chunk's slice.
     :param driver_memory: JVM heap size for the local Spark driver.
     :param local_cores: Number of local Spark threads. Default ``2``.
     """
@@ -564,6 +568,7 @@ def _run_aou_freq_chunk(
 
     vds = get_aou_vds(
         test=test_vds,
+        n_partitions_on_read=n_partitions_on_read,
         filter_partitions=list(range(start, stop)),
         repartition_after_filter=repartition_after_filter,
         annotate_meta=True,
@@ -751,6 +756,7 @@ def run_aou_freq_as_batch(
     environment: str = "batch",
     partitions_per_job: int = 2,
     repartition_after_filter: Optional[int] = 100,
+    n_partitions_on_read: Optional[int] = None,
     merge_group_size: int = 500,
     reduce_to_minimal_groups: bool = False,
     chunk_cpu: int = 2,
@@ -783,6 +789,9 @@ def run_aou_freq_as_batch(
     :param partitions_per_job: Partitions per chunk job. Default 2.
     :param repartition_after_filter: Partitions each chunk explodes into
         before densifying. Default 100.
+    :param n_partitions_on_read: Optional number of partitions to repartition
+        the VDS into at read time. When set, each chunk job reads the VDS
+        with this many logical partitions before filtering to its slice.
     :param merge_group_size: Chunk HTs per group-merge job. Default 500.
     :param reduce_to_minimal_groups: Forwarded to chunk workers.
     :param chunk_cpu: CPU request per chunk job.
@@ -839,6 +848,8 @@ def run_aou_freq_as_batch(
         chunk_base_flags += " --reduce-to-minimal-groups"
     if repartition_after_filter:
         chunk_base_flags += f" --repartition-after-filter {repartition_after_filter}"
+    if n_partitions_on_read:
+        chunk_base_flags += f" --n-partitions-on-read {n_partitions_on_read}"
 
     logger.info(
         "Processing %s partitions; submitting %s-partition chunks (~%s jobs), "
@@ -1657,6 +1668,7 @@ def main(args):
             environment=args.environment,
             reduce_to_minimal_groups=args.reduce_to_minimal_groups,
             repartition_after_filter=args.repartition_after_filter,
+            n_partitions_on_read=args.n_partitions_on_read,
             driver_memory=args.jvm_heap,
             local_cores=args.local_cores,
         )
@@ -1741,9 +1753,9 @@ def main(args):
                 logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
                 aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
             else:
-                # Densify path: loop through partition chunks
-                # sequentially using the current QoB session. Completed
-                # chunks are skipped on rerun (resume-after-preemption).
+                # Densify path: fan-out frequency computation across
+                # partition chunks, either via Hail Batch (local Spark
+                # per container) or sequential QoB with resume.
                 if test_partitions:
                     n_partitions = test_partitions
                 elif args.n_partitions:
@@ -1754,26 +1766,63 @@ def main(args):
                         "--test-partitions or --n-partitions to know how "
                         "many partitions to process."
                     )
-                logger.info(
-                    "Processing %s partitions sequentially "
-                    "(%s per chunk, repart %s)...",
-                    n_partitions,
-                    args.partitions_per_job,
-                    args.repartition_after_filter,
-                )
 
-                run_aou_freq_sequential(
-                    final_output_path=aou_freq.path,
-                    n_partitions=n_partitions,
-                    test_vds=test_vds,
-                    test=test_run,
-                    environment=environment,
-                    partitions_per_job=args.partitions_per_job,
-                    repartition_after_filter=args.repartition_after_filter,
-                    reduce_to_minimal_groups=args.reduce_to_minimal_groups,
-                    suffix=aou_freq_suffix,
-                    overwrite=overwrite,
-                )
+                if args.use_batch_fanout:
+                    # Batch fan-out: each chunk runs local Spark in its
+                    # own container. Use with --n-partitions-on-read to
+                    # create tiny partitions that fit in local Spark.
+                    batch_kwargs = {}
+                    if args.batch_image:
+                        batch_kwargs["image"] = args.batch_image
+                    if args.batch_remote_tmpdir:
+                        batch_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
+                    run_aou_freq_as_batch(
+                        final_output_path=aou_freq.path,
+                        n_partitions=n_partitions,
+                        test_vds=test_vds,
+                        test=test_run,
+                        environment=environment,
+                        partitions_per_job=args.partitions_per_job,
+                        repartition_after_filter=args.repartition_after_filter,
+                        n_partitions_on_read=args.n_partitions_on_read,
+                        merge_group_size=args.merge_group_size,
+                        reduce_to_minimal_groups=args.reduce_to_minimal_groups,
+                        chunk_cpu=args.chunk_cpu,
+                        chunk_memory=args.chunk_memory,
+                        chunk_storage=args.chunk_storage,
+                        merge_cpu=args.merge_cpu,
+                        merge_memory=args.merge_memory,
+                        merge_storage=args.merge_storage,
+                        final_merge_storage=args.final_merge_storage,
+                        billing_project=args.billing_project,
+                        methods_branch=args.methods_branch,
+                        suffix=aou_freq_suffix,
+                        dry_run=args.batch_dry_run,
+                        **batch_kwargs,
+                    )
+                else:
+                    # Sequential QoB: loop through chunks using the
+                    # current QoB session. Completed chunks are skipped
+                    # on rerun (resume-after-preemption).
+                    logger.info(
+                        "Processing %s partitions sequentially "
+                        "(%s per chunk, repart %s)...",
+                        n_partitions,
+                        args.partitions_per_job,
+                        args.repartition_after_filter,
+                    )
+                    run_aou_freq_sequential(
+                        final_output_path=aou_freq.path,
+                        n_partitions=n_partitions,
+                        test_vds=test_vds,
+                        test=test_run,
+                        environment=environment,
+                        partitions_per_job=args.partitions_per_job,
+                        repartition_after_filter=args.repartition_after_filter,
+                        reduce_to_minimal_groups=args.reduce_to_minimal_groups,
+                        suffix=aou_freq_suffix,
+                        overwrite=overwrite,
+                    )
 
         if args.merge_datasets:
             logger.info(
@@ -1892,8 +1941,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     test_group.add_argument(
         "--test-partitions",
         type=int,
-        default=2,
-        help="If supplied, filter full or test VDS to N partitions in test mode. Default is 2.",
+        default=None,
+        help=(
+            "Filter the VDS to this many partitions for testing. When "
+            "supplied, enables test mode. Default is None (process all "
+            "partitions)."
+        ),
     )
     test_group.add_argument(
         "--repartition-after-filter",
@@ -2072,6 +2125,27 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "production runs (the AoU VDS has ~145000). For test runs, "
             "--test-partitions is used instead."
         ),
+    )
+    fanout_group.add_argument(
+        "--n-partitions-on-read",
+        type=int,
+        default=None,
+        help=(
+            "Number of logical partitions to split the VDS into at read "
+            "time. Increases partition count without a shuffle so each "
+            "partition is small enough for local Spark in a Batch "
+            "container. E.g. 7000000 splits 145k physical partitions "
+            "into ~7M tiny partitions."
+        ),
+    )
+    fanout_group.add_argument(
+        "--use-batch-fanout",
+        help=(
+            "Use Hail Batch fan-out (local Spark per container) instead "
+            "of sequential QoB for the densify path. Required when "
+            "--n-partitions-on-read is set."
+        ),
+        action="store_true",
     )
     fanout_group.add_argument(
         "--partitions-per-job",
