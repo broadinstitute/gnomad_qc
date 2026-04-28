@@ -4,6 +4,8 @@ import argparse
 import logging
 
 import hail as hl
+
+from typing import Dict
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import get_truth_ht
 from gnomad.utils.annotations import (
@@ -30,6 +32,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_sib_stats,
     get_trio_stats,
     get_variant_qc_annotations,
+    get_true_positive_vcf_path,
     info_vcf_path,
 )
 from gnomad_qc.v5.resources.basics import (
@@ -359,6 +362,48 @@ def create_variant_qc_annotation_ht(
     return ht
 
 
+def get_tp_ht_for_vcf_export(
+    ht: hl.Table,
+    transmitted_singletons: bool = False,
+    sibling_singletons: bool = False,
+) -> Dict[str, hl.Table]:
+    """
+    Get Tables with raw and adj true positive variants to export as a VCF for use in VQSR.
+
+    :param ht: Input Table with transmitted singleton and sibling singleton information.
+    :param transmitted_singletons: Whether to include transmitted singletons in the
+        true positive variants.
+    :param sibling_singletons: Whether to include sibling singletons in the true
+        positive variants.
+    :return: Dictionary of 'raw' and 'adj' true positive variant sites Tables.
+    """
+    if not transmitted_singletons and not sibling_singletons:
+        raise ValueError(
+            "At least one of transmitted_singletons or sibling_singletons must be set "
+            "to True"
+        )
+    tp_hts = {}
+    for group in GROUPS:
+        filter_expr = False
+        if transmitted_singletons:
+            filter_expr = ht[f"transmitted_singleton_{group}"]
+        if sibling_singletons:
+            filter_expr = filter_expr | ht[f"sibling_singleton_{group}"]
+
+        filtered_ht = ht.filter(filter_expr).select().select_globals()
+        filtered_ht = filtered_ht.checkpoint(
+            hl.utils.new_temp_file("true_positive_variants", "ht"),
+        )
+        logger.info(
+            "True positive %s Table for VCF export contains %d variants",
+            group,
+            filtered_ht.count(),
+        )
+        tp_hts[group] = filtered_ht
+
+    return tp_hts
+
+
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     environment = args.environment
@@ -379,16 +424,26 @@ def main(args):
         test=test, environment=environment
     ).path
 
-    # NOTE: VDS will have 'aou_' prefix on sample IDs.
-    vds = get_aou_vds(
-        high_quality_only=True,
-        filter_partitions=range(test_n_partitions) if test_n_partitions else None,
-        annotate_meta=True,
-        # NOTE: Using args.test here so that sibling stats test can be calculated from
-        # a few partitions of the full (not test) VDS).
-        test=args.test,
-        environment=environment,
-    )
+    if args.export_true_positive_vcfs and not (
+        args.transmitted_singletons or args.sibling_singletons
+    ):
+        raise ValueError(
+            "--export-true-positive-vcfs requires at least one of"
+            " --transmitted-singletons or --sibling-singletons"
+        )
+
+    # Load VDS only if needed for create_info_ht or generate_sibling_stats.
+    if args.create_info_ht or args.generate_sibling_stats:
+        # NOTE: VDS will have 'aou_' prefix on sample IDs.
+        vds = get_aou_vds(
+            high_quality_only=True,
+            filter_partitions=range(test_n_partitions) if test_n_partitions else None,
+            annotate_meta=True,
+            # NOTE: Using args.test here so that sibling stats test can be calculated from
+            # a few partitions of the full (not test) VDS).
+            test=args.test,
+            environment=environment,
+        )
 
     try:
         if args.create_info_ht:
@@ -481,6 +536,42 @@ def main(args):
                 n_partitions=args.n_partitions,
             )
             ht.write(variant_qc_annotation_ht_path, overwrite=overwrite)
+
+        if args.export_true_positive_vcfs:
+            logger.info("Exporting true positive VCFs...")
+
+            tp_parts = []
+            if args.transmitted_singletons:
+                tp_parts.append("transmitted_singleton")
+            if args.sibling_singletons:
+                tp_parts.append("sibling_singleton")
+            tp_type = ".".join(tp_parts)
+
+            vcf_path_kwargs = dict(
+                test=test, environment=environment, true_positive_type=tp_type
+            )
+            raw_tp_vcf_path = get_true_positive_vcf_path(**vcf_path_kwargs, adj=False)
+            adj_tp_vcf_path = get_true_positive_vcf_path(**vcf_path_kwargs, adj=True)
+
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={
+                    "variant_qc_annotation_ht": [variant_qc_annotation_ht_path],
+                },
+                output_step_resources={
+                    "raw_true_positive_vcf_path": [raw_tp_vcf_path],
+                    "adj_true_positive_vcf_path": [adj_tp_vcf_path],
+                },
+                overwrite=overwrite,
+            )
+
+            tp_hts = get_tp_ht_for_vcf_export(
+                hl.read_table(variant_qc_annotation_ht_path),
+                transmitted_singletons=args.transmitted_singletons,
+                sibling_singletons=args.sibling_singletons,
+            )
+            hl.export_vcf(tp_hts["raw"], raw_tp_vcf_path, tabix=True)
+            hl.export_vcf(tp_hts["adj"], adj_tp_vcf_path, tabix=True)
 
     finally:
         if environment == "rwb":
@@ -591,6 +682,34 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Desired number of partitions for variant QC annotation HT.",
         type=int,
         default=5000,
+    )
+    tp_vcf_args = parser.add_argument_group(
+        "Export true positive VCFs",
+        "Arguments used to define true positive variant set.",
+    )
+    tp_vcf_args.add_argument(
+        "--export-true-positive-vcfs",
+        help=(
+            "Exports true positive variants (--transmitted-singletons and/or"
+            " --sibling-singletons) to VCF files."
+        ),
+        action="store_true",
+    )
+    tp_vcf_args.add_argument(
+        "--transmitted-singletons",
+        help=(
+            "Include transmitted singletons in the exports of true positive variants to"
+            " VCF files."
+        ),
+        action="store_true",
+    )
+    tp_vcf_args.add_argument(
+        "--sibling-singletons",
+        help=(
+            "Include sibling singletons in the exports of true positive variants to VCF"
+            " files."
+        ),
+        action="store_true",
     )
 
     return parser
