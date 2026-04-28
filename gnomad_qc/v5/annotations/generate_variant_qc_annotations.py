@@ -2,10 +2,9 @@
 
 import argparse
 import logging
+from typing import Dict
 
 import hail as hl
-
-from typing import Dict
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import get_truth_ht
 from gnomad.utils.annotations import (
@@ -31,8 +30,8 @@ from gnomad_qc.v5.resources.annotations import (
     get_info_ht,
     get_sib_stats,
     get_trio_stats,
-    get_variant_qc_annotations,
     get_true_positive_vcf_path,
+    get_variant_qc_annotations,
     info_vcf_path,
 )
 from gnomad_qc.v5.resources.basics import (
