@@ -383,6 +383,7 @@ def get_true_positive_vcf_path(
     :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
     :return: String for the path to the true positive VCF.
     """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     tp_types = [
         "transmitted_singleton",
         "sibling_singleton",
