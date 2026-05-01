@@ -218,7 +218,14 @@ def compute_all_release_stats_per_ref_site(
         "AN": get_allele_number_agg_func("LGT"),
         "coverage_stats": get_coverage_agg_func(dp_field="DP", max_cov_bin=max_cov_bin),
     }
-    entry_agg_group_membership = None
+    # Restrict `coverage_stats` to the global "raw" group only — downstream
+    # code uses `coverage_stats[0]` exclusively (transmuted into flat
+    # mean/sum/over_X fields), so per-strata coverage aggregation is wasted
+    # work. AN is intentionally omitted so it still fans out across all
+    # strata, which is what downstream consumers need.
+    entry_agg_group_membership = {
+        "coverage_stats": [{"group": "raw"}],
+    }
     # Only compute qual hists for AoU.
     if project == "aou":
         entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
@@ -226,7 +233,7 @@ def compute_all_release_stats_per_ref_site(
         # Below we use just the raw group for qual hist computations because qual hists
         # has its own built-in adj filtering when adj is passed as an argument and will
         # produce both adj and raw histograms.
-        entry_agg_group_membership = {"qual_hists": [{"group": "raw"}]}
+        entry_agg_group_membership["qual_hists"] = [{"group": "raw"}]
 
     logger.info(
         "Computing coverage, allele number, and optionally qual hists per reference site..."
@@ -710,6 +717,11 @@ def main(args):
             data_set=project,
             environment=environment,
         ).path
+        if args.cov_and_an_output_suffix:
+            cov_and_an_ht_path = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
+            cov_and_an_ht_path = (
+                f"{cov_and_an_ht_path}_{args.cov_and_an_output_suffix}.ht"
+            )
         downsampling_ht_path = get_aou_downsampling(
             test=test, environment=environment
         ).path
