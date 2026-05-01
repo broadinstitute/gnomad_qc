@@ -643,22 +643,6 @@ def join_aou_and_gnomad_qual_hists_ht(
     return ht
 
 
-def _initialize_hail(args) -> None:
-    """
-    Initialize Hail with appropriate configuration for the environment.
-
-    :param args: Parsed command-line arguments.
-    """
-    _init_hail(
-        "v5_coverage_and_an_generation",
-        args.environment,
-        billing_project=getattr(args, "gcp_billing_project", None),
-        tmp_dir_days=args.tmp_dir_days,
-        tmp_dir=f"{qc_temp_prefix(environment=args.environment, days=args.tmp_dir_days)}coverage_and_an_generation",
-        **_get_batch_resource_kwargs(args),
-    )
-
-
 def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Table:
     """
     Filter `target_ht` to per-contig locus bounds derived from `source_ht`.
@@ -697,7 +681,14 @@ def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
     environment = args.environment
-    _initialize_hail(args)
+    _init_hail(
+        "v5_coverage_and_an_generation",
+        environment,
+        billing_project=getattr(args, "gcp_billing_project", None),
+        tmp_dir_days=args.tmp_dir_days,
+        tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}coverage_and_an_generation",
+        **_get_batch_resource_kwargs(args),
+    )
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
