@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.resources.annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.resources.annotations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.resources.annotations</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing annotation related resources.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">TableResource</span><span class="p">,</span> <span class="n">VersionedTableResource</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_ALL_ENVIRONMENTS</span><span class="p">,</span>
+    <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">,</span>
+    <span class="n">_get_base_bucket</span><span class="p">,</span>
+    <span class="n">_validate_environment</span><span class="p">,</span>
+    <span class="n">qc_temp_prefix</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ANNOTATION_VERSIONS</span><span class="p">,</span>
+    <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_VEP_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+    <span class="n">VEP_ANNOTATION_VERSIONS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">SAMPLE_ANNOTATION_DEFAULT_ENVIRONMENT</span> <span class="o">=</span> <span class="s2">&quot;rwb&quot;</span>
+<span class="n">VARIANT_ANNOTATION_DEFAULT_ENVIRONMENT</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_annotations_root</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">data_set</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+    <span class="n">read_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get root path to the variant annotation files.</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full v4 VDS.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;. Default is &quot;genomes&quot;.</span>
+<span class="sd">    :param data_set: Data set of annotation resource. Default is &quot;aou&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :param read_only: Whether the path is for read-only resources. When True</span>
+<span class="sd">        and environment is &quot;batch&quot;, the read-only bucket is used.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :return: Root path of the variant annotation files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="n">path_suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;annotations/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">data_set</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">_get_base_bucket</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span><span class="w"> </span><span class="n">read_only</span><span class="o">=</span><span class="n">read_only</span><span class="p">)</span><span class="si">}</span><span class="s2">/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">path_suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Trio and sibling stats resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_trio_stats"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_trio_stats">[docs]</a><span class="k">def</span> <span class="nf">get_trio_stats</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a temporary path for testing.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;</span>
+<span class="sd">        or &quot;batch&quot;.</span>
+<span class="sd">    :return: AoU trio stats VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="s2">&quot;trio_stats.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_sib_stats"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_sib_stats">[docs]</a><span class="k">def</span> <span class="nf">get_sib_stats</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v5 (AoU genomes only) sibling stats VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;</span>
+<span class="sd">        or &quot;batch&quot;.</span>
+<span class="sd">    :return: AoU sibling stats VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/aou.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.sib_stats.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Frequency, coverage, and AN annotation resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_aou_downsampling"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_aou_downsampling">[docs]</a><span class="k">def</span> <span class="nf">get_aou_downsampling</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the downsampling annotation table.</span>
+
+<span class="sd">    v5 downsamplings only applies to the AoU dataset.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for tests. Default is False.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;</span>
+<span class="sd">        or &quot;batch&quot;.</span>
+<span class="sd">    :return: Hail Table containing downsampling annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.downsampling.aou.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="group_membership"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.group_membership">[docs]</a><span class="k">def</span> <span class="nf">group_membership</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_set</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the group membership Table for coverage, AN, quality histograms, and frequency calculations.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for tests. Default is False.</span>
+<span class="sd">    :param data_set: Data set of annotation resource. Default is &quot;aou&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;</span>
+<span class="sd">        or &quot;batch&quot;.</span>
+<span class="sd">    :return: Hail Table containing group membership annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="n">data_set</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.group_membership.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="qual_hists"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.qual_hists">[docs]</a><span class="k">def</span> <span class="nf">qual_hists</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the quality histograms annotation table.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for tests. Default is False.</span>
+<span class="sd">    :param environment: Environment to use for quality histograms. Default is &quot;batch&quot;.</span>
+<span class="sd">        Must be one of &quot;rwb&quot; or &quot;batch&quot;.</span>
+<span class="sd">    :return: Hail Table containing quality histogram annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.qual_hists.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="coverage_and_an_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.coverage_and_an_path">[docs]</a><span class="k">def</span> <span class="nf">coverage_and_an_path</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_set</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fetch filepath for all sites coverage or allele number Table.</span>
+
+<span class="sd">    .. note ::</span>
+
+<span class="sd">        If `data_set` is &#39;gnomAD&#39;, the returned table only contains coverage and AN for consent drop samples.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing. Default is False.</span>
+<span class="sd">    :param data_set: Dataset identifier. Must be one of &quot;aou&quot; or &quot;gnomad&quot;. Default is &quot;aou&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;,</span>
+<span class="sd">        &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: Coverage and allele number Hail Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">data_set</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;aou&quot;</span><span class="p">,</span> <span class="s2">&quot;gnomad&quot;</span><span class="p">],</span> <span class="s2">&quot;data_set must be either &#39;aou&#39; or &#39;gnomad&#39;&quot;</span>
+
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="o">=</span><span class="n">data_set</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="s1">&#39;aou&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">data_set</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">&#39;aou&#39;</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;gnomad&#39;</span><span class="si">}</span><span class="s2">.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.coverage_and_an.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_freq"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_freq">[docs]</a><span class="k">def</span> <span class="nf">get_freq</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;genomes&quot;</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_set</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the frequency annotation Table for v5.</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param data_type: Data type of annotation resource (&quot;genomes&quot; or &quot;exomes&quot;).</span>
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param data_set: Data set of annotation resource. Default is &quot;aou&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: Hail Table containing frequency annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">data_set</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;aou&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gnomad&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;merged&quot;</span><span class="p">,</span>
+    <span class="p">],</span> <span class="s2">&quot;data_set must be either &#39;aou&#39;, &#39;gnomad&#39;, or &#39;merged&#39;&quot;</span>
+    <span class="k">return</span> <span class="n">TableResource</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">,</span><span class="w"> </span><span class="n">data_set</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">data_set</span><span class="si">}</span><span class="s2">.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.frequencies.ht&quot;</span>
+    <span class="p">)</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># Variant QC annotation resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_info_ht"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_info_ht">[docs]</a><span class="k">def</span> <span class="nf">get_info_ht</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v5 (AoU genomes only) info VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of</span>
+<span class="sd">        &quot;rwb&quot; or &quot;batch&quot;.</span>
+<span class="sd">    :return: Info VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.info.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="info_vcf_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.info_vcf_path">[docs]</a><span class="k">def</span> <span class="nf">info_vcf_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Path to sites VCF (input information for running VQSR).</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param environment: Environment to use. Must be one of &quot;rwb&quot; or &quot;batch&quot;. Default is &quot;batch&quot;.</span>
+<span class="sd">    :return: String for the path to the info VCF.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.info.vcf.bgz&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_aou_vcf_header"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_aou_vcf_header">[docs]</a><span class="k">def</span> <span class="nf">get_aou_vcf_header</span><span class="p">(</span><span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get path to AoU annotation sites-only VCF header.</span>
+
+<span class="sd">    This is needed for proper import of the sites-only VCF as the QUALapprox</span>
+<span class="sd">    annotation is stated in the previous header as an int but is actually a float.</span>
+
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;</span>
+<span class="sd">        or &quot;batch&quot;.</span>
+<span class="sd">    :return: Path to the VCF header file.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="o">=</span><span class="s1">&#39;5.0&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span><span class="w"> </span><span class="n">read_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;/aou_annotation_sites_only_header.vcf&quot;</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_aou_annotated_sites_only_vcf"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_aou_annotated_sites_only_vcf">[docs]</a><span class="k">def</span> <span class="nf">get_aou_annotated_sites_only_vcf</span><span class="p">(</span><span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get path to AoU sites-only VCF with annotations needed for variant QC.</span>
+
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;</span>
+<span class="sd">        or &quot;batch&quot;.</span>
+<span class="sd">    :return: Path to the annotated sites-only VCF.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_SAMPLE_DATA_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="n">bucket</span> <span class="o">=</span> <span class="n">_get_base_bucket</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">read_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">environment</span> <span class="o">==</span> <span class="s2">&quot;batch&quot;</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">bucket</span><span class="si">}</span><span class="s2">/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz&quot;</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;gs://</span><span class="si">{</span><span class="n">bucket</span><span class="si">}</span><span class="s2">/echo_full_gnomad_annotated.sites-only.vcf.gz&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_variant_qc_annotations"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_variant_qc_annotations">[docs]</a><span class="k">def</span> <span class="nf">get_variant_qc_annotations</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the VersionedTableResource to the variant QC annotation Table.</span>
+
+<span class="sd">    Annotations that are included in the Table:</span>
+
+<span class="sd">        Features for RF:</span>
+<span class="sd">            - variant_type</span>
+<span class="sd">            - allele_type</span>
+<span class="sd">            - n_alt_alleles</span>
+<span class="sd">            - has_star</span>
+<span class="sd">            - AS_QD</span>
+<span class="sd">            - AS_pab_max</span>
+<span class="sd">            - AS_MQRankSum</span>
+<span class="sd">            - AS_SOR</span>
+<span class="sd">            - AS_ReadPosRankSum</span>
+
+<span class="sd">        Training sites (bool):</span>
+<span class="sd">            - transmitted_singleton</span>
+<span class="sd">            - sibling_singleton</span>
+<span class="sd">            - fail_hard_filters - (ht.AS_QD &lt; 0.5) | (ht.AS_FS &gt; 60) | (ht.AS_MQ &lt; 30)</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: Table with variant QC annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.variant_qc_annotations.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_true_positive_vcf_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_true_positive_vcf_path">[docs]</a><span class="k">def</span> <span class="nf">get_true_positive_vcf_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">adj</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">true_positive_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Provide the path to the true positive VCF used as input to VQSR.</span>
+
+<span class="sd">    :param version: Version of true positive VCF path to return. Default is CURRENT_ANNOTATION_VERSION.</span>
+<span class="sd">    :param test: Whether to use a tmp path for testing. Default is False.</span>
+<span class="sd">    :param adj: Whether to use adj genotypes. Default is False.</span>
+<span class="sd">    :param true_positive_type: Type of true positive VCF path to return. Should be one</span>
+<span class="sd">        of &quot;transmitted_singleton&quot;, &quot;sibling_singleton&quot;, or</span>
+<span class="sd">        &quot;transmitted_singleton.sibling_singleton&quot;. Default is &quot;transmitted_singleton&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: String for the path to the true positive VCF.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="n">tp_types</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sibling_singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;transmitted_singleton.sibling_singleton&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">true_positive_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tp_types</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;true_positive_type must be one of </span><span class="si">{</span><span class="n">tp_types</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s1">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="n">true_positive_type</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="s2">&quot;adj&quot;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">adj</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">&quot;raw&quot;</span><span class="si">}</span><span class="s1">.vcf.bgz&#39;</span></div>
+
+
+<span class="c1">######################################################################</span>
+<span class="c1"># VEP resources</span>
+<span class="c1">######################################################################</span>
+
+
+<div class="viewcode-block" id="get_vep"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.get_vep">[docs]</a><span class="k">def</span> <span class="nf">get_vep</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">vep_version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v5 VEP annotation VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test Table instead of</span>
+<span class="sd">        the full v5 Table.</span>
+<span class="sd">    :param vep_version: VEP version to use (e.g., &quot;105&quot;, &quot;115&quot;). Default is &quot;105&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: gnomAD v5 VEP VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="n">vep_version_postfix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">vep_version</span> <span class="o">==</span> <span class="n">DEFAULT_VEP_VERSION</span> <span class="k">else</span> <span class="n">vep_version</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VEP_ANNOTATION_VERSION</span><span class="p">[</span><span class="n">vep_version</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.vep</span><span class="si">{</span><span class="n">vep_version_postfix</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_ANNOTATION_VERSIONS</span><span class="p">[</span><span class="n">vep_version</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="validate_vep_path"><a class="viewcode-back" href="../../../../api_reference/v5/resources/annotations.html#gnomad_qc.v5.resources.annotations.validate_vep_path">[docs]</a><span class="k">def</span> <span class="nf">validate_vep_path</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">vep_version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+    <span class="n">environment</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v5 VEP annotation VersionedTableResource for validation counts.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full v5 VDS.</span>
+<span class="sd">    :param vep_version: VEP version to use (e.g., &quot;105&quot;, &quot;115&quot;). Default is &quot;105&quot;.</span>
+<span class="sd">    :param environment: Environment to use. Default is &quot;batch&quot;. Must be one of &quot;rwb&quot;, &quot;batch&quot;, or &quot;dataproc&quot;.</span>
+<span class="sd">    :return: gnomAD v5 VEP VersionedTableResource containing validity check.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_validate_environment</span><span class="p">(</span><span class="n">environment</span><span class="p">,</span> <span class="n">_ALL_ENVIRONMENTS</span><span class="p">)</span>
+    <span class="n">vep_version_postfix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">vep_version</span> <span class="o">==</span> <span class="n">DEFAULT_VEP_VERSION</span> <span class="k">else</span> <span class="n">vep_version</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VEP_ANNOTATION_VERSION</span><span class="p">[</span><span class="n">vep_version</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.vep</span><span class="si">{</span><span class="n">vep_version_postfix</span><span class="si">}</span><span class="s2">.validate.ht&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_ANNOTATION_VERSIONS</span><span class="p">[</span><span class="n">vep_version</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

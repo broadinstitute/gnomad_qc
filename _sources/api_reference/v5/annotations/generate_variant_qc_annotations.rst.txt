@@ -1,0 +1,21 @@
+gnomad_qc.v5.annotations.generate_variant_qc_annotations
+========================================================
+
+Script to generate annotations for variant QC on gnomAD v5.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_script_argument_parser
+   :prog: gnomad_qc.v5.annotations.generate_variant_qc_annotations.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.annotations.generate_variant_qc_annotations
+
+.. automodule:: gnomad_qc.v5.annotations.generate_variant_qc_annotations
+    :exclude-members: get_script_argument_parser
