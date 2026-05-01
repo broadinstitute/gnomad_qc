@@ -374,9 +374,9 @@ def get_true_positive_vcf_path(
     """
     Provide the path to the true positive VCF used as input to VQSR.
 
-    :param version: Version of true positive VCF path to return.
-    :param test: Whether to use a tmp path for testing.
-    :param adj: Whether to use adj genotypes.
+    :param version: Version of true positive VCF path to return. Default is CURRENT_ANNOTATION_VERSION.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param adj: Whether to use adj genotypes. Default is False.
     :param true_positive_type: Type of true positive VCF path to return. Should be one
         of "transmitted_singleton", "sibling_singleton", or
         "transmitted_singleton.sibling_singleton". Default is "transmitted_singleton".
