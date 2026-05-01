@@ -1103,6 +1103,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=5000,
     )
+    parser.add_argument(
+        "--cov-and-an-output-suffix",
+        type=str,
+        default=None,
+        help=(
+            "Optional suffix appended to the cov_and_an HT path (before the"
+            " .ht extension). Use to write the output to a sibling location"
+            " for A/B comparison. Applies to both writes (step 3) and reads"
+            " (downstream steps), so pass the same suffix consistently."
+        ),
+    )
 
     test_group = parser.add_mutually_exclusive_group()
     test_group.add_argument(
