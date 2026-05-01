@@ -40,6 +40,7 @@ from gnomad_qc.v5.resources.annotations import (
     qual_hists,
 )
 from gnomad_qc.v5.resources.basics import (
+    _get_batch_resource_kwargs,
     _init_hail,
     get_aou_vds,
     get_gnomad_v5_genomes_vds,
@@ -642,11 +643,61 @@ def join_aou_and_gnomad_qual_hists_ht(
     return ht
 
 
+def _initialize_hail(args) -> None:
+    """
+    Initialize Hail with appropriate configuration for the environment.
+
+    :param args: Parsed command-line arguments.
+    """
+    _init_hail(
+        "v5_coverage_and_an_generation",
+        args.environment,
+        billing_project=getattr(args, "gcp_billing_project", None),
+        tmp_dir_days=args.tmp_dir_days,
+        tmp_dir=f"{qc_temp_prefix(environment=args.environment, days=args.tmp_dir_days)}coverage_and_an_generation",
+        **_get_batch_resource_kwargs(args),
+    )
+
+
+def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Table:
+    """
+    Filter `target_ht` to per-contig locus bounds derived from `source_ht`.
+
+    Used in test runs where `target_ht` (e.g., a public release HT) and
+    `source_ht` (e.g., a freshly-computed test HT) do not share partition
+    layouts, so their first-N-partition slices do not overlap. Filtering to
+    the per-contig min..max locus range of `source_ht` guarantees test
+    join/merge overlap at low cost (one small aggregation + partition-pruned
+    interval filter).
+
+    :param target_ht: Table to filter.
+    :param source_ht: Table whose locus ranges define the filter intervals.
+    :return: `target_ht` filtered to the per-contig locus ranges of
+        `source_ht`.
+    """
+    bounds = source_ht.aggregate(
+        hl.agg.group_by(
+            source_ht.locus.contig,
+            hl.tuple(
+                [
+                    hl.agg.min(source_ht.locus.position),
+                    hl.agg.max(source_ht.locus.position),
+                ]
+            ),
+        )
+    )
+    intervals = [
+        hl.parse_locus_interval(f"{contig}:{lo}-{hi + 1}", reference_genome="GRCh38")
+        for contig, (lo, hi) in bounds.items()
+    ]
+    return hl.filter_intervals(target_ht, intervals)
+
+
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
     environment = args.environment
-    _init_hail("compute_coverage", environment)
+    _initialize_hail(args)
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
@@ -818,12 +869,10 @@ def main(args):
                     public=True,
                 )
             )
-            if test_chr22_chrx_chry:
-                gnomad_release_ht = hl.filter_intervals(
-                    gnomad_release_ht, [hl.parse_locus_interval(c) for c in chrom]
+            if test:
+                gnomad_release_ht = _filter_to_locus_bounds(
+                    gnomad_release_ht, gnomad_ht
                 )
-            elif test_2_partitions:
-                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
             ht = merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht)
             ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
@@ -848,12 +897,10 @@ def main(args):
                 )
             )
 
-            if test_chr22_chrx_chry:
-                gnomad_release_ht = hl.filter_intervals(
-                    gnomad_release_ht, [hl.parse_locus_interval(c) for c in chrom]
+            if test:
+                gnomad_release_ht = _filter_to_locus_bounds(
+                    gnomad_release_ht, gnomad_ht
                 )
-            elif test_2_partitions:
-                gnomad_release_ht = gnomad_release_ht._filter_partitions(range(2))
 
             ht = merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht)
             ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
@@ -948,6 +995,8 @@ def main(args):
                 .select("histograms")
                 .select_globals()
             )
+            if test:
+                gnomad_ht = _filter_to_locus_bounds(gnomad_ht, aou_ht)
 
             # Drop age hists because they are handled in the frequency script
             # and re-key by locus.
@@ -961,7 +1010,13 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("compute_coverage", environment=environment))
+        hl.copy_log(
+            get_logging_path(
+                "v5_coverage_and_an_generation",
+                environment=environment,
+                tmp_dir_days=args.tmp_dir_days,
+            )
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -975,13 +1030,64 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         choices=["aou", "gnomad"],
     )
     parser.add_argument(
+        "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
+    )
+
+    # Environment configuration.
+    env_group = parser.add_argument_group("environment configuration")
+    env_group.add_argument(
         "--environment",
         help="Compute environment.",
+        choices=["rwb", "batch", "dataproc"],
         default="rwb",
-        choices=["rwb", "batch"],
     )
-    parser.add_argument(
-        "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
+    env_group.add_argument(
+        "--tmp-dir-days",
+        type=int,
+        default=4,
+        help="Number of days for temp directory retention. Default is 4.",
+    )
+    env_group.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        default="broad-mpg-gnomad",
+        help="Google Cloud billing project for reading requester pays buckets.",
+    )
+
+    # Batch-specific configuration.
+    batch_group = parser.add_argument_group(
+        "batch configuration",
+        "Optional parameters for batch/QoB backend (only used when --environment=batch).",
+    )
+    batch_group.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    batch_group.add_argument(
+        "--driver-cores",
+        type=int,
+        default=None,
+        help="Number of cores for driver node.",
+    )
+    batch_group.add_argument(
+        "--driver-memory",
+        type=str,
+        default=None,
+        help="Memory type for driver node (e.g., 'highmem').",
+    )
+    batch_group.add_argument(
+        "--worker-cores",
+        type=int,
+        default=None,
+        help="Number of cores for worker nodes.",
+    )
+    batch_group.add_argument(
+        "--worker-memory",
+        type=str,
+        default=None,
+        help="Memory type for worker nodes (e.g., 'highmem').",
     )
     parser.add_argument(
         "--n-partitions",
@@ -1073,6 +1179,27 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    batch_args = [
+        "app_name",
+        "driver_cores",
+        "driver_memory",
+        "worker_cores",
+        "worker_memory",
+    ]
+    provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
+    if provided_batch_args and args.environment != "batch":
+        parser.error(
+            f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
+            f"require --environment=batch"
+        )
+
+    if args.project_name == "aou" and args.environment not in ("rwb", "batch"):
+        parser.error(
+            "--project-name=aou requires --environment to be 'rwb' or 'batch'."
+        )
+    if args.project_name == "gnomad" and args.environment != "dataproc":
+        parser.error("--project-name=gnomad requires --environment=dataproc.")
 
     if args.write_aou_downsampling_ht and args.project_name != "aou":
         raise ValueError(
