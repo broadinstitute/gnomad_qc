@@ -54,8 +54,12 @@ from gnomad_qc.v5.resources.release import (
     release_coverage_tsv_path,
 )
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("aou_coverage_and_an")
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
+logger = logging.getLogger("v5_coverage_and_an")
 logger.setLevel(logging.INFO)
 
 
