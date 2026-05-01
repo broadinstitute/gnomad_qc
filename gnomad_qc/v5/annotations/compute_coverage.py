@@ -1000,14 +1000,15 @@ def main(args):
             ht.write(qual_hists_path, overwrite=overwrite)
 
     finally:
-        logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(
-            get_logging_path(
-                "v5_coverage_and_an_generation",
-                environment=environment,
-                tmp_dir_days=args.tmp_dir_days,
+        if environment != "batch":
+            logger.info("Copying hail log to logging bucket...")
+            hl.copy_log(
+                get_logging_path(
+                    "v5_coverage_and_an_generation",
+                    environment=environment,
+                    tmp_dir_days=args.tmp_dir_days,
+                )
             )
-        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
