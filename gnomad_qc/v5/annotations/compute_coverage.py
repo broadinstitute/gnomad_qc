@@ -218,13 +218,18 @@ def compute_all_release_stats_per_ref_site(
         "AN": get_allele_number_agg_func("LGT"),
         "coverage_stats": get_coverage_agg_func(dp_field="DP", max_cov_bin=max_cov_bin),
     }
-    # Restrict `coverage_stats` to the global "raw" group only — downstream
-    # code uses `coverage_stats[0]` exclusively (transmuted into flat
-    # mean/sum/over_X fields), so per-strata coverage aggregation is wasted
-    # work. AN is intentionally omitted so it still fans out across all
-    # strata, which is what downstream consumers need.
+    # Restrict `coverage_stats` to the global adj-filtered group only —
+    # downstream code uses `coverage_stats[0]` exclusively (the global adj
+    # group; transmuted into flat mean/sum/over_X fields), so per-strata
+    # coverage aggregation is wasted work. We use `{"group": "adj"}` (and
+    # not `"raw"`) because `compute_stats_per_ref_site` does NOT rewrite
+    # group labels to "raw" when a pre-built `group_membership_ht` is
+    # passed (the rewrite only happens on the `strata_expr` code path), so
+    # `freq_meta[0]` is `{"group": "adj"}` and we need to match it.
+    # AN is intentionally omitted so it still fans out across all strata,
+    # which is what downstream consumers need.
     entry_agg_group_membership = {
-        "coverage_stats": [{"group": "raw"}],
+        "coverage_stats": [{"group": "adj"}],
     }
     # Only compute qual hists for AoU.
     if project == "aou":
