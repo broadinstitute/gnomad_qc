@@ -992,6 +992,11 @@ def main(args):
 
         if args.merge_qual_hists:
             qual_hists_path = qual_hists(test=test, environment=environment).path
+            if args.qual_hists_output_suffix:
+                qual_hists_path = qual_hists_path.rstrip("/").removesuffix(".ht")
+                qual_hists_path = (
+                    f"{qual_hists_path}_{args.qual_hists_output_suffix}.ht"
+                )
             check_resource_existence(
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
                 overwrite=overwrite,
@@ -1011,11 +1016,14 @@ def main(args):
                 gnomad_ht = _filter_to_locus_bounds(gnomad_ht, aou_ht)
 
             # Drop age hists because they are handled in the frequency script
-            # and re-key by locus.
+            # and re-key by locus. `distinct()` deduplicates the multi-row-per-
+            # locus rows that result from rekeying a (locus, alleles)-keyed HT
+            # to locus-only; the `_all` hists are locus-level and identical
+            # across split rows, so distinct keeps a representative row.
             gnomad_ht = gnomad_ht.select(
                 qual_hists=gnomad_ht.histograms.drop("age_hists")
             )
-            gnomad_ht = gnomad_ht.key_by("locus")
+            gnomad_ht = gnomad_ht.key_by("locus").distinct()
 
             ht = join_aou_and_gnomad_qual_hists_ht(aou_ht, gnomad_ht)
             ht.write(qual_hists_path, overwrite=overwrite)
@@ -1117,6 +1125,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " .ht extension). Use to write the output to a sibling location"
             " for A/B comparison. Applies to both writes (step 3) and reads"
             " (downstream steps), so pass the same suffix consistently."
+        ),
+    )
+    parser.add_argument(
+        "--qual-hists-output-suffix",
+        type=str,
+        default=None,
+        help=(
+            "Optional suffix appended to the qual_hists HT path (before the"
+            " .ht extension) — analogous to --cov-and-an-output-suffix but"
+            " for the --merge-qual-hists output. Use for A/B comparison."
         ),
     )
 
