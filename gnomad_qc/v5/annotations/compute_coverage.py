@@ -89,7 +89,10 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
 
 
 def get_group_membership_ht(
-    meta_ht: hl.Table, project: str, ds_ht: Optional[hl.Table] = None
+    meta_ht: hl.Table,
+    project: str,
+    ds_ht: Optional[hl.Table] = None,
+    reduce_min_aggs: bool = False,
 ) -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
@@ -97,6 +100,7 @@ def get_group_membership_ht(
     :param meta_ht: Meta HT.
     :param project: Project name. Must be "aou" or "gnomad". If "gnomad", function will filter meta HT to only consent drop samples.
     :param ds_ht: Optional downsampling HT. Only used for AoU.
+    :param reduce_min_aggs: If True, build the HT with `reduce_to_minimal_groups=True`. Downstream `compute_stats_per_ref_site` calls must then list every non-reducible annotation under `entry_agg_group_membership` and pass `reducible_aggs={"AN"}` (or similar) so AN gets expanded back to full strata.
     :return: Group membership HT.
     """
     if project == "aou":
@@ -107,6 +111,7 @@ def get_group_membership_ht(
                 gen_anc_expr=meta_ht.genetic_ancestry_inference.gen_anc,
                 downsampling_expr=ds_ht[meta_ht.key].downsampling,
             ),
+            reduce_to_minimal_groups=reduce_min_aggs,
             downsamplings=hl.eval(ds_ht.downsamplings),
             ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
         )
@@ -138,6 +143,7 @@ def get_group_membership_ht(
                 sex_expr=ht.sex_imputation.sex_karyotype,
                 gen_anc_expr=ht.population_inference.pop,
             ),
+            reduce_to_minimal_groups=reduce_min_aggs,
         )
 
     return ht
@@ -181,6 +187,7 @@ def compute_all_release_stats_per_ref_site(
     coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
     interval_ht: Optional[hl.Table] = None,
     group_membership_ht: Optional[hl.Table] = None,
+    reduce_min_aggs: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -197,6 +204,7 @@ def compute_all_release_stats_per_ref_site(
     :param coverage_over_x_bins: List of boundaries for computing samples over X depth.
     :param interval_ht: Interval HT.
     :param group_membership_ht: Group membership HT.
+    :param reduce_min_aggs: If True, pass `reducible_aggs={"AN"}` to `compute_stats_per_ref_site` so AN goes through the leaf-reduction path. Requires `group_membership_ht` to have been built with `reduce_to_minimal_groups=True`.
     :return: HT with allele number and quality histograms per reference site.
     """
 
@@ -250,6 +258,9 @@ def compute_all_release_stats_per_ref_site(
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     # TODO: Save dense MT for gnomAD consent drop samples?
+    compute_kwargs = {}
+    if reduce_min_aggs:
+        compute_kwargs["reducible_aggs"] = {"AN"}
     ht = compute_stats_per_ref_site(
         vds,
         ref_ht,
@@ -259,6 +270,7 @@ def compute_all_release_stats_per_ref_site(
         entry_keep_fields=["GQ", "DP"],
         entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field="sex_karyotype",
+        **compute_kwargs,
     )
 
     # This expression aggregates the DP counter in reverse order of the cov_bins and
@@ -763,7 +775,9 @@ def main(args):
                 v4_meta_ht_path = v4_meta(data_type="genomes").path
 
                 group_membership_ht = get_group_membership_ht(
-                    hl.read_table(v4_meta_ht_path), project=project
+                    hl.read_table(v4_meta_ht_path),
+                    project=project,
+                    reduce_min_aggs=args.reduce_min_aggs,
                 )
                 group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
             else:
@@ -775,6 +789,7 @@ def main(args):
                     meta_ht=meta_ht,
                     project=project,
                     ds_ht=hl.read_table(downsampling_ht_path),
+                    reduce_min_aggs=args.reduce_min_aggs,
                 )
                 group_membership_ht.write(
                     group_membership_ht_path,
@@ -857,6 +872,7 @@ def main(args):
                 sex_karyotype_field=sex_karyotype_field,
                 project=project,
                 group_membership_ht=hl.read_table(group_membership_ht_path),
+                reduce_min_aggs=args.reduce_min_aggs,
             )
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file(f"{project}_cov_and_an", "ht")
@@ -1135,6 +1151,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Optional suffix appended to the qual_hists HT path (before the"
             " .ht extension) — analogous to --cov-and-an-output-suffix but"
             " for the --merge-qual-hists output. Use for A/B comparison."
+        ),
+    )
+    parser.add_argument(
+        "--reduce-min-aggs",
+        action="store_true",
+        help=(
+            "Use the leaf-only `reduce_to_minimal_groups` optimization: build"
+            " the group_membership_ht with `reduce_to_minimal_groups=True`"
+            " and pass `reducible_aggs={'AN'}` to `compute_stats_per_ref_site`."
+            " Must be set consistently for both --write-group-membership-ht"
+            " and --compute-all-cov-release-stats-ht runs (the gmh's"
+            " `freq_reduced` global determines whether reduction takes effect"
+            " at compute time)."
         ),
     )
 
