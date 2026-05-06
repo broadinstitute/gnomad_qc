@@ -255,12 +255,12 @@ def compute_all_release_stats_per_ref_site(
     vmt = vds.variant_data
     sex_expr = reduce(lambda x, field: x[field], sex_karyotype_field.split("."), vmt)
     vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
-    vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+    rmt = vds.reference_data
+    if "LEN" not in rmt.entry:
+        rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
+    vds = hl.vds.VariantDataset(rmt, vmt)
 
     # TODO: Save dense MT for gnomAD consent drop samples?
-    compute_kwargs = {}
-    if reduce_min_aggs:
-        compute_kwargs["reducible_aggs"] = {"AN"}
     ht = compute_stats_per_ref_site(
         vds,
         ref_ht,
@@ -268,9 +268,9 @@ def compute_all_release_stats_per_ref_site(
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
         entry_keep_fields=["GQ", "DP"],
+        reducible_aggs={"AN"},
         entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field="sex_karyotype",
-        **compute_kwargs,
     )
 
     # This expression aggregates the DP counter in reverse order of the cov_bins and
@@ -746,6 +746,10 @@ def main(args):
         group_membership_ht_path = group_membership(
             test=test, data_set=project, environment=environment
         ).path
+        if args.reduce_min_aggs:
+            group_membership_ht_path = (
+                group_membership_ht_path.rstrip("/").removesuffix(".ht") + "_reduce.ht"
+            )
         meta_ht = None
         if project == "aou":
             meta_ht = hl.read_table(meta_ht_path)
