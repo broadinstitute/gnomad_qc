@@ -951,6 +951,51 @@ def _run_coverage_merge(input_paths: List[str], output_path: str) -> None:
     logger.info("Wrote merged HT to %s", output_path)
 
 
+def _init_hail_local_spark(
+    log_name: str,
+    jvm_heap: str,
+    local_cores: int,
+    gcs_requester_pays_project: str = "broad-mpg-gnomad",
+) -> None:
+    """
+    Init Hail with a local-Spark backend (no separate QoB driver pod).
+
+    Used when ``--chunk-backend local``: the chunk's container runs Hail's
+    JVM in-process using `local[N]` Spark threads instead of spawning a
+    separate QoB driver+worker pair on Hail Batch. Cheaper at scale (one
+    spot container per chunk vs. nonpreempt driver + spot workers) but the
+    container itself must be sized to hold the densify peak.
+
+    :param log_name: Per-invocation log name (per-chunk so concurrent chunks
+        don't clobber a shared GCS log).
+    :param jvm_heap: Spark driver heap, e.g. ``"22g"``. Should be roughly
+        ``container_memory_gb - 4`` to leave headroom for Python + OS.
+    :param local_cores: Number of local Spark threads. Typically half the
+        container CPU count to balance executor parallelism vs. driver work.
+    :param gcs_requester_pays_project: Project to bill for requester-pays
+        GCS reads (the AoU VDS bucket).
+    """
+    import pyspark
+
+    conf = pyspark.SparkConf()
+    conf.set("spark.driver.memory", jvm_heap)
+    # Container-local log file; Hail's `copy_log` at script exit (or the
+    # surrounding Hail Batch container's log capture) is the canonical
+    # output for failure debugging.
+    log_path = f"/tmp/hail-{log_name}.log"
+    hl.init(
+        master=f"local[{local_cores}]",
+        log=log_path,
+        tmp_dir=f"gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp-4day/hail/tmp",
+        gcs_requester_pays_configuration=gcs_requester_pays_project,
+        spark_conf={
+            "spark.driver.memory": jvm_heap,
+        },
+        skip_logging_configuration=True,
+        default_reference="GRCh38",
+    )
+
+
 def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
     """
     Build shell commands to download gnomad_qc and gnomad_methods.
@@ -970,18 +1015,25 @@ def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
         f"{methods_branch}.tar.gz"
     )
     methods_dir_suffix = methods_branch.replace("/", "-")
-    return (
-        "set -euxo pipefail\n"
-        # Hail config so the nested QoB driver can read requester-pays and
-        # remote_tmpdir settings the same way the local invocation does.
-        "mkdir -p ~/.hail\n"
-        "cat > ~/.hail/config.ini <<'HAILCFG'\n"
+    # Hail config so `hl.init(backend="batch")` finds the Batch billing
+    # project and remote_tmpdir, plus the GCS requester-pays project.
+    # The canonical path is the XDG-style `~/.config/hail/config.ini`
+    # (what `hailtop.config.get_user_config_path()` returns); also write
+    # `~/.hail/config.ini` as a legacy fallback for older Hail versions.
+    config_body = (
         "[batch]\n"
         "billing_project = gnomad-production\n"
         "remote_tmpdir = gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp\n"
         "[gcs_requester_pays]\n"
         "project = broad-mpg-gnomad\n"
+    )
+    return (
+        "set -euxo pipefail\n"
+        "mkdir -p ~/.config/hail ~/.hail\n"
+        "cat > ~/.config/hail/config.ini <<'HAILCFG'\n"
+        f"{config_body}"
         "HAILCFG\n"
+        "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
@@ -999,7 +1051,17 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         f"--tmp-dir-days {args.tmp_dir_days}",
         f"--n-partitions {args.n_partitions}",
         f"--repartition-factor {args.repartition_factor}",
+        f"--chunk-backend {args.chunk_backend}",
     ]
+    if args.chunk_backend == "local":
+        # Pass through container sizing so the chunk worker can configure
+        # its local Spark heap / threadcount to match what the orchestrator
+        # actually allocated. These default to None and are resolved
+        # lazily in main() if not explicitly set.
+        if args.jvm_heap is not None:
+            flags.append(f"--jvm-heap {args.jvm_heap}")
+        if args.local_cores is not None:
+            flags.append(f"--local-cores {args.local_cores}")
     if args.experimental:
         # Pass through only if user opted in. With --experimental the inner
         # QoB driver attaches to this outer batch (HAIL_BATCH_ID); without
@@ -1218,6 +1280,36 @@ def main(args):
     project = args.project_name
     environment = args.environment
 
+    # Resolve backend-aware container defaults (ignore explicit overrides
+    # from the user). For QoB the chunk container is just a tiny relay; for
+    # local Spark the container has to fit the densify peak.
+    if args.chunk_backend == "local":
+        if args.chunk_cpu is None:
+            args.chunk_cpu = 4
+        if args.chunk_memory is None:
+            args.chunk_memory = "highmem"
+        if args.chunk_storage is None:
+            args.chunk_storage = "25Gi"
+    else:  # qob
+        if args.chunk_cpu is None:
+            args.chunk_cpu = 0.5
+        if args.chunk_memory is None:
+            args.chunk_memory = "standard"
+        if args.chunk_storage is None:
+            args.chunk_storage = "5Gi"
+
+    # Auto-derive jvm_heap and local_cores from container shape if running
+    # the local-Spark backend and the user didn't set them explicitly.
+    if args.chunk_backend == "local":
+        mem_per_core_gb = {"highmem": 6.5, "standard": 3.75, "lowmem": 0.9}.get(
+            args.chunk_memory, 3.75
+        )
+        total_mem_gb = int(args.chunk_cpu * mem_per_core_gb)
+        if args.jvm_heap is None:
+            args.jvm_heap = f"{max(total_mem_gb - 4, 4)}g"
+        if args.local_cores is None:
+            args.local_cores = max(int(args.chunk_cpu) // 2, 1)
+
     # Orchestrator-only mode: build and submit a Hail Batch pipeline, then
     # exit. Skip _init_hail entirely so we don't pay for an unused QoB
     # driver here (the per-chunk relays each spawn their own).
@@ -1254,16 +1346,6 @@ def main(args):
         _orchestrate_coverage_batch(args, cov_and_an_ht_path)
         return
 
-    # When --experimental is set, attach the QoB driver to an existing
-    # Hail Batch via the HAIL_BATCH_ID env var (via the experimental init
-    # path). Useful when this script is invoked from inside a
-    # hailtop.batch pipeline that wants all QoB jobs added to its own
-    # batch graph. Without --experimental, the env var is ignored.
-    batch_id = None
-    if args.experimental:
-        batch_id_env = getenv("HAIL_BATCH_ID")
-        batch_id = int(batch_id_env) if batch_id_env else None
-
     # Per-worker log names so concurrent chunks don't clobber a single
     # `v5_coverage_and_an_generation.log` in the logging bucket. The
     # monolithic flow keeps the original name; chunk/merge workers get
@@ -1279,6 +1361,28 @@ def main(args):
                 args.merge_output.rstrip("/").split("/")[-1].removesuffix(".ht")
             )
         log_name = f"v5_cov_{merge_slug}"
+
+    # Local-Spark chunk worker takes a different init path: no QoB driver
+    # pod, just an in-container Hail JVM. Skip _init_hail entirely.
+    if args.run_chunk and args.chunk_backend == "local":
+        _init_hail_local_spark(
+            log_name=log_name,
+            jvm_heap=args.jvm_heap,
+            local_cores=args.local_cores,
+            gcs_requester_pays_project=args.gcp_billing_project,
+        )
+        _run_coverage_chunk(args)
+        return
+
+    # When --experimental is set, attach the QoB driver to an existing
+    # Hail Batch via the HAIL_BATCH_ID env var (via the experimental init
+    # path). Useful when this script is invoked from inside a
+    # hailtop.batch pipeline that wants all QoB jobs added to its own
+    # batch graph. Without --experimental, the env var is ignored.
+    batch_id = None
+    if args.experimental:
+        batch_id_env = getenv("HAIL_BATCH_ID")
+        batch_id = int(batch_id_env) if batch_id_env else None
 
     _init_hail(
         log_name,
@@ -1957,25 +2061,73 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="GCP regions for chunk + merge jobs. Default ['us-central1'].",
     )
     fanout_group.add_argument(
+        "--chunk-backend",
+        type=str,
+        default="qob",
+        choices=["qob", "local"],
+        help=(
+            "Chunk-level compute backend.\n"
+            "  qob   (default): the chunk container is a tiny relay that"
+            " spawns a separate QoB driver+workers pair via"
+            " `hl.init(backend='batch')`. Per-task spot retries; pays a"
+            " nonpreempt n1-highmem-8 driver tax per chunk.\n"
+            "  local: the chunk container runs Hail's JVM in-process with"
+            " `local[N]` Spark threads. No separate driver pod; the"
+            " container is everything. Cheaper at prod scale (no driver"
+            " tax) but per-chunk preemption loses the whole chunk's work."
+        ),
+    )
+    fanout_group.add_argument(
         "--chunk-cpu",
         type=float,
-        default=0.25,
+        default=None,
         help=(
-            "CPU per relay chunk container. Default 0.25 (the relay just"
-            " submits + waits on QoB)."
+            "CPU per chunk container. Default auto-resolves by backend:"
+            " 0.5 for qob (relay only), 4 for local (must fit densify"
+            " peak)."
         ),
     )
     fanout_group.add_argument(
         "--chunk-memory",
         type=str,
-        default="lowmem",
-        help="Hail Batch memory preset per relay chunk container.",
+        default=None,
+        choices=["lowmem", "standard", "highmem"],
+        help=(
+            "Hail Batch memory preset per chunk container. Default"
+            " auto-resolves by backend: `standard` for qob, `highmem` for"
+            " local."
+        ),
     )
     fanout_group.add_argument(
         "--chunk-storage",
         type=str,
-        default="25Gi",
-        help="Extra /io storage per relay chunk container.",
+        default=None,
+        help=(
+            "/io storage per chunk container. Default auto-resolves by"
+            " backend: 5Gi for qob (relay writes nothing), 25Gi for local"
+            " (Spark shuffle spills + checkpoints)."
+        ),
+    )
+    fanout_group.add_argument(
+        "--jvm-heap",
+        type=str,
+        default=None,
+        help=(
+            "Spark driver heap for `--chunk-backend local` (e.g. `22g`)."
+            " Default auto-resolves to `container_memory_gb - 4` to leave"
+            " headroom for Python + OS. Ignored when --chunk-backend=qob."
+        ),
+    )
+    fanout_group.add_argument(
+        "--local-cores",
+        type=int,
+        default=None,
+        help=(
+            "Number of local Spark threads inside `--chunk-backend local`"
+            " containers. Default auto-resolves to `chunk_cpu // 2` to"
+            " balance executor parallelism vs. driver work. Ignored when"
+            " --chunk-backend=qob."
+        ),
     )
     fanout_group.add_argument(
         "--chunk-attempts",
