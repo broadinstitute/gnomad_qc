@@ -781,18 +781,19 @@ def _resolve_partition_range(
 
     Returns ``(partition_range, start, stop)`` where ``partition_range`` is a
     list usable as ``filter_partitions=`` (or ``None`` for the full VDS).
-    ``--test-2-partitions`` is treated as an alias for
+    Explicit ``--chunk-start`` / ``--chunk-stop`` bounds win when set;
+    otherwise ``--test-2-partitions`` is treated as an alias for
     ``--chunk-start 0 --chunk-stop 2``.
 
     :param args: Parsed CLI args.
     :return: Tuple of (partition list or None, start, stop).
     """
-    if args.test_2_partitions:
-        return list(range(2)), 0, 2
     start = args.chunk_start
     stop = args.chunk_stop
     if stop > start:
         return list(range(start, stop)), start, stop
+    if args.test_2_partitions:
+        return list(range(2)), 0, 2
     return None, start, stop
 
 
@@ -890,7 +891,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         vmt = annotate_adj_no_dp(vmt)
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
         vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-        if test:
+        if test and args.reduce_samples_for_test:
             meta_ht = meta_ht.filter(
                 (meta_ht.project_meta.project == project) & (meta_ht.release)
             ).select()
@@ -1006,11 +1007,17 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append("--experimental")
     if args.reduce_min_aggs:
         flags.append("--reduce-min-aggs")
+    if args.reduce_samples_for_test:
+        flags.append("--reduce-samples-for-test")
     if args.cov_and_an_output_suffix:
         flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
     if args.test_chr22_chrx_chry:
         flags.append("--test-chr22-chrx-chry")
-    if args.test:
+    # Promote --test-2-partitions to --test for the chunk: --test-2-partitions
+    # would override --chunk-start/--chunk-stop in `_resolve_partition_range`,
+    # but we need test-mode resource paths + (optional) sample subsampling to
+    # behave the same as a direct `--test` run.
+    if args.test or args.test_2_partitions:
         flags.append("--test")
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
@@ -1215,6 +1222,24 @@ def main(args):
     # exit. Skip _init_hail entirely so we don't pay for an unused QoB
     # driver here (the per-chunk relays each spawn their own).
     if args.use_batch_fanout:
+        # `--test-2-partitions` in fanout mode is an alias for
+        # `--total-partitions 2 --partitions-per-chunk 2` (one chunk covering
+        # the first 2 VDS partitions). Override here so the orchestrator
+        # dispatches one chunk instead of the default 145k-partition fan-out.
+        if args.test_2_partitions:
+            if args.total_partitions != 145000:
+                logger.warning(
+                    "--test-2-partitions overrides --total-partitions=%s -> 2",
+                    args.total_partitions,
+                )
+            if args.partitions_per_chunk != 2:
+                logger.warning(
+                    "--test-2-partitions overrides --partitions-per-chunk=%s -> 2",
+                    args.partitions_per_chunk,
+                )
+            args.total_partitions = 2
+            args.partitions_per_chunk = 2
+
         test = args.test_2_partitions or args.test_chr22_chrx_chry or args.test
         cov_and_an_ht_path = coverage_and_an_path(
             test=test,
@@ -1239,8 +1264,24 @@ def main(args):
         batch_id_env = getenv("HAIL_BATCH_ID")
         batch_id = int(batch_id_env) if batch_id_env else None
 
+    # Per-worker log names so concurrent chunks don't clobber a single
+    # `v5_coverage_and_an_generation.log` in the logging bucket. The
+    # monolithic flow keeps the original name; chunk/merge workers get
+    # invocation-specific names derived from the partition slice or output
+    # path so each worker writes to its own log file.
+    log_name = "v5_coverage_and_an_generation"
+    if args.run_chunk:
+        log_name = f"v5_cov_chunk_{args.chunk_start:08d}_{args.chunk_stop:08d}"
+    elif args.run_merge:
+        merge_slug = "merge"
+        if args.merge_output:
+            merge_slug = (
+                args.merge_output.rstrip("/").split("/")[-1].removesuffix(".ht")
+            )
+        log_name = f"v5_cov_{merge_slug}"
+
     _init_hail(
-        "v5_coverage_and_an_generation",
+        log_name,
         environment,
         billing_project=getattr(args, "gcp_billing_project", None),
         tmp_dir_days=args.tmp_dir_days,
@@ -1395,7 +1436,7 @@ def main(args):
                 vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
                 vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
-                if test:
+                if test and args.reduce_samples_for_test:
                     meta_ht = meta_ht.filter(
                         (meta_ht.project_meta.project == project) & (meta_ht.release)
                     ).select()
@@ -1722,6 +1763,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " and --compute-all-cov-release-stats-ht runs (the gmh's"
             " `freq_reduced` global determines whether reduction takes effect"
             " at compute time)."
+        ),
+    )
+    parser.add_argument(
+        "--reduce-samples-for-test",
+        action="store_true",
+        help=(
+            "When `--test` (or `--test-2-partitions` / `--test-chr22-chrx-chry`)"
+            " is set on AoU, additionally subsample the AoU sample set to"
+            " ~0.1%% via `meta_ht.sample(0.001)`. Default off: a `--test` run"
+            " uses all samples but the partition / chrom subset, so AN values"
+            " are stable and comparable across runs. Useful when you want a"
+            " cheap tiny-cohort sanity check rather than a real-scale slice."
         ),
     )
 
