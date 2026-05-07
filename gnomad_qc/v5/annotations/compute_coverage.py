@@ -2110,13 +2110,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     fanout_group.add_argument(
         "--qob-driver-cores",
-        type=int,
+        type=float,
         default=None,
         help=(
             "Cores for the QoB driver pod each chunk relay spawns"
-            " (--chunk-backend=qob). Forwarded to the relay's"
-            " --driver-cores; decoupled from the orchestrator/merge-side"
-            " --driver-cores. Ignored when --chunk-backend=local."
+            " (--chunk-backend=qob). Power of two between 0.25 and 16."
+            " Forwarded to the relay's --driver-cores; decoupled from the"
+            " orchestrator/merge-side --driver-cores. Ignored when"
+            " --chunk-backend=local."
         ),
     )
     fanout_group.add_argument(
@@ -2133,13 +2134,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     fanout_group.add_argument(
         "--qob-worker-cores",
-        type=int,
+        type=float,
         default=None,
         help=(
             "Cores per QoB worker pod the chunk's QoB driver dispatches"
-            " (--chunk-backend=qob). Forwarded to the relay's"
-            " --worker-cores; decoupled from the orchestrator/merge-side"
-            " --worker-cores. Ignored when --chunk-backend=local."
+            " (--chunk-backend=qob). Power of two between 0.25 and 16."
+            " Forwarded to the relay's --worker-cores; decoupled from the"
+            " orchestrator/merge-side --worker-cores. Ignored when"
+            " --chunk-backend=local."
         ),
     )
     fanout_group.add_argument(
