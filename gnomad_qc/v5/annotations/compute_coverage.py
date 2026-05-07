@@ -3,6 +3,7 @@
 import argparse
 import logging
 from functools import reduce
+from os import getenv
 from typing import List, Optional, Tuple
 
 import hail as hl
@@ -709,12 +710,25 @@ def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
     environment = args.environment
+
+    # When --experimental is set, attach the QoB driver to an existing
+    # Hail Batch via the HAIL_BATCH_ID env var (via the experimental init
+    # path). Useful when this script is invoked from inside a
+    # hailtop.batch pipeline that wants all QoB jobs added to its own
+    # batch graph. Without --experimental, the env var is ignored.
+    batch_id = None
+    if args.experimental:
+        batch_id_env = getenv("HAIL_BATCH_ID")
+        batch_id = int(batch_id_env) if batch_id_env else None
+
     _init_hail(
         "v5_coverage_and_an_generation",
         environment,
         billing_project=getattr(args, "gcp_billing_project", None),
         tmp_dir_days=args.tmp_dir_days,
         tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}coverage_and_an_generation",
+        experimental=args.experimental,
+        batch_id=batch_id,
         **_get_batch_resource_kwargs(args),
     )
 
@@ -1099,6 +1113,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     batch_group = parser.add_argument_group(
         "batch configuration",
         "Optional parameters for batch/QoB backend (only used when --environment=batch).",
+    )
+    batch_group.add_argument(
+        "--experimental",
+        action="store_true",
+        help=(
+            "Route the QoB init through `hl.experimental.init` instead of"
+            " `hl.init`. When set, also reads HAIL_BATCH_ID from the env"
+            " and (if present) attaches the QoB driver to that existing"
+            " Hail Batch instead of creating a new one. Without this flag,"
+            " HAIL_BATCH_ID is ignored."
+        ),
     )
     batch_group.add_argument(
         "--app-name",

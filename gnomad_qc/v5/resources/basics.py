@@ -110,6 +110,8 @@ def _init_hail(
     environment: str = "batch",
     billing_project: Optional[str] = None,
     tmp_dir_days: Optional[int] = 4,
+    experimental: bool = False,
+    batch_id: Optional[int] = None,
     **kwargs,
 ) -> None:
     """
@@ -121,6 +123,15 @@ def _init_hail(
         Default is None. When None, uses "broad-mpg-gnomad".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
+    :param experimental: If True (batch only), route the init through
+        ``hl.experimental.init`` instead of ``hl.init``. Required when
+        attaching to an existing Hail Batch via ``batch_id``.
+    :param batch_id: If set (batch only), attach the QoB driver to an
+        existing Hail Batch with this ID instead of creating a new batch.
+        Useful for adding QoB jobs to a batch the caller already
+        constructed (e.g., a ``hailtop.batch`` pipeline). Setting this
+        also implies ``experimental=True`` since the attach-to-batch
+        behavior is exposed via ``hl.experimental.init``.
     :param kwargs: Additional keyword arguments forwarded to hl.init() in all
         environments. None values are silently dropped, so optional params (e.g.
         batch resource params from :func:`_get_batch_resource_kwargs`, or
@@ -148,7 +159,20 @@ def _init_hail(
                 "regions": ["us-central1"],
             }
         )
-    hl.init(**init_kwargs)
+        if batch_id is not None:
+            init_kwargs["batch_id"] = batch_id
+
+    use_experimental = experimental or batch_id is not None
+    if use_experimental and environment != "batch":
+        raise ValueError(
+            "experimental=True / batch_id=... is only supported when"
+            f" environment='batch'; got environment={environment!r}."
+        )
+    if use_experimental:
+        init_kwargs["skip_logging_configuration"] = True
+        hl.experimental.init(**init_kwargs)
+    else:
+        hl.init(**init_kwargs)
     hl.default_reference("GRCh38")
 
 
