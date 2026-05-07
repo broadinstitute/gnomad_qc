@@ -1083,10 +1083,10 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append("--test")
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
-    if args.driver_cores is not None:
-        flags.append(f"--driver-cores {args.driver_cores}")
-    if args.driver_memory:
-        flags.append(f"--driver-memory {args.driver_memory}")
+    if args.qob_driver_cores is not None:
+        flags.append(f"--driver-cores {args.qob_driver_cores}")
+    if args.qob_driver_memory:
+        flags.append(f"--driver-memory {args.qob_driver_memory}")
     if args.worker_cores is not None:
         flags.append(f"--worker-cores {args.worker_cores}")
     if args.worker_memory:
@@ -2109,6 +2109,29 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     fanout_group.add_argument(
+        "--qob-driver-cores",
+        type=int,
+        default=None,
+        help=(
+            "Cores for the QoB driver pod each chunk relay spawns"
+            " (--chunk-backend=qob). Forwarded to the relay's"
+            " --driver-cores; decoupled from the orchestrator/merge-side"
+            " --driver-cores. Ignored when --chunk-backend=local."
+        ),
+    )
+    fanout_group.add_argument(
+        "--qob-driver-memory",
+        type=str,
+        default=None,
+        help=(
+            "Memory profile for the QoB driver pod each chunk relay"
+            " spawns (--chunk-backend=qob), e.g. 'highmem'. Forwarded to"
+            " the relay's --driver-memory; decoupled from the"
+            " orchestrator/merge-side --driver-memory. Ignored when"
+            " --chunk-backend=local."
+        ),
+    )
+    fanout_group.add_argument(
         "--jvm-heap",
         type=str,
         default=None,
@@ -2229,6 +2252,8 @@ if __name__ == "__main__":
         "app_name",
         "driver_cores",
         "driver_memory",
+        "qob_driver_cores",
+        "qob_driver_memory",
         "worker_cores",
         "worker_memory",
     ]
