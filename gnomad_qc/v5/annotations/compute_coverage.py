@@ -1087,10 +1087,10 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append(f"--driver-cores {args.qob_driver_cores}")
     if args.qob_driver_memory:
         flags.append(f"--driver-memory {args.qob_driver_memory}")
-    if args.worker_cores is not None:
-        flags.append(f"--worker-cores {args.worker_cores}")
-    if args.worker_memory:
-        flags.append(f"--worker-memory {args.worker_memory}")
+    if args.qob_worker_cores is not None:
+        flags.append(f"--worker-cores {args.qob_worker_cores}")
+    if args.qob_worker_memory:
+        flags.append(f"--worker-memory {args.qob_worker_memory}")
     return " ".join(flags)
 
 
@@ -2132,6 +2132,29 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     fanout_group.add_argument(
+        "--qob-worker-cores",
+        type=int,
+        default=None,
+        help=(
+            "Cores per QoB worker pod the chunk's QoB driver dispatches"
+            " (--chunk-backend=qob). Forwarded to the relay's"
+            " --worker-cores; decoupled from the orchestrator/merge-side"
+            " --worker-cores. Ignored when --chunk-backend=local."
+        ),
+    )
+    fanout_group.add_argument(
+        "--qob-worker-memory",
+        type=str,
+        default=None,
+        help=(
+            "Memory profile per QoB worker pod the chunk's QoB driver"
+            " dispatches (--chunk-backend=qob), e.g. 'lowmem'. Forwarded"
+            " to the relay's --worker-memory; decoupled from the"
+            " orchestrator/merge-side --worker-memory. Ignored when"
+            " --chunk-backend=local."
+        ),
+    )
+    fanout_group.add_argument(
         "--jvm-heap",
         type=str,
         default=None,
@@ -2256,6 +2279,8 @@ if __name__ == "__main__":
         "qob_driver_memory",
         "worker_cores",
         "worker_memory",
+        "qob_worker_cores",
+        "qob_worker_memory",
     ]
     provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
     if provided_batch_args and args.environment != "batch":
