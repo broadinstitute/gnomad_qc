@@ -1807,9 +1807,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     batch_group.add_argument(
         "--driver-cores",
-        type=float,
+        type=str,
         default=None,
-        help="Number of cores for driver node.",
+        help=(
+            "Number of cores for the driver node. Pass a power of two"
+            " between 0.25 and 16 (as a string, e.g. '2' or '0.5')."
+        ),
     )
     batch_group.add_argument(
         "--driver-memory",
@@ -1819,9 +1822,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     batch_group.add_argument(
         "--worker-cores",
-        type=float,
+        type=str,
         default=None,
-        help="Number of cores for worker nodes.",
+        help=(
+            "Number of cores per worker node. Pass a power of two"
+            " between 0.25 and 16 (as a string, e.g. '1' or '0.5')."
+        ),
     )
     batch_group.add_argument(
         "--worker-memory",
@@ -2110,12 +2116,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     fanout_group.add_argument(
         "--qob-driver-cores",
-        type=float,
+        type=str,
         default=None,
         help=(
             "Cores for the QoB driver pod each chunk relay spawns"
-            " (--chunk-backend=qob). Power of two between 0.25 and 16."
-            " Forwarded to the relay's --driver-cores; decoupled from the"
+            " (--chunk-backend=qob). Pass a power of two between 0.25 and"
+            " 16 (as a string, e.g. '2' or '0.5'). Forwarded to the"
+            " relay's --driver-cores; decoupled from the"
             " orchestrator/merge-side --driver-cores. Ignored when"
             " --chunk-backend=local."
         ),
@@ -2134,12 +2141,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     fanout_group.add_argument(
         "--qob-worker-cores",
-        type=float,
+        type=str,
         default=None,
         help=(
             "Cores per QoB worker pod the chunk's QoB driver dispatches"
-            " (--chunk-backend=qob). Power of two between 0.25 and 16."
-            " Forwarded to the relay's --worker-cores; decoupled from the"
+            " (--chunk-backend=qob). Pass a power of two between 0.25 and"
+            " 16 (as a string, e.g. '1' or '0.5'). Forwarded to the"
+            " relay's --worker-cores; decoupled from the"
             " orchestrator/merge-side --worker-cores. Ignored when"
             " --chunk-backend=local."
         ),
