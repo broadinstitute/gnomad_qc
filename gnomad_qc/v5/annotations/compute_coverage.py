@@ -1807,7 +1807,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     batch_group.add_argument(
         "--driver-cores",
-        type=int,
+        type=float,
         default=None,
         help="Number of cores for driver node.",
     )
