@@ -820,7 +820,7 @@ def _build_chunk_ref_ht(
         )
     elif partition_count > 0:
         chunk_intervals = _derive_chunk_locus_intervals(vds_filtered)
-        logger.info("Chunk locus intervals: %s", chunk_intervals)
+        logger.info("Chunk locus intervals: %s", hl.eval(chunk_intervals))
         ref_ht = hl.filter_intervals(ref_ht, chunk_intervals)
 
     ref_ht = ref_ht.key_by("locus").select().distinct()
@@ -856,8 +856,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
       3. Repartition ``ref_ht`` into ``partitions_per_chunk * repartition_factor``
          sub-partitions to shrink per-task densify size.
       4. Run ``compute_all_release_stats_per_ref_site``.
-      5. Intermediate-checkpoint, ``naive_coalesce`` to ``partitions_per_chunk``,
-         and write to ``args.chunk_output``.
+      5. Write to ``args.chunk_output``.
     """
     project = args.project_name
     environment = args.environment
@@ -926,11 +925,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
     )
-    cov_and_an_ht = cov_and_an_ht.checkpoint(
-        new_temp_file(f"{project}_cov_and_an_chunk", "ht")
-    )
-    target_n = max(n, 1)
-    cov_and_an_ht = cov_and_an_ht.naive_coalesce(target_n)
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
@@ -1821,6 +1815,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Memory type for driver node (e.g., 'highmem').",
     )
     batch_group.add_argument(
+        "--driver-jvm-heap",
+        type=str,
+        default=None,
+        help=(
+            "Max JVM heap size (-Xmx) for the in-process QoB driver under"
+            " --experimental, e.g. '5g' or '2500m'. Plumbed to"
+            " hl.experimental.init(jvm_heap_size=...). Set to ~50-70%% of"
+            " container memory; the rest is for native off-heap"
+            " (RegionPool), Python, and OS overhead. Ignored without"
+            " --experimental."
+        ),
+    )
+    batch_group.add_argument(
         "--worker-cores",
         type=str,
         default=None,
@@ -2285,6 +2292,7 @@ if __name__ == "__main__":
         "app_name",
         "driver_cores",
         "driver_memory",
+        "driver_jvm_heap",
         "qob_driver_cores",
         "qob_driver_memory",
         "worker_cores",
@@ -2297,6 +2305,13 @@ if __name__ == "__main__":
         parser.error(
             f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
             f"require --environment=batch"
+        )
+
+    # --driver-jvm-heap only applies to the in-process JVM under --experimental.
+    if args.driver_jvm_heap is not None and not args.experimental:
+        parser.error(
+            "--driver-jvm-heap requires --experimental (it controls the"
+            " in-process JVM heap for hl.experimental.init)."
         )
 
     if args.project_name == "aou" and args.environment not in ("rwb", "batch"):
