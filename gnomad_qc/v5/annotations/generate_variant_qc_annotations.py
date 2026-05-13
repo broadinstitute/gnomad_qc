@@ -456,55 +456,6 @@ def main(args):
         )
 
     try:
-        if args.prepare_vep_input:
-            logger.info("Preparing VEP input HT from v5 VDS (release samples only)...")
-            _check_resource_existence(
-                environment=environment,
-                output_step_resources={"vep_input_ht": [vep_input_ht_path]},
-                overwrite=overwrite,
-            )
-            vds = get_aou_vds(
-                release_only=True,
-                filter_partitions=(
-                    range(test_n_partitions) if test_n_partitions else None
-                ),
-                annotate_meta=True,
-                test=args.test,
-                environment=environment,
-            )
-            ht = vds.variant_data.rows()
-            ht = hl.split_multi(ht)
-            ht.write(vep_input_ht_path, overwrite=overwrite)
-
-        if args.run_vep:
-            logger.info("Running VEP on VEP input HT...")
-            _check_resource_existence(
-                environment=environment,
-                input_step_resources={"vep_input_ht": [vep_input_ht_path]},
-                output_step_resources={"vep_ht": [vep_ht_path]},
-                overwrite=overwrite,
-            )
-            ht = hl.read_table(vep_input_ht_path)
-            ht = vep_or_lookup_vep(ht, vep_version=vep_version)
-            ht.write(vep_ht_path, overwrite=overwrite)
-
-        if args.validate_vep:
-            logger.info("Validating VEP annotations...")
-            validate_vep_ht_path = validate_vep_path(
-                test=test, vep_version=vep_version, environment=environment
-            ).path
-            _check_resource_existence(
-                environment=environment,
-                input_step_resources={"vep_ht": [vep_ht_path]},
-                output_step_resources={"validate_vep_ht": [validate_vep_ht_path]},
-                overwrite=overwrite,
-            )
-            count_ht = count_vep_annotated_variants_per_interval(
-                hl.read_table(vep_ht_path),
-                ensembl_interval.ht(),
-            )
-            count_ht.write(validate_vep_ht_path, overwrite=overwrite)
-
         if args.create_info_ht:
             _check_resource_existence(
                 environment=environment,
@@ -632,6 +583,55 @@ def main(args):
             )
             hl.export_vcf(tp_hts["raw"], raw_tp_vcf_path, tabix=True)
             hl.export_vcf(tp_hts["adj"], adj_tp_vcf_path, tabix=True)
+
+        if args.prepare_vep_input:
+            logger.info("Preparing VEP input HT from v5 VDS (release samples only)...")
+            _check_resource_existence(
+                environment=environment,
+                output_step_resources={"vep_input_ht": [vep_input_ht_path]},
+                overwrite=overwrite,
+            )
+            vds = get_aou_vds(
+                release_only=True,
+                filter_partitions=(
+                    range(test_n_partitions) if test_n_partitions else None
+                ),
+                annotate_meta=True,
+                test=args.test,
+                environment=environment,
+            )
+            ht = vds.variant_data.rows()
+            ht = hl.split_multi(ht)
+            ht.write(vep_input_ht_path, overwrite=overwrite)
+
+        if args.run_vep:
+            logger.info("Running VEP on VEP input HT...")
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={"vep_input_ht": [vep_input_ht_path]},
+                output_step_resources={"vep_ht": [vep_ht_path]},
+                overwrite=overwrite,
+            )
+            ht = hl.read_table(vep_input_ht_path)
+            ht = vep_or_lookup_vep(ht, vep_version=vep_version)
+            ht.write(vep_ht_path, overwrite=overwrite)
+
+        if args.validate_vep:
+            logger.info("Validating VEP annotations...")
+            validate_vep_ht_path = validate_vep_path(
+                test=test, vep_version=vep_version, environment=environment
+            ).path
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={"vep_ht": [vep_ht_path]},
+                output_step_resources={"validate_vep_ht": [validate_vep_ht_path]},
+                overwrite=overwrite,
+            )
+            count_ht = count_vep_annotated_variants_per_interval(
+                hl.read_table(vep_ht_path),
+                ensembl_interval.ht(),
+            )
+            count_ht.write(validate_vep_ht_path, overwrite=overwrite)
 
     finally:
         if environment != "batch":
