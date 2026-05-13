@@ -1217,7 +1217,11 @@ def _init_hail_local_spark(
     )
 
 
-def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
+def _build_setup_command(
+    commit: str,
+    gcp_billing_project: str,
+    methods_branch: str = "main",
+) -> str:
     """
     Build shell commands to download gnomad_qc and gnomad_methods.
 
@@ -1226,7 +1230,17 @@ def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
     image provides ``hail`` and system dependencies. Mirrors the equivalent
     helper in ``generate_frequency.py`` from earlier this branch.
 
+    Also patches ``/gsa-key/key.json`` with a ``quota_project_id`` field
+    so requester-pays reads (e.g., the AoU VDS) succeed from the QoB
+    driver pod the relay spawns. Without this field Hail's QoB doesn't
+    fully propagate ``gcs_requester_pays_configuration`` through to the
+    driver pod's Java GCS client, and the read 400s with no fallback
+    (works fine from a laptop because gcloud config supplies the quota
+    project there).
+
     :param commit: Git commit hash to pin gnomad_qc to.
+    :param gcp_billing_project: GCP project for requester-pays reads;
+        patched into the GSA key as ``quota_project_id``.
     :param methods_branch: Branch/commit of gnomad_methods to pull.
     :return: Shell command string (terminated with newline).
     """
@@ -1246,7 +1260,7 @@ def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
         "billing_project = gnomad-production\n"
         "remote_tmpdir = gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp\n"
         "[gcs_requester_pays]\n"
-        "project = broad-mpg-gnomad\n"
+        f"project = {gcp_billing_project}\n"
     )
     return (
         "set -euxo pipefail\n"
@@ -1255,6 +1269,11 @@ def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
         f"{config_body}"
         "HAILCFG\n"
         "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
+        # Patch quota_project_id into the GSA key so the QoB driver pod
+        # has a billing-project fallback for requester-pays reads.
+        f"python3 -c \"import json, os; p='/gsa-key/key.json';"
+        f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
+        f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
@@ -1374,7 +1393,11 @@ def _submit_chunk_wave(
             j.memory(args.chunk_memory)
             j.storage(args.chunk_storage)
             j.regions(regions)
-            j.spot(True)
+            # qob relay = coordinator that waits ~tens of min on inner
+            # QoB workers; preemption mid-wait orphans the inner batch.
+            # local relay IS the worker; preemption is unavoidable, so
+            # spot pricing wins.
+            j.spot(args.chunk_backend == "local")
             j.n_max_attempts(args.chunk_attempts)
             j.command(
                 f"{setup_cmd}"
@@ -1464,7 +1487,11 @@ def _orchestrate_coverage_batch(
         return
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-    setup_cmd = _build_setup_command(commit, methods_branch=args.methods_branch)
+    setup_cmd = _build_setup_command(
+        commit,
+        gcp_billing_project=args.gcp_billing_project,
+        methods_branch=args.methods_branch,
+    )
 
     backend_kwargs = {"billing_project": args.batch_billing_project}
     if args.batch_remote_tmpdir:
@@ -1606,7 +1633,9 @@ def _submit_merge_wave(
             j.memory(args.merge_memory)
             j.storage(args.merge_storage)
             j.regions(regions)
-            j.spot(True)
+            # Merge relay is a coordinator waiting on inner union+write;
+            # preemption mid-wait orphans the inner job.
+            j.spot(False)
             j.n_max_attempts(args.chunk_attempts)
             j.command(
                 f"{setup_cmd}"
@@ -1699,7 +1728,11 @@ def _orchestrate_coverage_merge(
     coalesce_to = max(args.read_subintervals_per_chunk, 1)
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
-    setup_cmd = _build_setup_command(commit, methods_branch=args.methods_branch)
+    setup_cmd = _build_setup_command(
+        commit,
+        gcp_billing_project=args.gcp_billing_project,
+        methods_branch=args.methods_branch,
+    )
 
     backend_kwargs = {"billing_project": args.batch_billing_project}
     if args.batch_remote_tmpdir:
@@ -1804,7 +1837,8 @@ def _orchestrate_coverage_merge(
     j.memory(args.merge_memory)
     j.storage(args.final_merge_storage)
     j.regions(args.regions or ["us-central1"])
-    j.spot(True)
+    # Same coordinator-waiting-on-inner-job rationale as group merges.
+    j.spot(False)
     j.n_max_attempts(args.chunk_attempts)
     inputs_str = " ".join(group_output_paths)
     j.command(
