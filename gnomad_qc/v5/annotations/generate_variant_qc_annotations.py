@@ -5,8 +5,9 @@ import logging
 from typing import Dict
 
 import hail as hl
+from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
 from gnomad.resources.grch38.gnomad import GROUPS
-from gnomad.resources.grch38.reference_data import get_truth_ht
+from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.utils.annotations import (
     annotate_allele_info,
     get_lowqual_expr,
@@ -14,6 +15,7 @@ from gnomad.utils.annotations import (
 )
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
+from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.variant_qc.pipeline import (
     INFO_FEATURES,
     NON_INFO_FEATURES,
@@ -32,7 +34,10 @@ from gnomad_qc.v5.resources.annotations import (
     get_trio_stats,
     get_true_positive_vcf_path,
     get_variant_qc_annotations,
+    get_vep,
+    get_vep_input_ht,
     info_vcf_path,
+    validate_vep_path,
 )
 from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
@@ -41,6 +46,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
+from gnomad_qc.v5.resources.constants import DEFAULT_VEP_VERSION
 from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
 
 logging.basicConfig(
@@ -415,7 +421,12 @@ def main(args):
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
     test = args.test or test_n_partitions is not None
+    vep_version = args.vep_version
 
+    vep_input_ht_path = get_vep_input_ht(test=test, vep_version=vep_version).path
+    vep_ht_path = get_vep(
+        test=test, vep_version=vep_version, environment=environment
+    ).path
     info_ht_path = get_info_ht(test=test, environment=environment).path
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
     sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
@@ -445,6 +456,55 @@ def main(args):
         )
 
     try:
+        if args.prepare_vep_input:
+            logger.info("Preparing VEP input HT from v5 VDS (release samples only)...")
+            _check_resource_existence(
+                environment=environment,
+                output_step_resources={"vep_input_ht": [vep_input_ht_path]},
+                overwrite=overwrite,
+            )
+            vds = get_aou_vds(
+                release_only=True,
+                filter_partitions=(
+                    range(test_n_partitions) if test_n_partitions else None
+                ),
+                annotate_meta=True,
+                test=args.test,
+                environment=environment,
+            )
+            ht = vds.variant_data.rows()
+            ht = hl.split_multi(ht)
+            ht.write(vep_input_ht_path, overwrite=overwrite)
+
+        if args.run_vep:
+            logger.info("Running VEP on VEP input HT...")
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={"vep_input_ht": [vep_input_ht_path]},
+                output_step_resources={"vep_ht": [vep_ht_path]},
+                overwrite=overwrite,
+            )
+            ht = hl.read_table(vep_input_ht_path)
+            ht = vep_or_lookup_vep(ht, vep_version=vep_version)
+            ht.write(vep_ht_path, overwrite=overwrite)
+
+        if args.validate_vep:
+            logger.info("Validating VEP annotations...")
+            validate_vep_ht_path = validate_vep_path(
+                test=test, vep_version=vep_version, environment=environment
+            ).path
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={"vep_ht": [vep_ht_path]},
+                output_step_resources={"validate_vep_ht": [validate_vep_ht_path]},
+                overwrite=overwrite,
+            )
+            count_ht = count_vep_annotated_variants_per_interval(
+                hl.read_table(vep_ht_path),
+                ensembl_interval.ht(),
+            )
+            count_ht.write(validate_vep_ht_path, overwrite=overwrite)
+
         if args.create_info_ht:
             _check_resource_existence(
                 environment=environment,
@@ -573,7 +633,7 @@ def main(args):
             hl.export_vcf(tp_hts["adj"], adj_tp_vcf_path, tabix=True)
 
     finally:
-        if environment == "rwb":
+        if environment != "batch":
             logger.info("Copying log to logging bucket...")
             hl.copy_log(
                 get_logging_path(
@@ -588,7 +648,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--environment",
         help="Environment where script will run.",
-        choices=["rwb", "batch"],
+        choices=["rwb", "batch", "dataproc"],
         default="rwb",
     )
     parser.add_argument(
@@ -637,6 +697,40 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         nargs="?",
         const=2,
         type=int,
+    )
+    vep_args = parser.add_argument_group(
+        "VEP annotation parameters.",
+        "Arguments relevant to preparing VEP input and running VEP annotation.",
+    )
+    vep_args.add_argument(
+        "--prepare-vep-input",
+        help=(
+            "Extract split-multi variant rows from the v5 VDS (release samples only)"
+            " and write to a 30-day temp HT accessible from Dataproc. Intended to run"
+            " in the 'batch' environment (QoB)."
+        ),
+        action="store_true",
+    )
+    vep_args.add_argument(
+        "--run-vep",
+        help=(
+            "Read the VEP input HT written by --prepare-vep-input and run"
+            " vep_or_lookup_vep. Intended to run in the 'dataproc' environment."
+        ),
+        action="store_true",
+    )
+    vep_args.add_argument(
+        "--validate-vep",
+        help=(
+            "Count VEP-annotated variants per Ensembl interval as a validity check."
+            " Intended to run in the 'dataproc' environment after --run-vep."
+        ),
+        action="store_true",
+    )
+    vep_args.add_argument(
+        "--vep-version",
+        help="Version of VEP to use for annotation (e.g., '105', '115').",
+        default=DEFAULT_VEP_VERSION,
     )
     parser.add_argument(
         "--generate-trio-stats",
