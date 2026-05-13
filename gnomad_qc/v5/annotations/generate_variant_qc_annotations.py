@@ -522,6 +522,7 @@ def main(args):
                 test=test,
             )
             ht.write(info_ht_path, overwrite=overwrite)
+
         if args.export_info_vcf:
             logger.info("Exporting info ht as VCF...")
             out_info_vcf_path = info_vcf_path(test=test, environment=environment)
