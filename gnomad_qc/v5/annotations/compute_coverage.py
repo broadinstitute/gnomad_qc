@@ -1273,6 +1273,14 @@ def _build_setup_command(
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
         f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
         f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
+        # Pin Hail to 0.2.137 in the relay venv. The image bundles
+        # 0.2.138 which has a requester-pays propagation regression in
+        # the QoB driver's GoogleStorageFS for load_references_from_dataset
+        # — the AoU VDS metadata read 400s with "no user project". The
+        # relay's Hail Python version determines the JAR the QoB driver
+        # downloads, so pinning here pins the entire pipeline.
+        "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
+        " --no-deps hail==0.2.137\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
