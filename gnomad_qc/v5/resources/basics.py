@@ -192,6 +192,7 @@ def qc_temp_prefix(
     version: str = CURRENT_VERSION,
     environment: str = "dataproc",
     days: Optional[int] = None,
+    use_aou_temp_bucket: bool = False,
 ) -> str:
     """
     Return path to temporary QC bucket.
@@ -199,19 +200,30 @@ def qc_temp_prefix(
     :param version: Version of annotation path to return.
     :param environment: Compute environment, either 'dataproc','rwb', or 'batch'. Default is 'dataproc'.
     :param days: Number of days to keep temporary data. Default is None.
+    :param use_aou_temp_bucket: When True, switches the temp bucket from
+        ``GNOMAD_TMP_BUCKET`` to ``GNOMAD_AOU_TMP_BUCKET`` for 'dataproc' and
+        'batch' environments. Not applicable to the 'rwb' environment.
+        Default is False.
     :return: Path to bucket with temporary QC data.
     """
     if days not in [None, 4, 30]:
         raise ValueError("Days must be either None, 4, or 30.")
 
     if environment == "rwb":
+        if use_aou_temp_bucket:
+            raise ValueError(
+                "use_aou_temp_bucket=True is not supported for the 'rwb' environment."
+            )
         env_bucket = (
             f"{WORKSPACE_BUCKET}/tmp{f'/{days}_day' if days is not None else ''}"
         )
     elif environment in ("dataproc", "batch"):
-        tmp_bucket = (
-            GNOMAD_TMP_BUCKET if environment == "dataproc" else BATCH_TMP_BUCKET
-        )
+        if use_aou_temp_bucket:
+            tmp_bucket = GNOMAD_AOU_TMP_BUCKET
+        else:
+            tmp_bucket = (
+                GNOMAD_TMP_BUCKET if environment == "dataproc" else BATCH_TMP_BUCKET
+            )
         env_bucket = f"{tmp_bucket}{f'-{days}day' if days is not None else ''}"
     else:
         raise ValueError(
