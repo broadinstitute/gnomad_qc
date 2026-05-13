@@ -23,6 +23,7 @@ from gnomad_qc.v5.resources.constants import (
     BATCH_TMP_BUCKET,
     CURRENT_AOU_VERSION,
     CURRENT_VERSION,
+    GNOMAD_AOU_TMP_BUCKET,
     GNOMAD_BUCKET,
     GNOMAD_TMP_BUCKET,
     WORKSPACE_BUCKET,
