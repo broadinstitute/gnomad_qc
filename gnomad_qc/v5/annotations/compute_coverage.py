@@ -3,6 +3,7 @@
 import argparse
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import reduce
 from os import getenv
 from typing import List, Optional, Tuple
@@ -204,29 +205,147 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
         raise
 
 
-def _chunk_path(cov_and_an_ht_path: str, kind: str, idx: int) -> str:
-    """
-    Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/``.
-
-    ``kind`` is ``"chunk"`` for a per-chunk worker output or ``"group"``
-    for an intermediate group-merge output.
-    """
+def _chunk_path(cov_and_an_ht_path: str, idx: int) -> str:
+    """Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/``."""
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_chunks/{idx:08d}.{kind}.ht"
+    return f"{base}_chunks/{idx:08d}.chunk.ht"
+
+
+def _group_path(cov_and_an_ht_path: str, group_idx: int) -> str:
+    """Return a sibling per-group merged HT path under ``<cov_and_an_path>_merge_groups/``."""
+    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
+    return f"{base}_merge_groups/{group_idx:08d}.ht"
+
+
+def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
+    """Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix."""
+    if not suffix:
+        return path
+    return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
+
+
+def _is_test_run(args: argparse.Namespace) -> bool:
+    """Return true when any ``--test-*`` flag (or ``--test``) is set."""
+    return args.test_2_partitions or args.test_chr22_chrx_chry or args.test
+
+
+def _test_chrom_filter(args: argparse.Namespace) -> Optional[List[str]]:
+    """Return the chr22/X/Y filter list under ``--test-chr22-chrx-chry``, else None."""
+    return ["chr22", "chrX", "chrY"] if args.test_chr22_chrx_chry else None
+
+
+def _resolve_cov_and_an_ht_path(
+    args: argparse.Namespace, project: str, environment: str, test: bool
+) -> str:
+    """Return the cov_and_an HT path, applying ``--cov-and-an-output-suffix`` when set."""
+    path = coverage_and_an_path(
+        test=test, data_set=project, environment=environment
+    ).path
+    return _apply_path_suffix(path, args.cov_and_an_output_suffix)
+
+
+def _resolve_group_membership_ht_path(
+    args: argparse.Namespace, project: str, environment: str, test: bool
+) -> str:
+    """Return the group_membership HT path, applying ``_reduce.ht`` under ``--reduce-min-aggs``."""
+    path = group_membership(test=test, data_set=project, environment=environment).path
+    if args.reduce_min_aggs:
+        path = path.rstrip("/").removesuffix(".ht") + "_reduce.ht"
+    return path
+
+
+def _configure_chunk_backend(args: argparse.Namespace) -> None:
+    """
+    Fill in chunk-backend-aware defaults for the chunk container.
+
+    Resolves ``chunk_cpu``/``chunk_memory``/``chunk_storage`` from
+    ``chunk_backend`` (QoB containers are tiny relays; local-Spark
+    containers must hold the densify peak). For ``--chunk-backend=local``,
+    additionally derives ``jvm_heap`` and ``local_cores`` from the
+    resolved container shape.
+    """
+    if args.chunk_backend == "local":
+        defaults = {
+            "chunk_cpu": 4,
+            "chunk_memory": "highmem",
+            "chunk_storage": "25Gi",
+        }
+    else:  # qob
+        defaults = {
+            "chunk_cpu": 0.5,
+            "chunk_memory": "standard",
+            "chunk_storage": "5Gi",
+        }
+    for k, v in defaults.items():
+        if getattr(args, k) is None:
+            setattr(args, k, v)
+
+    if args.chunk_backend != "local":
+        return
+    mem_per_core_gb = {"highmem": 6.5, "standard": 3.75, "lowmem": 0.9}.get(
+        args.chunk_memory, 3.75
+    )
+    total_mem_gb = int(args.chunk_cpu * mem_per_core_gb)
+    if args.jvm_heap is None:
+        args.jvm_heap = f"{max(total_mem_gb - 4, 4)}g"
+    if args.local_cores is None:
+        args.local_cores = max(int(args.chunk_cpu) // 2, 1)
+
+
+def _apply_test_2_partitions_to_fanout_args(args: argparse.Namespace) -> None:
+    """In ``--use-batch-fanout`` mode, ``--test-2-partitions`` is an alias for total=2/ppc=2."""
+    if not args.test_2_partitions:
+        return
+    if args.total_partitions != 145192:
+        logger.warning(
+            "--test-2-partitions overrides --total-partitions=%s -> 2",
+            args.total_partitions,
+        )
+    if args.partitions_per_chunk != 2:
+        logger.warning(
+            "--test-2-partitions overrides --partitions-per-chunk=%s -> 2",
+            args.partitions_per_chunk,
+        )
+    args.total_partitions = 2
+    args.partitions_per_chunk = 2
+
+
+def _log_name_for_run(args: argparse.Namespace) -> str:
+    """Per-worker log name so concurrent chunk/merge workers don't clobber the monolithic log."""
+    if args.run_chunk:
+        return f"v5_cov_chunk_{args.chunk_start:08d}_{args.chunk_stop:08d}"
+    if args.run_merge:
+        merge_slug = "merge"
+        if args.merge_output:
+            merge_slug = (
+                args.merge_output.rstrip("/").split("/")[-1].removesuffix(".ht")
+            )
+        return f"v5_cov_{merge_slug}"
+    return "v5_coverage_and_an_generation"
 
 
 def _derive_chunk_locus_intervals(
     vds_filtered: hl.vds.VariantDataset,
+    n_subdivisions: int = 1,
     reference_genome: str = "GRCh38",
-) -> List[hl.expr.IntervalExpression]:
+) -> List[hl.utils.Interval]:
     """
-    Derive per-contig locus intervals covering the filtered VDS reference_data.
+    Derive per-contig locus sub-intervals covering the filtered VDS reference_data.
 
     The vep_context HT (used as ``ref_ht``) and the AoU VDS have independent
     partition layouts, so chunking each by its own partition index would not
     yield the same locus range. Instead, we derive the locus extent of the
-    VDS chunk and filter ``ref_ht`` to that range so the locus-keyed join in
-    ``compute_stats_per_ref_site`` produces correct output.
+    VDS chunk and use it to align ``ref_ht`` to the same range.
+
+    When ``n_subdivisions > 1``, each contig's ``lo..hi`` extent is split into
+    that many equal-position sub-intervals. The returned objects are concrete
+    ``hl.Interval`` instances (NOT ``IntervalExpression``s — ``read_vds`` /
+    ``read_matrix_table``'s ``_intervals=`` reader path requires Python-native
+    intervals so the IR can serialize them as partition boundaries). Pass to
+    ``hl.vds.read_vds(intervals=...)`` and ``hl.read_table(_intervals=...)``
+    to co-partition both sides of the densify join at read time, avoiding the
+    shuffle that a post-read ``repartition`` would cost. With
+    ``n_subdivisions=1`` (default), returns one big interval per contig.
     """
     rd = vds_filtered.reference_data
     bounds = rd.aggregate_rows(
@@ -238,13 +357,26 @@ def _derive_chunk_locus_intervals(
             ),
         )
     )
-    return [
-        hl.parse_locus_interval(
-            f"{contig}:{b.lo}-{b.hi + 1}",
-            reference_genome=reference_genome,
-        )
-        for contig, b in bounds.items()
-    ]
+    n = max(n_subdivisions, 1)
+    sub_intervals: List[hl.utils.Interval] = []
+    for contig, b in bounds.items():
+        lo, hi = b.lo, b.hi + 1
+        total = max(hi - lo, 1)
+        step = max(total // n, 1)
+        for i in range(n):
+            sub_lo = lo + i * step
+            sub_hi = lo + (i + 1) * step if i < n - 1 else hi
+            if sub_hi <= sub_lo:
+                continue
+            sub_intervals.append(
+                hl.Interval(
+                    hl.Locus(contig, sub_lo, reference_genome=reference_genome),
+                    hl.Locus(contig, sub_hi, reference_genome=reference_genome),
+                    includes_start=True,
+                    includes_end=False,
+                )
+            )
+    return sub_intervals
 
 
 def compute_all_release_stats_per_ref_site(
@@ -773,55 +905,116 @@ def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Tabl
     return hl.filter_intervals(target_ht, intervals)
 
 
-def _resolve_partition_range(
+def _load_project_vds(
     args: argparse.Namespace,
-) -> Tuple[Optional[List[int]], int, int]:
+    project: str,
+    environment: str,
+    partition_range: Optional[List[int]] = None,
+    sub_intervals: Optional[List[hl.utils.Interval]] = None,
+    chrom: Optional[List[str]] = None,
+    test: bool = False,
+) -> Tuple[hl.vds.VariantDataset, str]:
     """
-    Resolve the VDS partition range for a chunk-style invocation.
+    Load the per-project VDS with consistent test/subsample handling.
 
-    Returns ``(partition_range, start, stop)`` where ``partition_range`` is a
-    list usable as ``filter_partitions=`` (or ``None`` for the full VDS).
-    Explicit ``--chunk-start`` / ``--chunk-stop`` bounds win when set;
-    otherwise ``--test-2-partitions`` is treated as an alias for
-    ``--chunk-start 0 --chunk-stop 2``.
+    Centralizes the project-conditional VDS load that's needed by both the
+    chunk worker (``_run_coverage_chunk``) and the strict path (``main``):
 
-    :param args: Parsed CLI args.
-    :return: Tuple of (partition list or None, start, stop).
+    - filter_partitions vs read_intervals routing on AoU
+      (``sub_intervals`` takes precedence; ``partition_range`` is the
+      fallback). gnomAD v5 doesn't yet plumb ``read_intervals``, so
+      ``sub_intervals`` is ignored there.
+    - AoU-specific DP synthesis from LAD + ``annotate_adj_no_dp`` (the AoU
+      v8 VDS lacks DP, which ``compute_stats_per_ref_site`` requires).
+    - ``--test-sample-subset`` application: AoU only, reads ``meta`` from
+      disk inside the helper so it's self-contained.
+
+    :param args: Parsed CLI args (used for ``test_sample_subset``).
+    :param project: ``"aou"`` or ``"gnomad"``.
+    :param environment: Compute environment.
+    :param partition_range: VDS partition indices (e.g. ``list(range(2))``)
+        or ``None`` for the full VDS.
+    :param sub_intervals: Locus sub-intervals for read-time partitioning
+        (AoU only; ignored for gnomAD).
+    :param chrom: Optional list of contigs to filter to.
+    :param test: Whether this is a test run (gates ``test_sample_subset``).
+    :return: Tuple of ``(vds, sex_karyotype_field)``.
     """
-    start = args.chunk_start
-    stop = args.chunk_stop
-    if stop > start:
-        return list(range(start, stop)), start, stop
-    if args.test_2_partitions:
-        return list(range(2)), 0, 2
-    return None, start, stop
+    if project == "aou":
+        sex_karyotype_field = "meta.sex_karyotype"
+        vds = get_aou_vds(
+            release_only=True,
+            filter_partitions=None if sub_intervals else partition_range,
+            read_intervals=sub_intervals,
+            annotate_meta=True,
+            chrom=chrom,
+            environment=environment,
+        )
+        vmt = vds.variant_data
+        vmt = annotate_adj_no_dp(vmt)
+        vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
+        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+        if test and args.test_sample_subset:
+            meta_ht = hl.read_table(
+                meta(data_type="genomes", environment=environment).path
+            )
+            meta_ht = meta_ht.filter(
+                (meta_ht.project_meta.project == project) & (meta_ht.release)
+            ).select()
+            meta_ht = meta_ht.sample(0.001, seed=42)
+            vds = hl.vds.filter_samples(vds, meta_ht)
+    else:
+        sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
+        # gnomad_v5 path doesn't yet plumb read_intervals through to
+        # get_gnomad_v3_vds; fall back to filter_partitions.
+        vds = get_gnomad_v5_genomes_vds(
+            release_only=True,
+            consent_drop_only=True,
+            filter_partitions=partition_range,
+            annotate_meta=True,
+            chrom=chrom,
+        )
+    return vds, sex_karyotype_field
 
 
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
     project: str,
-    repartition_factor: int,
     partition_count: int,
     test_chr22_chrx_chry: bool,
     chrom: Optional[List[str]],
+    sub_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
     """
     Build the per-chunk ``ref_ht`` aligned to the VDS chunk's locus extent.
 
-    Filters ``vep_context`` to the chunk's contigs+locus range (derived from
-    the filtered VDS), strips to the locus key, removes telomeres/centromeres,
-    and optionally explodes into ``partition_count * repartition_factor``
-    sub-partitions to shrink per-task densify size.
+    When ``sub_intervals`` is provided, reads ``vep_context`` directly with
+    ``_intervals=sub_intervals`` so the ref_ht is read into one partition per
+    sub-interval — co-partitioned with the VDS that was read with the same
+    intervals. No shuffle, no checkpoint.
+
+    Otherwise (the strict/no-fanout path or single-interval chunks), reads
+    ``vep_context`` whole, filters to the VDS chunk's per-contig locus extent
+    (via `_derive_chunk_locus_intervals` with `n_subdivisions=1`), then strips
+    to the locus key and removes telomeres/centromeres.
     """
-    ref_ht = vep_context.versions["105"].ht()
-    if test_chr22_chrx_chry:
-        ref_ht = hl.filter_intervals(
-            ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+    if sub_intervals is not None:
+        logger.info(
+            "Reading vep_context with %d sub-intervals (one partition per interval).",
+            len(sub_intervals),
         )
-    elif partition_count > 0:
-        chunk_intervals = _derive_chunk_locus_intervals(vds_filtered)
-        logger.info("Chunk locus intervals: %s", hl.eval(chunk_intervals))
-        ref_ht = hl.filter_intervals(ref_ht, chunk_intervals)
+        ref_ht = vep_context.versions["105"].ht(read_args={"_intervals": sub_intervals})
+    else:
+        ref_ht = vep_context.versions["105"].ht()
+        if test_chr22_chrx_chry:
+            ref_ht = hl.filter_intervals(
+                ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+            )
+        elif partition_count > 0:
+            chunk_intervals = _derive_chunk_locus_intervals(vds_filtered)
+            logger.info("Chunk locus intervals: %s", hl.eval(chunk_intervals))
+            ref_ht = hl.filter_intervals(ref_ht, chunk_intervals)
 
     ref_ht = ref_ht.key_by("locus").select().distinct()
     ref_ht = hl.filter_intervals(
@@ -829,16 +1022,7 @@ def _build_chunk_ref_ht(
         telomeres_and_centromeres.ht().interval.collect(),
         keep=False,
     )
-    if partition_count > 0 and repartition_factor > 1:
-        target_n = partition_count * repartition_factor
-        logger.info(
-            "Repartitioning ref_ht into %d sub-partitions (%d * %d).",
-            target_n,
-            partition_count,
-            repartition_factor,
-        )
-        ref_ht = ref_ht.repartition(target_n, shuffle=True)
-    return ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
+    return ref_ht
 
 
 def _run_coverage_chunk(args: argparse.Namespace) -> None:
@@ -850,69 +1034,93 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     (``main`` does this via ``_init_hail`` before dispatching here).
 
     Steps:
-      1. Filter VDS via ``filter_partitions=range(chunk_start, chunk_stop)``.
-      2. Derive locus intervals from the filtered VDS reference_data and
-         ``filter_intervals`` ``vep_context`` to that range.
-      3. Repartition ``ref_ht`` into ``partitions_per_chunk * repartition_factor``
-         sub-partitions to shrink per-task densify size.
+      1. Probe-load the VDS via
+         ``filter_partitions=range(chunk_start, chunk_stop)`` and derive the
+         chunk's per-contig locus extent via ``_derive_chunk_locus_intervals``.
+      2. Subdivide the extent into ``--read-subintervals-per-chunk`` locus
+         sub-intervals and re-read the VDS via
+         ``hl.vds.read_vds(intervals=sub_intervals)`` — one VDS partition per
+         sub-interval (no shuffle).
+      3. Read ``vep_context`` with the same ``_intervals=sub_intervals`` —
+         co-partitioned with the VDS, so the densify join is shuffle-free.
       4. Run ``compute_all_release_stats_per_ref_site``.
       5. Write to ``args.chunk_output``.
+
+    When ``--read-subintervals-per-chunk=1`` (legacy behavior), skips the
+    probe/re-read and reads the VDS once via ``filter_partitions`` plus
+    builds ``ref_ht`` via the locus-extent filter path (no shuffle either way
+    — the manufactured 2-vs-2N skew that the old ``--repartition-factor``
+    arg created is now gone).
     """
     project = args.project_name
     environment = args.environment
-    partition_range, start, stop = _resolve_partition_range(args)
+    # __main__ validation guarantees one of these branches: explicit
+    # chunk bounds (--chunk-start/--chunk-stop) or the --test-2-partitions
+    # alias for [0, 2). So partition_range is always a non-empty list.
+    if args.test_2_partitions:
+        start, stop = 0, 2
+    else:
+        start, stop = args.chunk_start, args.chunk_stop
+    partition_range = list(range(start, stop))
     n = stop - start
 
-    test = args.test_2_partitions or args.test_chr22_chrx_chry or args.test
-    chrom = ["chr22", "chrX", "chrY"] if args.test_chr22_chrx_chry else None
+    test = _is_test_run(args)
+    chrom = _test_chrom_filter(args)
+    n_sub = max(args.read_subintervals_per_chunk, 1)
 
-    group_membership_ht_path = group_membership(
-        test=test, data_set=project, environment=environment
-    ).path
-    if args.reduce_min_aggs:
-        group_membership_ht_path = (
-            group_membership_ht_path.rstrip("/").removesuffix(".ht") + "_reduce.ht"
+    if args.chunk_output is None:
+        cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
+            args, project, environment, test=test
+        )
+        args.chunk_output = _chunk_path(cov_and_an_ht_path, start)
+        logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
+
+    group_membership_ht_path = _resolve_group_membership_ht_path(
+        args, project, environment, test=test
+    )
+
+    sub_intervals: Optional[List[hl.utils.Interval]] = None
+    if n_sub > 1 and not args.test_chr22_chrx_chry:
+        # Probe: cheap reference_data-bounds load via filter_partitions.
+        if project == "aou":
+            vds_probe = get_aou_vds(
+                filter_partitions=partition_range,
+                chrom=chrom,
+                environment=environment,
+                remove_hard_filtered_samples=False,
+                log_sample_counts=False,
+            )
+        else:
+            vds_probe = get_gnomad_v5_genomes_vds(
+                filter_partitions=partition_range,
+                chrom=chrom,
+            )
+        sub_intervals = _derive_chunk_locus_intervals(vds_probe, n_subdivisions=n_sub)
+        logger.info(
+            "Derived %d sub-intervals from chunk [%d, %d) for read-time"
+            " partitioning.",
+            len(sub_intervals),
+            start,
+            stop,
         )
 
-    if project == "aou":
-        sex_karyotype_field = "meta.sex_karyotype"
-        meta_ht = hl.read_table(meta(data_type="genomes", environment=environment).path)
-        vds = get_aou_vds(
-            release_only=True,
-            filter_partitions=partition_range,
-            annotate_meta=True,
-            chrom=chrom,
-            environment=environment,
-        )
-        # AoU v8 VDS lacks DP; annotate adj without DP and synthesize DP from
-        # LAD so `compute_stats_per_ref_site` doesn't error out.
-        vmt = vds.variant_data
-        vmt = annotate_adj_no_dp(vmt)
-        vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
-        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-        if test and args.reduce_samples_for_test:
-            meta_ht = meta_ht.filter(
-                (meta_ht.project_meta.project == project) & (meta_ht.release)
-            ).select()
-            meta_ht = meta_ht.sample(0.001)
-            vds = hl.vds.filter_samples(vds, meta_ht)
-    else:
-        sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
-        vds = get_gnomad_v5_genomes_vds(
-            release_only=True,
-            consent_drop_only=True,
-            filter_partitions=partition_range,
-            annotate_meta=True,
-            chrom=chrom,
-        )
+    vds, sex_karyotype_field = _load_project_vds(
+        args=args,
+        project=project,
+        environment=environment,
+        partition_range=partition_range,
+        sub_intervals=sub_intervals,
+        chrom=chrom,
+        test=test,
+    )
 
     ref_ht = _build_chunk_ref_ht(
         vds_filtered=vds,
         project=project,
-        repartition_factor=args.repartition_factor,
         partition_count=n,
         test_chr22_chrx_chry=args.test_chr22_chrx_chry,
         chrom=chrom,
+        sub_intervals=sub_intervals,
     )
 
     validate_vds(vds)
@@ -929,18 +1137,37 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
 
-def _run_coverage_merge(input_paths: List[str], output_path: str) -> None:
+def _run_coverage_merge(
+    input_paths: List[str],
+    output_path: str,
+    coalesce_to: Optional[int] = None,
+) -> None:
     """
     Union per-chunk coverage HTs and write the merged HT to ``output_path``.
 
     Globals (``strata_meta``, etc.) are identical across all chunks (computed
     from the same group_membership HT), so the union inherits them from the
     first input. Used for both group-level and final merges in the
-    ``--use-batch-fanout`` pipeline.
+    ``--merge-cov-chunks`` pipeline.
+
+    :param input_paths: HT paths to union.
+    :param output_path: Destination HT path.
+    :param coalesce_to: If set, ``naive_coalesce`` to this many partitions
+        before writing. For group-level merges, set to roughly the per-chunk
+        partition count to avoid the partition-count blowup
+        (sum-of-input-partitions). For the final merge, set to the desired
+        final partition count (e.g. ``--n-partitions``).
     """
-    logger.info("Merging %d HTs -> %s", len(input_paths), output_path)
+    logger.info(
+        "Merging %d HTs -> %s (coalesce_to=%s)",
+        len(input_paths),
+        output_path,
+        coalesce_to,
+    )
     hts = [hl.read_table(p) for p in input_paths]
     merged = hl.Table.union(*hts) if len(hts) > 1 else hts[0]
+    if coalesce_to is not None:
+        merged = merged.naive_coalesce(coalesce_to)
     merged.write(output_path, overwrite=True)
     logger.info("Wrote merged HT to %s", output_path)
 
@@ -1044,7 +1271,7 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         f"--gcp-billing-project {args.gcp_billing_project}",
         f"--tmp-dir-days {args.tmp_dir_days}",
         f"--n-partitions {args.n_partitions}",
-        f"--repartition-factor {args.repartition_factor}",
+        f"--read-subintervals-per-chunk {args.read_subintervals_per_chunk}",
         f"--chunk-backend {args.chunk_backend}",
     ]
     if args.chunk_backend == "local":
@@ -1063,16 +1290,17 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append("--experimental")
     if args.reduce_min_aggs:
         flags.append("--reduce-min-aggs")
-    if args.reduce_samples_for_test:
-        flags.append("--reduce-samples-for-test")
+    if args.test_sample_subset:
+        flags.append("--test-sample-subset")
     if args.cov_and_an_output_suffix:
         flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
     if args.test_chr22_chrx_chry:
         flags.append("--test-chr22-chrx-chry")
-    # Promote --test-2-partitions to --test for the chunk: --test-2-partitions
-    # would override --chunk-start/--chunk-stop in `_resolve_partition_range`,
-    # but we need test-mode resource paths + (optional) sample subsampling to
-    # behave the same as a direct `--test` run.
+    # Promote --test-2-partitions to --test for the chunk: the orchestrator
+    # passes explicit --chunk-start/--chunk-stop, so --test-2-partitions
+    # isn't needed for partition selection — but we still want test-mode
+    # resource paths + (optional) sample subsampling to behave the same
+    # as a direct `--test` run.
     if args.test or args.test_2_partitions:
         flags.append("--test")
     if args.app_name:
@@ -1090,7 +1318,7 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
 
 def _submit_chunk_wave(
     args: argparse.Namespace,
-    backend: hb.ServiceBackend,
+    backend_kwargs: dict,
     wave_idx: Optional[int],
     chunk_indices: List[int],
     cov_and_an_ht_path: str,
@@ -1101,13 +1329,20 @@ def _submit_chunk_wave(
     """
     Build and submit a single Hail Batch for one wave of chunk jobs.
 
-    Chunks-only: each chunk job is a relay container that runs
-    ``--run-chunk`` (which spawns its own QoB driver). No merge jobs are
-    added here; merging is a separate, user-triggered step
-    (see ``--merge-cov-chunks`` once wired). ``batch.run()`` blocks until
-    the wave completes when ``wait=True`` (the default for ServiceBackend).
+    Each chunk job is a relay container that runs ``--run-chunk`` (which
+    spawns its own QoB driver). ``batch.run()`` blocks until the wave
+    completes when ``wait=True`` (the default).
 
-    Chunks whose ``_SUCCESS`` already exists are not added to the pipeline.
+    Existence checks happen in the orchestrator's main thread before this
+    function is called (see ``_orchestrate_coverage_batch``); ``chunk_indices``
+    is the already-filtered pending set.
+
+    Each call creates its own ``hb.ServiceBackend`` from ``backend_kwargs``
+    rather than receiving a shared one. ``ServiceBackend`` owns an
+    aiohttp ClientSession bound to a single event loop; sharing one across
+    ThreadPoolExecutor worker threads causes silent submission losses
+    (one thread wins, others get dropped). Per-thread backends sidestep
+    this.
     """
     project = args.project_name
     total = args.total_partitions
@@ -1115,53 +1350,49 @@ def _submit_chunk_wave(
     regions = args.regions or ["us-central1"]
     wave_label = "single" if wave_idx is None else f"wave{wave_idx:03d}"
     batch_name = (
-        f"v5_cov_{project}_{total}p_{pp}ppc_repart{args.repartition_factor}"
+        f"v5_cov_{project}_{total}p_{pp}ppc_sub{args.read_subintervals_per_chunk}"
         f"_{wave_label}"
     )
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
 
-    batch = hb.Batch(name=batch_name, backend=backend)
-
-    chunk_paths = [
-        _chunk_path(cov_and_an_ht_path, "chunk", idx) for idx in chunk_indices
-    ]
-
-    n_added = 0
-    for local_pos, idx in enumerate(chunk_indices):
-        path = chunk_paths[local_pos]
-        if not args.overwrite and _file_exists_for_env(path, "batch"):
-            logger.info("  skip chunk %d (exists at %s)", idx, path)
-            continue
-        start = idx * pp
-        stop = min(start + pp, total)
-        j = batch.new_job(name=f"cov_chunk_{idx:06d}_{start}_{stop}")
-        j.image(args.batch_image)
-        j.cpu(args.chunk_cpu)
-        j.memory(args.chunk_memory)
-        j.storage(args.chunk_storage)
-        j.regions(regions)
-        j.spot(True)
-        j.n_max_attempts(args.chunk_attempts)
-        j.command(
-            f"{setup_cmd}"
-            f"{script} --run-chunk"
-            f" --chunk-start {start} --chunk-stop {stop}"
-            f" --chunk-output {path}"
-            f" {common_flags_str}"
-        )
-        n_added += 1
-
-    logger.info(
-        "Submitting Hail Batch '%s': %d chunk jobs (dry_run=%s)",
-        batch_name,
-        n_added,
-        args.batch_dry_run,
-    )
-    if n_added == 0 and not args.batch_dry_run:
-        logger.info("  no pending chunks; skipping batch.run() for %s", batch_name)
+    if not chunk_indices:
+        logger.info("  no pending chunks for %s; skipping batch.run()", batch_name)
         return
-    batch.run(dry_run=args.batch_dry_run)
+
+    backend = hb.ServiceBackend(**backend_kwargs)
+    try:
+        batch = hb.Batch(name=batch_name, backend=backend)
+
+        for idx in chunk_indices:
+            path = _chunk_path(cov_and_an_ht_path, idx)
+            start = idx * pp
+            stop = min(start + pp, total)
+            j = batch.new_job(name=f"cov_chunk_{idx:06d}_{start}_{stop}")
+            j.image(args.batch_image)
+            j.cpu(args.chunk_cpu)
+            j.memory(args.chunk_memory)
+            j.storage(args.chunk_storage)
+            j.regions(regions)
+            j.spot(True)
+            j.n_max_attempts(args.chunk_attempts)
+            j.command(
+                f"{setup_cmd}"
+                f"{script} --run-chunk"
+                f" --chunk-start {start} --chunk-stop {stop}"
+                f" --chunk-output {path}"
+                f" {common_flags_str}"
+            )
+
+        logger.info(
+            "Submitting Hail Batch '%s': %d chunk jobs (dry_run=%s)",
+            batch_name,
+            len(chunk_indices),
+            args.batch_dry_run,
+        )
+        batch.run(dry_run=args.batch_dry_run)
+    finally:
+        backend.close()
 
 
 def _orchestrate_coverage_batch(
@@ -1199,25 +1430,38 @@ def _orchestrate_coverage_batch(
         )
 
     n_chunks = (total + pp - 1) // pp
-    all_chunk_indices = list(range(n_chunks))
 
-    n_pending = 0
-    for idx in all_chunk_indices:
-        path = _chunk_path(cov_and_an_ht_path, "chunk", idx)
-        if not args.overwrite and _file_exists_for_env(path, "batch"):
-            logger.info("Skipping already-complete chunk %d at %s", idx, path)
-        else:
-            n_pending += 1
+    # Pre-compute pending chunk indices in the main thread. Hail Batch's
+    # GCS client uses aiohttp ClientSession objects bound to a specific
+    # event loop, so calling file_exists from multiple ThreadPoolExecutor
+    # workers raises "ClientSession must be created and used in same loop"
+    # — which our permissive `_file_exists_for_env` swallows as
+    # "assume exists", silently skipping every chunk. Doing all existence
+    # checks here (single thread, single loop) avoids the issue.
+    if args.overwrite:
+        pending_indices = list(range(n_chunks))
+    else:
+        pending_indices = []
+        for idx in range(n_chunks):
+            path = _chunk_path(cov_and_an_ht_path, idx)
+            if _file_exists_for_env(path, "batch"):
+                logger.info("Skipping already-complete chunk %d at %s", idx, path)
+            else:
+                pending_indices.append(idx)
     logger.info(
         "Coverage fan-out: %d chunks total, %d pending, %d skipped"
         " (overwrite=%s, chunks_per_wave=%s, project=%s)",
         n_chunks,
-        n_pending,
-        n_chunks - n_pending,
+        len(pending_indices),
+        n_chunks - len(pending_indices),
         args.overwrite,
         args.chunks_per_wave,
         project,
     )
+
+    if not pending_indices:
+        logger.info("All chunks already complete; nothing to submit.")
+        return
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
     setup_cmd = _build_setup_command(commit, methods_branch=args.methods_branch)
@@ -1225,19 +1469,21 @@ def _orchestrate_coverage_batch(
     backend_kwargs = {"billing_project": args.batch_billing_project}
     if args.batch_remote_tmpdir:
         backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
-    backend = hb.ServiceBackend(**backend_kwargs)
 
     common_flags_str = _build_chunk_common_flags(args)
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
 
     cpw = args.chunks_per_wave
-    if cpw is None or cpw <= 0 or cpw >= n_chunks:
-        # Single-batch path: one Hail Batch covers all chunks.
+    n_pending = len(pending_indices)
+    if cpw is None or cpw <= 0 or cpw >= n_pending:
+        # Single-batch path: one Hail Batch contains all pending chunks
+        # as parallel jobs. Hail Batch's own scheduler handles parallelism;
+        # no orchestrator-side threading.
         _submit_chunk_wave(
             args=args,
-            backend=backend,
+            backend_kwargs=backend_kwargs,
             wave_idx=None,
-            chunk_indices=all_chunk_indices,
+            chunk_indices=pending_indices,
             cov_and_an_ht_path=cov_and_an_ht_path,
             setup_cmd=setup_cmd,
             common_flags_str=common_flags_str,
@@ -1245,10 +1491,20 @@ def _orchestrate_coverage_batch(
         )
         return
 
-    # Wave path: split chunks into windows of cpw and submit one Hail Batch
-    # per wave, blocking on each before submitting the next.
-    waves = [all_chunk_indices[i : i + cpw] for i in range(0, n_chunks, cpw)]
-    for wave_idx, wave_chunks in enumerate(waves):
+    # Wave path: split pending chunks into windows of cpw and submit one
+    # Hail Batch per wave. Concurrency between waves is bounded by
+    # --max-concurrent-batches; each wave call creates its own
+    # ServiceBackend inside _submit_chunk_wave (see that fn's docstring
+    # for why a shared backend is unsafe across threads).
+    waves = [pending_indices[i : i + cpw] for i in range(0, n_pending, cpw)]
+    max_concurrent = max(args.max_concurrent_batches, 1)
+    logger.info(
+        "Wave dispatch: %d waves, max %d in flight at once",
+        len(waves),
+        max_concurrent,
+    )
+
+    def _submit_one(wave_idx: int, wave_chunks: List[int]) -> None:
         logger.info(
             "Submitting wave %d/%d (%d chunks: %d..%d)",
             wave_idx + 1,
@@ -1259,7 +1515,7 @@ def _orchestrate_coverage_batch(
         )
         _submit_chunk_wave(
             args=args,
-            backend=backend,
+            backend_kwargs=backend_kwargs,
             wave_idx=wave_idx,
             chunk_indices=wave_chunks,
             cov_and_an_ht_path=cov_and_an_ht_path,
@@ -1268,96 +1524,342 @@ def _orchestrate_coverage_batch(
             script=script,
         )
 
+    with ThreadPoolExecutor(max_workers=max_concurrent) as ex:
+        futures = {
+            ex.submit(_submit_one, i, chunks): i for i, chunks in enumerate(waves)
+        }
+        for fut in as_completed(futures):
+            fut.result()
+
+
+def _build_merge_common_flags(args: argparse.Namespace) -> str:
+    """Build the CLI flag string shared by every per-merge relay invocation."""
+    flags = [
+        f"--project-name {args.project_name}",
+        "--environment batch",
+        f"--gcp-billing-project {args.gcp_billing_project}",
+        f"--tmp-dir-days {args.tmp_dir_days}",
+        f"--n-partitions {args.n_partitions}",
+    ]
+    if args.experimental:
+        flags.append("--experimental")
+    if args.app_name:
+        flags.append(f"--app-name {args.app_name}")
+    if args.cov_and_an_output_suffix:
+        flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
+    # Reuse the per-chunk QoB driver/worker sizing for merge workers — the
+    # merge worker is also QoB-from-container, same shape as the chunk relay.
+    if args.qob_driver_cores is not None:
+        flags.append(f"--driver-cores {args.qob_driver_cores}")
+    if args.qob_driver_memory:
+        flags.append(f"--driver-memory {args.qob_driver_memory}")
+    if args.qob_worker_cores is not None:
+        flags.append(f"--worker-cores {args.qob_worker_cores}")
+    if args.qob_worker_memory:
+        flags.append(f"--worker-memory {args.qob_worker_memory}")
+    return " ".join(flags)
+
+
+def _submit_merge_wave(
+    args: argparse.Namespace,
+    backend_kwargs: dict,
+    wave_idx: Optional[int],
+    group_indices: List[int],
+    groups: List[List[str]],
+    group_output_paths: List[str],
+    coalesce_to: int,
+    setup_cmd: str,
+    common_flags_str: str,
+    script: str,
+) -> None:
+    """
+    Build and submit a single Hail Batch for one wave of group-merge jobs.
+
+    Each job runs ``--run-merge`` over its assigned chunk paths and writes
+    to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``.
+
+    Each call creates its own ``hb.ServiceBackend`` from ``backend_kwargs``
+    — see ``_submit_chunk_wave`` for why a shared backend isn't safe
+    across ThreadPoolExecutor threads.
+    """
+    project = args.project_name
+    regions = args.regions or ["us-central1"]
+    wave_label = "single" if wave_idx is None else f"wave{wave_idx:03d}"
+    batch_name = f"v5_cov_merge_groups_{project}_{wave_label}"
+    if args.cov_and_an_output_suffix:
+        batch_name += f"_{args.cov_and_an_output_suffix}"
+
+    if not group_indices:
+        logger.info("  no pending merges for %s; skipping batch.run()", batch_name)
+        return
+
+    backend = hb.ServiceBackend(**backend_kwargs)
+    try:
+        batch = hb.Batch(name=batch_name, backend=backend)
+
+        for group_idx in group_indices:
+            output_path = group_output_paths[group_idx]
+            inputs_str = " ".join(groups[group_idx])
+            j = batch.new_job(name=f"cov_merge_group_{group_idx:06d}")
+            j.image(args.batch_image)
+            j.cpu(args.merge_cpu)
+            j.memory(args.merge_memory)
+            j.storage(args.merge_storage)
+            j.regions(regions)
+            j.spot(True)
+            j.n_max_attempts(args.chunk_attempts)
+            j.command(
+                f"{setup_cmd}"
+                f"{script} --run-merge"
+                f" --merge-output {output_path}"
+                f" --merge-coalesce-to {coalesce_to}"
+                f" --merge-inputs {inputs_str}"
+                f" {common_flags_str}"
+            )
+
+        logger.info(
+            "Submitting Hail Batch '%s': %d merge jobs (dry_run=%s)",
+            batch_name,
+            len(group_indices),
+            args.batch_dry_run,
+        )
+        batch.run(dry_run=args.batch_dry_run)
+    finally:
+        backend.close()
+
+
+def _orchestrate_coverage_merge(
+    args: argparse.Namespace, cov_and_an_ht_path: str
+) -> None:
+    """
+    Two-level tree-reduce merge of per-chunk HTs into ``cov_and_an_ht_path``.
+
+    Counterpart to ``_orchestrate_coverage_batch``: this orchestrator runs
+    *after* ``--use-batch-fanout`` has produced all per-chunk HTs. It
+    submits Hail Batch jobs (QoB-from-container per job) and exits without
+    initializing Hail in this process.
+
+    Discovery: chunk paths are reconstructed from ``--total-partitions`` /
+    ``--partitions-per-chunk``. Every expected chunk must have a
+    ``_SUCCESS`` marker; missing chunks fail loudly so the user re-runs
+    the chunk orchestrator before merging.
+
+    Level 1: groups of ``--merge-group-size`` chunks. Each group becomes
+    one ``--run-merge`` job that unions its inputs, naive-coalesces to
+    ``--read-subintervals-per-chunk`` partitions (so the next level's
+    input doesn't carry sum-of-input partitions), and writes to
+    ``<cov_and_an_path>_merge_groups/<group_idx>.ht``.
+
+    Level 2: a single ``--run-merge`` job that unions all group HTs and
+    naive-coalesces to ``--n-partitions``, writing to
+    ``cov_and_an_ht_path``.
+
+    Concurrency on level 1: ``--chunks-per-wave`` + ``--max-concurrent-batches``
+    (same knobs as the chunk orchestrator). Level 2 is a single batch.
+
+    Idempotency: group HTs whose ``_SUCCESS`` exists are skipped; the
+    final HT is skipped if it exists (unless ``--overwrite``).
+    """
+    project = args.project_name
+    total = args.total_partitions
+    pp = args.partitions_per_chunk
+    if total <= 0 or pp <= 0:
+        raise ValueError(
+            "--merge-cov-chunks requires --total-partitions and"
+            " --partitions-per-chunk > 0."
+        )
+
+    n_chunks = (total + pp - 1) // pp
+    chunk_paths = [_chunk_path(cov_and_an_ht_path, i) for i in range(n_chunks)]
+
+    logger.info("Verifying %d expected chunk HTs exist...", n_chunks)
+    missing = [p for p in chunk_paths if not _file_exists_for_env(p, "batch")]
+    if missing:
+        raise FileNotFoundError(
+            f"--merge-cov-chunks: {len(missing)} of {n_chunks} chunks"
+            f" missing (first few: {missing[:5]}). Run --use-batch-fanout"
+            " to (re)compute missing chunks first."
+        )
+    logger.info("All %d chunks present.", n_chunks)
+
+    gs = args.merge_group_size
+    groups = [chunk_paths[i : i + gs] for i in range(0, n_chunks, gs)]
+    n_groups = len(groups)
+    group_output_paths = [_group_path(cov_and_an_ht_path, i) for i in range(n_groups)]
+    logger.info(
+        "Merge tree: %d chunks -> %d group merges (group_size=%d) -> 1 final HT",
+        n_chunks,
+        n_groups,
+        gs,
+    )
+
+    # Group-merge partition target: per-chunk partitions. Each chunk has
+    # ~--read-subintervals-per-chunk partitions; coalescing each group to
+    # that count keeps level-2 input shape comparable to one chunk's.
+    coalesce_to = max(args.read_subintervals_per_chunk, 1)
+
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+    setup_cmd = _build_setup_command(commit, methods_branch=args.methods_branch)
+
+    backend_kwargs = {"billing_project": args.batch_billing_project}
+    if args.batch_remote_tmpdir:
+        backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
+
+    script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
+    common_flags_str = _build_merge_common_flags(args)
+
+    # Pre-compute pending group indices in the main thread (same rationale
+    # as _orchestrate_coverage_batch: ThreadPoolExecutor + aiohttp
+    # ClientSession event-loop binding fails).
+    if args.overwrite:
+        pending_indices = list(range(n_groups))
+    else:
+        pending_indices = []
+        for idx in range(n_groups):
+            if _file_exists_for_env(group_output_paths[idx], "batch"):
+                logger.info(
+                    "Skipping already-complete group %d at %s",
+                    idx,
+                    group_output_paths[idx],
+                )
+            else:
+                pending_indices.append(idx)
+    logger.info(
+        "Level 1 dispatch: %d groups total, %d pending, %d skipped",
+        n_groups,
+        len(pending_indices),
+        n_groups - len(pending_indices),
+    )
+
+    cpw = args.chunks_per_wave
+    n_pending = len(pending_indices)
+    if n_pending == 0:
+        logger.info("All group merges already complete; skipping level 1.")
+    elif cpw is None or cpw <= 0 or cpw >= n_pending:
+        _submit_merge_wave(
+            args=args,
+            backend_kwargs=backend_kwargs,
+            wave_idx=None,
+            group_indices=pending_indices,
+            groups=groups,
+            group_output_paths=group_output_paths,
+            coalesce_to=coalesce_to,
+            setup_cmd=setup_cmd,
+            common_flags_str=common_flags_str,
+            script=script,
+        )
+    else:
+        waves = [pending_indices[i : i + cpw] for i in range(0, n_pending, cpw)]
+        max_concurrent = max(args.max_concurrent_batches, 1)
+        logger.info(
+            "Merge wave dispatch: %d waves, max %d in flight at once",
+            len(waves),
+            max_concurrent,
+        )
+
+        def _submit_one(wave_idx: int, wave_groups: List[int]) -> None:
+            logger.info(
+                "Submitting merge wave %d/%d (%d groups: %d..%d)",
+                wave_idx + 1,
+                len(waves),
+                len(wave_groups),
+                wave_groups[0],
+                wave_groups[-1],
+            )
+            _submit_merge_wave(
+                args=args,
+                backend_kwargs=backend_kwargs,
+                wave_idx=wave_idx,
+                group_indices=wave_groups,
+                groups=groups,
+                group_output_paths=group_output_paths,
+                coalesce_to=coalesce_to,
+                setup_cmd=setup_cmd,
+                common_flags_str=common_flags_str,
+                script=script,
+            )
+
+        with ThreadPoolExecutor(max_workers=max_concurrent) as ex:
+            futures = {ex.submit(_submit_one, i, w): i for i, w in enumerate(waves)}
+            for fut in as_completed(futures):
+                fut.result()
+
+    # Level 2: final merge.
+    if not args.overwrite and _file_exists_for_env(cov_and_an_ht_path, "batch"):
+        logger.info(
+            "Final merge HT exists at %s; skipping level 2 (pass"
+            " --overwrite to rewrite).",
+            cov_and_an_ht_path,
+        )
+        return
+
+    final_batch_name = f"v5_cov_merge_final_{project}"
+    if args.cov_and_an_output_suffix:
+        final_batch_name += f"_{args.cov_and_an_output_suffix}"
+    final_backend = hb.ServiceBackend(**backend_kwargs)
+    final_batch = hb.Batch(name=final_batch_name, backend=final_backend)
+    j = final_batch.new_job(name="cov_merge_final")
+    j.image(args.batch_image)
+    j.cpu(args.merge_cpu)
+    j.memory(args.merge_memory)
+    j.storage(args.final_merge_storage)
+    j.regions(args.regions or ["us-central1"])
+    j.spot(True)
+    j.n_max_attempts(args.chunk_attempts)
+    inputs_str = " ".join(group_output_paths)
+    j.command(
+        f"{setup_cmd}"
+        f"{script} --run-merge"
+        f" --merge-output {cov_and_an_ht_path}"
+        f" --merge-coalesce-to {args.n_partitions}"
+        f" --merge-inputs {inputs_str}"
+        f" {common_flags_str}"
+    )
+    logger.info(
+        "Submitting Hail Batch '%s': final merge (%d inputs -> %s, dry_run=%s)",
+        final_batch_name,
+        n_groups,
+        cov_and_an_ht_path,
+        args.batch_dry_run,
+    )
+    try:
+        final_batch.run(dry_run=args.batch_dry_run)
+    finally:
+        final_backend.close()
+
 
 def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
     environment = args.environment
 
-    # Resolve backend-aware container defaults (ignore explicit overrides
-    # from the user). For QoB the chunk container is just a tiny relay; for
-    # local Spark the container has to fit the densify peak.
-    if args.chunk_backend == "local":
-        if args.chunk_cpu is None:
-            args.chunk_cpu = 4
-        if args.chunk_memory is None:
-            args.chunk_memory = "highmem"
-        if args.chunk_storage is None:
-            args.chunk_storage = "25Gi"
-    else:  # qob
-        if args.chunk_cpu is None:
-            args.chunk_cpu = 0.5
-        if args.chunk_memory is None:
-            args.chunk_memory = "standard"
-        if args.chunk_storage is None:
-            args.chunk_storage = "5Gi"
+    _configure_chunk_backend(args)
 
-    # Auto-derive jvm_heap and local_cores from container shape if running
-    # the local-Spark backend and the user didn't set them explicitly.
-    if args.chunk_backend == "local":
-        mem_per_core_gb = {"highmem": 6.5, "standard": 3.75, "lowmem": 0.9}.get(
-            args.chunk_memory, 3.75
-        )
-        total_mem_gb = int(args.chunk_cpu * mem_per_core_gb)
-        if args.jvm_heap is None:
-            args.jvm_heap = f"{max(total_mem_gb - 4, 4)}g"
-        if args.local_cores is None:
-            args.local_cores = max(int(args.chunk_cpu) // 2, 1)
-
-    # Orchestrator-only mode: build and submit a Hail Batch pipeline, then
-    # exit. Skip _init_hail entirely so we don't pay for an unused QoB
-    # driver here (the per-chunk relays each spawn their own).
+    # --use-batch-fanout: orchestrator submits a Hail Batch and exits
+    # without initializing Hail (each per-chunk relay spawns its own QoB
+    # driver).
     if args.use_batch_fanout:
-        # `--test-2-partitions` in fanout mode is an alias for
-        # `--total-partitions 2 --partitions-per-chunk 2` (one chunk covering
-        # the first 2 VDS partitions). Override here so the orchestrator
-        # dispatches one chunk instead of the default 145k-partition fan-out.
-        if args.test_2_partitions:
-            if args.total_partitions != 145000:
-                logger.warning(
-                    "--test-2-partitions overrides --total-partitions=%s -> 2",
-                    args.total_partitions,
-                )
-            if args.partitions_per_chunk != 2:
-                logger.warning(
-                    "--test-2-partitions overrides --partitions-per-chunk=%s -> 2",
-                    args.partitions_per_chunk,
-                )
-            args.total_partitions = 2
-            args.partitions_per_chunk = 2
-
-        test = args.test_2_partitions or args.test_chr22_chrx_chry or args.test
-        cov_and_an_ht_path = coverage_and_an_path(
-            test=test,
-            data_set=project,
-            environment=environment,
-        ).path
-        if args.cov_and_an_output_suffix:
-            cov_and_an_ht_path = (
-                cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-                + f"_{args.cov_and_an_output_suffix}.ht"
-            )
+        _apply_test_2_partitions_to_fanout_args(args)
+        cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
+            args, project, environment, test=_is_test_run(args)
+        )
         _orchestrate_coverage_batch(args, cov_and_an_ht_path)
         return
 
-    # Per-worker log names so concurrent chunks don't clobber a single
-    # `v5_coverage_and_an_generation.log` in the logging bucket. The
-    # monolithic flow keeps the original name; chunk/merge workers get
-    # invocation-specific names derived from the partition slice or output
-    # path so each worker writes to its own log file.
-    log_name = "v5_coverage_and_an_generation"
-    if args.run_chunk:
-        log_name = f"v5_cov_chunk_{args.chunk_start:08d}_{args.chunk_stop:08d}"
-    elif args.run_merge:
-        merge_slug = "merge"
-        if args.merge_output:
-            merge_slug = (
-                args.merge_output.rstrip("/").split("/")[-1].removesuffix(".ht")
-            )
-        log_name = f"v5_cov_{merge_slug}"
+    # --merge-cov-chunks: tree-reduce orchestrator. Runs after
+    # --use-batch-fanout; same no-Hail-init pattern.
+    if args.merge_cov_chunks:
+        _apply_test_2_partitions_to_fanout_args(args)
+        cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
+            args, project, environment, test=_is_test_run(args)
+        )
+        _orchestrate_coverage_merge(args, cov_and_an_ht_path)
+        return
 
-    # Local-Spark chunk worker takes a different init path: no QoB driver
-    # pod, just an in-container Hail JVM. Skip _init_hail entirely.
+    log_name = _log_name_for_run(args)
+
+    # Local-Spark chunk worker: in-container Hail JVM with local[N] Spark,
+    # no QoB driver pod.
     if args.run_chunk and args.chunk_backend == "local":
         _init_hail_local_spark(
             log_name=log_name,
@@ -1368,11 +1870,9 @@ def main(args):
         _run_coverage_chunk(args)
         return
 
-    # When --experimental is set, attach the QoB driver to an existing
-    # Hail Batch via the HAIL_BATCH_ID env var (via the experimental init
-    # path). Useful when this script is invoked from inside a
-    # hailtop.batch pipeline that wants all QoB jobs added to its own
-    # batch graph. Without --experimental, the env var is ignored.
+    # QoB / dataproc init. ``--experimental`` attaches the QoB driver to
+    # an existing Hail Batch via ``HAIL_BATCH_ID``; otherwise each run
+    # creates its own Hail Batch.
     batch_id = None
     if args.experimental:
         batch_id_env = getenv("HAIL_BATCH_ID")
@@ -1389,52 +1889,43 @@ def main(args):
         **_get_batch_resource_kwargs(args),
     )
 
-    # Per-chunk worker entry-points invoked by the Hail Batch fan-out
-    # pipeline. Both run after _init_hail so they share the same QoB init
-    # and tmp_dir conventions; they exit before touching the existing
-    # monolithic flow below.
     if args.run_chunk:
         _run_coverage_chunk(args)
         return
     if args.run_merge:
-        _run_coverage_merge(args.merge_inputs, args.merge_output)
+        _run_coverage_merge(
+            args.merge_inputs, args.merge_output, coalesce_to=args.merge_coalesce_to
+        )
         return
 
     test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
-    test = test_2_partitions or test_chr22_chrx_chry or args.test
+    test = _is_test_run(args)
     overwrite = args.overwrite
     n_partitions = args.n_partitions
-
-    chrom = None
-    if test_chr22_chrx_chry:
-        chrom = ["chr22", "chrX", "chrY"]
+    chrom = _test_chrom_filter(args)
 
     try:
-        cov_and_an_ht_path = coverage_and_an_path(
-            test=test,
-            data_set=project,
-            environment=environment,
-        ).path
-        if args.cov_and_an_output_suffix:
-            cov_and_an_ht_path = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-            cov_and_an_ht_path = (
-                f"{cov_and_an_ht_path}_{args.cov_and_an_output_suffix}.ht"
-            )
-        downsampling_ht_path = get_aou_downsampling(
-            test=test, environment=environment
-        ).path
-        meta_ht_path = meta(data_type="genomes", environment=environment).path
-        group_membership_ht_path = group_membership(
-            test=test, data_set=project, environment=environment
-        ).path
-        if args.reduce_min_aggs:
-            group_membership_ht_path = (
-                group_membership_ht_path.rstrip("/").removesuffix(".ht") + "_reduce.ht"
-            )
+        cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
+            args, project, environment, test=test
+        )
+        # AoU downsampling + sample-meta are AoU-only resources (the helpers
+        # only allow rwb/batch). Skip them for gnomad runs so the dataproc
+        # comparison can resolve resources.
+        downsampling_ht_path = None
+        meta_ht_path = None
         meta_ht = None
         if project == "aou":
-            meta_ht = hl.read_table(meta_ht_path)
+            downsampling_ht_path = get_aou_downsampling(
+                test=test, environment=environment
+            ).path
+            meta_ht_path = meta(data_type="genomes", environment=environment).path
+            meta_ht = hl.read_table(
+                meta_ht_path
+            )  # TODO: Where is this used? also why readpath and not just get?
+        group_membership_ht_path = _resolve_group_membership_ht_path(
+            args, project, environment, test=test
+        )
 
         if args.write_aou_downsampling_ht:
             check_resource_existence(
@@ -1494,61 +1985,30 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            # Context Table is used because it contains every locus in the GRCh38
-            # reference as opposed to a ref-blocked VDS reference dataset.
-            ref_ht = vep_context.versions["105"].ht()
-            if test_chr22_chrx_chry:
-                ref_ht = hl.filter_intervals(
-                    ref_ht, [hl.parse_locus_interval(c) for c in chrom]
-                )
-            elif test_2_partitions:
-                ref_ht = ref_ht._filter_partitions(range(2))
-
-            # Retain only 'locus' annotation from context Table.
-            ref_ht = ref_ht.key_by("locus").select().distinct()
-
-            # The AoU dataset should have removed centromeres and telomeres, but
-            # this serves as an additional safeguard.
-            ref_ht = hl.filter_intervals(
-                ref_ht,
-                telomeres_and_centromeres.ht().interval.collect(),
-                keep=False,
+            # Load the VDS first so the ref_ht filter can be derived from its
+            # actual locus extent (the chunk path uses the same pattern via
+            # `_build_chunk_ref_ht`). Independent `_filter_partitions(range(2))`
+            # on both sides would miss-align since vep_context and the AoU
+            # VDS have different partition layouts.
+            vds, sex_karyotype_field = _load_project_vds(
+                args=args,
+                project=project,
+                environment=environment,
+                partition_range=list(range(2)) if test_2_partitions else None,
+                chrom=chrom,
+                test=test,
             )
-            ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
-            if project == "aou":
-                sex_karyotype_field = "meta.sex_karyotype"
-                vds = get_aou_vds(
-                    release_only=True,
-                    filter_partitions=range(2) if test_2_partitions else None,
-                    annotate_meta=True,
-                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
-                    environment=environment,
-                )
-                # NOTE: AoU v8 VDS does not have DP annotation, so using custom function
-                # to annotate adj.
-                # Also adding DP here to make sure `compute_stats_per_ref_site`
-                # doesn't throw an error.
-                vmt = vds.variant_data
-                vmt = annotate_adj_no_dp(vmt)
-                vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
-                vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-
-                if test and args.reduce_samples_for_test:
-                    meta_ht = meta_ht.filter(
-                        (meta_ht.project_meta.project == project) & (meta_ht.release)
-                    ).select()
-                    meta_ht = meta_ht.sample(0.001)
-                    vds = hl.vds.filter_samples(vds, meta_ht)
-            else:
-                sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
-                vds = get_gnomad_v5_genomes_vds(
-                    release_only=True,
-                    consent_drop_only=True,
-                    filter_partitions=range(2) if test_2_partitions else None,
-                    annotate_meta=True,
-                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
-                )
+            # Build ref_ht (vep_context filtered to the VDS chunk's locus
+            # extent, telomeres/centromeres removed). No sub-intervals here:
+            # the strict path is whole-VDS, not chunked.
+            ref_ht = _build_chunk_ref_ht(
+                vds_filtered=vds,
+                project=project,
+                partition_count=2 if test_2_partitions else 0,
+                test_chr22_chrx_chry=test_chr22_chrx_chry,
+                chrom=chrom,
+            )
 
             validate_vds(vds)
 
@@ -1563,7 +2023,6 @@ def main(args):
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file(f"{project}_cov_and_an", "ht")
             )
-            # Write out the intermediate HT.
             cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
@@ -1694,11 +2153,9 @@ def main(args):
 
         if args.merge_qual_hists:
             qual_hists_path = qual_hists(test=test, environment=environment).path
-            if args.qual_hists_output_suffix:
-                qual_hists_path = qual_hists_path.rstrip("/").removesuffix(".ht")
-                qual_hists_path = (
-                    f"{qual_hists_path}_{args.qual_hists_output_suffix}.ht"
-                )
+            qual_hists_path = _apply_path_suffix(
+                qual_hists_path, args.qual_hists_output_suffix
+            )
             check_resource_existence(
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
                 overwrite=overwrite,
@@ -1883,7 +2340,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--reduce-samples-for-test",
+        "--test-sample-subset",
         action="store_true",
         help=(
             "When `--test` (or `--test-2-partitions` / `--test-chr22-chrx-chry`)"
@@ -1984,9 +2441,24 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Build and submit a Hail Batch pipeline that fans out the"
             " coverage/AN compute by partition chunks (QoB-from-container"
-            " per chunk + tree-reduce merge). Mutually exclusive with"
+            " per chunk). Mutually exclusive with"
             " --compute-all-cov-release-stats-ht and the per-chunk worker"
-            " flags."
+            " flags. After all chunks complete, run --merge-cov-chunks"
+            " to union them into the final HT."
+        ),
+    )
+    fanout_group.add_argument(
+        "--merge-cov-chunks",
+        action="store_true",
+        help=(
+            "Build and submit the two-level tree-reduce merge of per-chunk"
+            " HTs produced by --use-batch-fanout. Level 1 (group merges,"
+            " sized by --merge-group-size) writes to"
+            " <cov_and_an_path>_merge_groups/<idx>.ht; level 2 unions all"
+            " group HTs into <cov_and_an_path>. Chunk discovery uses"
+            " --total-partitions / --partitions-per-chunk (same as"
+            " --use-batch-fanout); missing chunks fail loudly. Requires"
+            " --environment=batch."
         ),
     )
     fanout_group.add_argument(
@@ -2000,21 +2472,25 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     fanout_group.add_argument(
-        "--repartition-factor",
+        "--read-subintervals-per-chunk",
         type=int,
         default=50,
         help=(
-            "Per-chunk: explode the filtered ref_ht into"
-            " `partitions_per_chunk * repartition_factor` sub-partitions"
-            " before densify, to shrink per-task densify size. Default 50."
+            "Per-chunk: subdivide the chunk's locus extent into this many"
+            " equal-position sub-intervals, then re-read both the VDS"
+            " (`hl.vds.read_vds(intervals=...)`) and `vep_context`"
+            " (`hl.read_table(_intervals=...)`) with those intervals. One"
+            " partition per sub-interval on both sides, co-partitioned,"
+            " no shuffle. Default 50. Set to 1 to skip the probe/re-read"
+            " and use plain `filter_partitions` (legacy behavior)."
         ),
     )
     fanout_group.add_argument(
         "--total-partitions",
         type=int,
-        default=145000,
+        default=145192,
         help=(
-            "Total VDS partition count to scatter across. Default 145000"
+            "Total VDS partition count to scatter across. Default 145192"
             " (prod AoU VDS partition count). Used by --use-batch-fanout."
         ),
     )
@@ -2029,12 +2505,22 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "If set, split chunk dispatch into sequential Hail Batch waves"
-            " of this size (each its own batch + intra-wave merge). After"
-            " all waves finish, a final cross-wave merge unions the"
-            " per-wave HTs into the final output. Default unset: one Hail"
-            " Batch contains every chunk + merge job (fewer moving parts;"
-            " untested at 72k+ scale)."
+            "If set, split chunk dispatch into Hail Batch waves of this"
+            " size (each its own batch). Waves run with bounded concurrency"
+            " — see --max-concurrent-batches (default 1 = serial)."
+            " Default unset: one Hail Batch contains every chunk job."
+        ),
+    )
+    fanout_group.add_argument(
+        "--max-concurrent-batches",
+        type=int,
+        default=1,
+        help=(
+            "Cap on how many Hail Batches are in flight at once under"
+            " --chunks-per-wave. Default 1 (strictly serial: wave N+1 is"
+            " not submitted until wave N completes). Set to >1 for a"
+            " sliding window of concurrent batches against the Batch"
+            " service. Ignored when --chunks-per-wave is unset."
         ),
     )
     fanout_group.add_argument(
@@ -2257,7 +2743,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--chunk-output",
         type=str,
         default=None,
-        help="GCS output path for --run-chunk's per-chunk HT.",
+        help=(
+            "GCS output path for --run-chunk's per-chunk HT. Optional: when"
+            " unset, auto-derived from the resolved cov_and_an HT path"
+            " (plus `--cov-and-an-output-suffix` if set) and the chunk's"
+            " `--chunk-start` index (`_chunks/<chunk_start:08d>.chunk.ht`)."
+            " The orchestrator (`--use-batch-fanout`) always passes this"
+            " explicitly; this default fires only for standalone"
+            " `--run-chunk` invocations (smoketests)."
+        ),
     )
     worker_group.add_argument(
         "--run-merge",
@@ -2279,6 +2773,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="GCS output path for --run-merge's merged HT.",
+    )
+    worker_group.add_argument(
+        "--merge-coalesce-to",
+        type=int,
+        default=None,
+        help=(
+            "If set, the --run-merge worker naive_coalesces the unioned"
+            " HT to this many partitions before writing. Set by the merge"
+            " orchestrator to bound per-level partition count (group"
+            " merges coalesce to ~--read-subintervals-per-chunk; the"
+            " final merge coalesces to --n-partitions)."
+        ),
     )
 
     return parser
@@ -2318,8 +2824,10 @@ if __name__ == "__main__":
         parser.error(
             "--project-name=aou requires --environment to be 'rwb' or 'batch'."
         )
-    if args.project_name == "gnomad" and args.environment != "dataproc":
-        parser.error("--project-name=gnomad requires --environment=dataproc.")
+    if args.project_name == "gnomad" and args.environment not in ("dataproc", "batch"):
+        parser.error(
+            "--project-name=gnomad requires --environment to be 'dataproc' or 'batch'."
+        )
 
     if args.write_aou_downsampling_ht and args.project_name != "aou":
         raise ValueError(
@@ -2347,35 +2855,52 @@ if __name__ == "__main__":
     if args.merge_qual_hists and args.project_name != "aou":
         raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
 
-    # --use-batch-fanout / --run-chunk / --run-merge are mutually exclusive
-    # entry-points. The orchestrator sets --run-chunk / --run-merge inside
-    # the per-chunk relay containers; users should not pass them directly
-    # alongside --use-batch-fanout from the command line.
+    # --use-batch-fanout / --merge-cov-chunks / --run-chunk / --run-merge
+    # are mutually exclusive entry-points. The orchestrators set
+    # --run-chunk / --run-merge inside their relay containers; users
+    # should not pass the worker flags from the command line alongside
+    # the orchestrator flags.
     fanout_modes = sum(
-        bool(x) for x in (args.use_batch_fanout, args.run_chunk, args.run_merge)
+        bool(x)
+        for x in (
+            args.use_batch_fanout,
+            args.merge_cov_chunks,
+            args.run_chunk,
+            args.run_merge,
+        )
     )
     if fanout_modes > 1:
         parser.error(
-            "--use-batch-fanout, --run-chunk, and --run-merge are mutually"
-            " exclusive."
+            "--use-batch-fanout, --merge-cov-chunks, --run-chunk, and"
+            " --run-merge are mutually exclusive."
         )
     if args.use_batch_fanout and args.compute_all_cov_release_stats_ht:
         parser.error(
             "--use-batch-fanout is an alternative to"
             " --compute-all-cov-release-stats-ht; do not pass both."
         )
+    if args.merge_cov_chunks and args.compute_all_cov_release_stats_ht:
+        parser.error(
+            "--merge-cov-chunks is a separate step from"
+            " --compute-all-cov-release-stats-ht; do not pass both."
+        )
     if args.run_chunk:
-        if args.chunk_output is None:
-            parser.error("--run-chunk requires --chunk-output.")
         if not args.test_2_partitions and args.chunk_stop <= args.chunk_start:
             parser.error(
                 "--run-chunk requires --chunk-stop > --chunk-start (or"
                 " --test-2-partitions as an alias for [0, 2))."
             )
+        # ``--chunk-output`` is optional: when not set it's auto-derived in
+        # ``_run_coverage_chunk`` from the resolved cov_and_an HT path +
+        # `--cov-and-an-output-suffix` + chunk_start. Useful for one-off
+        # `--run-chunk` invocations (smoketests) — the orchestrator path
+        # always passes `--chunk-output` explicitly.
     if args.run_merge:
         if args.merge_output is None or not args.merge_inputs:
             parser.error("--run-merge requires --merge-output and --merge-inputs.")
     if args.use_batch_fanout and args.environment != "batch":
         parser.error("--use-batch-fanout requires --environment=batch.")
+    if args.merge_cov_chunks and args.environment != "batch":
+        parser.error("--merge-cov-chunks requires --environment=batch.")
 
     main(args)
