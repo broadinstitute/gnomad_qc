@@ -3,7 +3,6 @@
 import argparse
 import logging
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import reduce
 from os import getenv
 from typing import List, Optional, Tuple
@@ -1335,10 +1334,9 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
     return " ".join(flags)
 
 
-def _submit_chunk_wave(
+def _submit_chunk_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
-    wave_idx: Optional[int],
     chunk_indices: List[int],
     cov_and_an_ht_path: str,
     setup_cmd: str,
@@ -1346,31 +1344,23 @@ def _submit_chunk_wave(
     script: str,
 ) -> None:
     """
-    Build and submit a single Hail Batch for one wave of chunk jobs.
+    Build and submit one Hail Batch containing all pending chunk jobs.
 
     Each chunk job is a relay container that runs ``--run-chunk`` (which
-    spawns its own QoB driver). ``batch.run()`` blocks until the wave
-    completes when ``wait=True`` (the default).
+    spawns its own QoB driver). Parallelism comes from Hail Batch's
+    own job scheduler — N parallel jobs in one batch run concurrently
+    against Hail Batch's worker pool.
 
     Existence checks happen in the orchestrator's main thread before this
     function is called (see ``_orchestrate_coverage_batch``); ``chunk_indices``
     is the already-filtered pending set.
-
-    Each call creates its own ``hb.ServiceBackend`` from ``backend_kwargs``
-    rather than receiving a shared one. ``ServiceBackend`` owns an
-    aiohttp ClientSession bound to a single event loop; sharing one across
-    ThreadPoolExecutor worker threads causes silent submission losses
-    (one thread wins, others get dropped). Per-thread backends sidestep
-    this.
     """
     project = args.project_name
     total = args.total_partitions
     pp = args.partitions_per_chunk
     regions = args.regions or ["us-central1"]
-    wave_label = "single" if wave_idx is None else f"wave{wave_idx:03d}"
     batch_name = (
         f"v5_cov_{project}_{total}p_{pp}ppc_sub{args.read_subintervals_per_chunk}"
-        f"_{wave_label}"
     )
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
@@ -1424,24 +1414,22 @@ def _orchestrate_coverage_batch(
     """
     Fan per-partition coverage/AN compute out as relay chunk jobs in Hail Batch.
 
-    Chunks-only: this orchestrator submits one relay job per partition chunk
-    (each spawning its own QoB driver via ``hl.init(backend="batch")``) and
-    nothing else. The merge step is intentionally separate and runs only
-    when triggered by its own CLI flag, so we can validate per-chunk writes
-    end-to-end before paying for any merge tree.
+    Submits ONE Hail Batch containing one relay job per pending chunk
+    (each chunk spawns its own QoB driver via ``hl.init(backend="batch")``).
+    Hail Batch's own scheduler runs the chunk jobs in parallel up to the
+    worker-pool capacity — no orchestrator-side threading or wave
+    dispatch needed (and not safe: Hail Batch's progress display is a
+    process-global rich.Live, so two concurrent ``batch.run()`` calls
+    crash with ``Only one live display may be active at once``).
 
-    By default each chunk's QoB creates a separate Hail Batch; pass
-    ``--experimental`` to instead attach the inner QoB to this outer batch
-    (one batch graph for relay + driver + workers).
-
-    Two dispatch modes:
-      * ``--chunks-per-wave`` unset: one Hail Batch contains every chunk job.
-      * ``--chunks-per-wave N`` set: chunks are split into waves of N. Each
-        wave is its own Hail Batch; the orchestrator blocks on each wave
-        (``batch.run`` is sync when ``wait=True``, the default) before
-        submitting the next.
+    By default each chunk's inner QoB creates its own separate Hail Batch;
+    pass ``--experimental`` to attach the inner QoB to this outer batch
+    via ``HAIL_BATCH_ID``.
 
     Idempotency: chunks whose ``_SUCCESS`` already exists are skipped.
+
+    The merge step is intentionally separate; run ``--merge-cov-chunks``
+    after this finishes.
     """
     project = args.project_name
     total = args.total_partitions
@@ -1454,13 +1442,8 @@ def _orchestrate_coverage_batch(
 
     n_chunks = (total + pp - 1) // pp
 
-    # Pre-compute pending chunk indices in the main thread. Hail Batch's
-    # GCS client uses aiohttp ClientSession objects bound to a specific
-    # event loop, so calling file_exists from multiple ThreadPoolExecutor
-    # workers raises "ClientSession must be created and used in same loop"
-    # — which our permissive `_file_exists_for_env` swallows as
-    # "assume exists", silently skipping every chunk. Doing all existence
-    # checks here (single thread, single loop) avoids the issue.
+    # Pre-compute pending chunk indices so the summary log is accurate
+    # and so we can short-circuit when nothing is pending.
     if args.overwrite:
         pending_indices = list(range(n_chunks))
     else:
@@ -1473,12 +1456,11 @@ def _orchestrate_coverage_batch(
                 pending_indices.append(idx)
     logger.info(
         "Coverage fan-out: %d chunks total, %d pending, %d skipped"
-        " (overwrite=%s, chunks_per_wave=%s, project=%s)",
+        " (overwrite=%s, project=%s)",
         n_chunks,
         len(pending_indices),
         n_chunks - len(pending_indices),
         args.overwrite,
-        args.chunks_per_wave,
         project,
     )
 
@@ -1500,63 +1482,15 @@ def _orchestrate_coverage_batch(
     common_flags_str = _build_chunk_common_flags(args)
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
 
-    cpw = args.chunks_per_wave
-    n_pending = len(pending_indices)
-    if cpw is None or cpw <= 0 or cpw >= n_pending:
-        # Single-batch path: one Hail Batch contains all pending chunks
-        # as parallel jobs. Hail Batch's own scheduler handles parallelism;
-        # no orchestrator-side threading.
-        _submit_chunk_wave(
-            args=args,
-            backend_kwargs=backend_kwargs,
-            wave_idx=None,
-            chunk_indices=pending_indices,
-            cov_and_an_ht_path=cov_and_an_ht_path,
-            setup_cmd=setup_cmd,
-            common_flags_str=common_flags_str,
-            script=script,
-        )
-        return
-
-    # Wave path: split pending chunks into windows of cpw and submit one
-    # Hail Batch per wave. Concurrency between waves is bounded by
-    # --max-concurrent-batches; each wave call creates its own
-    # ServiceBackend inside _submit_chunk_wave (see that fn's docstring
-    # for why a shared backend is unsafe across threads).
-    waves = [pending_indices[i : i + cpw] for i in range(0, n_pending, cpw)]
-    max_concurrent = max(args.max_concurrent_batches, 1)
-    logger.info(
-        "Wave dispatch: %d waves, max %d in flight at once",
-        len(waves),
-        max_concurrent,
+    _submit_chunk_batch(
+        args=args,
+        backend_kwargs=backend_kwargs,
+        chunk_indices=pending_indices,
+        cov_and_an_ht_path=cov_and_an_ht_path,
+        setup_cmd=setup_cmd,
+        common_flags_str=common_flags_str,
+        script=script,
     )
-
-    def _submit_one(wave_idx: int, wave_chunks: List[int]) -> None:
-        logger.info(
-            "Submitting wave %d/%d (%d chunks: %d..%d)",
-            wave_idx + 1,
-            len(waves),
-            len(wave_chunks),
-            wave_chunks[0],
-            wave_chunks[-1],
-        )
-        _submit_chunk_wave(
-            args=args,
-            backend_kwargs=backend_kwargs,
-            wave_idx=wave_idx,
-            chunk_indices=wave_chunks,
-            cov_and_an_ht_path=cov_and_an_ht_path,
-            setup_cmd=setup_cmd,
-            common_flags_str=common_flags_str,
-            script=script,
-        )
-
-    with ThreadPoolExecutor(max_workers=max_concurrent) as ex:
-        futures = {
-            ex.submit(_submit_one, i, chunks): i for i, chunks in enumerate(waves)
-        }
-        for fut in as_completed(futures):
-            fut.result()
 
 
 def _build_merge_common_flags(args: argparse.Namespace) -> str:
@@ -1587,10 +1521,9 @@ def _build_merge_common_flags(args: argparse.Namespace) -> str:
     return " ".join(flags)
 
 
-def _submit_merge_wave(
+def _submit_merge_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
-    wave_idx: Optional[int],
     group_indices: List[int],
     groups: List[List[str]],
     group_output_paths: List[str],
@@ -1600,19 +1533,16 @@ def _submit_merge_wave(
     script: str,
 ) -> None:
     """
-    Build and submit a single Hail Batch for one wave of group-merge jobs.
+    Build and submit one Hail Batch containing all pending group-merge jobs.
 
     Each job runs ``--run-merge`` over its assigned chunk paths and writes
-    to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``.
-
-    Each call creates its own ``hb.ServiceBackend`` from ``backend_kwargs``
-    — see ``_submit_chunk_wave`` for why a shared backend isn't safe
-    across ThreadPoolExecutor threads.
+    to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``. Parallelism is
+    Hail Batch's own job scheduler running the N jobs concurrently
+    against the worker pool.
     """
     project = args.project_name
     regions = args.regions or ["us-central1"]
-    wave_label = "single" if wave_idx is None else f"wave{wave_idx:03d}"
-    batch_name = f"v5_cov_merge_groups_{project}_{wave_label}"
+    batch_name = f"v5_cov_merge_groups_{project}"
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
 
@@ -1683,8 +1613,9 @@ def _orchestrate_coverage_merge(
     naive-coalesces to ``--n-partitions``, writing to
     ``cov_and_an_ht_path``.
 
-    Concurrency on level 1: ``--chunks-per-wave`` + ``--max-concurrent-batches``
-    (same knobs as the chunk orchestrator). Level 2 is a single batch.
+    Level 1 is one Hail Batch containing all group-merge jobs as
+    parallel jobs (Hail Batch's job scheduler handles parallelism).
+    Level 2 is a single Hail Batch containing one final-merge job.
 
     Idempotency: group HTs whose ``_SUCCESS`` exists are skipped; the
     final HT is skipped if it exists (unless ``--overwrite``).
@@ -1741,9 +1672,7 @@ def _orchestrate_coverage_merge(
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
     common_flags_str = _build_merge_common_flags(args)
 
-    # Pre-compute pending group indices in the main thread (same rationale
-    # as _orchestrate_coverage_batch: ThreadPoolExecutor + aiohttp
-    # ClientSession event-loop binding fails).
+    # Pre-compute pending group indices so the summary log is accurate.
     if args.overwrite:
         pending_indices = list(range(n_groups))
     else:
@@ -1764,15 +1693,12 @@ def _orchestrate_coverage_merge(
         n_groups - len(pending_indices),
     )
 
-    cpw = args.chunks_per_wave
-    n_pending = len(pending_indices)
-    if n_pending == 0:
+    if not pending_indices:
         logger.info("All group merges already complete; skipping level 1.")
-    elif cpw is None or cpw <= 0 or cpw >= n_pending:
-        _submit_merge_wave(
+    else:
+        _submit_merge_batch(
             args=args,
             backend_kwargs=backend_kwargs,
-            wave_idx=None,
             group_indices=pending_indices,
             groups=groups,
             group_output_paths=group_output_paths,
@@ -1781,41 +1707,6 @@ def _orchestrate_coverage_merge(
             common_flags_str=common_flags_str,
             script=script,
         )
-    else:
-        waves = [pending_indices[i : i + cpw] for i in range(0, n_pending, cpw)]
-        max_concurrent = max(args.max_concurrent_batches, 1)
-        logger.info(
-            "Merge wave dispatch: %d waves, max %d in flight at once",
-            len(waves),
-            max_concurrent,
-        )
-
-        def _submit_one(wave_idx: int, wave_groups: List[int]) -> None:
-            logger.info(
-                "Submitting merge wave %d/%d (%d groups: %d..%d)",
-                wave_idx + 1,
-                len(waves),
-                len(wave_groups),
-                wave_groups[0],
-                wave_groups[-1],
-            )
-            _submit_merge_wave(
-                args=args,
-                backend_kwargs=backend_kwargs,
-                wave_idx=wave_idx,
-                group_indices=wave_groups,
-                groups=groups,
-                group_output_paths=group_output_paths,
-                coalesce_to=coalesce_to,
-                setup_cmd=setup_cmd,
-                common_flags_str=common_flags_str,
-                script=script,
-            )
-
-        with ThreadPoolExecutor(max_workers=max_concurrent) as ex:
-            futures = {ex.submit(_submit_one, i, w): i for i, w in enumerate(waves)}
-            for fut in as_completed(futures):
-                fut.result()
 
     # Level 2: final merge.
     if not args.overwrite and _file_exists_for_env(cov_and_an_ht_path, "batch"):
@@ -2533,29 +2424,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=500,
         help="Chunk HTs per group-merge job. Default 500.",
-    )
-    fanout_group.add_argument(
-        "--chunks-per-wave",
-        type=int,
-        default=None,
-        help=(
-            "If set, split chunk dispatch into Hail Batch waves of this"
-            " size (each its own batch). Waves run with bounded concurrency"
-            " — see --max-concurrent-batches (default 1 = serial)."
-            " Default unset: one Hail Batch contains every chunk job."
-        ),
-    )
-    fanout_group.add_argument(
-        "--max-concurrent-batches",
-        type=int,
-        default=1,
-        help=(
-            "Cap on how many Hail Batches are in flight at once under"
-            " --chunks-per-wave. Default 1 (strictly serial: wave N+1 is"
-            " not submitted until wave N completes). Set to >1 for a"
-            " sliding window of concurrent batches against the Batch"
-            " service. Ignored when --chunks-per-wave is unset."
-        ),
     )
     fanout_group.add_argument(
         "--methods-branch",
