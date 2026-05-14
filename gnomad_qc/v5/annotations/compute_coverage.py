@@ -192,12 +192,15 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
     buckets can raise permission errors before getting to "exists / does
     not exist." Treat those *specifically* as "exists" so the chunk is
     skipped rather than re-run; the next stage will surface a real error
-    if the file is actually broken.
+    if the file is actually broken. Any other exception (network,
+    asyncio, etc.) is re-raised so we fail loud instead of silently
+    skipping work.
 
-    Any other exception (network, asyncio, etc.) is re-raised so we fail
-    loud instead of silently skipping work — the earlier "swallow all
-    exceptions" behavior caused chunks to silently skip when aiohttp
-    raised a ClientSession-loop-mismatch error.
+    :param path: GCS path to probe.
+    :param environment: Compute environment. Only ``"batch"`` activates
+        the permission-error fallback; other environments propagate.
+    :return: True if the file exists (or is assumed to under batch
+        permission errors), False otherwise.
     """
     from gnomad.utils.file_utils import file_exists
 
@@ -212,54 +215,114 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
             )
             return True
         raise
-        raise
 
 
 def _chunk_path(cov_and_an_ht_path: str, idx: int) -> str:
-    """Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/``."""
+    """
+    Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/``.
+
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
+    :param idx: Chunk index (zero-based).
+    :return: ``<cov_and_an_path>_chunks/<idx:08d>.chunk.ht``.
+    """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
     return f"{base}_chunks/{idx:08d}.chunk.ht"
 
 
-def _group_path(cov_and_an_ht_path: str, group_idx: int) -> str:
-    """Return a sibling per-group merged HT path under ``<cov_and_an_path>_merge_groups/``."""
+def _group_path(cov_and_an_ht_path: str, level: int, group_idx: int) -> str:
+    """
+    Return a per-group merged HT path under ``<cov_and_an_path>_merge_groups/``.
+
+    Level-tagged so a recursive merge tree (multiple levels of grouping
+    when chunk count exceeds ``merge_group_size`` once-over) doesn't
+    overwrite earlier-level outputs.
+
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
+    :param level: Merge-tree level (1-indexed); level N output is the
+        input to level N+1.
+    :param group_idx: Group index within this level (zero-based).
+    :return: ``<cov_and_an_path>_merge_groups/L<level:02d>_<idx:08d>.ht``.
+    """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_merge_groups/{group_idx:08d}.ht"
+    return f"{base}_merge_groups/L{level:02d}_{group_idx:08d}.ht"
 
 
 def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
-    """Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix."""
+    """
+    Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix.
+
+    :param path: HT path ending in ``.ht``.
+    :param suffix: Optional suffix string (no leading underscore). If
+        falsy, ``path`` is returned unchanged.
+    :return: Suffix-applied path.
+    """
     if not suffix:
         return path
     return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
 
 
-def _is_test_run(args: argparse.Namespace) -> bool:
-    """Return true when any ``--test-*`` flag (or ``--test``) is set."""
-    return args.test_chr22_chrx_chry or args.test
+def _is_test_run(test: bool, test_chr22_chrx_chry: bool) -> bool:
+    """
+    Return True when any test-mode flag is set.
+
+    :param test: ``--test`` flag.
+    :param test_chr22_chrx_chry: ``--test-chr22-chrx-chry`` flag.
+    :return: True if either flag is set.
+    """
+    return test_chr22_chrx_chry or test
 
 
-def _test_chrom_filter(args: argparse.Namespace) -> Optional[List[str]]:
-    """Return the chr22/X/Y filter list under ``--test-chr22-chrx-chry``, else None."""
-    return ["chr22", "chrX", "chrY"] if args.test_chr22_chrx_chry else None
+def _test_chrom_filter(test_chr22_chrx_chry: bool) -> Optional[List[str]]:
+    """
+    Return the chr22/X/Y contig filter list under ``--test-chr22-chrx-chry``, else None.
+
+    :param test_chr22_chrx_chry: ``--test-chr22-chrx-chry`` flag.
+    :return: ``["chr22", "chrX", "chrY"]`` when set, else ``None``.
+    """
+    return ["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None
 
 
 def _resolve_cov_and_an_ht_path(
-    args: argparse.Namespace, project: str, environment: str, test: bool
+    project: str,
+    environment: str,
+    test: bool,
+    suffix: Optional[str],
 ) -> str:
-    """Return the cov_and_an HT path, applying ``--cov-and-an-output-suffix`` when set."""
+    """
+    Return the cov_and_an HT path, applying ``suffix`` when set.
+
+    :param project: ``"aou"`` or ``"gnomad"``.
+    :param environment: Compute environment.
+    :param test: Whether to route to the test path.
+    :param suffix: Optional suffix appended before the ``.ht`` extension
+        (for A/B comparison runs).
+    :return: Fully resolved cov_and_an HT path.
+    """
     path = coverage_and_an_path(
         test=test, data_set=project, environment=environment
     ).path
-    return _apply_path_suffix(path, args.cov_and_an_output_suffix)
+    return _apply_path_suffix(path, suffix)
 
 
 def _resolve_group_membership_ht_path(
-    args: argparse.Namespace, project: str, environment: str, test: bool
+    project: str,
+    environment: str,
+    test: bool,
+    reduce_min_aggs: bool,
 ) -> str:
-    """Return the group_membership HT path, applying ``_reduce.ht`` under ``--reduce-min-aggs``."""
+    """
+    Return the group_membership HT path, applying ``_reduce.ht`` under ``reduce_min_aggs``.
+
+    :param project: ``"aou"`` or ``"gnomad"``.
+    :param environment: Compute environment.
+    :param test: Whether to route to the test path.
+    :param reduce_min_aggs: If True, append ``_reduce`` to the path —
+        used to keep the leaf-only-reduction HT separate from the
+        full-strata HT.
+    :return: Fully resolved group_membership HT path.
+    """
     path = group_membership(test=test, data_set=project, environment=environment).path
-    if args.reduce_min_aggs:
+    if reduce_min_aggs:
         path = path.rstrip("/").removesuffix(".ht") + "_reduce.ht"
     return path
 
@@ -268,11 +331,16 @@ def _configure_chunk_backend(args: argparse.Namespace) -> None:
     """
     Fill in chunk-backend-aware defaults for the chunk container.
 
-    Resolves ``chunk_cpu``/``chunk_memory``/``chunk_storage`` from
+    Resolves ``chunk_cpu`` / ``chunk_memory`` / ``chunk_storage`` from
     ``chunk_backend`` (QoB containers are tiny relays; local-Spark
     containers must hold the densify peak). For ``--chunk-backend=local``,
     additionally derives ``jvm_heap`` and ``local_cores`` from the
-    resolved container shape.
+    resolved container shape. Mutates ``args`` in place.
+
+    :param args: Parsed CLI args; ``chunk_backend``, ``chunk_cpu``,
+        ``chunk_memory``, ``chunk_storage``, ``jvm_heap``, and
+        ``local_cores`` may be filled in.
+    :return: None.
     """
     if args.chunk_backend == "local":
         defaults = {
@@ -302,16 +370,32 @@ def _configure_chunk_backend(args: argparse.Namespace) -> None:
         args.local_cores = max(int(args.chunk_cpu) // 2, 1)
 
 
-def _log_name_for_run(args: argparse.Namespace) -> str:
-    """Per-worker log name so concurrent chunk/merge workers don't clobber the monolithic log."""
-    if args.run_chunk:
-        return f"v5_cov_chunk_{args.chunk_start:08d}_{args.chunk_stop:08d}"
-    if args.run_merge:
+def _log_name_for_run(
+    run_chunk: bool,
+    run_merge: bool,
+    chunk_start: int,
+    chunk_stop: int,
+    merge_output: Optional[str],
+) -> str:
+    """
+    Build a per-worker log name so concurrent chunk/merge workers don't clobber the monolithic log.
+
+    :param run_chunk: ``--run-chunk`` flag.
+    :param run_merge: ``--run-merge`` flag.
+    :param chunk_start: Chunk start partition index (used when
+        ``run_chunk`` is True).
+    :param chunk_stop: Chunk stop partition index (used when
+        ``run_chunk`` is True).
+    :param merge_output: Merge output HT path (used to derive a slug
+        when ``run_merge`` is True).
+    :return: Log name; suitable for use as a log-file basename.
+    """
+    if run_chunk:
+        return f"v5_cov_chunk_{chunk_start:08d}_{chunk_stop:08d}"
+    if run_merge:
         merge_slug = "merge"
-        if args.merge_output:
-            merge_slug = (
-                args.merge_output.rstrip("/").split("/")[-1].removesuffix(".ht")
-            )
+        if merge_output:
+            merge_slug = merge_output.rstrip("/").split("/")[-1].removesuffix(".ht")
         return f"v5_cov_{merge_slug}"
     return "v5_coverage_and_an_generation"
 
@@ -331,13 +415,21 @@ def _derive_chunk_locus_intervals(
 
     When ``n_subdivisions > 1``, each contig's ``lo..hi`` extent is split into
     that many equal-position sub-intervals. The returned objects are concrete
-    ``hl.Interval`` instances (NOT ``IntervalExpression``s — ``read_vds`` /
+    ``hl.Interval`` instances (NOT ``IntervalExpression`` s — ``read_vds`` /
     ``read_matrix_table``'s ``_intervals=`` reader path requires Python-native
     intervals so the IR can serialize them as partition boundaries). Pass to
     ``hl.vds.read_vds(intervals=...)`` and ``hl.read_table(_intervals=...)``
     to co-partition both sides of the densify join at read time, avoiding the
     shuffle that a post-read ``repartition`` would cost. With
     ``n_subdivisions=1`` (default), returns one big interval per contig.
+
+    :param vds_filtered: VDS already filtered to the chunk's partitions
+        (the locus extent is derived from its ``reference_data``).
+    :param n_subdivisions: Number of equal-position sub-intervals per
+        contig. Default 1 (one interval per contig).
+    :param reference_genome: Reference genome name for the constructed
+        ``hl.Locus`` objects. Default ``"GRCh38"``.
+    :return: List of ``hl.Interval`` objects covering the VDS chunk.
     """
     rd = vds_filtered.reference_data
     bounds = rd.aggregate_rows(
@@ -401,6 +493,7 @@ def compute_all_release_stats_per_ref_site(
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
+        """Build adj/raw GQ + DP histograms from a [GQ, DP, adj] expression triple."""
         return qual_hist_expr(
             gq_expr=qual_expr[0],
             dp_expr=qual_expr[1],
@@ -470,6 +563,7 @@ def compute_all_release_stats_per_ref_site(
     def _cov_stats(
         cov_stat: hl.expr.StructExpression,
     ) -> hl.expr.StructExpression:
+        """Convert per-DP coverage_counter into cumulative ``over_X`` sample counts."""
         # The coverage was already floored to the max_coverage_bin, so no more
         # aggregation is needed for the max bin.
         count_expr = cov_stat.coverage_counter
@@ -897,13 +991,13 @@ def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Tabl
 
 
 def _load_project_vds(
-    args: argparse.Namespace,
     project: str,
     environment: str,
     partition_range: Optional[List[int]] = None,
     sub_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[List[str]] = None,
     test: bool = False,
+    test_sample_subset: bool = False,
 ) -> Tuple[hl.vds.VariantDataset, str]:
     """
     Load the per-project VDS with consistent test/subsample handling.
@@ -917,10 +1011,9 @@ def _load_project_vds(
       ``sub_intervals`` is ignored there.
     - AoU-specific DP synthesis from LAD + ``annotate_adj_no_dp`` (the AoU
       v8 VDS lacks DP, which ``compute_stats_per_ref_site`` requires).
-    - ``--test-sample-subset`` application: AoU only, reads ``meta`` from
+    - ``test_sample_subset`` application: AoU only, reads ``meta`` from
       disk inside the helper so it's self-contained.
 
-    :param args: Parsed CLI args (used for ``test_sample_subset``).
     :param project: ``"aou"`` or ``"gnomad"``.
     :param environment: Compute environment.
     :param partition_range: VDS partition indices (e.g. ``list(range(2))``)
@@ -929,6 +1022,8 @@ def _load_project_vds(
         (AoU only; ignored for gnomAD).
     :param chrom: Optional list of contigs to filter to.
     :param test: Whether this is a test run (gates ``test_sample_subset``).
+    :param test_sample_subset: If True (AoU only, and ``test``), subsample
+        ~0.1% of the AoU sample set for cheap tiny-cohort runs.
     :return: Tuple of ``(vds, sex_karyotype_field)``.
     """
     if project == "aou":
@@ -946,7 +1041,7 @@ def _load_project_vds(
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
         vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
-        if test and args.test_sample_subset:
+        if test and test_sample_subset:
             meta_ht = hl.read_table(
                 meta(data_type="genomes", environment=environment).path
             )
@@ -987,8 +1082,24 @@ def _build_chunk_ref_ht(
 
     Otherwise (the strict/no-fanout path or single-interval chunks), reads
     ``vep_context`` whole, filters to the VDS chunk's per-contig locus extent
-    (via `_derive_chunk_locus_intervals` with `n_subdivisions=1`), then strips
-    to the locus key and removes telomeres/centromeres.
+    (via ``_derive_chunk_locus_intervals`` with ``n_subdivisions=1``), then
+    strips to the locus key and removes telomeres/centromeres.
+
+    :param vds_filtered: VDS already filtered to the chunk's partitions
+        (locus extent is derived from its ``reference_data``).
+    :param project: ``"aou"`` or ``"gnomad"`` (unused in current body
+        but kept for symmetry with caller-side context).
+    :param partition_count: When > 0 and ``sub_intervals`` is None,
+        triggers the locus-extent filter against the VDS chunk. 0 means
+        "whole VDS, no chunk filter."
+    :param test_chr22_chrx_chry: If True, restrict ``vep_context`` to
+        the contigs in ``chrom``.
+    :param chrom: Contig list for the test-chrom filter; required when
+        ``test_chr22_chrx_chry`` is True.
+    :param sub_intervals: Optional read-time intervals for
+        ``vep_context``; takes precedence over the locus-extent filter.
+    :return: Reference HT keyed by locus, with telomeres/centromeres
+        removed.
     """
     if sub_intervals is not None:
         logger.info(
@@ -1042,6 +1153,13 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     builds ``ref_ht`` via the locus-extent filter path (no shuffle either way
     — the manufactured 2-vs-2N skew that the old ``--repartition-factor``
     arg created is now gone).
+
+    :param args: Parsed CLI args; reads ``project_name``, ``environment``,
+        ``chunk_start``, ``chunk_stop``, ``test``, ``test_chr22_chrx_chry``,
+        ``read_subintervals_per_chunk``, ``chunk_output``,
+        ``cov_and_an_output_suffix``, ``reduce_min_aggs``,
+        ``test_sample_subset``. Hail must already be initialized.
+    :return: None.
     """
     project = args.project_name
     environment = args.environment
@@ -1051,19 +1169,25 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     partition_range = list(range(start, stop))
     n = stop - start
 
-    test = _is_test_run(args)
-    chrom = _test_chrom_filter(args)
+    test = _is_test_run(args.test, args.test_chr22_chrx_chry)
+    chrom = _test_chrom_filter(args.test_chr22_chrx_chry)
     n_sub = max(args.read_subintervals_per_chunk, 1)
 
     if args.chunk_output is None:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
-            args, project, environment, test=test
+            project,
+            environment,
+            test=test,
+            suffix=args.cov_and_an_output_suffix,
         )
         args.chunk_output = _chunk_path(cov_and_an_ht_path, start)
         logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
 
     group_membership_ht_path = _resolve_group_membership_ht_path(
-        args, project, environment, test=test
+        project,
+        environment,
+        test=test,
+        reduce_min_aggs=args.reduce_min_aggs,
     )
 
     sub_intervals: Optional[List[hl.utils.Interval]] = None
@@ -1092,13 +1216,13 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         )
 
     vds, sex_karyotype_field = _load_project_vds(
-        args=args,
         project=project,
         environment=environment,
         partition_range=partition_range,
         sub_intervals=sub_intervals,
         chrom=chrom,
         test=test,
+        test_sample_subset=args.test_sample_subset,
     )
 
     ref_ht = _build_chunk_ref_ht(
@@ -1182,6 +1306,7 @@ def _init_hail_local_spark(
         container CPU count to balance executor parallelism vs. driver work.
     :param gcs_requester_pays_project: Project to bill for requester-pays
         GCS reads (the AoU VDS bucket).
+    :return: None.
     """
     import pyspark
 
@@ -1281,7 +1406,18 @@ def _build_setup_command(
 
 
 def _build_chunk_common_flags(args: argparse.Namespace) -> str:
-    """Build the CLI flag string shared by every per-chunk relay invocation."""
+    """
+    Build the CLI flag string shared by every per-chunk relay invocation.
+
+    Translates the orchestrator's ``args.Namespace`` into a CLI string
+    that's appended to each chunk relay's ``--run-chunk`` command. Per-chunk
+    flags (``--chunk-start``, ``--chunk-stop``, ``--chunk-output``) are
+    added by ``_submit_chunk_batch``; this helper covers everything else
+    a chunk relay needs to mirror the orchestrator's config.
+
+    :param args: Parsed CLI args.
+    :return: Space-joined ``--flag value`` string.
+    """
     flags = [
         f"--project-name {args.project_name}",
         "--environment batch",
@@ -1318,14 +1454,14 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append("--test")
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
-    if args.qob_driver_cores is not None:
-        flags.append(f"--driver-cores {args.qob_driver_cores}")
-    if args.qob_driver_memory:
-        flags.append(f"--driver-memory {args.qob_driver_memory}")
-    if args.qob_worker_cores is not None:
-        flags.append(f"--worker-cores {args.qob_worker_cores}")
-    if args.qob_worker_memory:
-        flags.append(f"--worker-memory {args.qob_worker_memory}")
+    if args.chunk_driver_cores is not None:
+        flags.append(f"--driver-cores {args.chunk_driver_cores}")
+    if args.chunk_driver_memory:
+        flags.append(f"--driver-memory {args.chunk_driver_memory}")
+    if args.chunk_worker_cores is not None:
+        flags.append(f"--worker-cores {args.chunk_worker_cores}")
+    if args.chunk_worker_memory:
+        flags.append(f"--worker-memory {args.chunk_worker_memory}")
     return " ".join(flags)
 
 
@@ -1347,8 +1483,25 @@ def _submit_chunk_batch(
     against Hail Batch's worker pool.
 
     Existence checks happen in the orchestrator's main thread before this
-    function is called (see ``_orchestrate_coverage_batch``); ``chunk_indices``
-    is the already-filtered pending set.
+    function is called (see ``_orchestrate_coverage_batch``);
+    ``chunk_indices`` is the already-filtered pending set.
+
+    :param args: Parsed CLI args (reads ``project_name``,
+        ``total_partitions``, ``partitions_per_chunk``, ``regions``,
+        ``read_subintervals_per_chunk``, ``cov_and_an_output_suffix``,
+        ``batch_image``, ``chunk_cpu/memory/storage``, ``chunk_backend``,
+        ``chunk_attempts``, ``batch_dry_run``).
+    :param backend_kwargs: kwargs for the per-call
+        ``hb.ServiceBackend(...)`` constructor (``billing_project``,
+        ``remote_tmpdir``).
+    :param chunk_indices: Pending chunk indices to submit.
+    :param cov_and_an_ht_path: Resolved canonical output HT path; each
+        chunk writes to a sibling ``_chunks/<idx>.chunk.ht``.
+    :param setup_cmd: Shell prefix from ``_build_setup_command``.
+    :param common_flags_str: Shared CLI flags from
+        ``_build_chunk_common_flags``.
+    :param script: Path to the script inside the relay container.
+    :return: None.
     """
     project = args.project_name
     total = args.total_partitions
@@ -1425,6 +1578,17 @@ def _orchestrate_coverage_batch(
 
     The merge step is intentionally separate; run ``--merge-cov-chunks``
     after this finishes.
+
+    :param args: Parsed CLI args (reads ``project_name``,
+        ``total_partitions``, ``partitions_per_chunk``, ``overwrite``,
+        ``methods_branch``, ``gcp_billing_project``, ``batch_billing_project``,
+        ``batch_remote_tmpdir``, plus everything ``_build_chunk_common_flags``
+        and ``_submit_chunk_batch`` read).
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path
+        (resolved by ``main``). Each chunk writes to
+        ``<cov_and_an_path>_chunks/<idx>.chunk.ht``; the final HT at
+        ``cov_and_an_ht_path`` is produced by ``--merge-cov-chunks``.
+    :return: None.
     """
     project = args.project_name
     total = args.total_partitions
@@ -1489,7 +1653,18 @@ def _orchestrate_coverage_batch(
 
 
 def _build_merge_common_flags(args: argparse.Namespace) -> str:
-    """Build the CLI flag string shared by every per-merge relay invocation."""
+    """
+    Build the CLI flag string shared by every per-merge relay invocation.
+
+    Per-merge flags (``--merge-output``, ``--merge-inputs``,
+    ``--merge-coalesce-to``) are added by ``_submit_merge_batch`` and the
+    final-merge dispatch in ``_orchestrate_coverage_merge``; this helper
+    covers everything else a merge relay needs to mirror the
+    orchestrator's config.
+
+    :param args: Parsed CLI args.
+    :return: Space-joined ``--flag value`` string.
+    """
     flags = [
         f"--project-name {args.project_name}",
         "--environment batch",
@@ -1506,14 +1681,14 @@ def _build_merge_common_flags(args: argparse.Namespace) -> str:
         flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
     # Reuse the per-chunk QoB driver/worker sizing for merge workers — the
     # merge worker is also QoB-from-container, same shape as the chunk relay.
-    if args.qob_driver_cores is not None:
-        flags.append(f"--driver-cores {args.qob_driver_cores}")
-    if args.qob_driver_memory:
-        flags.append(f"--driver-memory {args.qob_driver_memory}")
-    if args.qob_worker_cores is not None:
-        flags.append(f"--worker-cores {args.qob_worker_cores}")
-    if args.qob_worker_memory:
-        flags.append(f"--worker-memory {args.qob_worker_memory}")
+    if args.chunk_driver_cores is not None:
+        flags.append(f"--driver-cores {args.chunk_driver_cores}")
+    if args.chunk_driver_memory:
+        flags.append(f"--driver-memory {args.chunk_driver_memory}")
+    if args.chunk_worker_cores is not None:
+        flags.append(f"--worker-cores {args.chunk_worker_cores}")
+    if args.chunk_worker_memory:
+        flags.append(f"--worker-memory {args.chunk_worker_memory}")
     return " ".join(flags)
 
 
@@ -1526,22 +1701,42 @@ def _submit_merge_batch(
     setup_cmd: str,
     common_flags_str: str,
     script: str,
+    level: int,
 ) -> None:
     """
     Build and submit one Hail Batch containing all pending group-merge jobs.
 
-    Each job runs ``--run-merge`` over its assigned chunk paths and writes
-    to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``. Parallelism is
-    Hail Batch's own job scheduler running the N jobs concurrently
-    against the worker pool.
+    Each job runs ``--run-merge`` over its assigned inputs and writes to
+    ``<cov_and_an_path>_merge_groups/L<level>_<group_idx>.ht``.
+    Parallelism is Hail Batch's own job scheduler running the N jobs
+    concurrently against the worker pool.
 
-    Per-group coalesce target is the number of chunks in that group
+    Per-group coalesce target is the number of inputs in that group
     (one output partition per chunk-equivalent of input work), so the
-    last group's smaller chunk count still produces a valid coalesce.
+    last (possibly smaller) group still produces a valid coalesce.
+
+    :param args: Parsed CLI args (reads ``project_name``,
+        ``cov_and_an_output_suffix``, ``regions``, ``batch_image``,
+        ``merge_cpu``, ``merge_memory``, ``merge_storage``,
+        ``chunk_attempts``, ``batch_dry_run``).
+    :param backend_kwargs: kwargs for the per-call
+        ``hb.ServiceBackend(...)`` constructor.
+    :param group_indices: Pending group indices to submit.
+    :param groups: For each group index, the list of input HT paths to
+        union.
+    :param group_output_paths: For each group index, the output HT path
+        this level's merge writes to.
+    :param setup_cmd: Shell prefix from ``_build_setup_command``.
+    :param common_flags_str: Shared CLI flags from
+        ``_build_merge_common_flags``.
+    :param script: Path to the script inside the relay container.
+    :param level: Merge-tree level (1-indexed); used in the batch and
+        job names.
+    :return: None.
     """
     project = args.project_name
     regions = args.regions or ["us-central1"]
-    batch_name = f"v5_cov_merge_groups_{project}"
+    batch_name = f"v5_cov_merge_L{level:02d}_{project}"
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
 
@@ -1558,7 +1753,7 @@ def _submit_merge_batch(
             group_inputs = groups[group_idx]
             inputs_str = " ".join(group_inputs)
             coalesce_to = len(group_inputs)
-            j = batch.new_job(name=f"cov_merge_group_{group_idx:06d}")
+            j = batch.new_job(name=f"cov_merge_L{level:02d}_{group_idx:06d}")
             j.image(args.batch_image)
             j.cpu(args.merge_cpu)
             j.memory(args.merge_memory)
@@ -1604,23 +1799,36 @@ def _orchestrate_coverage_merge(
     ``_SUCCESS`` marker; missing chunks fail loudly so the user re-runs
     the chunk orchestrator before merging.
 
-    Level 1: groups of ``--merge-group-size`` chunks. Each group becomes
-    one ``--run-merge`` job that unions its inputs, naive-coalesces to
-    the group's chunk count (one partition per chunk-equivalent of input
-    work), and writes to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``.
+    Recursive tree: starting from N chunks, each level groups its
+    inputs into windows of ``--merge-group-size`` and emits one
+    ``--run-merge`` job per group. Inputs of level 1 are the chunk HTs;
+    inputs of level k>1 are the outputs of level k-1. Iteration stops
+    when at most one group remains; that group becomes the final-merge
+    job that writes to ``cov_and_an_ht_path``.
 
-    Level 2: a single ``--run-merge`` job that unions all group HTs and
-    (only if ``--n-partitions`` is explicitly set) naive-coalesces to
-    that count, writing to ``cov_and_an_ht_path``. When ``--n-partitions``
-    is unset, the final HT keeps the union's natural partition count
-    (sum of group partition counts).
+    Per-job coalesce target is the number of inputs in the group (one
+    partition per input). The final merge additionally accepts
+    ``--n-partitions`` to coalesce the final HT to a specific count;
+    unset = keep natural sum-of-input partition count.
 
-    Level 1 is one Hail Batch containing all group-merge jobs as
-    parallel jobs (Hail Batch's job scheduler handles parallelism).
-    Level 2 is a single Hail Batch containing one final-merge job.
+    Each level is one Hail Batch containing N parallel jobs (Hail
+    Batch's scheduler handles intra-level parallelism). Levels run
+    sequentially; the orchestrator blocks on each level via
+    ``batch.run(wait=True)``.
 
-    Idempotency: group HTs whose ``_SUCCESS`` exists are skipped; the
-    final HT is skipped if it exists (unless ``--overwrite``).
+    Idempotency: at each level, group HTs whose ``_SUCCESS`` exists are
+    skipped; the final HT is skipped if it exists (unless ``--overwrite``).
+
+    :param args: Parsed CLI args (reads ``project_name``,
+        ``total_partitions``, ``partitions_per_chunk``,
+        ``merge_group_size``, ``overwrite``, ``n_partitions``,
+        ``methods_branch``, ``gcp_billing_project``,
+        ``batch_billing_project``, ``batch_remote_tmpdir``,
+        ``batch_image``, ``merge_cpu``, ``merge_memory``,
+        ``final_merge_storage``, ``regions``, ``chunk_attempts``,
+        ``cov_and_an_output_suffix``, ``batch_dry_run``).
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
+    :return: None.
     """
     project = args.project_name
     total = args.total_partitions
@@ -1645,14 +1853,18 @@ def _orchestrate_coverage_merge(
     logger.info("All %d chunks present.", n_chunks)
 
     gs = args.merge_group_size
-    groups = [chunk_paths[i : i + gs] for i in range(0, n_chunks, gs)]
-    n_groups = len(groups)
-    group_output_paths = [_group_path(cov_and_an_ht_path, i) for i in range(n_groups)]
+
+    # Precompute the level shape so we can log the full plan upfront.
+    shape = [n_chunks]
+    while shape[-1] > gs:
+        shape.append((shape[-1] + gs - 1) // gs)
+    # shape[-1] is the input count for the final merge (≤ gs). The
+    # final merge writes 1 HT, which is cov_and_an_ht_path.
     logger.info(
-        "Merge tree: %d chunks -> %d group merges (group_size=%d) -> 1 final HT",
-        n_chunks,
-        n_groups,
+        "Merge tree (group_size=%d): %s -> 1 final HT (%d intermediate level(s))",
         gs,
+        " -> ".join(str(n) for n in shape),
+        len(shape) - 1,
     )
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
@@ -1669,46 +1881,62 @@ def _orchestrate_coverage_merge(
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
     common_flags_str = _build_merge_common_flags(args)
 
-    # Pre-compute pending group indices so the summary log is accurate.
-    if args.overwrite:
-        pending_indices = list(range(n_groups))
-    else:
-        pending_indices = []
-        for idx in range(n_groups):
-            if _file_exists_for_env(group_output_paths[idx], "batch"):
-                logger.info(
-                    "Skipping already-complete group %d at %s",
-                    idx,
-                    group_output_paths[idx],
-                )
-            else:
-                pending_indices.append(idx)
-    logger.info(
-        "Level 1 dispatch: %d groups total, %d pending, %d skipped",
-        n_groups,
-        len(pending_indices),
-        n_groups - len(pending_indices),
-    )
+    # Intermediate levels: each emits a level-tagged group HT per output.
+    # Iterates while #inputs > gs; stops when one final merge can union
+    # everything remaining.
+    inputs = chunk_paths
+    level = 1
+    while len(inputs) > gs:
+        n_in = len(inputs)
+        n_out = (n_in + gs - 1) // gs
+        groups = [inputs[i : i + gs] for i in range(0, n_in, gs)]
+        out_paths = [
+            _group_path(cov_and_an_ht_path, level, idx) for idx in range(n_out)
+        ]
 
-    if not pending_indices:
-        logger.info("All group merges already complete; skipping level 1.")
-    else:
-        _submit_merge_batch(
-            args=args,
-            backend_kwargs=backend_kwargs,
-            group_indices=pending_indices,
-            groups=groups,
-            group_output_paths=group_output_paths,
-            setup_cmd=setup_cmd,
-            common_flags_str=common_flags_str,
-            script=script,
+        if args.overwrite:
+            pending = list(range(n_out))
+        else:
+            pending = []
+            for idx in range(n_out):
+                if _file_exists_for_env(out_paths[idx], "batch"):
+                    logger.info(
+                        "Skipping already-complete L%d group %d at %s",
+                        level,
+                        idx,
+                        out_paths[idx],
+                    )
+                else:
+                    pending.append(idx)
+        logger.info(
+            "Level %d dispatch: %d groups total, %d pending, %d skipped" " (%d -> %d)",
+            level,
+            n_out,
+            len(pending),
+            n_out - len(pending),
+            n_in,
+            n_out,
         )
+        if pending:
+            _submit_merge_batch(
+                args=args,
+                backend_kwargs=backend_kwargs,
+                group_indices=pending,
+                groups=groups,
+                group_output_paths=out_paths,
+                setup_cmd=setup_cmd,
+                common_flags_str=common_flags_str,
+                script=script,
+                level=level,
+            )
+        inputs = out_paths
+        level += 1
 
-    # Level 2: final merge.
+    # Final merge: a single job that unions the remaining (<= gs) inputs
+    # and writes the canonical output.
     if not args.overwrite and _file_exists_for_env(cov_and_an_ht_path, "batch"):
         logger.info(
-            "Final merge HT exists at %s; skipping level 2 (pass"
-            " --overwrite to rewrite).",
+            "Final merge HT exists at %s; skipping (pass --overwrite to rewrite).",
             cov_and_an_ht_path,
         )
         return
@@ -1727,7 +1955,7 @@ def _orchestrate_coverage_merge(
     # Same coordinator-waiting-on-inner-job rationale as group merges.
     j.spot(False)
     j.n_max_attempts(args.chunk_attempts)
-    inputs_str = " ".join(group_output_paths)
+    inputs_str = " ".join(inputs)
     coalesce_flag = (
         f" --merge-coalesce-to {args.n_partitions}"
         if args.n_partitions is not None
@@ -1744,7 +1972,7 @@ def _orchestrate_coverage_merge(
     logger.info(
         "Submitting Hail Batch '%s': final merge (%d inputs -> %s, dry_run=%s)",
         final_batch_name,
-        n_groups,
+        len(inputs),
         cov_and_an_ht_path,
         args.batch_dry_run,
     )
@@ -1761,12 +1989,17 @@ def main(args):
 
     _configure_chunk_backend(args)
 
+    test = _is_test_run(args.test, args.test_chr22_chrx_chry)
+
     # --use-batch-fanout: orchestrator submits a Hail Batch and exits
     # without initializing Hail (each per-chunk relay spawns its own QoB
     # driver).
     if args.use_batch_fanout:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
-            args, project, environment, test=_is_test_run(args)
+            project,
+            environment,
+            test=test,
+            suffix=args.cov_and_an_output_suffix,
         )
         _orchestrate_coverage_batch(args, cov_and_an_ht_path)
         return
@@ -1775,12 +2008,21 @@ def main(args):
     # --use-batch-fanout; same no-Hail-init pattern.
     if args.merge_cov_chunks:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
-            args, project, environment, test=_is_test_run(args)
+            project,
+            environment,
+            test=test,
+            suffix=args.cov_and_an_output_suffix,
         )
         _orchestrate_coverage_merge(args, cov_and_an_ht_path)
         return
 
-    log_name = _log_name_for_run(args)
+    log_name = _log_name_for_run(
+        run_chunk=args.run_chunk,
+        run_merge=args.run_merge,
+        chunk_start=args.chunk_start,
+        chunk_stop=args.chunk_stop,
+        merge_output=args.merge_output,
+    )
 
     # Local-Spark chunk worker: in-container Hail JVM with local[N] Spark,
     # no QoB driver pod.
@@ -1822,44 +2064,47 @@ def main(args):
         )
         return
 
-    test_chr22_chrx_chry = args.test_chr22_chrx_chry
-    test = _is_test_run(args)
+    # Strict-path actions: resolve shared paths, then dispatch to handlers.
+    chrom = _test_chrom_filter(args.test_chr22_chrx_chry)
     overwrite = args.overwrite
-    n_partitions = args.n_partitions
-    chrom = _test_chrom_filter(args)
 
     try:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
-            args, project, environment, test=test
+            project,
+            environment,
+            test=test,
+            suffix=args.cov_and_an_output_suffix,
         )
-        # AoU downsampling + sample-meta are AoU-only resources (the helpers
-        # only allow rwb/batch). Skip them for gnomad runs so the dataproc
-        # comparison can resolve resources.
+        group_membership_ht_path = _resolve_group_membership_ht_path(
+            project,
+            environment,
+            test=test,
+            reduce_min_aggs=args.reduce_min_aggs,
+        )
+
+        # AoU downsampling + sample-meta are AoU-only resources (the
+        # helpers only allow rwb/batch). Skip them for gnomad runs so the
+        # dataproc comparison can resolve resources.
         downsampling_ht_path = None
-        meta_ht_path = None
         meta_ht = None
         if project == "aou":
             downsampling_ht_path = get_aou_downsampling(
                 test=test, environment=environment
             ).path
-            meta_ht_path = meta(data_type="genomes", environment=environment).path
             meta_ht = hl.read_table(
-                meta_ht_path
-            )  # TODO: Where is this used? also why readpath and not just get?
-        group_membership_ht_path = _resolve_group_membership_ht_path(
-            args, project, environment, test=test
-        )
+                meta(data_type="genomes", environment=environment).path
+            )
 
         if args.write_aou_downsampling_ht:
+            logger.info("Writing AoU downsampling HT...")
             check_resource_existence(
                 output_step_resources={"downsampling_ht": [downsampling_ht_path]},
                 overwrite=overwrite,
             )
-
-            ht = meta_ht.filter(
+            ds_meta_ht = meta_ht.filter(
                 (meta_ht.project_meta.project == project) & (meta_ht.release)
             )
-            ds_ht = get_downsampling_ht(ht)
+            ds_ht = get_downsampling_ht(ds_meta_ht)
             ds_ht.write(downsampling_ht_path, overwrite=overwrite)
 
         if args.write_group_membership_ht:
@@ -1869,69 +2114,51 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
-
             if project == "gnomad":
                 logger.info("Writing gnomAD group membership HT...")
-                v4_meta_ht_path = v4_meta(data_type="genomes").path
-
                 group_membership_ht = get_group_membership_ht(
-                    hl.read_table(v4_meta_ht_path),
+                    hl.read_table(v4_meta(data_type="genomes").path),
                     project=project,
                     reduce_min_aggs=args.reduce_min_aggs,
                 )
-                group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
             else:
                 logger.info("Writing AoU group membership HT...")
-                meta_ht = meta_ht.filter(
+                aou_meta_ht = meta_ht.filter(
                     (meta_ht.project_meta.project == project) & (meta_ht.release)
                 )
                 group_membership_ht = get_group_membership_ht(
-                    meta_ht=meta_ht,
+                    meta_ht=aou_meta_ht,
                     project=project,
                     ds_ht=hl.read_table(downsampling_ht_path),
                     reduce_min_aggs=args.reduce_min_aggs,
                 )
-                group_membership_ht.write(
-                    group_membership_ht_path,
-                    overwrite=overwrite,
-                )
+            group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
 
         if args.compute_all_cov_release_stats_ht:
             logger.info(
-                "Computing coverage, all sites allele number, and optionally quality histograms HT for %s...",
+                "Computing coverage, all sites allele number, and optionally"
+                " quality histograms HT for %s...",
                 project,
             )
             check_resource_existence(
-                output_step_resources={
-                    "coverage_and_an_ht": [cov_and_an_ht_path],
-                },
+                output_step_resources={"coverage_and_an_ht": [cov_and_an_ht_path]},
                 overwrite=overwrite,
             )
-
-            # Strict path: whole VDS (or chrom-filtered via
-            # --test-chr22-chrx-chry). Use --use-batch-fanout for a
-            # partition-bounded run.
             vds, sex_karyotype_field = _load_project_vds(
-                args=args,
                 project=project,
                 environment=environment,
                 chrom=chrom,
                 test=test,
+                test_sample_subset=args.test_sample_subset,
             )
-
-            # Build ref_ht (vep_context filtered to the VDS chunk's locus
-            # extent, telomeres/centromeres removed). No sub-intervals here:
-            # the strict path is whole-VDS, not chunked.
             ref_ht = _build_chunk_ref_ht(
                 vds_filtered=vds,
                 project=project,
                 partition_count=0,
-                test_chr22_chrx_chry=test_chr22_chrx_chry,
+                test_chr22_chrx_chry=args.test_chr22_chrx_chry,
                 chrom=chrom,
             )
-
             validate_vds(vds)
-
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
@@ -1943,45 +2170,44 @@ def main(args):
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file(f"{project}_cov_and_an", "ht")
             )
-            if n_partitions is not None:
-                cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
+            if args.n_partitions is not None:
+                cov_and_an_ht = cov_and_an_ht.naive_coalesce(args.n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
-            merged_gnomad_coverage_ht_path = f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_coverage.ht"
+            logger.info("Building gnomAD v5 coverage HT (subtracting consent-drop)...")
+            merged_gnomad_coverage_ht_path = (
+                f"{qc_temp_prefix(environment=environment)}"
+                "gnomad_v5_genomes_coverage.ht"
+            )
             check_resource_existence(
                 output_step_resources={
                     "merged_gnomad_coverage_ht": [merged_gnomad_coverage_ht_path],
                 },
                 overwrite=overwrite,
             )
-
             gnomad_ht = hl.read_table(cov_and_an_ht_path).drop("AN")
             gnomad_release_ht = hl.read_table(
-                release_coverage_path(
-                    release_version=v4_COVERAGE_RELEASE,
-                    public=True,
-                )
+                release_coverage_path(release_version=v4_COVERAGE_RELEASE, public=True)
             )
             if test:
                 gnomad_release_ht = _filter_to_locus_bounds(
                     gnomad_release_ht, gnomad_ht
                 )
-
             ht = merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht)
             ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_an:
+            logger.info("Building gnomAD v5 AN HT (subtracting consent-drop)...")
             merged_gnomad_an_ht_path = (
                 f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
             )
             check_resource_existence(
                 output_step_resources={
-                    "merged_gnomad_an_ht": [merged_gnomad_an_ht_path],
+                    "merged_gnomad_an_ht": [merged_gnomad_an_ht_path]
                 },
                 overwrite=overwrite,
             )
-
             gnomad_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_release_ht = hl.read_table(
                 release_coverage_path(
@@ -1990,16 +2216,15 @@ def main(args):
                     coverage_type="allele_number",
                 )
             )
-
             if test:
                 gnomad_release_ht = _filter_to_locus_bounds(
                     gnomad_release_ht, gnomad_ht
                 )
-
             ht = merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht)
             ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
 
         if args.export_coverage_release_files:
+            logger.info("Exporting coverage release HT and TSV...")
             cov_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -2007,31 +2232,29 @@ def main(args):
                 environment=environment,
             )
             cov_tsv_path = release_coverage_tsv_path(test=test, environment=environment)
-            gnomad_coverage_ht_path = f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_coverage.ht"
+            gnomad_coverage_ht_path = (
+                f"{qc_temp_prefix(environment=environment)}"
+                "gnomad_v5_genomes_coverage.ht"
+            )
             check_resource_existence(
-                input_step_resources={
-                    "gnomad_coverage_ht": [gnomad_coverage_ht_path],
-                },
+                input_step_resources={"gnomad_coverage_ht": [gnomad_coverage_ht_path]},
                 output_step_resources={
                     "cov_release_ht": [cov_ht_path],
                     "cov_tsv": [cov_tsv_path],
                 },
                 overwrite=overwrite,
             )
-
-            logger.info("Exporting coverage HT and TSV...")
-            aou_ht = hl.read_table(cov_and_an_ht_path)
-            aou_ht = aou_ht.drop("AN", "qual_hists")
+            aou_ht = hl.read_table(cov_and_an_ht_path).drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
-
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
-            if n_partitions is not None:
-                ht = ht.naive_coalesce(n_partitions)
+            if args.n_partitions is not None:
+                ht = ht.naive_coalesce(args.n_partitions)
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
             ht.export(cov_tsv_path)
 
         if args.export_an_release_files:
+            logger.info("Exporting AN release HT and TSV...")
             an_ht_path = release_coverage_path(
                 public=False,
                 test=test,
@@ -2045,21 +2268,15 @@ def main(args):
                 f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
             )
             check_resource_existence(
-                input_step_resources={
-                    "gnomad_an_ht": [gnomad_an_ht_path],
-                },
+                input_step_resources={"gnomad_an_ht": [gnomad_an_ht_path]},
                 output_step_resources={
                     "an_release_ht": [an_ht_path],
                     "an_release_tsv": [an_tsv_path],
                 },
                 overwrite=overwrite,
             )
-
-            logger.info("Exporting AN HT and TSV...")
-            aou_ht = hl.read_table(cov_and_an_ht_path)
-            aou_ht = aou_ht.select("AN")
+            aou_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_ht = hl.read_table(gnomad_an_ht_path)
-
             ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(new_temp_file("aou_and_gnomad_an_join", "ht"))
             ht = ht.select("AN")
@@ -2067,14 +2284,14 @@ def main(args):
                 strata_meta=ht.strata_meta,
                 strata_sample_count=ht.strata_sample_count,
             )
-            if n_partitions is not None:
-                ht = ht.naive_coalesce(n_partitions)
+            if args.n_partitions is not None:
+                ht = ht.naive_coalesce(args.n_partitions)
             ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
-
             ht = ht.transmute(AN=ht.AN[0])
             ht.export(an_tsv_path)
 
         if args.merge_qual_hists:
+            logger.info("Merging AoU + gnomAD v4 qual hists...")
             qual_hists_path = qual_hists(test=test, environment=environment).path
             qual_hists_path = _apply_path_suffix(
                 qual_hists_path, args.qual_hists_output_suffix
@@ -2083,8 +2300,6 @@ def main(args):
                 output_step_resources={"qual_hists_ht": [qual_hists_path]},
                 overwrite=overwrite,
             )
-
-            logger.info("Merging qual hists HTs...")
             aou_ht = (
                 hl.read_table(cov_and_an_ht_path).select("qual_hists").select_globals()
             )
@@ -2096,20 +2311,17 @@ def main(args):
             )
             if test:
                 gnomad_ht = _filter_to_locus_bounds(gnomad_ht, aou_ht)
-
-            # Drop age hists because they are handled in the frequency script
-            # and re-key by locus. `distinct()` deduplicates the multi-row-per-
-            # locus rows that result from rekeying a (locus, alleles)-keyed HT
-            # to locus-only; the `_all` hists are locus-level and identical
-            # across split rows, so distinct keeps a representative row.
+            # Drop age hists (handled in the frequency script) and rekey
+            # by locus. `distinct()` deduplicates the multi-row-per-locus
+            # rows that result from rekeying a (locus, alleles)-keyed HT
+            # to locus-only; the `_all` hists are locus-level and
+            # identical across split rows, so distinct keeps a representative.
             gnomad_ht = gnomad_ht.select(
                 qual_hists=gnomad_ht.histograms.drop("age_hists")
             )
             gnomad_ht = gnomad_ht.key_by("locus").distinct()
-
             ht = join_aou_and_gnomad_qual_hists_ht(aou_ht, gnomad_ht)
             ht.write(qual_hists_path, overwrite=overwrite)
-
     finally:
         if environment != "batch":
             logger.info("Copying hail log to logging bucket...")
@@ -2280,13 +2492,27 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    parser.add_argument(
-        "--test-chr22-chrx-chry",
-        help=(
-            "Whether to run a test using only the chr22, chrX, and chrY"
-            " chromosomes of the VDS test dataset."
-        ),
+    test_group = parser.add_argument_group(
+        "Test mode",
+        "Route inputs/outputs to test paths and (optionally) filter data.",
+    )
+    test_group.add_argument(
+        "--test",
         action="store_true",
+        help=(
+            "Route reads/writes to test paths (group_membership,"
+            " cov_and_an, release HTs, etc.). Full data is processed"
+            " unless --test-chr22-chrx-chry is also passed."
+        ),
+    )
+    test_group.add_argument(
+        "--test-chr22-chrx-chry",
+        action="store_true",
+        help=(
+            "In addition to --test path routing, filter input data to"
+            " chr22, chrX, and chrY only. Useful for cheap correctness"
+            " checks."
+        ),
     )
 
     group_membership_args = parser.add_argument_group(
@@ -2295,11 +2521,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     group_membership_args.add_argument(
         "--write-group-membership-ht",
         help="Write group membership HT.",
-        action="store_true",
-    )
-    group_membership_args.add_argument(
-        "--test",
-        help="Write test group membership HT to test path.",
         action="store_true",
     )
 
@@ -2504,52 +2725,50 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     fanout_group.add_argument(
-        "--qob-driver-cores",
+        "--chunk-driver-cores",
         type=str,
         default=None,
         help=(
-            "Cores for the QoB driver pod each chunk relay spawns"
-            " (--chunk-backend=qob). Pass a power of two between 0.25 and"
-            " 16 (as a string, e.g. '2' or '0.5'). Forwarded to the"
-            " relay's --driver-cores; decoupled from the"
-            " orchestrator/merge-side --driver-cores. Ignored when"
+            "Cores for the QoB driver pod each chunk/merge relay spawns"
+            " (--chunk-backend=qob). Power of two between 0.25 and 16"
+            " (as a string, e.g. '2' or '0.5'). Forwarded to the relay's"
+            " --driver-cores; decoupled from the orchestrator's own"
+            " --driver-cores. Ignored when --chunk-backend=local."
+        ),
+    )
+    fanout_group.add_argument(
+        "--chunk-driver-memory",
+        type=str,
+        default=None,
+        help=(
+            "Memory profile for the QoB driver pod each chunk/merge"
+            " relay spawns (--chunk-backend=qob), e.g. 'highmem'."
+            " Forwarded to the relay's --driver-memory; decoupled from"
+            " the orchestrator's own --driver-memory. Ignored when"
             " --chunk-backend=local."
         ),
     )
     fanout_group.add_argument(
-        "--qob-driver-memory",
+        "--chunk-worker-cores",
         type=str,
         default=None,
         help=(
-            "Memory profile for the QoB driver pod each chunk relay"
-            " spawns (--chunk-backend=qob), e.g. 'highmem'. Forwarded to"
-            " the relay's --driver-memory; decoupled from the"
-            " orchestrator/merge-side --driver-memory. Ignored when"
-            " --chunk-backend=local."
+            "Cores per QoB worker pod the chunk/merge driver dispatches"
+            " (--chunk-backend=qob). Power of two between 0.25 and 16"
+            " (as a string, e.g. '1' or '0.5'). Forwarded to the relay's"
+            " --worker-cores; decoupled from the orchestrator's own"
+            " --worker-cores. Ignored when --chunk-backend=local."
         ),
     )
     fanout_group.add_argument(
-        "--qob-worker-cores",
+        "--chunk-worker-memory",
         type=str,
         default=None,
         help=(
-            "Cores per QoB worker pod the chunk's QoB driver dispatches"
-            " (--chunk-backend=qob). Pass a power of two between 0.25 and"
-            " 16 (as a string, e.g. '1' or '0.5'). Forwarded to the"
-            " relay's --worker-cores; decoupled from the"
-            " orchestrator/merge-side --worker-cores. Ignored when"
-            " --chunk-backend=local."
-        ),
-    )
-    fanout_group.add_argument(
-        "--qob-worker-memory",
-        type=str,
-        default=None,
-        help=(
-            "Memory profile per QoB worker pod the chunk's QoB driver"
+            "Memory profile per QoB worker pod the chunk/merge driver"
             " dispatches (--chunk-backend=qob), e.g. 'lowmem'. Forwarded"
             " to the relay's --worker-memory; decoupled from the"
-            " orchestrator/merge-side --worker-memory. Ignored when"
+            " orchestrator's own --worker-memory. Ignored when"
             " --chunk-backend=local."
         ),
     )
@@ -2678,8 +2897,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "If set, the --run-merge worker naive_coalesces the unioned"
             " HT to this many partitions before writing. Set by the merge"
             " orchestrator to bound per-level partition count (group"
-            " merges coalesce to ~--read-subintervals-per-chunk; the"
-            " final merge coalesces to --n-partitions)."
+            " merges coalesce to len(inputs); the final merge coalesces"
+            " to --n-partitions when that is set)."
         ),
     )
 
@@ -2695,12 +2914,12 @@ if __name__ == "__main__":
         "driver_cores",
         "driver_memory",
         "driver_jvm_heap",
-        "qob_driver_cores",
-        "qob_driver_memory",
+        "chunk_driver_cores",
+        "chunk_driver_memory",
         "worker_cores",
         "worker_memory",
-        "qob_worker_cores",
-        "qob_worker_memory",
+        "chunk_worker_cores",
+        "chunk_worker_memory",
     ]
     provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
     if provided_batch_args and args.environment != "batch":
