@@ -1296,10 +1296,11 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         "--environment batch",
         f"--gcp-billing-project {args.gcp_billing_project}",
         f"--tmp-dir-days {args.tmp_dir_days}",
-        f"--n-partitions {args.n_partitions}",
         f"--read-subintervals-per-chunk {args.read_subintervals_per_chunk}",
         f"--chunk-backend {args.chunk_backend}",
     ]
+    if args.n_partitions is not None:
+        flags.append(f"--n-partitions {args.n_partitions}")
     if args.chunk_backend == "local":
         # Pass through container sizing so the chunk worker can configure
         # its local Spark heap / threadcount to match what the orchestrator
@@ -1508,8 +1509,9 @@ def _build_merge_common_flags(args: argparse.Namespace) -> str:
         "--environment batch",
         f"--gcp-billing-project {args.gcp_billing_project}",
         f"--tmp-dir-days {args.tmp_dir_days}",
-        f"--n-partitions {args.n_partitions}",
     ]
+    if args.n_partitions is not None:
+        flags.append(f"--n-partitions {args.n_partitions}")
     if args.experimental:
         flags.append("--experimental")
     if args.app_name:
@@ -1535,7 +1537,6 @@ def _submit_merge_batch(
     group_indices: List[int],
     groups: List[List[str]],
     group_output_paths: List[str],
-    coalesce_to: int,
     setup_cmd: str,
     common_flags_str: str,
     script: str,
@@ -1547,6 +1548,10 @@ def _submit_merge_batch(
     to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``. Parallelism is
     Hail Batch's own job scheduler running the N jobs concurrently
     against the worker pool.
+
+    Per-group coalesce target is the number of chunks in that group
+    (one output partition per chunk-equivalent of input work), so the
+    last group's smaller chunk count still produces a valid coalesce.
     """
     project = args.project_name
     regions = args.regions or ["us-central1"]
@@ -1564,7 +1569,9 @@ def _submit_merge_batch(
 
         for group_idx in group_indices:
             output_path = group_output_paths[group_idx]
-            inputs_str = " ".join(groups[group_idx])
+            group_inputs = groups[group_idx]
+            inputs_str = " ".join(group_inputs)
+            coalesce_to = len(group_inputs)
             j = batch.new_job(name=f"cov_merge_group_{group_idx:06d}")
             j.image(args.batch_image)
             j.cpu(args.merge_cpu)
@@ -1613,13 +1620,14 @@ def _orchestrate_coverage_merge(
 
     Level 1: groups of ``--merge-group-size`` chunks. Each group becomes
     one ``--run-merge`` job that unions its inputs, naive-coalesces to
-    ``--read-subintervals-per-chunk`` partitions (so the next level's
-    input doesn't carry sum-of-input partitions), and writes to
-    ``<cov_and_an_path>_merge_groups/<group_idx>.ht``.
+    the group's chunk count (one partition per chunk-equivalent of input
+    work), and writes to ``<cov_and_an_path>_merge_groups/<group_idx>.ht``.
 
     Level 2: a single ``--run-merge`` job that unions all group HTs and
-    naive-coalesces to ``--n-partitions``, writing to
-    ``cov_and_an_ht_path``.
+    (only if ``--n-partitions`` is explicitly set) naive-coalesces to
+    that count, writing to ``cov_and_an_ht_path``. When ``--n-partitions``
+    is unset, the final HT keeps the union's natural partition count
+    (sum of group partition counts).
 
     Level 1 is one Hail Batch containing all group-merge jobs as
     parallel jobs (Hail Batch's job scheduler handles parallelism).
@@ -1660,11 +1668,6 @@ def _orchestrate_coverage_merge(
         n_groups,
         gs,
     )
-
-    # Group-merge partition target: per-chunk partitions. Each chunk has
-    # ~--read-subintervals-per-chunk partitions; coalescing each group to
-    # that count keeps level-2 input shape comparable to one chunk's.
-    coalesce_to = max(args.read_subintervals_per_chunk, 1)
 
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
     setup_cmd = _build_setup_command(
@@ -1710,7 +1713,6 @@ def _orchestrate_coverage_merge(
             group_indices=pending_indices,
             groups=groups,
             group_output_paths=group_output_paths,
-            coalesce_to=coalesce_to,
             setup_cmd=setup_cmd,
             common_flags_str=common_flags_str,
             script=script,
@@ -1740,11 +1742,16 @@ def _orchestrate_coverage_merge(
     j.spot(False)
     j.n_max_attempts(args.chunk_attempts)
     inputs_str = " ".join(group_output_paths)
+    coalesce_flag = (
+        f" --merge-coalesce-to {args.n_partitions}"
+        if args.n_partitions is not None
+        else ""
+    )
     j.command(
         f"{setup_cmd}"
         f"{script} --run-merge"
         f" --merge-output {cov_and_an_ht_path}"
-        f" --merge-coalesce-to {args.n_partitions}"
+        f"{coalesce_flag}"
         f" --merge-inputs {inputs_str}"
         f" {common_flags_str}"
     )
@@ -1956,7 +1963,8 @@ def main(args):
             cov_and_an_ht = cov_and_an_ht.checkpoint(
                 new_temp_file(f"{project}_cov_and_an", "ht")
             )
-            cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
+            if n_partitions is not None:
+                cov_and_an_ht = cov_and_an_ht.naive_coalesce(n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_coverage:
@@ -2038,7 +2046,8 @@ def main(args):
 
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
             ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
-            ht = ht.naive_coalesce(n_partitions)
+            if n_partitions is not None:
+                ht = ht.naive_coalesce(n_partitions)
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
             ht.export(cov_tsv_path)
 
@@ -2078,7 +2087,8 @@ def main(args):
                 strata_meta=ht.strata_meta,
                 strata_sample_count=ht.strata_sample_count,
             )
-            ht = ht.naive_coalesce(n_partitions)
+            if n_partitions is not None:
+                ht = ht.naive_coalesce(n_partitions)
             ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
 
             ht = ht.transmute(AN=ht.AN[0])
@@ -2234,9 +2244,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--n-partitions",
-        help="Number of partitions to use for the output Table.",
+        help=(
+            "Number of partitions to use for the output Table. If unset"
+            " (default), no final naive_coalesce is applied — the output"
+            " keeps the IR's natural partition count (strict path) or"
+            " the merge tree's per-level coalesce shape (--merge-cov-chunks)."
+        ),
         type=int,
-        default=5000,
+        default=None,
     )
     parser.add_argument(
         "--cov-and-an-output-suffix",
