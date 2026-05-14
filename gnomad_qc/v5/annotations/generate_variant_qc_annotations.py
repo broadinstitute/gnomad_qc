@@ -411,7 +411,6 @@ def get_tp_ht_for_vcf_export(
 
 
 def prepare_vep_input_ht(
-    vep_version: str,
     environment: str,
     test: bool = False,
     test_n_partitions: int = None,
@@ -421,10 +420,12 @@ def prepare_vep_input_ht(
 
     Loads the AoU VDS filtered to release samples, splits multi-allelic sites,
     and removes any variant already present in the gnomAD v4 exome or genome VEP
-    HT for the given VEP version. Only row-level information is retained.
+    HT. Only row-level information is retained.
 
-    :param vep_version: VEP version to use when looking up existing v4 annotations
-        (e.g., "105", "115").
+    The v4 VEP HT for ``DEFAULT_VEP_VERSION`` is used for the site lookup because
+    the set of sites is identical across v4 VEP versions; only the annotation
+    contents differ.
+
     :param environment: Compute environment passed to :func:`get_aou_vds`.
     :param test: Whether to load the test VDS. Default is False.
     :param test_n_partitions: If set, restrict the VDS to this many partitions.
@@ -442,13 +443,19 @@ def prepare_vep_input_ht(
 
     logger.info(
         "Filtering VEP input HT to variants not present in v4 exome or genome"
-        " VEP HTs (VEP version %s)...",
-        vep_version,
+        " VEP HTs..."
     )
-    ht = ht.anti_join(
-        get_v4_vep(data_type="exomes", vep_version=vep_version).ht().select()
-    ).anti_join(get_v4_vep(data_type="genomes", vep_version=vep_version).ht().select())
-    return ht
+    v4_sites = (
+        get_v4_vep(data_type="exomes", vep_version=DEFAULT_VEP_VERSION)
+        .ht()
+        .select()
+        .union(
+            get_v4_vep(data_type="genomes", vep_version=DEFAULT_VEP_VERSION)
+            .ht()
+            .select()
+        )
+    )
+    return ht.anti_join(v4_sites)
 
 
 def main(args):
@@ -634,7 +641,6 @@ def main(args):
                 overwrite=overwrite,
             )
             prepare_vep_input_ht(
-                vep_version=vep_version,
                 environment=environment,
                 test=args.test,
                 test_n_partitions=test_n_partitions,
