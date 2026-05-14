@@ -25,6 +25,7 @@ from gnomad.variant_qc.pipeline import (
 )
 from gnomad.variant_qc.random_forest import median_impute_features
 
+from gnomad_qc.v4.resources.annotations import get_vep as get_v4_vep
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     get_aou_annotated_sites_only_vcf,
@@ -409,6 +410,47 @@ def get_tp_ht_for_vcf_export(
     return tp_hts
 
 
+def prepare_vep_input_ht(
+    vep_version: str,
+    environment: str,
+    test: bool = False,
+    test_n_partitions: int = None,
+) -> hl.Table:
+    """
+    Extract split-multi variant rows from the AoU VDS for use as VEP input.
+
+    Loads the AoU VDS filtered to release samples, splits multi-allelic sites,
+    and removes any variant already present in the gnomAD v4 exome or genome VEP
+    HT for the given VEP version. Only row-level information is retained.
+
+    :param vep_version: VEP version to use when looking up existing v4 annotations
+        (e.g., "105", "115").
+    :param environment: Compute environment passed to :func:`get_aou_vds`.
+    :param test: Whether to load the test VDS. Default is False.
+    :param test_n_partitions: If set, restrict the VDS to this many partitions.
+        Default is None.
+    :return: Table of novel split-multi variant rows ready for VEP annotation.
+    """
+    vds = get_aou_vds(
+        release_only=True,
+        filter_partitions=(range(test_n_partitions) if test_n_partitions else None),
+        test=test,
+        environment=environment,
+    )
+    ht = vds.variant_data.rows()
+    ht = hl.split_multi(ht)
+
+    logger.info(
+        "Filtering VEP input HT to variants not present in v4 exome or genome"
+        " VEP HTs (VEP version %s)...",
+        vep_version,
+    )
+    ht = ht.anti_join(
+        get_v4_vep(data_type="exomes", vep_version=vep_version).ht().select()
+    ).anti_join(get_v4_vep(data_type="genomes", vep_version=vep_version).ht().select())
+    return ht
+
+
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     environment = args.environment
@@ -591,18 +633,12 @@ def main(args):
                 output_step_resources={"vep_input_ht": [vep_input_ht_path]},
                 overwrite=overwrite,
             )
-            vds = get_aou_vds(
-                release_only=True,
-                filter_partitions=(
-                    range(test_n_partitions) if test_n_partitions else None
-                ),
-                annotate_meta=True,
-                test=args.test,
+            prepare_vep_input_ht(
+                vep_version=vep_version,
                 environment=environment,
-            )
-            ht = vds.variant_data.rows()
-            ht = hl.split_multi(ht)
-            ht.write(vep_input_ht_path, overwrite=overwrite)
+                test=args.test,
+                test_n_partitions=test_n_partitions,
+            ).write(vep_input_ht_path, overwrite=overwrite)
 
         if args.run_vep:
             logger.info("Running VEP on VEP input HT...")
