@@ -5,7 +5,7 @@ import logging
 import subprocess
 from functools import reduce
 from os import getenv
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import hail as hl
 import hailtop.batch as hb
@@ -64,6 +64,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("v5_coverage_and_an")
 logger.setLevel(logging.INFO)
+
+COVERAGE_OVER_X_BINS = (1, 5, 10, 15, 20, 25, 30, 50, 100)
 
 
 def get_downsampling_ht(ht: hl.Table) -> hl.Table:
@@ -186,21 +188,30 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
     """
     Check if a path exists, tolerant of permission errors in batch mode.
 
-    On the batch backend, anonymous file probes against requester-pays buckets
-    can raise permission errors before getting to "exists / does not exist."
-    Treat those as "exists" so the chunk is skipped rather than re-run; the
-    next stage will surface a real error if the file is actually broken.
+    On the batch backend, anonymous file probes against requester-pays
+    buckets can raise permission errors before getting to "exists / does
+    not exist." Treat those *specifically* as "exists" so the chunk is
+    skipped rather than re-run; the next stage will surface a real error
+    if the file is actually broken.
+
+    Any other exception (network, asyncio, etc.) is re-raised so we fail
+    loud instead of silently skipping work — the earlier "swallow all
+    exceptions" behavior caused chunks to silently skip when aiohttp
+    raised a ClientSession-loop-mismatch error.
     """
     from gnomad.utils.file_utils import file_exists
 
     try:
         return file_exists(path)
-    except Exception as e:
+    except PermissionError as e:
         if environment == "batch":
             logger.warning(
-                "file_exists check on %s raised %s; assuming exists.", path, e
+                "file_exists check on %s raised PermissionError %s; assuming exists.",
+                path,
+                e,
             )
             return True
+        raise
         raise
 
 
@@ -225,7 +236,7 @@ def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
 
 def _is_test_run(args: argparse.Namespace) -> bool:
     """Return true when any ``--test-*`` flag (or ``--test``) is set."""
-    return args.test_2_partitions or args.test_chr22_chrx_chry or args.test
+    return args.test_chr22_chrx_chry or args.test
 
 
 def _test_chrom_filter(args: argparse.Namespace) -> Optional[List[str]]:
@@ -289,24 +300,6 @@ def _configure_chunk_backend(args: argparse.Namespace) -> None:
         args.jvm_heap = f"{max(total_mem_gb - 4, 4)}g"
     if args.local_cores is None:
         args.local_cores = max(int(args.chunk_cpu) // 2, 1)
-
-
-def _apply_test_2_partitions_to_fanout_args(args: argparse.Namespace) -> None:
-    """In ``--use-batch-fanout`` mode, ``--test-2-partitions`` is an alias for total=2/ppc=2."""
-    if not args.test_2_partitions:
-        return
-    if args.total_partitions != 145192:
-        logger.warning(
-            "--test-2-partitions overrides --total-partitions=%s -> 2",
-            args.total_partitions,
-        )
-    if args.partitions_per_chunk != 2:
-        logger.warning(
-            "--test-2-partitions overrides --partitions-per-chunk=%s -> 2",
-            args.partitions_per_chunk,
-        )
-    args.total_partitions = 2
-    args.partitions_per_chunk = 2
 
 
 def _log_name_for_run(args: argparse.Namespace) -> str:
@@ -383,7 +376,7 @@ def compute_all_release_stats_per_ref_site(
     ref_ht: hl.Table,
     sex_karyotype_field: str,
     project: str,
-    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
     interval_ht: Optional[hl.Table] = None,
     group_membership_ht: Optional[hl.Table] = None,
     reduce_min_aggs: bool = False,
@@ -459,7 +452,6 @@ def compute_all_release_stats_per_ref_site(
         rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
     vds = hl.vds.VariantDataset(rmt, vmt)
 
-    # TODO: Save dense MT for gnomAD consent drop samples?
     ht = compute_stats_per_ref_site(
         vds,
         ref_ht,
@@ -516,7 +508,7 @@ def _rename_cov_annotations(
     ht: hl.Table,
     project: str,
     sample_count: int,
-    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
 ) -> hl.Table:
     """
     Rename coverage annotations prior to merging Tables.
@@ -556,7 +548,7 @@ def _merge_coverage_fields(
     project_2: str,
     sample_count: int,
     operation: str,
-    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
 ) -> hl.expr.DictExpression:
     """
     Merge coverage fields from two Tables.
@@ -608,7 +600,7 @@ def _merge_coverage_fields(
 def merge_gnomad_coverage_hts(
     gnomad_ht: hl.Table,
     gnomad_release_ht: hl.Table,
-    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
     v4_count: int = 76215,
     consent_drop_count: int = 866,
 ) -> hl.Table:
@@ -661,7 +653,7 @@ def merge_gnomad_coverage_hts(
 def join_aou_and_gnomad_coverage_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
-    coverage_over_x_bins: List[int] = [1, 5, 10, 15, 20, 25, 30, 50, 100],
+    coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
     gnomad_v5_count: int = 76215 - 866,
 ) -> hl.Table:
     """
@@ -1053,13 +1045,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     """
     project = args.project_name
     environment = args.environment
-    # __main__ validation guarantees one of these branches: explicit
-    # chunk bounds (--chunk-start/--chunk-stop) or the --test-2-partitions
-    # alias for [0, 2). So partition_range is always a non-empty list.
-    if args.test_2_partitions:
-        start, stop = 0, 2
-    else:
-        start, stop = args.chunk_start, args.chunk_stop
+    # __main__ validation guarantees --chunk-stop > --chunk-start, so
+    # partition_range is always a non-empty list.
+    start, stop = args.chunk_start, args.chunk_stop
     partition_range = list(range(start, stop))
     n = stop - start
 
@@ -1268,17 +1256,20 @@ def _build_setup_command(
         f"{config_body}"
         "HAILCFG\n"
         "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
-        # Patch quota_project_id into the GSA key so the QoB driver pod
-        # has a billing-project fallback for requester-pays reads.
+        # TODO: Remove this GSA-key patch once Hail's
+        # gcs_requester_pays_configuration propagation to the QoB driver
+        # pod is fixed (likely 0.2.139+). Patches quota_project_id into
+        # /gsa-key/key.json so the QoB driver pod's Java GCS client has
+        # a billing-project fallback for requester-pays reads.
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
         f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
         f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
-        # Pin Hail to 0.2.137 in the relay venv. The image bundles
-        # 0.2.138 which has a requester-pays propagation regression in
-        # the QoB driver's GoogleStorageFS for load_references_from_dataset
-        # — the AoU VDS metadata read 400s with "no user project". The
-        # relay's Hail Python version determines the JAR the QoB driver
-        # downloads, so pinning here pins the entire pipeline.
+        # TODO: Remove this Hail pin once 0.2.139+ fixes the
+        # requester-pays propagation regression that 0.2.138 introduced
+        # for `load_references_from_dataset` (AoU VDS metadata reads
+        # 400'd with "no user project" until we pinned back to 0.2.137).
+        # The relay's Hail Python version determines the JAR the QoB
+        # driver downloads, so pinning here pins the entire pipeline.
         "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
         " --no-deps hail==0.2.137\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
@@ -1323,12 +1314,7 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
     if args.test_chr22_chrx_chry:
         flags.append("--test-chr22-chrx-chry")
-    # Promote --test-2-partitions to --test for the chunk: the orchestrator
-    # passes explicit --chunk-start/--chunk-stop, so --test-2-partitions
-    # isn't needed for partition selection — but we still want test-mode
-    # resource paths + (optional) sample subsampling to behave the same
-    # as a direct `--test` run.
-    if args.test or args.test_2_partitions:
+    if args.test:
         flags.append("--test")
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
@@ -1779,7 +1765,6 @@ def main(args):
     # without initializing Hail (each per-chunk relay spawns its own QoB
     # driver).
     if args.use_batch_fanout:
-        _apply_test_2_partitions_to_fanout_args(args)
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             args, project, environment, test=_is_test_run(args)
         )
@@ -1789,7 +1774,6 @@ def main(args):
     # --merge-cov-chunks: tree-reduce orchestrator. Runs after
     # --use-batch-fanout; same no-Hail-init pattern.
     if args.merge_cov_chunks:
-        _apply_test_2_partitions_to_fanout_args(args)
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             args, project, environment, test=_is_test_run(args)
         )
@@ -1838,7 +1822,6 @@ def main(args):
         )
         return
 
-    test_2_partitions = args.test_2_partitions
     test_chr22_chrx_chry = args.test_chr22_chrx_chry
     test = _is_test_run(args)
     overwrite = args.overwrite
@@ -1925,16 +1908,13 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            # Load the VDS first so the ref_ht filter can be derived from its
-            # actual locus extent (the chunk path uses the same pattern via
-            # `_build_chunk_ref_ht`). Independent `_filter_partitions(range(2))`
-            # on both sides would miss-align since vep_context and the AoU
-            # VDS have different partition layouts.
+            # Strict path: whole VDS (or chrom-filtered via
+            # --test-chr22-chrx-chry). Use --use-batch-fanout for a
+            # partition-bounded run.
             vds, sex_karyotype_field = _load_project_vds(
                 args=args,
                 project=project,
                 environment=environment,
-                partition_range=list(range(2)) if test_2_partitions else None,
                 chrom=chrom,
                 test=test,
             )
@@ -1945,7 +1925,7 @@ def main(args):
             ref_ht = _build_chunk_ref_ht(
                 vds_filtered=vds,
                 project=project,
-                partition_count=2 if test_2_partitions else 0,
+                partition_count=0,
                 test_chr22_chrx_chry=test_chr22_chrx_chry,
                 chrom=chrom,
             )
@@ -2291,7 +2271,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test-sample-subset",
         action="store_true",
         help=(
-            "When `--test` (or `--test-2-partitions` / `--test-chr22-chrx-chry`)"
+            "When `--test` (or `--test-chr22-chrx-chry`)"
             " is set on AoU, additionally subsample the AoU sample set to"
             " ~0.1%% via `meta_ht.sample(0.001)`. Default off: a `--test` run"
             " uses all samples but the partition / chrom subset, so AN values"
@@ -2300,20 +2280,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    test_group = parser.add_mutually_exclusive_group()
-    test_group.add_argument(
-        "--test-2-partitions",
-        help=(
-            "Whether to run a test using only the first 2 partitions of the VDS test"
-            " dataset."
-        ),
-        action="store_true",
-    )
-    test_group.add_argument(
+    parser.add_argument(
         "--test-chr22-chrx-chry",
         help=(
-            "Whether to run a test using only the chr22, chrX, and chrY chromosomes of"
-            " the VDS test dataset."
+            "Whether to run a test using only the chr22, chrX, and chrY"
+            " chromosomes of the VDS test dataset."
         ),
         action="store_true",
     )
@@ -2810,11 +2781,8 @@ if __name__ == "__main__":
             " --compute-all-cov-release-stats-ht; do not pass both."
         )
     if args.run_chunk:
-        if not args.test_2_partitions and args.chunk_stop <= args.chunk_start:
-            parser.error(
-                "--run-chunk requires --chunk-stop > --chunk-start (or"
-                " --test-2-partitions as an alias for [0, 2))."
-            )
+        if args.chunk_stop <= args.chunk_start:
+            parser.error("--run-chunk requires --chunk-stop > --chunk-start.")
         # ``--chunk-output`` is optional: when not set it's auto-derived in
         # ``_run_coverage_chunk`` from the resolved cov_and_an HT path +
         # `--cov-and-an-output-suffix` + chunk_start. Useful for one-off
