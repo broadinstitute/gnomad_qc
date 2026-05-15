@@ -422,19 +422,41 @@ def _derive_chunk_locus_intervals(
     :return: List of ``hl.Interval`` objects covering the VDS chunk.
     """
     rd = vds_filtered.reference_data
-    bounds = rd.aggregate_rows(
-        hl.agg.group_by(
-            rd.locus.contig,
-            hl.struct(
-                lo=hl.agg.min(rd.locus.position),
-                hi=hl.agg.max(rd.locus.position),
-            ),
-        )
-    )
+    # Use Hail's partitioner-metadata IR op (TableCalculateNewPartitions)
+    # instead of aggregate_rows. The aggregate scans every row of every
+    # selected partition to compute per-contig (min, max) — multi-minute
+    # cost per chunk. _calculate_new_partitions returns the existing
+    # per-partition range bounds directly from the table's RVD spec; same
+    # API hl.vds.read_vds itself uses internally for partition planning
+    # (hail/vds/variant_dataset.py:39). Cost: seconds, not minutes.
+    partition_intervals = rd._calculate_new_partitions(rd.n_partitions())
+
+    def _locus_of(endpoint):
+        # Interval endpoints are typed as the MT row key. VDS reference_data
+        # is keyed by ``locus`` (a single field), so the row key is a
+        # ``Struct(locus=Locus)``; pull the Locus out. Falls back to the
+        # endpoint itself if Hail ever surfaces Locus directly.
+        return endpoint.locus if hasattr(endpoint, "locus") else endpoint
+
+    bounds: dict = {}
+    for iv in partition_intervals:
+        sl = _locus_of(iv.start)
+        el = _locus_of(iv.end)
+        contig = sl.contig
+        lo_pos = sl.position
+        hi_pos = el.position
+        if contig not in bounds:
+            bounds[contig] = [lo_pos, hi_pos]
+        else:
+            bounds[contig][0] = min(bounds[contig][0], lo_pos)
+            bounds[contig][1] = max(bounds[contig][1], hi_pos)
     n = max(n_subdivisions, 1)
     sub_intervals: List[hl.utils.Interval] = []
-    for contig, b in bounds.items():
-        lo, hi = b.lo, b.hi + 1
+    for contig, (lo, hi) in bounds.items():
+        # +1 to convert to a half-open exclusive end, and to give a 1-bp
+        # cushion if the partitioner's end was already exclusive (matches
+        # the prior `b.hi + 1` behavior under aggregate_rows).
+        hi = hi + 1
         total = max(hi - lo, 1)
         step = max(total // n, 1)
         for i in range(n):
@@ -2332,7 +2354,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Memory type for driver node (e.g., 'highmem').",
     )
     batch_group.add_argument(
-        "--jvm-heap-size",
+        "--driver-jvm-heap",
         type=str,
         default=None,
         help=(
@@ -2785,7 +2807,7 @@ if __name__ == "__main__":
         "app_name",
         "driver_cores",
         "driver_memory",
-        "jvm_heap_size",
+        "driver_jvm_heap",
         "chunk_driver_cores",
         "chunk_driver_memory",
         "worker_cores",
@@ -2800,10 +2822,10 @@ if __name__ == "__main__":
             f"require --environment=batch"
         )
 
-    # --jvm-heap-size only applies to the in-process JVM under --experimental.
-    if args.jvm_heap_size is not None and not args.experimental:
+    # --driver-jvm-heap only applies to the in-process JVM under --experimental.
+    if args.driver_jvm_heap is not None and not args.experimental:
         parser.error(
-            "--jvm-heap-size requires --experimental (it controls the"
+            "--driver-jvm-heap requires --experimental (it controls the"
             " in-process JVM heap for hl.experimental.init)."
         )
 
