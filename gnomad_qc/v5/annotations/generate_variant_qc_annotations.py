@@ -741,40 +741,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         const=2,
         type=int,
     )
-    vep_args = parser.add_argument_group(
-        "VEP annotation parameters.",
-        "Arguments relevant to preparing VEP input and running VEP annotation.",
-    )
-    vep_args.add_argument(
-        "--prepare-vep-input",
-        help=(
-            "Extract split-multi variant rows from the v5 VDS (release samples only)"
-            " and write to a 30-day temp HT accessible from Dataproc. Intended to run"
-            " in the 'batch' environment (QoB)."
-        ),
-        action="store_true",
-    )
-    vep_args.add_argument(
-        "--run-vep",
-        help=(
-            "Read the VEP input HT written by --prepare-vep-input and run"
-            " vep_or_lookup_vep. Intended to run in the 'dataproc' environment."
-        ),
-        action="store_true",
-    )
-    vep_args.add_argument(
-        "--validate-vep",
-        help=(
-            "Count VEP-annotated variants per Ensembl interval as a validity check."
-            " Intended to run in the 'dataproc' environment after --run-vep."
-        ),
-        action="store_true",
-    )
-    vep_args.add_argument(
-        "--vep-version",
-        help="Version of VEP to use for annotation (e.g., '105', '115').",
-        default=DEFAULT_VEP_VERSION,
-    )
     parser.add_argument(
         "--generate-trio-stats",
         help="Calculates trio stats.",
@@ -846,6 +812,41 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " files."
         ),
         action="store_true",
+    )
+
+    vep_args = parser.add_argument_group(
+        "VEP annotation parameters.",
+        "Arguments relevant to preparing VEP input and running VEP annotation.",
+    )
+    vep_args.add_argument(
+        "--prepare-vep-input",
+        help=(
+            "Extract split-multi variant rows from the v5 VDS (release samples only)"
+            " and write to a 30-day temp HT accessible from Dataproc. Intended to run"
+            " in the 'batch' environment (QoB)."
+        ),
+        action="store_true",
+    )
+    vep_args.add_argument(
+        "--run-vep",
+        help=(
+            "Read the VEP input HT written by --prepare-vep-input and run"
+            " vep_or_lookup_vep. Intended to run in the 'dataproc' environment."
+        ),
+        action="store_true",
+    )
+    vep_args.add_argument(
+        "--validate-vep",
+        help=(
+            "Count VEP-annotated variants per Ensembl interval as a validity check."
+            " Intended to run in the 'dataproc' environment after --run-vep."
+        ),
+        action="store_true",
+    )
+    vep_args.add_argument(
+        "--vep-version",
+        help="Version of VEP to use for annotation (e.g., '105', '115').",
+        default=DEFAULT_VEP_VERSION,
     )
 
     return parser
