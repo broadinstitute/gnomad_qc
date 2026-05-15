@@ -1,4 +1,57 @@
-"""Script to compute coverage, allele number, and quality histograms on all gnomAD v5 genomes (AoU v8 + updated gnomAD v4)."""
+r"""
+Compute coverage, allele number, and quality histograms for gnomAD v5 genomes.
+
+v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set.
+This script computes per-reference-site coverage, AN, and (AoU only) qual
+histograms for each project track and joins them into the v5 release HT/TSV.
+
+Processing Workflow:
+--------------------
+Per-project setup (--project-name {aou,gnomad}):
+1. (AoU only) Write the downsampling HT (--write-aou-downsampling-ht).
+2. Write the group membership HT (--write-group-membership-ht): strata =
+   sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
+   --reduce-min-aggs to write the leaf-only variant.
+3. Compute the per-ref-site coverage/AN/qual-hists HT
+   (--compute-all-cov-release-stats-ht). This is the dense step. Either:
+   - Strict (in-process): run the whole VDS in one job.
+   - Fan-out (--use-batch-fanout, batch only): submit one Hail Batch job
+     per partition chunk; each chunk's relay spawns a QoB driver or runs
+     a local-Spark in-container JVM, writes a sibling chunk HT, and
+     exits. Then run --merge-cov-chunks to tree-reduce the chunks into
+     the canonical HT.
+
+Per-project merge (--project-name gnomad):
+4. Build the gnomAD v5 coverage HT (--merge-gnomad-coverage) and AN HT
+   (--merge-gnomad-an) by subtracting the consent-drop samples from the
+   v4 release HTs.
+
+Release assembly (--project-name aou):
+5. Join AoU + gnomAD v5 outputs and export release files:
+   --export-coverage-release-files (coverage HT + TSV)
+   --export-an-release-files (AN HT + TSV)
+   --merge-qual-hists (qual hists HT; gnomAD v4 hists are reused as-is —
+   they were not recomputed for v5).
+
+Usage Examples:
+---------------
+# Per-chunk fan-out compute + merge on Hail Batch (the prod path):
+python compute_coverage.py --project-name aou --environment batch \\
+    --use-batch-fanout --partitions-per-chunk 2
+python compute_coverage.py --project-name aou --environment batch \\
+    --merge-cov-chunks --n-partitions 10000
+
+# Strict whole-VDS compute on rwb:
+python compute_coverage.py --project-name aou --environment rwb \\
+    --compute-all-cov-release-stats-ht
+
+# gnomAD v4 consent-drop subtraction + AoU/gnomAD merge:
+python compute_coverage.py --project-name gnomad --environment dataproc \\
+    --merge-gnomad-coverage --merge-gnomad-an
+python compute_coverage.py --project-name aou --environment batch \\
+    --export-coverage-release-files --export-an-release-files \\
+    --merge-qual-hists
+"""
 
 import argparse
 import logging
@@ -197,7 +250,7 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
     skipping work.
 
     :param path: GCS path to probe.
-    :param environment: Compute environment. Only ``"batch"`` activates
+    :param environment: Compute environment. Only "batch" activates
         the permission-error fallback; other environments propagate.
     :return: True if the file exists (or is assumed to under batch
         permission errors), False otherwise.
@@ -261,27 +314,6 @@ def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
     return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
 
 
-def _is_test_run(test: bool, test_chr22_chrx_chry: bool) -> bool:
-    """
-    Return True when any test-mode flag is set.
-
-    :param test: ``--test`` flag.
-    :param test_chr22_chrx_chry: ``--test-chr22-chrx-chry`` flag.
-    :return: True if either flag is set.
-    """
-    return test_chr22_chrx_chry or test
-
-
-def _test_chrom_filter(test_chr22_chrx_chry: bool) -> Optional[List[str]]:
-    """
-    Return the chr22/X/Y contig filter list under ``--test-chr22-chrx-chry``, else None.
-
-    :param test_chr22_chrx_chry: ``--test-chr22-chrx-chry`` flag.
-    :return: ``["chr22", "chrX", "chrY"]`` when set, else ``None``.
-    """
-    return ["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None
-
-
 def _resolve_cov_and_an_ht_path(
     project: str,
     environment: str,
@@ -291,7 +323,7 @@ def _resolve_cov_and_an_ht_path(
     """
     Return the cov_and_an HT path, applying ``suffix`` when set.
 
-    :param project: ``"aou"`` or ``"gnomad"``.
+    :param project: "aou" or "gnomad".
     :param environment: Compute environment.
     :param test: Whether to route to the test path.
     :param suffix: Optional suffix appended before the ``.ht`` extension
@@ -313,7 +345,7 @@ def _resolve_group_membership_ht_path(
     """
     Return the group_membership HT path, applying ``_reduce.ht`` under ``reduce_min_aggs``.
 
-    :param project: ``"aou"`` or ``"gnomad"``.
+    :param project: "aou" or "gnomad".
     :param environment: Compute environment.
     :param test: Whether to route to the test path.
     :param reduce_min_aggs: If True, append ``_reduce`` to the path —
@@ -432,19 +464,41 @@ def _derive_chunk_locus_intervals(
     :return: List of ``hl.Interval`` objects covering the VDS chunk.
     """
     rd = vds_filtered.reference_data
-    bounds = rd.aggregate_rows(
-        hl.agg.group_by(
-            rd.locus.contig,
-            hl.struct(
-                lo=hl.agg.min(rd.locus.position),
-                hi=hl.agg.max(rd.locus.position),
-            ),
-        )
-    )
+    # Use Hail's partitioner-metadata IR op (TableCalculateNewPartitions)
+    # instead of aggregate_rows. The aggregate scans every row of every
+    # selected partition to compute per-contig (min, max) — multi-minute
+    # cost per chunk. _calculate_new_partitions returns the existing
+    # per-partition range bounds directly from the table's RVD spec; same
+    # API hl.vds.read_vds itself uses internally for partition planning
+    # (hail/vds/variant_dataset.py:39). Cost: seconds, not minutes.
+    partition_intervals = rd._calculate_new_partitions(rd.n_partitions())
+
+    def _locus_of(endpoint):
+        # Interval endpoints are typed as the MT row key. VDS reference_data
+        # is keyed by ``locus`` (a single field), so the row key is a
+        # ``Struct(locus=Locus)``; pull the Locus out. Falls back to the
+        # endpoint itself if Hail ever surfaces Locus directly.
+        return endpoint.locus if hasattr(endpoint, "locus") else endpoint
+
+    bounds: dict = {}
+    for iv in partition_intervals:
+        sl = _locus_of(iv.start)
+        el = _locus_of(iv.end)
+        contig = sl.contig
+        lo_pos = sl.position
+        hi_pos = el.position
+        if contig not in bounds:
+            bounds[contig] = [lo_pos, hi_pos]
+        else:
+            bounds[contig][0] = min(bounds[contig][0], lo_pos)
+            bounds[contig][1] = max(bounds[contig][1], hi_pos)
     n = max(n_subdivisions, 1)
     sub_intervals: List[hl.utils.Interval] = []
-    for contig, b in bounds.items():
-        lo, hi = b.lo, b.hi + 1
+    for contig, (lo, hi) in bounds.items():
+        # +1 to convert to a half-open exclusive end, and to give a 1-bp
+        # cushion if the partitioner's end was already exclusive (matches
+        # the prior `b.hi + 1` behavior under aggregate_rows).
+        hi = hi + 1
         total = max(hi - lo, 1)
         step = max(total // n, 1)
         for i in range(n):
@@ -481,15 +535,35 @@ def compute_all_release_stats_per_ref_site(
         Running this function prior to calculating frequencies removes the need for an additional
         densify for frequency calculations.
 
-    :param vds: Input VDS.
-    :param ref_ht: Reference HT.
-    :param sex_karyotype_field: Field name for sex karyotype.
-    :param project: Project name.
-    :param coverage_over_x_bins: List of boundaries for computing samples over X depth.
-    :param interval_ht: Interval HT.
-    :param group_membership_ht: Group membership HT.
-    :param reduce_min_aggs: If True, pass `reducible_aggs={"AN"}` to `compute_stats_per_ref_site` so AN goes through the leaf-reduction path. Requires `group_membership_ht` to have been built with `reduce_to_minimal_groups=True`.
-    :return: HT with allele number and quality histograms per reference site.
+    :param vds: Input VDS. Reference data must carry ``END``/``GQ``/``DP``;
+        a ``LEN`` field is added if missing.
+    :param ref_ht: Locus-only sites Table (typically derived from
+        ``vep_context`` and stripped of telomeres/centromeres) defining
+        the reference positions at which to aggregate.
+    :param sex_karyotype_field: Dotted path on the variant_data column
+        struct to the sample's sex karyotype (e.g.
+        ``"meta.sex_karyotype"``). Used by ``compute_stats_per_ref_site``
+        to set per-sample ploidy on sex chromosomes.
+    :param project: "aou" or "gnomad". When "aou", additionally fans out
+        per-site qual histograms (``qual_hists``); "gnomad" computes only
+        coverage and AN.
+    :param coverage_over_x_bins: DP thresholds for the ``over_X``
+        cumulative-sample-count fields written into the output HT.
+        Default is :data:`COVERAGE_OVER_X_BINS`.
+    :param interval_ht: Optional interval Table forwarded to
+        ``compute_stats_per_ref_site`` for partition pruning. Unused on
+        the v5 path.
+    :param group_membership_ht: Group-membership Table built by
+        ``get_group_membership_ht``. Defines the per-stratum sample sets
+        AN is fanned out across.
+    :param reduce_min_aggs: If True, pass ``reducible_aggs={"AN"}`` to
+        ``compute_stats_per_ref_site`` so AN goes through the
+        leaf-reduction path. Requires ``group_membership_ht`` to have
+        been built with ``reduce_to_minimal_groups=True``.
+    :return: HT keyed by locus with per-stratum ``AN``, flat
+        ``mean``/``over_X``/``median_approx``/``total_DP`` coverage
+        fields (from the global adj-filtered group), and
+        ``qual_hists`` when ``project == "aou"``.
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
@@ -919,7 +993,7 @@ def join_aou_and_gnomad_qual_hists_ht(
     .. note::
         We did not compute qual hists for the gnomAD v4 genomes release
         (https://github.com/broadinstitute/gnomad_qc/blob/e65bdbb5768113c0129199a875d845da245690e2/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1139).
-        This means we will not also not recompute hists on the gnomAD v4 genomes for v5,
+        This means we will also not recompute hists on the gnomAD v4 genomes for v5,
         which also means we will not subtract values from the samples to drop for consent reasons.
 
     :param aou_ht: AoU qual hists HT.
@@ -1014,7 +1088,7 @@ def _load_project_vds(
     - ``test_sample_subset`` application: AoU only, reads ``meta`` from
       disk inside the helper so it's self-contained.
 
-    :param project: ``"aou"`` or ``"gnomad"``.
+    :param project: "aou" or "gnomad".
     :param environment: Compute environment.
     :param partition_range: VDS partition indices (e.g. ``list(range(2))``)
         or ``None`` for the full VDS.
@@ -1066,9 +1140,7 @@ def _load_project_vds(
 
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
-    project: str,
     partition_count: int,
-    test_chr22_chrx_chry: bool,
     chrom: Optional[List[str]],
     sub_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
@@ -1081,23 +1153,21 @@ def _build_chunk_ref_ht(
     intervals. No shuffle, no checkpoint.
 
     Otherwise (the strict/no-fanout path or single-interval chunks), reads
-    ``vep_context`` whole, filters to the VDS chunk's per-contig locus extent
-    (via ``_derive_chunk_locus_intervals`` with ``n_subdivisions=1``), then
-    strips to the locus key and removes telomeres/centromeres.
+    ``vep_context`` whole, filters to ``chrom`` (when set) or to the VDS
+    chunk's per-contig locus extent (via ``_derive_chunk_locus_intervals``
+    with ``n_subdivisions=1``), then strips to the locus key and removes
+    telomeres/centromeres.
 
     :param vds_filtered: VDS already filtered to the chunk's partitions
         (locus extent is derived from its ``reference_data``).
-    :param project: ``"aou"`` or ``"gnomad"`` (unused in current body
-        but kept for symmetry with caller-side context).
-    :param partition_count: When > 0 and ``sub_intervals`` is None,
-        triggers the locus-extent filter against the VDS chunk. 0 means
-        "whole VDS, no chunk filter."
-    :param test_chr22_chrx_chry: If True, restrict ``vep_context`` to
-        the contigs in ``chrom``.
-    :param chrom: Contig list for the test-chrom filter; required when
-        ``test_chr22_chrx_chry`` is True.
+    :param partition_count: When > 0 and ``sub_intervals`` is None and
+        ``chrom`` is None, triggers the locus-extent filter against the
+        VDS chunk. 0 means "whole VDS, no chunk filter."
+    :param chrom: Optional list of contigs to filter ``vep_context`` to.
+        Takes precedence over ``partition_count``-driven locus filtering.
     :param sub_intervals: Optional read-time intervals for
-        ``vep_context``; takes precedence over the locus-extent filter.
+        ``vep_context``; takes precedence over both ``chrom`` and the
+        locus-extent filter.
     :return: Reference HT keyed by locus, with telomeres/centromeres
         removed.
     """
@@ -1109,7 +1179,7 @@ def _build_chunk_ref_ht(
         ref_ht = vep_context.versions["105"].ht(read_args={"_intervals": sub_intervals})
     else:
         ref_ht = vep_context.versions["105"].ht()
-        if test_chr22_chrx_chry:
+        if chrom:
             ref_ht = hl.filter_intervals(
                 ref_ht, [hl.parse_locus_interval(c) for c in chrom]
             )
@@ -1149,13 +1219,11 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
       5. Write to ``args.chunk_output``.
 
     When ``--read-subintervals-per-chunk=1`` (legacy behavior), skips the
-    probe/re-read and reads the VDS once via ``filter_partitions`` plus
-    builds ``ref_ht`` via the locus-extent filter path (no shuffle either way
-    — the manufactured 2-vs-2N skew that the old ``--repartition-factor``
-    arg created is now gone).
+    probe/re-read and reads the VDS once via ``filter_partitions``, then
+    builds ``ref_ht`` via the locus-extent filter path.
 
     :param args: Parsed CLI args; reads ``project_name``, ``environment``,
-        ``chunk_start``, ``chunk_stop``, ``test``, ``test_chr22_chrx_chry``,
+        ``chunk_start``, ``chunk_stop``, ``test``, ``chrom``,
         ``read_subintervals_per_chunk``, ``chunk_output``,
         ``cov_and_an_output_suffix``, ``reduce_min_aggs``,
         ``test_sample_subset``. Hail must already be initialized.
@@ -1169,8 +1237,8 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     partition_range = list(range(start, stop))
     n = stop - start
 
-    test = _is_test_run(args.test, args.test_chr22_chrx_chry)
-    chrom = _test_chrom_filter(args.test_chr22_chrx_chry)
+    test = args.test
+    chrom = args.chrom
     n_sub = max(args.read_subintervals_per_chunk, 1)
 
     if args.chunk_output is None:
@@ -1191,7 +1259,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     )
 
     sub_intervals: Optional[List[hl.utils.Interval]] = None
-    if n_sub > 1 and not args.test_chr22_chrx_chry:
+    if n_sub > 1 and not chrom:
         # Probe: cheap reference_data-bounds load via filter_partitions.
         if project == "aou":
             vds_probe = get_aou_vds(
@@ -1227,9 +1295,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     ref_ht = _build_chunk_ref_ht(
         vds_filtered=vds,
-        project=project,
         partition_count=n,
-        test_chr22_chrx_chry=args.test_chr22_chrx_chry,
         chrom=chrom,
         sub_intervals=sub_intervals,
     )
@@ -1448,8 +1514,8 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append("--test-sample-subset")
     if args.cov_and_an_output_suffix:
         flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
-    if args.test_chr22_chrx_chry:
-        flags.append("--test-chr22-chrx-chry")
+    if args.chrom:
+        flags.append(f"--chrom {' '.join(args.chrom)}")
     if args.test:
         flags.append("--test")
     if args.app_name:
@@ -1986,11 +2052,11 @@ def main(args):
     """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
     project = args.project_name
     environment = args.environment
+    test = args.test
+    chrom = args.chrom
+    overwrite = args.overwrite
 
     _configure_chunk_backend(args)
-
-    test = _is_test_run(args.test, args.test_chr22_chrx_chry)
-
     # --use-batch-fanout: orchestrator submits a Hail Batch and exits
     # without initializing Hail (each per-chunk relay spawns its own QoB
     # driver).
@@ -2063,10 +2129,6 @@ def main(args):
             args.merge_inputs, args.merge_output, coalesce_to=args.merge_coalesce_to
         )
         return
-
-    # Strict-path actions: resolve shared paths, then dispatch to handlers.
-    chrom = _test_chrom_filter(args.test_chr22_chrx_chry)
-    overwrite = args.overwrite
 
     try:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
@@ -2153,9 +2215,7 @@ def main(args):
             )
             ref_ht = _build_chunk_ref_ht(
                 vds_filtered=vds,
-                project=project,
                 partition_count=0,
-                test_chr22_chrx_chry=args.test_chr22_chrx_chry,
                 chrom=chrom,
             )
             validate_vds(vds)
@@ -2483,12 +2543,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test-sample-subset",
         action="store_true",
         help=(
-            "When `--test` (or `--test-chr22-chrx-chry`)"
-            " is set on AoU, additionally subsample the AoU sample set to"
-            " ~0.1%% via `meta_ht.sample(0.001)`. Default off: a `--test` run"
-            " uses all samples but the partition / chrom subset, so AN values"
-            " are stable and comparable across runs. Useful when you want a"
-            " cheap tiny-cohort sanity check rather than a real-scale slice."
+            "When `--test` is set on AoU, additionally subsample the AoU"
+            " sample set to ~0.1%% via `meta_ht.sample(0.001)`. Default"
+            " off: a `--test` run uses all samples but the partition /"
+            " chrom subset, so AN values are stable and comparable"
+            " across runs. Useful for a cheap tiny-cohort sanity check"
+            " rather than a real-scale slice."
         ),
     )
 
@@ -2501,17 +2561,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Route reads/writes to test paths (group_membership,"
-            " cov_and_an, release HTs, etc.). Full data is processed"
-            " unless --test-chr22-chrx-chry is also passed."
+            " cov_and_an, release HTs, etc.). Independent of"
+            " ``--chrom``: combine for a chrom-filtered test run."
         ),
     )
-    test_group.add_argument(
-        "--test-chr22-chrx-chry",
-        action="store_true",
+    parser.add_argument(
+        "--chrom",
+        nargs="+",
+        default=None,
         help=(
-            "In addition to --test path routing, filter input data to"
-            " chr22, chrX, and chrY only. Useful for cheap correctness"
-            " checks."
+            "Filter input data to these contigs (e.g."
+            " ``--chrom chr22 chrX chrY``). Default: no chrom filter."
+            " Independent of --test."
         ),
     )
 
