@@ -56,7 +56,6 @@ import argparse
 import logging
 import subprocess
 from functools import reduce
-from os import getenv
 from typing import List, Optional, Sequence, Tuple
 
 import hail as hl
@@ -562,7 +561,7 @@ def compute_all_release_stats_per_ref_site(
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
         entry_keep_fields=["GQ", "DP"],
-        reducible_aggs={"AN"},
+        reducible_aggs={"AN"} if reduce_min_aggs else None,
         entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field="sex_karyotype",
     )
@@ -1968,13 +1967,8 @@ def main(args):
     )
 
     # QoB / dataproc init. ``--experimental`` attaches the QoB driver to
-    # an existing Hail Batch via ``HAIL_BATCH_ID``; otherwise each run
-    # creates its own Hail Batch.
-    batch_id = None
-    if args.experimental:
-        batch_id_env = getenv("HAIL_BATCH_ID")
-        batch_id = int(batch_id_env) if batch_id_env else None
-
+    # an existing Hail Batch (batch_id auto-resolved from HAIL_BATCH_ID
+    # inside _init_hail); otherwise each run creates its own Hail Batch.
     _init_hail(
         log_name,
         environment,
@@ -1982,7 +1976,6 @@ def main(args):
         tmp_dir_days=args.tmp_dir_days,
         tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}coverage_and_an_generation",
         experimental=args.experimental,
-        batch_id=batch_id,
         **_get_batch_resource_kwargs(args),
     )
 
@@ -2304,10 +2297,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Route the QoB init through `hl.experimental.init` instead of"
-            " `hl.init`. When set, also reads HAIL_BATCH_ID from the env"
-            " and (if present) attaches the QoB driver to that existing"
-            " Hail Batch instead of creating a new one. Without this flag,"
-            " HAIL_BATCH_ID is ignored."
+            " `hl.init` and attach the QoB driver to an existing Hail Batch."
+            " Requires HAIL_BATCH_ID to be set in the env (Hail Batch"
+            " injects this inside batch jobs); raises if not. Without this"
+            " flag, each invocation creates its own Hail Batch."
         ),
     )
     batch_group.add_argument(
@@ -2508,9 +2501,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Build and submit a Hail Batch pipeline that fans out the"
             " coverage/AN compute by partition chunks (QoB-from-container"
             " per chunk). Mutually exclusive with"
-            " --compute-all-cov-release-stats-ht and the per-chunk worker"
-            " flags. After all chunks complete, run --merge-cov-chunks"
-            " to union them into the final HT."
+            " --compute-all-cov-release-stats-ht, --merge-cov-chunks,"
+            " --run-chunk, and --run-merge. After all chunks complete,"
+            " run --merge-cov-chunks to union them into the final HT."
         ),
     )
     fanout_group.add_argument(
@@ -2785,7 +2778,7 @@ if __name__ == "__main__":
         "app_name",
         "driver_cores",
         "driver_memory",
-        "driver_jvm_heap",
+        "jvm_heap_size",
         "chunk_driver_cores",
         "chunk_driver_memory",
         "worker_cores",
@@ -2800,10 +2793,10 @@ if __name__ == "__main__":
             f"require --environment=batch"
         )
 
-    # --driver-jvm-heap only applies to the in-process JVM under --experimental.
-    if args.driver_jvm_heap is not None and not args.experimental:
+    # --jvm-heap-size only applies to the in-process JVM under --experimental.
+    if args.jvm_heap_size is not None and not args.experimental:
         parser.error(
-            "--driver-jvm-heap requires --experimental (it controls the"
+            "--jvm-heap-size requires --experimental (it controls the"
             " in-process JVM heap for hl.experimental.init)."
         )
 

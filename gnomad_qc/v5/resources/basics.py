@@ -1,6 +1,7 @@
 """Script containing generic resources."""
 
 import logging
+from os import getenv
 from typing import Dict, List, Optional, Set, Union
 
 import hail as hl
@@ -124,20 +125,32 @@ def _init_hail(
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
     :param experimental: If True (batch only), route the init through
-        ``hl.experimental.init`` instead of ``hl.init``. Use when
-        attaching to an existing Hail Batch (pass ``batch_id``) or to
-        forward ``jvm_heap_size`` (experimental-only kwarg).
-    :param batch_id: If set (batch only), attach the QoB driver to an
-        existing Hail Batch with this ID instead of creating a new batch.
-        Useful for adding QoB jobs to a batch the caller already
-        constructed (e.g., a ``hailtop.batch`` pipeline). Setting this
-        also implies ``experimental=True`` since the attach-to-batch
-        behavior is exposed via ``hl.experimental.init``.
+        ``hl.experimental.init`` instead of ``hl.init`` and attach the
+        QoB driver to an existing Hail Batch. By default, ``batch_id``
+        is auto-resolved from the ``HAIL_BATCH_ID`` env var (which Hail
+        Batch sets inside a batch job); pass ``batch_id`` explicitly
+        to override. Raises if neither is available.
+    :param batch_id: Explicit Hail Batch ID to attach the QoB driver
+        to. When set, automatically enables the experimental path
+        (attach-to-batch is only exposed via ``hl.experimental.init``).
+        When unset and ``experimental=True``, falls back to the
+        ``HAIL_BATCH_ID`` env var.
     :param kwargs: Additional keyword arguments forwarded to hl.init() in all
         environments. None values are silently dropped, so optional params (e.g.
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
+    if experimental and batch_id is None:
+        # Default: pick up the outer batch's ID from HAIL_BATCH_ID
+        # (set automatically by Hail Batch inside a batch job).
+        env_batch_id = getenv("HAIL_BATCH_ID")
+        if not env_batch_id:
+            raise ValueError(
+                "experimental=True requires batch_id, or HAIL_BATCH_ID"
+                " in the environment. (When running outside a Hail Batch"
+                " job, pass batch_id explicitly or omit experimental.)"
+            )
+        batch_id = int(env_batch_id)
     log = (
         f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
         if environment == "rwb"
