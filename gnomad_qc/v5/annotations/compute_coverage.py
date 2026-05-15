@@ -2332,7 +2332,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Memory type for driver node (e.g., 'highmem').",
     )
     batch_group.add_argument(
-        "--driver-jvm-heap",
+        "--jvm-heap-size",
         type=str,
         default=None,
         help=(

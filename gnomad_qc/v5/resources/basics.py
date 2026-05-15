@@ -124,8 +124,9 @@ def _init_hail(
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
     :param experimental: If True (batch only), route the init through
-        ``hl.experimental.init`` instead of ``hl.init``. Required when
-        attaching to an existing Hail Batch via ``batch_id``.
+        ``hl.experimental.init`` instead of ``hl.init``. Use when
+        attaching to an existing Hail Batch (pass ``batch_id``) or to
+        forward ``jvm_heap_size`` (experimental-only kwarg).
     :param batch_id: If set (batch only), attach the QoB driver to an
         existing Hail Batch with this ID instead of creating a new batch.
         Useful for adding QoB jobs to a batch the caller already
