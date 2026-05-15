@@ -126,10 +126,12 @@ def _init_hail(
         Must be None, 4, or 30. Default is 4.
     :param experimental: If True (batch only), route the init through
         ``hl.experimental.init`` instead of ``hl.init`` and attach the
-        QoB driver to an existing Hail Batch. By default, ``batch_id``
-        is auto-resolved from the ``HAIL_BATCH_ID`` env var (set by
-        Hail Batch when a job runs inside a batch); pass ``batch_id``
-        explicitly to override. Raises if neither is available.
+        QoB driver to an existing Hail Batch (also required to pass
+        ``jvm_heap_size``, which is experimental-only). By default,
+        ``batch_id`` is auto-resolved from the ``HAIL_BATCH_ID`` env
+        var (set by Hail Batch when a job runs inside a batch); pass
+        ``batch_id`` explicitly to override. Raises if neither is
+        available.
     :param batch_id: Explicit Hail Batch ID to attach the QoB driver
         to. When set, automatically enables the experimental path
         (attach-to-batch is only exposed via ``hl.experimental.init``).
@@ -308,15 +310,10 @@ _BATCH_RESOURCE_PARAMS = [
     "app_name",
     "driver_cores",
     "driver_memory",
-    "driver_jvm_heap",
+    "jvm_heap_size",
     "worker_cores",
     "worker_memory",
 ]
-
-# argparse-attr -> hl.init/hl.experimental.init kwarg, when they differ.
-_BATCH_RESOURCE_KWARG_RENAMES = {
-    "driver_jvm_heap": "jvm_heap_size",
-}
 
 
 def _get_batch_resource_kwargs(args) -> dict:
@@ -324,24 +321,22 @@ def _get_batch_resource_kwargs(args) -> dict:
     Extract optional Hail Batch resource parameters from parsed args, omitting None values.
 
     Intended for use with scripts that expose ``--app-name``, ``--driver-cores``,
-    ``--driver-memory``, ``--driver-jvm-heap``, ``--worker-cores``, and
+    ``--driver-memory``, ``--jvm-heap-size``, ``--worker-cores``, and
     ``--worker-memory`` arguments. The result can be unpacked directly into
     :func:`_init_hail`.
 
-    ``driver_jvm_heap`` is only honored under ``hl.experimental.init`` (where it
-    sets ``jvm_heap_size``); it is dropped silently for the non-experimental
-    path since ``hl.init`` rejects unknown kwargs.
+    ``jvm_heap_size`` is only honored under ``hl.experimental.init``; it is
+    dropped silently for the non-experimental path since ``hl.init`` rejects
+    unknown kwargs.
 
     :param args: Parsed command-line arguments.
     :return: Dict of non-None batch resource kwargs.
     """
-    out = {}
-    for p in _BATCH_RESOURCE_PARAMS:
-        v = getattr(args, p, None)
-        if v is None:
-            continue
-        out[_BATCH_RESOURCE_KWARG_RENAMES.get(p, p)] = v
-    return out
+    return {
+        p: getattr(args, p)
+        for p in _BATCH_RESOURCE_PARAMS
+        if getattr(args, p, None) is not None
+    }
 
 
 def get_aou_vds(
