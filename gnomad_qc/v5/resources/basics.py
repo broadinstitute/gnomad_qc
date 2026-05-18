@@ -130,7 +130,7 @@ def _init_hail(
         ``jvm_heap_size``, which is experimental-only). By default,
         ``batch_id`` is auto-resolved from the ``HAIL_BATCH_ID`` env
         var (set by Hail Batch when a job runs inside a batch); pass
-        ``batch_id`` explicitly to override. Raises if neither is
+        ``batch_id`` explicitly to override. Raises error if neither is
         available.
     :param batch_id: Explicit Hail Batch ID to attach the QoB driver
         to. When set, automatically enables the experimental path
