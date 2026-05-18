@@ -672,6 +672,9 @@ def main(args):
             new_vep_ht = new_vep_ht.annotate(
                 vep=new_vep_ht.vep.drop("motif_feature_consequences")
             )
+            # hl.vep adds a per-row vep_proc_id metadata field; drop it so
+            # the row schema matches the cached side for the union.
+            new_vep_ht = new_vep_ht.drop("vep_proc_id")
             ht = ht.filter(hl.is_defined(ht.vep)).union(new_vep_ht)
             ht.write(vep_ht_path, overwrite=overwrite)
 
