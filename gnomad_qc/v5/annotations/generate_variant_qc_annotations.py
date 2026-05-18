@@ -472,16 +472,19 @@ def main(args):
     test = args.test or test_n_partitions is not None
     vep_version = args.vep_version
 
-    vep_input_ht_path = get_vep_input_ht(test=test, vep_version=vep_version).path
-    vep_ht_path = get_vep(
-        test=test, vep_version=vep_version, environment=environment
-    ).path
-    info_ht_path = get_info_ht(test=test, environment=environment).path
-    trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
-    sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
-    variant_qc_annotation_ht_path = get_variant_qc_annotations(
-        test=test, environment=environment
-    ).path
+    if environment != "dataproc":
+        vep_input_ht_path = get_vep_input_ht(test=test, vep_version=vep_version).path
+        info_ht_path = get_info_ht(test=test, environment=environment).path
+        trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
+        sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
+        variant_qc_annotation_ht_path = get_variant_qc_annotations(
+            test=test, environment=environment
+        ).path
+
+    if environment == "dataproc":
+        vep_ht_path = get_vep(
+            test=test, vep_version=vep_version, environment=environment
+        ).path
 
     if args.export_true_positive_vcfs and not (
         args.transmitted_singletons or args.sibling_singletons
