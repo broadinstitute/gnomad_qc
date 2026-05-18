@@ -693,8 +693,13 @@ def main(args):
                 output_step_resources={"validate_vep_ht": [validate_vep_ht_path]},
                 overwrite=overwrite,
             )
+            vep_ht = hl.read_table(vep_ht_path)
+            # count_vep_annotated_variants_per_interval hardcodes `vep_ht.vep`,
+            # so rename `vep<version>` back to `vep` for the call.
+            if vep_version != DEFAULT_VEP_VERSION:
+                vep_ht = vep_ht.rename({f"vep{vep_version}": "vep"})
             count_ht = count_vep_annotated_variants_per_interval(
-                hl.read_table(vep_ht_path),
+                vep_ht,
                 ensembl_interval.ht(),
             )
             count_ht.write(validate_vep_ht_path, overwrite=overwrite)
