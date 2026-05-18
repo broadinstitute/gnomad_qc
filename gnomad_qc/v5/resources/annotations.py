@@ -401,7 +401,6 @@ def get_true_positive_vcf_path(
 
 def get_vep_input_ht(
     test: bool = False,
-    vep_version: str = DEFAULT_VEP_VERSION,
 ) -> VersionedTableResource:
     """
     Get the gnomAD v5 VEP input VersionedTableResource.
@@ -409,25 +408,24 @@ def get_vep_input_ht(
     This Table is an intermediate written from a QoB (Batch) job containing
     split-multi variant rows filtered to release samples from the v5 VDS. It is
     stored in the AoU 30-day temp bucket so that it is accessible from both
-    Batch (QoB) and Dataproc environments.
+    Batch (QoB) and Dataproc environments. The input rows for VEP do not change
+    based on VEP version, so this Table is shared across VEP versions.
 
     :param test: Whether to use a tmp path for analysis of the test Table instead of
         the full v5 Table.
-    :param vep_version: VEP version to use (e.g., "105", "115"). Default is "105".
     :return: gnomAD v5 VEP input VersionedTableResource.
     """
-    vep_version_postfix = "" if vep_version == DEFAULT_VEP_VERSION else vep_version
     return VersionedTableResource(
-        CURRENT_VEP_ANNOTATION_VERSION[vep_version],
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
                     f"{qc_temp_prefix(version=version, environment='dataproc', days=30, use_aou_temp_bucket=True)}"
                     f"{'test/' if test else ''}"
-                    f"gnomad.genomes.v{version}.vep_input{vep_version_postfix}.ht"
+                    f"gnomad.genomes.v{version}.vep_input.ht"
                 )
             )
-            for version in VEP_ANNOTATION_VERSIONS[vep_version]
+            for version in ANNOTATION_VERSIONS
         },
     )
 
