@@ -473,7 +473,7 @@ def main(args):
     vep_version = args.vep_version
 
     if environment != "dataproc":
-        vep_input_ht_path = get_vep_input_ht(test=test, vep_version=vep_version).path
+        vep_input_ht_path = get_vep_input_ht(test=test).path
         info_ht_path = get_info_ht(test=test, environment=environment).path
         trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
         sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
@@ -482,7 +482,7 @@ def main(args):
         ).path
 
     if environment == "dataproc":
-        vep_input_ht_path = get_vep_input_ht(test=test, vep_version=vep_version).path
+        vep_input_ht_path = get_vep_input_ht(test=test).path
         vep_ht_path = get_vep(
             test=test, vep_version=vep_version, environment=environment
         ).path
