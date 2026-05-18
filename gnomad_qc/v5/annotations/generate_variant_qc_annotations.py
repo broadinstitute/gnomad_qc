@@ -455,7 +455,7 @@ def prepare_vep_input_ht(
             .select()
         )
     )
-    return ht.anti_join(v4_sites)
+    return ht.anti_join(v4_sites).select_globals().select()
 
 
 def main(args):
@@ -676,6 +676,10 @@ def main(args):
             # the row schema matches the cached side for the union.
             new_vep_ht = new_vep_ht.drop("vep_proc_id")
             ht = ht.filter(hl.is_defined(ht.vep)).union(new_vep_ht)
+            # Rename `vep` to `vep<version>` for non-default versions to
+            # mirror the path-postfix convention (e.g. vep115.ht / vep115).
+            if vep_version != DEFAULT_VEP_VERSION:
+                ht = ht.rename({"vep": f"vep{vep_version}"})
             ht.write(vep_ht_path, overwrite=overwrite)
 
         if args.validate_vep:
