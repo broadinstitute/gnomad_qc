@@ -482,6 +482,7 @@ def main(args):
         ).path
 
     if environment == "dataproc":
+        vep_input_ht_path = get_vep_input_ht(test=test, vep_version=vep_version).path
         vep_ht_path = get_vep(
             test=test, vep_version=vep_version, environment=environment
         ).path
