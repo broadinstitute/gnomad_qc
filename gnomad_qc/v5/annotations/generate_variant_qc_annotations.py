@@ -15,7 +15,7 @@ from gnomad.utils.annotations import (
 )
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
-from gnomad.utils.vep import vep_or_lookup_vep
+from gnomad.utils.vep import get_vep_context
 from gnomad.variant_qc.pipeline import (
     INFO_FEATURES,
     NON_INFO_FEATURES,
@@ -659,7 +659,20 @@ def main(args):
                 overwrite=overwrite,
             )
             ht = hl.read_table(vep_input_ht_path)
-            ht = vep_or_lookup_vep(ht, vep_version=vep_version)
+            # The VEP context HTs (v105 and v115) have an internal
+            # inconsistency: their globals declare a vep_json_schema (under
+            # vep_config) that includes motif_feature_consequences, but the
+            # row-level vep field stored on the HTs omits it. Running hl.vep
+            # with the schema from the globals emits motif_feature_consequences
+            # as a row annotation, throwing an error when unioning tables.
+            # Drop motif_feature_consequences to allow union.
+            context_ht = get_vep_context("GRCh38").versions[vep_version].ht()
+            ht = ht.annotate(vep=context_ht[ht.key].vep)
+            new_vep_ht = hl.vep(ht.filter(hl.is_missing(ht.vep)))
+            new_vep_ht = new_vep_ht.annotate(
+                vep=new_vep_ht.vep.drop("motif_feature_consequences")
+            )
+            ht = ht.filter(hl.is_defined(ht.vep)).union(new_vep_ht)
             ht.write(vep_ht_path, overwrite=overwrite)
 
         if args.validate_vep:
