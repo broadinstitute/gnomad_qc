@@ -78,11 +78,9 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
 )
 from gnomad.utils.sparse_mt import (
-    compute_stats_per_ref_site_sparse,
-    get_coverage_agg_func_sparse,
-    merge_coverage_stats_array_expression,
-    merge_qual_hists_array_expression,
-    merge_sum_array_expression,
+    compute_stats_per_ref_site,
+    get_allele_number_agg_func,
+    get_coverage_agg_func,
 )
 from hail.utils.misc import new_temp_file
 
