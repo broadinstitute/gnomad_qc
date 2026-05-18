@@ -118,6 +118,15 @@ logger.setLevel(logging.INFO)
 
 COVERAGE_OVER_X_BINS = (1, 5, 10, 15, 20, 25, 30, 50, 100)
 
+# Overall groups that non-reducible aggregations (coverage_stats →
+# {"group": "adj"}, qual_hists → {"group": "raw"}) are pinned to via
+# `entry_agg_group_membership`. Under `--reduce-min-aggs` these must be
+# retained as leaves in the reduced group_membership HT so they stay
+# directly computed (a cheap index lookup) instead of reconstructed
+# per-row from their leaf-children, which is what made the reduced AoU
+# run more expensive than the non-reduced one.
+PINNED_LEAF_GROUPS = [{"group": "adj"}, {"group": "raw"}]
+
 
 def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     """
@@ -168,6 +177,7 @@ def get_group_membership_ht(
                 downsampling_expr=ds_ht[meta_ht.key].downsampling,
             ),
             reduce_to_minimal_groups=reduce_min_aggs,
+            force_leaf_groups=PINNED_LEAF_GROUPS,
             downsamplings=hl.eval(ds_ht.downsamplings),
             ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
         )
@@ -200,6 +210,7 @@ def get_group_membership_ht(
                 gen_anc_expr=ht.population_inference.pop,
             ),
             reduce_to_minimal_groups=reduce_min_aggs,
+            force_leaf_groups=PINNED_LEAF_GROUPS,
         )
 
     return ht
