@@ -1,6 +1,7 @@
 """Script containing generic resources."""
 
 import logging
+from os import getenv
 from typing import Dict, List, Optional, Set, Union
 
 import hail as hl
@@ -110,6 +111,8 @@ def _init_hail(
     environment: str = "batch",
     billing_project: Optional[str] = None,
     tmp_dir_days: Optional[int] = 4,
+    experimental: bool = False,
+    batch_id: Optional[int] = None,
     **kwargs,
 ) -> None:
     """
@@ -121,11 +124,43 @@ def _init_hail(
         Default is None. When None, uses "broad-mpg-gnomad".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
+    :param experimental: If True (batch only), route the init through
+        ``hl.experimental.init`` instead of ``hl.init`` and attach the
+        QoB driver to an existing Hail Batch (also required to pass
+        ``jvm_heap_size``, which is experimental-only). By default,
+        ``batch_id`` is auto-resolved from the ``HAIL_BATCH_ID`` env
+        var (set by Hail Batch when a job runs inside a batch); pass
+        ``batch_id`` explicitly to override. Raises error if neither is
+        available.
+    :param batch_id: Explicit Hail Batch ID to attach the QoB driver
+        to. When set, automatically enables the experimental path
+        (attach-to-batch is only exposed via ``hl.experimental.init``).
+        When unset and ``experimental=True``, falls back to the
+        ``HAIL_BATCH_ID`` env var.
     :param kwargs: Additional keyword arguments forwarded to hl.init() in all
         environments. None values are silently dropped, so optional params (e.g.
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
+    use_experimental = experimental or batch_id is not None
+    if use_experimental and environment != "batch":
+        raise ValueError(
+            "experimental=True / batch_id=... is only supported when"
+            f" environment='batch'; got environment={environment!r}."
+        )
+
+    if experimental and batch_id is None:
+        # Default: pick up the outer batch's ID from HAIL_BATCH_ID
+        # (set automatically by Hail Batch inside a batch job).
+        env_batch_id = getenv("HAIL_BATCH_ID")
+        if not env_batch_id:
+            raise ValueError(
+                "experimental=True requires batch_id, or HAIL_BATCH_ID"
+                " in the environment. (When running outside a Hail Batch"
+                " job, pass batch_id explicitly or omit experimental.)"
+            )
+        batch_id = int(env_batch_id)
+
     log = (
         f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
         if environment == "rwb"
@@ -148,7 +183,23 @@ def _init_hail(
                 "regions": ["us-central1"],
             }
         )
-    hl.init(**init_kwargs)
+        if batch_id is not None:
+            init_kwargs["batch_id"] = batch_id
+
+    # Two init paths: the experimental path is required when we need
+    # attach-to-batch (`batch_id`) or per-driver JVM heap sizing
+    # (`jvm_heap_size`); the regular path is the default.
+    if use_experimental:
+        # Hail team request: skip Hail's own logging configuration on the
+        # experimental path so they can attach their own handlers when
+        # troubleshooting QoB-driver issues.
+        init_kwargs["skip_logging_configuration"] = True
+        hl.experimental.init(**init_kwargs)
+    else:
+        # `jvm_heap_size` is `hl.experimental.init`-only; `hl.init` would
+        # reject it.
+        init_kwargs.pop("jvm_heap_size", None)
+        hl.init(**init_kwargs)
     hl.default_reference("GRCh38")
 
 
@@ -260,6 +311,7 @@ _BATCH_RESOURCE_PARAMS = [
     "app_name",
     "driver_cores",
     "driver_memory",
+    "jvm_heap_size",
     "worker_cores",
     "worker_memory",
 ]
@@ -270,8 +322,13 @@ def _get_batch_resource_kwargs(args) -> dict:
     Extract optional Hail Batch resource parameters from parsed args, omitting None values.
 
     Intended for use with scripts that expose ``--app-name``, ``--driver-cores``,
-    ``--driver-memory``, ``--worker-cores``, and ``--worker-memory`` arguments. The
-    result can be unpacked directly into :func:`_init_hail`.
+    ``--driver-memory``, ``--jvm-heap-size``, ``--worker-cores``, and
+    ``--worker-memory`` arguments. The result can be unpacked directly into
+    :func:`_init_hail`.
+
+    ``jvm_heap_size`` is only honored under ``hl.experimental.init``; it is
+    dropped silently for the non-experimental path since ``hl.init`` rejects
+    unknown kwargs.
 
     :param args: Parsed command-line arguments.
     :return: Dict of non-None batch resource kwargs.
