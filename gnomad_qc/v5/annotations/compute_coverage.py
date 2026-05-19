@@ -1427,6 +1427,7 @@ def _submit_chunk_batch(
     setup_cmd: str,
     common_flags_str: str,
     script: str,
+    wave_label: Optional[str] = None,
 ) -> None:
     """
     Build and submit one Hail Batch containing all pending chunk jobs.
@@ -1455,6 +1456,9 @@ def _submit_chunk_batch(
     :param common_flags_str: Shared CLI flags from
         ``_build_chunk_common_flags``.
     :param script: Path to the script inside the relay container.
+    :param wave_label: Optional suffix appended to the Hail Batch name to
+        distinguish per-wave batches (e.g. ``"w03of49"``). None for a
+        single (non-waved) batch.
     :return: None.
     """
     project = args.project_name
@@ -1466,6 +1470,8 @@ def _submit_chunk_batch(
     )
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
+    if wave_label:
+        batch_name += f"_{wave_label}"
 
     if not chunk_indices:
         logger.info("  no pending chunks for %s; skipping batch.run()", batch_name)
@@ -1514,28 +1520,41 @@ def _orchestrate_coverage_batch(
     """
     Fan per-partition coverage/AN compute out as relay chunk jobs in Hail Batch.
 
-    Submits ONE Hail Batch containing one relay job per pending chunk
-    (each chunk spawns its own QoB driver via ``hl.init(backend="batch")``).
-    Hail Batch's own scheduler runs the chunk jobs in parallel up to the
-    worker-pool capacity — no orchestrator-side threading or wave
-    dispatch needed (and not safe: Hail Batch's progress display is a
-    process-global rich.Live, so two concurrent ``batch.run()`` calls
-    crash with ``Only one live display may be active at once``).
+    Pending chunks are split into sequential **waves** of
+    ``--wave-size`` chunks. Each wave is its own Hail Batch (one relay
+    job per chunk; each relay spawns its own QoB driver via
+    ``hl.init(backend="batch")``) and is run to completion before the
+    next wave is submitted. Waves are sequential — ``batch.run()`` blocks
+    until the wave finishes — which (a) bounds the number of
+    concurrently-running chunk relays and their nested QoB drivers to
+    ``--wave-size`` so a ~tens-of-thousands-chunk prod run doesn't
+    overwhelm the shared Hail Batch service / GCP quota, and (b) is the
+    only safe option: Hail Batch's progress display is a process-global
+    rich.Live, so *concurrent* ``batch.run()`` calls crash with ``Only
+    one live display may be active at once`` (sequential calls are
+    fine). Within a wave, Hail Batch's own scheduler runs the relay jobs
+    in parallel up to worker-pool capacity. Set ``--wave-size <= 0`` (or
+    >= the pending count) for a single batch (legacy behavior).
 
     By default each chunk's inner QoB creates its own separate Hail Batch;
     pass ``--experimental`` to attach the inner QoB to this outer batch
     via ``HAIL_BATCH_ID``.
 
-    Idempotency: chunks whose ``_SUCCESS`` already exists are skipped.
+    Idempotency: chunks whose ``_SUCCESS`` already exists are skipped, so
+    a failed/partial wave is resumed by simply rerunning this step (only
+    not-yet-complete chunks are re-submitted). ``batch.run()`` does not
+    raise on per-job failure, so a wave with some failed chunks does not
+    abort the remaining waves; rerun to retry the failures.
 
     The merge step is intentionally separate; run ``--merge-cov-chunks``
     after this finishes.
 
     :param args: Parsed CLI args (reads ``project_name``,
-        ``total_partitions``, ``partitions_per_chunk``, ``overwrite``,
-        ``methods_branch``, ``gcp_billing_project``, ``batch_billing_project``,
-        ``batch_remote_tmpdir``, plus everything ``_build_chunk_common_flags``
-        and ``_submit_chunk_batch`` read).
+        ``total_partitions``, ``partitions_per_chunk``, ``wave_size``,
+        ``overwrite``, ``methods_branch``, ``gcp_billing_project``,
+        ``batch_billing_project``, ``batch_remote_tmpdir``, plus
+        everything ``_build_chunk_common_flags`` and
+        ``_submit_chunk_batch`` read).
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path
         (resolved by ``main``). Each chunk writes to
         ``<cov_and_an_path>_chunks/<idx>.chunk.ht``; the final HT at
@@ -1593,15 +1612,44 @@ def _orchestrate_coverage_batch(
     common_flags_str = _build_chunk_common_flags(args)
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
 
-    _submit_chunk_batch(
-        args=args,
-        backend_kwargs=backend_kwargs,
-        chunk_indices=pending_indices,
-        cov_and_an_ht_path=cov_and_an_ht_path,
-        setup_cmd=setup_cmd,
-        common_flags_str=common_flags_str,
-        script=script,
+    wave_size = args.wave_size
+    if wave_size <= 0 or wave_size >= len(pending_indices):
+        waves = [pending_indices]
+    else:
+        waves = [
+            pending_indices[i : i + wave_size]
+            for i in range(0, len(pending_indices), wave_size)
+        ]
+    n_waves = len(waves)
+    logger.info(
+        "Dispatching %d pending chunks in %d sequential wave(s) of up to"
+        " %d chunks each.",
+        len(pending_indices),
+        n_waves,
+        wave_size if wave_size > 0 else len(pending_indices),
     )
+
+    for wi, wave_indices in enumerate(waves, start=1):
+        wave_label = f"w{wi:03d}of{n_waves:03d}" if n_waves > 1 else None
+        logger.info(
+            "Wave %d/%d: submitting %d chunks (indices %d..%d).",
+            wi,
+            n_waves,
+            len(wave_indices),
+            wave_indices[0],
+            wave_indices[-1],
+        )
+        _submit_chunk_batch(
+            args=args,
+            backend_kwargs=backend_kwargs,
+            chunk_indices=wave_indices,
+            cov_and_an_ht_path=cov_and_an_ht_path,
+            setup_cmd=setup_cmd,
+            common_flags_str=common_flags_str,
+            script=script,
+            wave_label=wave_label,
+        )
+        logger.info("Wave %d/%d complete.", wi, n_waves)
 
 
 def _build_merge_common_flags(args: argparse.Namespace) -> str:
@@ -2560,6 +2608,24 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Total VDS partition count to scatter across. Default 145192"
             " (prod AoU VDS partition count). Used by --use-batch-fanout."
+        ),
+    )
+    fanout_group.add_argument(
+        "--wave-size",
+        type=int,
+        default=1000,
+        help=(
+            "Max chunks (= relay jobs) submitted per Hail Batch under"
+            " --use-batch-fanout. Pending chunks are split into"
+            " sequential waves of this size; each wave's Hail Batch runs"
+            " to completion before the next is submitted, so the number"
+            " of concurrently-running chunk relays (and their nested QoB"
+            " drivers) is bounded by --wave-size. Prevents a single"
+            " ~tens-of-thousands-job batch from overwhelming the shared"
+            " Hail Batch service / GCP quota. Waves are restartable: a"
+            " rerun skips chunks whose _SUCCESS already exists. Set <= 0"
+            " or >= total chunk count for a single batch (legacy"
+            " behavior). Default 1000."
         ),
     )
     fanout_group.add_argument(
