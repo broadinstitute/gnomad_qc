@@ -142,6 +142,13 @@ def _init_hail(
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
+    use_experimental = experimental or batch_id is not None
+    if use_experimental and environment != "batch":
+        raise ValueError(
+            "experimental=True / batch_id=... is only supported when"
+            f" environment='batch'; got environment={environment!r}."
+        )
+
     if experimental and batch_id is None:
         # Default: pick up the outer batch's ID from HAIL_BATCH_ID
         # (set automatically by Hail Batch inside a batch job).
@@ -153,12 +160,6 @@ def _init_hail(
                 " job, pass batch_id explicitly or omit experimental.)"
             )
         batch_id = int(env_batch_id)
-    use_experimental = experimental or batch_id is not None
-    if use_experimental and environment != "batch":
-        raise ValueError(
-            "experimental=True / batch_id=... is only supported when"
-            f" environment='batch'; got environment={environment!r}."
-        )
 
     log = (
         f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
