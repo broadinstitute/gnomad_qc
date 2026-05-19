@@ -364,6 +364,36 @@ def get_variant_qc_annotations(
     )
 
 
+def get_true_positive_vcf_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    adj: bool = False,
+    true_positive_type: str = "transmitted_singleton",
+    environment: str = "batch",
+) -> str:
+    """
+    Provide the path to the true positive VCF used as input to VQSR.
+
+    :param version: Version of true positive VCF path to return. Default is CURRENT_ANNOTATION_VERSION.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param adj: Whether to use adj genotypes. Default is False.
+    :param true_positive_type: Type of true positive VCF path to return. Should be one
+        of "transmitted_singleton", "sibling_singleton", or
+        "transmitted_singleton.sibling_singleton". Default is "transmitted_singleton".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :return: String for the path to the true positive VCF.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    tp_types = [
+        "transmitted_singleton",
+        "sibling_singleton",
+        "transmitted_singleton.sibling_singleton",
+    ]
+    if true_positive_type not in tp_types:
+        raise ValueError(f"true_positive_type must be one of {tp_types}")
+    return f'{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
+
+
 ######################################################################
 # VEP resources
 ######################################################################
