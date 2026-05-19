@@ -126,10 +126,12 @@ def _init_hail(
         Must be None, 4, or 30. Default is 4.
     :param experimental: If True (batch only), route the init through
         ``hl.experimental.init`` instead of ``hl.init`` and attach the
-        QoB driver to an existing Hail Batch. By default, ``batch_id``
-        is auto-resolved from the ``HAIL_BATCH_ID`` env var (which Hail
-        Batch sets inside a batch job); pass ``batch_id`` explicitly
-        to override. Raises if neither is available.
+        QoB driver to an existing Hail Batch (also required to pass
+        ``jvm_heap_size``, which is experimental-only). By default,
+        ``batch_id`` is auto-resolved from the ``HAIL_BATCH_ID`` env
+        var (set by Hail Batch when a job runs inside a batch); pass
+        ``batch_id`` explicitly to override. Raises error if neither is
+        available.
     :param batch_id: Explicit Hail Batch ID to attach the QoB driver
         to. When set, automatically enables the experimental path
         (attach-to-batch is only exposed via ``hl.experimental.init``).
@@ -140,6 +142,13 @@ def _init_hail(
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
+    use_experimental = experimental or batch_id is not None
+    if use_experimental and environment != "batch":
+        raise ValueError(
+            "experimental=True / batch_id=... is only supported when"
+            f" environment='batch'; got environment={environment!r}."
+        )
+
     if experimental and batch_id is None:
         # Default: pick up the outer batch's ID from HAIL_BATCH_ID
         # (set automatically by Hail Batch inside a batch job).
@@ -151,6 +160,7 @@ def _init_hail(
                 " job, pass batch_id explicitly or omit experimental.)"
             )
         batch_id = int(env_batch_id)
+
     log = (
         f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
         if environment == "rwb"
@@ -176,17 +186,18 @@ def _init_hail(
         if batch_id is not None:
             init_kwargs["batch_id"] = batch_id
 
-    use_experimental = experimental or batch_id is not None
-    if use_experimental and environment != "batch":
-        raise ValueError(
-            "experimental=True / batch_id=... is only supported when"
-            f" environment='batch'; got environment={environment!r}."
-        )
+    # Two init paths: the experimental path is required when we need
+    # attach-to-batch (`batch_id`) or per-driver JVM heap sizing
+    # (`jvm_heap_size`); the regular path is the default.
     if use_experimental:
+        # Hail team request: skip Hail's own logging configuration on the
+        # experimental path so they can attach their own handlers when
+        # troubleshooting QoB-driver issues.
         init_kwargs["skip_logging_configuration"] = True
         hl.experimental.init(**init_kwargs)
     else:
-        # `hl.init` rejects kwargs that only `hl.experimental.init` accepts.
+        # `jvm_heap_size` is `hl.experimental.init`-only; `hl.init` would
+        # reject it.
         init_kwargs.pop("jvm_heap_size", None)
         hl.init(**init_kwargs)
     hl.default_reference("GRCh38")
