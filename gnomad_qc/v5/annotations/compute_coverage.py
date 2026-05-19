@@ -5,6 +5,33 @@ v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set.
 This script computes per-reference-site coverage, AN, and (AoU only) qual
 histograms for each project track and joins them into the v5 release HT/TSV.
 
+Execution roles:
+----------------
+One entry-point (this script), three process roles dispatched by ``main``
+on the CLI flags. They are mutually exclusive (the ``__main__`` block
+validates this):
+
+1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
+   runs wherever you launch it, does NOT initialize Hail, builds and
+   submits a Hail Batch of relay jobs, then returns. Used for the
+   prod-scale AoU compute (the dataset is too big for one job).
+2. WORKER (``--run-chunk`` or ``--run-merge``): each relay container the
+   orchestrator submitted re-invokes THIS script with ``--run-chunk`` /
+   ``--run-merge``. Initializes Hail, does exactly one chunk/merge unit,
+   and returns BEFORE the try/finally. The chunk worker is what actually
+   calls ``compute_all_release_stats_per_ref_site``.
+3. IN-PROCESS PIPELINE (none of the above flags): initializes Hail and
+   runs the try/finally step chain. Reached only when not orchestrating
+   or working — i.e. the strict single-job compute (gnomAD consent-drop,
+   or dev/test AoU) and the AoU release assembly (the ``--export-*`` /
+   ``--merge-qual-hists`` steps, run as a separate invocation after
+   fan-out + ``--merge-cov-chunks``).
+
+So a full prod AoU release is three *separate* invocations: (1) fan-out
+compute, (2) merge-cov-chunks, (3) the in-process assembly invocation.
+The group-membership / downsampling HTs are written by their own
+in-process invocation first; fan-out then reads them from disk.
+
 Processing Workflow:
 --------------------
 Per-project setup (--project-name {aou,gnomad}):
@@ -12,13 +39,10 @@ Per-project setup (--project-name {aou,gnomad}):
 2. Write the group membership HT (--write-group-membership-ht): strata =
    sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
    --reduce-min-aggs to write the leaf-only variant.
-3. Compute the per-ref-site coverage/AN/qual-hists HT
-   (--compute-all-cov-release-stats-ht). This is the dense step. Either:
-   - Strict (in-process): run the whole VDS in one job.
-   - Fan-out (--use-batch-fanout, batch only): submit one Hail Batch job
-     per partition chunk; each chunk's relay spawns a QoB driver, writes
-     a sibling chunk HT, and exits. Then run --merge-cov-chunks to
-     tree-reduce the chunks into the canonical HT.
+3. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
+   Strict single-job via --compute-all-cov-release-stats-ht, or the
+   prod-scale fan-out (--use-batch-fanout then --merge-cov-chunks). See
+   "Execution roles" above for how those dispatch.
 
 Per-project merge (--project-name gnomad):
 4. Build the gnomAD v5 coverage HT (--merge-gnomad-coverage) and AN HT
@@ -908,7 +932,6 @@ def join_aou_and_gnomad_an_ht(
     """
     aou_ht = _rename_fields(aou_ht, "AN", "aou", rename_globals=True)
 
-    # TODO: should we only merge the overall adj AN (like coverage)?
     logger.info("Merging AoU and gnomAD v5 AN HTs...")
     ht = aou_ht.join(gnomad_ht, "left")
     ht = ht.checkpoint(new_temp_file("aou_and_gnomad_join", "ht"))
@@ -1983,16 +2006,34 @@ def _orchestrate_coverage_merge(
 
 
 def main(args):
-    """Compute all sites coverage, allele number, and quality histograms for v5 genomes (AoU v8 + gnomAD v4)."""
+    """
+    Compute all sites coverage, AN, and quality histograms for v5 genomes.
+
+    Flat dispatcher over three mutually-exclusive process ROLES (see the
+    "Execution roles" section in the module docstring for the full
+    picture):
+
+      - ROLE 1 ORCHESTRATOR (``--use-batch-fanout`` /
+        ``--merge-cov-chunks``): submit a Hail Batch, NO Hail init,
+        return.
+      - ROLE 2 WORKER (``--run-chunk`` / ``--run-merge``): init Hail,
+        run one chunk/merge unit, return — *before* the try/finally.
+      - ROLE 3 IN-PROCESS PIPELINE (no role flag): init Hail, run the
+        try/finally step chain (SETUP -> COMPUTE -> ASSEMBLE).
+    """
     project = args.project_name
     environment = args.environment
     test = args.test
     chrom = args.chrom
     overwrite = args.overwrite
 
-    # --use-batch-fanout: orchestrator submits a Hail Batch and exits
-    # without initializing Hail (each per-chunk relay spawns its own QoB
-    # driver).
+    # ===================================================================
+    # ROLE 1: ORCHESTRATOR — submit a Hail Batch of relay jobs and return
+    # WITHOUT initializing Hail (each per-chunk relay spawns its own QoB
+    # driver). Returns here; never reaches _init_hail or the try/finally.
+    #   --use-batch-fanout : scatter the per-chunk compute.
+    #   --merge-cov-chunks : tree-reduce the chunk HTs (run after fanout).
+    # ===================================================================
     if args.use_batch_fanout:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
@@ -2003,8 +2044,6 @@ def main(args):
         _orchestrate_coverage_batch(args, cov_and_an_ht_path)
         return
 
-    # --merge-cov-chunks: tree-reduce orchestrator. Runs after
-    # --use-batch-fanout; same no-Hail-init pattern.
     if args.merge_cov_chunks:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
@@ -2023,9 +2062,11 @@ def main(args):
         merge_output=args.merge_output,
     )
 
-    # QoB / dataproc init. ``--experimental`` attaches the QoB driver to
-    # an existing Hail Batch (batch_id auto-resolved from HAIL_BATCH_ID
-    # inside _init_hail); otherwise each run creates its own Hail Batch.
+    # QoB / dataproc init — reached by ROLE 2 (worker) and ROLE 3
+    # (in-process pipeline) only; ROLE 1 returned above. ``--experimental``
+    # attaches the QoB driver to an existing Hail Batch (batch_id
+    # auto-resolved from HAIL_BATCH_ID inside _init_hail); otherwise each
+    # run creates its own Hail Batch.
     _init_hail(
         log_name,
         environment,
@@ -2036,6 +2077,12 @@ def main(args):
         **_get_batch_resource_kwargs(args),
     )
 
+    # ===================================================================
+    # ROLE 2: WORKER — one relay container the ROLE 1 orchestrator
+    # submitted, re-invoking this script with --run-chunk / --run-merge.
+    # Run exactly one unit, then return (BEFORE the try/finally below).
+    # _run_coverage_chunk is what calls compute_all_release_stats_per_ref_site.
+    # ===================================================================
     if args.run_chunk:
         _run_coverage_chunk(args)
         return
@@ -2045,6 +2092,14 @@ def main(args):
         )
         return
 
+    # ===================================================================
+    # ROLE 3: IN-PROCESS PIPELINE — reached only when NO orchestrator/
+    # worker flag is set: the strict single-job compute (gnomAD
+    # consent-drop, or dev/test AoU) and the AoU release assembly
+    # (--export-* / --merge-qual-hists, run as a separate invocation
+    # after fan-out + --merge-cov-chunks). Phases below run in order,
+    # each gated by its CLI flag: SETUP -> COMPUTE -> ASSEMBLE.
+    # ===================================================================
     try:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
@@ -2072,6 +2127,8 @@ def main(args):
                 meta(data_type="genomes", environment=environment).path
             )
 
+        # --- SETUP (prerequisites): write the input HTs the COMPUTE
+        # phase (and the fan-out workers) read from disk. ---
         if args.write_aou_downsampling_ht:
             logger.info("Writing AoU downsampling HT...")
             check_resource_existence(
@@ -2111,6 +2168,9 @@ def main(args):
                 )
             group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
 
+        # --- COMPUTE (strict, single job): whole-VDS per-ref-site
+        # coverage/AN/qual-hists. Prod AoU does this via ROLE 1 fan-out
+        # instead and never reaches here; this is gnomAD and dev/test. ---
         if args.compute_all_cov_release_stats_ht:
             logger.info(
                 "Computing coverage, all sites allele number, and optionally"
@@ -2149,6 +2209,8 @@ def main(args):
                 cov_and_an_ht = cov_and_an_ht.naive_coalesce(args.n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
+        # --- ASSEMBLE (gnomAD): subtract the consent-drop cohort from
+        # the v4 release coverage/AN HTs to get gnomAD v5. ---
         if args.merge_gnomad_coverage:
             logger.info("Building gnomAD v5 coverage HT (subtracting consent-drop)...")
             merged_gnomad_coverage_ht_path = (
@@ -2198,6 +2260,10 @@ def main(args):
             ht = merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht)
             ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
 
+        # --- ASSEMBLE (AoU): join AoU + gnomAD v5 and export the release
+        # HT/TSVs + merge qual hists. Run as a separate invocation after
+        # ROLE 1 fan-out + --merge-cov-chunks have produced the AoU
+        # cov_and_an HT. ---
         if args.export_coverage_release_files:
             logger.info("Exporting coverage release HT and TSV...")
             cov_ht_path = release_coverage_path(
