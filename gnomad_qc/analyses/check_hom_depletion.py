@@ -14,6 +14,9 @@ logger = logging.getLogger("hom_depletion_check")
 logger.setLevel(logging.INFO)
 
 
+OMIM_PATH = "gs://gnomad-kristen/hom_depletion/omim_2023.tsv"
+
+
 def get_field_name(group: str) -> str:
     """
     Get the field name for a group (for clarity, "adj" -> "overall").
@@ -47,6 +50,7 @@ def annotate_group_freqs_and_cutoffs(
     """
     group_freqs = {}
     cutoffs = {}
+    metrics = {}
 
     for group in groups:
         idx = ht.freq_index_dict.get(group)
@@ -66,7 +70,12 @@ def annotate_group_freqs_and_cutoffs(
             hl.sqrt(min_expected / (freq_expr.AN / 2)),
         )
 
-    return ht.annotate(**group_freqs, **cutoffs)
+        metrics[f"{field_name}_expected_hom"] = hl.or_missing(
+            defined_idx,
+            freq_expr.AF**2 * (freq_expr.AN / 2),
+        )
+
+    return ht.annotate(**group_freqs, **cutoffs, **metrics)
 
 
 def flag_hom_depletion(ht, groups):
@@ -99,7 +108,57 @@ def annotate_most_severe_gene(ht: hl.Table) -> hl.Table:
         ht.vep.transcript_consequences,
     )
 
-    return ht.annotate(most_severe_gene=most_severe_tx.gene_symbol)
+    return ht.annotate(
+        most_severe_gene=most_severe_tx.gene_symbol,
+        most_severe_gene_id=most_severe_tx.gene_id,
+    )
+
+
+def annotate_omim_recessive_gene_label(
+    ht: hl.Table,
+    omim_path: str,
+) -> hl.Table:
+    """
+    Annotate whether `most_severe_gene` is OMIM-labeled as recessive.
+
+    :param ht: Hail Table containing `most_severe_gene`.
+    :param omim_path: Path to OMIM table (TSV/CSV) with gene + inheritance columns.
+    :return: Hail Table with `is_omim_recessive_gene` boolean annotation.
+    """
+    omim_ht = hl.import_table(omim_path, impute=True)
+
+    omim_ht = omim_ht.filter(
+        hl.or_else(hl.str(omim_ht["phenotype_inheritance"]), "")
+        .lower()
+        .contains("recessive")
+    )
+
+    omim_ht = omim_ht.group_by(gene_id=omim_ht.gene_id).aggregate(
+        omim=hl.agg.collect(
+            hl.struct(
+                phenotype_inheritance=omim_ht.phenotype_inheritance,
+                phenotype_description=omim_ht.phenotype_description,
+                gene_symbols=omim_ht.gene_symbols,
+                gene_description=omim_ht.gene_description,
+                comments=omim_ht.comments,
+            )
+        )
+    )
+
+    return ht.annotate(
+        omim=omim_ht[ht.most_severe_gene_id].omim,
+        is_omim_recessive_gene=hl.is_defined(omim_ht[ht.most_severe_gene_id]),
+    )
+
+
+def annotate_gerp(ht: hl.Table) -> hl.Table:
+    """Annotate GERP scores by locus."""
+    gerp_ht = hl.experimental.load_dataset(
+        name="gerp_scores", version="hg19", reference_genome="GRCh38"
+    )
+
+    #### -12.3 to 6.17 is the range of GERP values where 6.17 is the most conserved.
+    return ht.annotate(gerp=hl.or_else(gerp_ht[ht.locus].S, 0))
 
 
 def select_group_output_fields(ht, groups):
@@ -129,15 +188,33 @@ def select_group_output_fields(ht, groups):
                 f"{field_name}_homozygote_count": freq.homozygote_count,
                 f"{field_name}_hom_depletion": ht[f"{field_name}_hom_depletion"],
                 f"{field_name}_af_cutoff": ht[f"{field_name}_af_cutoff"],
+                f"{field_name}_expected_hom": ht[f"{field_name}_expected_hom"],
             }
         )
+
+    # Sum of expected homozygotes across all genetic ancestry groups (excluding adj/overall).
+    ancestry_expected_hom_fields = [
+        ht[f"{get_field_name(group)}_expected_hom"]
+        for group in groups
+        if group != "adj"
+    ]
+    output_fields["group_total_expected_hom"] = (
+        hl.sum(hl.array(ancestry_expected_hom_fields))
+        if ancestry_expected_hom_fields
+        else hl.missing(hl.tfloat64)
+    )
 
     # Per variant fields.
     output_fields.update(
         {
             "most_severe_csq": ht.most_severe_csq,
             "most_severe_gene": ht.most_severe_gene,
+            "most_severe_gene_id": ht.most_severe_gene_id,
+            "is_omim_recessive_gene": ht.is_omim_recessive_gene,
+            "omim": ht.omim,
+            "gerp": ht.gerp,
             "lcr_or_segdup": ht.lcr_or_segdup,
+            "phylop_score": ht.phylop_score,
         }
     )
 
@@ -180,6 +257,7 @@ def main(args):
         ht = ht.annotate(
             lcr_or_segdup=(ht.region_flags.lcr | ht.region_flags.segdup),
             most_severe_csq=ht.vep.most_severe_consequence,
+            phylop_score=ht.in_silico_predictors.pphylop,
         )
 
         # Keep only fields needed for downstream depletion annotations.
@@ -188,6 +266,7 @@ def main(args):
             "most_severe_csq",
             "vep",
             "lcr_or_segdup",
+            "phylop_score",
         )
 
         logger.info("Annotate group-specific frequencies and AF cutoffs...")
@@ -198,6 +277,12 @@ def main(args):
 
         logger.info("Pull out first gene with most severe consequence...")
         ht = annotate_most_severe_gene(ht)
+
+        logger.info("Annotating OMIM recessive-gene label...")
+        ht = annotate_omim_recessive_gene_label(ht, OMIM_PATH)
+
+        logger.info("Annotating GERP scores...")
+        ht = annotate_gerp(ht)
 
         logger.info("Select and flatten output fields...")
         ht = select_group_output_fields(ht, groups)
@@ -215,20 +300,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
     parser.add_argument(
-        "--data_type",
+        "--data-type",
         help="Dataset to run on, one of 'exomes', 'genomes', or 'joint'",
         default="exomes",
         choices=["exomes", "genomes", "joint"],
         type=str,
     )
     parser.add_argument(
-        "--min_expected",
+        "--min-expected",
         help="Minimum expected allele count used to compute AF cutoff.",
         default=3,
         type=int,
     )
     parser.add_argument(
-        "--adj_only",
+        "--adj-only",
         help="Whether to run hom depletion check using only the adj group (overall).",
         action="store_true",
     )
