@@ -267,7 +267,7 @@ def get_info_ht(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info_test_0.ht"
             )
             for version in ANNOTATION_VERSIONS
         },

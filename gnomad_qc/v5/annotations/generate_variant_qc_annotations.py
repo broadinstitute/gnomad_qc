@@ -442,6 +442,7 @@ def main(args):
             # a few partitions of the full (not test) VDS).
             test=args.test,
             environment=environment,
+            naive_coalesce_partitions=args.naive_coalesce_partitions,
         )
 
     try:
@@ -652,6 +653,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--create-info-ht",
         help="Create the info ht containing annotations needed for variant QC.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--naive-coalesce-partitions",
+        help=(
+            "Coalesce the VDS to this many partitions before running create_info_ht. "
+            "Reduces the number of parallel Batch workers and therefore cost, at the "
+            "expense of more memory per worker. Only applies to --create-info-ht."
+        ),
+        type=int,
+        default=None,
     )
     parser.add_argument(
         "--lowqual-indel-phred-het-prior",
