@@ -669,7 +669,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Coalesce the VDS to this many partitions. "
             "Reduces the number of parallel Batch workers at the expense of more memory "
-            "per worker. Only applies to --create-info-ht and --generate_sibling_stats."
+            "per worker. Only applies to --create-info-ht and --generate-sibling-stats."
         ),
         type=int,
         default=None,
