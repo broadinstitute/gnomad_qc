@@ -134,10 +134,10 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
 def create_info_ht(
     vcf_path: str,
     header_path: str,
-    lowqual_indel_phred_het_prior: int = 40,
-    vds: hl.vds.VariantDataset = None,
-    test: bool = False,
+    vds: hl.vds.VariantDataset,
     ac_info_ht_checkpoint_path: str,
+    lowqual_indel_phred_het_prior: int = 40,
+    test: bool = False,
 ) -> hl.Table:
     """
     Import a VCF of AoU annotated sites, reformat annotations, and add AS_lowqual.
@@ -467,10 +467,10 @@ def main(args):
             ht = create_info_ht(
                 vcf_path=get_aou_annotated_sites_only_vcf(environment=environment),
                 header_path=get_aou_vcf_header(environment=environment),
-                lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
                 vds=vds,
-                test=test,
                 ac_info_ht_checkpoint_path=ac_info_ht_checkpoint_path,
+                lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
+                test=test,
             )
             ht.write(info_ht_path, overwrite=overwrite)
         if args.export_info_vcf:
