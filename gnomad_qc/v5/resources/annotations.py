@@ -280,10 +280,11 @@ def get_ac_info_ht_checkpoint_path(
     environment: str = "batch",
 ) -> str:
     """
-    Get checkpoint path for intermediate AC info table in create_info_ht.
+    Get checkpoint path for the intermediate AC info table in create_info_ht.
 
-    Uses the 30-day temp bucket and a stable filename so reruns of create_info_ht
-    can start from intermediate results if needed.
+    Uses the 30-day temp bucket and a stable filename for the intermediate
+    create_info_ht checkpoint output. This helper only returns the checkpoint
+    path and does not imply that reruns will automatically reuse existing data.
 
     :param version: Version of annotation path to return.
     :param test: Whether the path should use the test suffix.
