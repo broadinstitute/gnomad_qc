@@ -668,7 +668,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--naive-coalesce-partitions",
         help=(
             "Coalesce the VDS to this many partitions. "
-            "Reduces the number of parallel Batch workers and at the expense of more memory "
+            "Reduces the number of parallel Batch workers at the expense of more memory "
             "per worker. Only applies to --create-info-ht and --generate_sibling_stats."
         ),
         type=int,
