@@ -137,7 +137,7 @@ def create_info_ht(
     lowqual_indel_phred_het_prior: int = 40,
     vds: hl.vds.VariantDataset = None,
     test: bool = False,
-    ac_info_ht_checkpoint_path: str = None,
+    ac_info_ht_checkpoint_path: str,
 ) -> hl.Table:
     """
     Import a VCF of AoU annotated sites, reformat annotations, and add AS_lowqual.
@@ -669,7 +669,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Coalesce the VDS to this many partitions. "
             "Reduces the number of parallel Batch workers at the expense of more memory "
-            "per worker. Only applies to --create-info-ht and --generate_sibling_stats."
+            "per worker. Only applies to --create-info-ht and --generate-sibling-stats."
         ),
         type=int,
         default=None,

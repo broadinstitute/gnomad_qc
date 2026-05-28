@@ -267,7 +267,7 @@ def get_info_ht(
         CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info_test.ht"
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.info.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -283,7 +283,7 @@ def get_ac_info_ht_checkpoint_path(
     Get checkpoint path for intermediate AC info table in create_info_ht.
 
     Uses the 30-day temp bucket and a stable filename so reruns of create_info_ht
-    can start from intermediate results.
+    can start from intermediate results if needed.
 
     :param version: Version of annotation path to return.
     :param test: Whether the path should use the test suffix.
