@@ -21,7 +21,12 @@ from typing import List
 import hail as hl
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v5.resources.basics import _init_hail, get_logging_path, qc_temp_prefix
+from gnomad_qc.v5.resources.basics import (
+    _get_batch_resource_kwargs,
+    _init_hail,
+    get_logging_path,
+    qc_temp_prefix,
+)
 from gnomad_qc.v5.resources.variant_qc import (
     get_truth_samples_combiner_plan,
     truth_samples_gvcf_paths,
@@ -190,7 +195,13 @@ def main(args):
     environment = "batch"
     overwrite = args.overwrite
     test = args.test
-    _init_hail("create_truth_samples_vds", environment=environment)
+    _init_hail(
+        "create_truth_samples_vds",
+        environment=environment,
+        billing_project=args.gcp_billing_project,
+        experimental=args.experimental,
+        **_get_batch_resource_kwargs(args),
+    )
 
     manifest_path = args.manifest_path
     output_path = (
@@ -292,6 +303,79 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "counts). Can be run in the same invocation as --create-truth-samples-vds."
         ),
         action="store_true",
+    )
+
+    # Batch/QoB backend configuration. This script always runs in the batch
+    # environment, so these tune the Hail Batch the combiner runs on.
+    batch_group = parser.add_argument_group(
+        "batch configuration",
+        "Optional parameters for the batch/QoB backend.",
+    )
+    batch_group.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        default="broad-mpg-gnomad",
+        help="Google Cloud billing project for reading requester pays buckets.",
+    )
+    batch_group.add_argument(
+        "--experimental",
+        action="store_true",
+        help=(
+            "Route the QoB init through `hl.experimental.init` instead of"
+            " `hl.init` and attach the QoB driver to an existing Hail Batch."
+            " Requires HAIL_BATCH_ID to be set in the env (Hail Batch"
+            " injects this inside batch jobs); raises if not. Without this"
+            " flag, each invocation creates its own Hail Batch."
+        ),
+    )
+    batch_group.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    batch_group.add_argument(
+        "--driver-cores",
+        type=str,
+        default=None,
+        help=(
+            "Number of cores for the driver node. Pass a power of two"
+            " between 0.25 and 16 (as a string, e.g. '2' or '0.5')."
+        ),
+    )
+    batch_group.add_argument(
+        "--driver-memory",
+        type=str,
+        default=None,
+        help="Memory type for driver node (e.g., 'highmem').",
+    )
+    batch_group.add_argument(
+        "--jvm-heap-size",
+        type=str,
+        default=None,
+        help=(
+            "Max JVM heap size (-Xmx) for the in-process QoB driver under"
+            " --experimental, e.g. '5g' or '2500m'. Plumbed to"
+            " hl.experimental.init(jvm_heap_size=...). Set to ~50-70%% of"
+            " container memory; the rest is for native off-heap"
+            " (RegionPool), Python, and OS overhead. Ignored without"
+            " --experimental."
+        ),
+    )
+    batch_group.add_argument(
+        "--worker-cores",
+        type=str,
+        default=None,
+        help=(
+            "Number of cores per worker node. Pass a power of two"
+            " between 0.25 and 16 (as a string, e.g. '1' or '0.5')."
+        ),
+    )
+    batch_group.add_argument(
+        "--worker-memory",
+        type=str,
+        default=None,
+        help="Memory type for worker nodes (e.g., 'highmem').",
     )
 
     return parser
