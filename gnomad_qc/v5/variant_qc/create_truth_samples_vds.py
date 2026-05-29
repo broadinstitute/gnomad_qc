@@ -88,63 +88,98 @@ def read_gvcf_paths(manifest_path: str) -> List[str]:
 
 def _verify_test_vds_against_gvcf(vds: hl.vds.VariantDataset, gvcf_path: str) -> None:
     """
-    Cross-check the test VDS's variant calls against the source gVCF over TEST_INTERVAL.
+    Cross-check the test VDS against the source gVCF over TEST_INTERVAL.
 
     Imports the single source gVCF directly, restricts to :data:`TEST_INTERVAL`, and
-    compares the per-call ``(locus, alleles, genotype)`` set against the combined VDS.
-    This confirms the combiner preserved the actual variant data, not just that the VDS
-    is structurally well-formed.
+    compares both halves of the VDS against it, confirming the combiner preserved the
+    actual data (not just that the VDS is structurally well-formed):
 
-    gVCF variant records carry a trailing ``<NON_REF>`` symbolic allele (reference blocks
-    have only ``<NON_REF>``); it is dropped so alleles line up with the VDS
-    ``variant_data`` representation. The VDS stores local ``LGT``/``LA``, converted to a
-    global ``GT`` with :func:`hl.vds.lgt_to_gt` for the comparison.
+    - **Variant calls** (``variant_data``): the per-call ``(locus, alleles, genotype)``
+      set. gVCF variant records carry a trailing ``<NON_REF>`` symbolic allele (reference
+      blocks have only ``<NON_REF>``); it is dropped so alleles line up with the VDS
+      representation. The VDS stores local ``LGT``/``LA``, converted to a global ``GT``
+      with :func:`hl.vds.lgt_to_gt` for the comparison.
+    - **Reference blocks** (``reference_data``): the per-block ``start_locus -> (END,
+      GQ)`` map. Only blocks lying strictly inside the interval are compared: the
+      combiner clips reference blocks at the import-interval boundaries, so the first/last
+      block would legitimately differ from the gVCF's; interior blocks are untouched and
+      must match exactly. Assumes the default combiner reference fields (``GQ`` retained).
 
     :param vds: The combined VDS to check.
     :param gvcf_path: Path to the single source gVCF that was combined.
     :return: None.
     """
     non_ref = "<NON_REF>"
+    test_interval = _test_interval()
+    start_pos = test_interval.start.position
+    end_pos = test_interval.end.position
 
-    # Source gVCF: variant calls over the interval.
+    # Source gVCF over the interval.
     gvcf = hl.import_vcf(
         gvcf_path,
         force_bgz=True,
         reference_genome="GRCh38",
         array_elements_required=False,
     )
-    test_interval = _test_interval()
     gvcf = hl.filter_intervals(gvcf, [test_interval])
-    gvcf = gvcf.filter_rows(hl.any(gvcf.alleles[1:].map(lambda a: a != non_ref)))
-    gvcf = gvcf.annotate_rows(_alleles=gvcf.alleles.filter(lambda a: a != non_ref))
-    gvcf_calls = {
-        (str(e.locus), tuple(e._alleles)): str(e.GT) for e in gvcf.entries().collect()
-    }
 
-    # Combined VDS: variant calls over the interval (LGT/LA -> global GT).
+    # --- Variant calls ---
+    # gVCF variant records have at least one real (non-<NON_REF>) ALT allele.
+    var = gvcf.filter_rows(hl.any(gvcf.alleles[1:].map(lambda a: a != non_ref)))
+    var = var.annotate_rows(_alleles=var.alleles.filter(lambda a: a != non_ref))
+    gvcf_calls = {
+        (str(e.locus), tuple(e._alleles)): str(e.GT) for e in var.entries().collect()
+    }
     vd = hl.filter_intervals(vds.variant_data, [test_interval])
     vd = vd.annotate_entries(_gt=hl.vds.lgt_to_gt(vd.LGT, vd.LA))
     vds_calls = {
         (str(e.locus), tuple(e.alleles)): str(e._gt) for e in vd.entries().collect()
     }
 
-    if vds_calls != gvcf_calls:
-        only_gvcf = sorted(set(gvcf_calls) - set(vds_calls))[:5]
-        only_vds = sorted(set(vds_calls) - set(gvcf_calls))[:5]
+    # --- Reference blocks (interior only; combiner clips at interval boundaries) ---
+    # gVCF reference blocks have <NON_REF> as their only ALT and an INFO/END field.
+    ref = gvcf.filter_rows(hl.all(gvcf.alleles[1:].map(lambda a: a == non_ref)))
+    gvcf_ref = {
+        str(e.locus): (e.info.END, e.GQ)
+        for e in ref.entries().collect()
+        if start_pos < e.locus.position and e.info.END < end_pos
+    }
+    rd = hl.filter_intervals(vds.reference_data, [test_interval])
+    vds_ref = {
+        str(e.locus): (e.END, e.GQ)
+        for e in rd.entries().collect()
+        if start_pos < e.locus.position and e.END < end_pos
+    }
+
+    def _diff(expected: dict, actual: dict) -> str:
+        only_expected = sorted(set(expected) - set(actual))[:5]
+        only_actual = sorted(set(actual) - set(expected))[:5]
         mismatched = [
-            (k, gvcf_calls[k], vds_calls[k])
-            for k in set(gvcf_calls) & set(vds_calls)
-            if gvcf_calls[k] != vds_calls[k]
+            (k, expected[k], actual[k])
+            for k in set(expected) & set(actual)
+            if expected[k] != actual[k]
         ][:5]
+        return (
+            f"only in gVCF: {only_expected}; only in VDS: {only_actual}; "
+            f"mismatches (key, gvcf, vds): {mismatched}"
+        )
+
+    errors = []
+    if vds_calls != gvcf_calls:
+        errors.append(f"variant calls differ — {_diff(gvcf_calls, vds_calls)}")
+    if vds_ref != gvcf_ref:
+        errors.append(f"reference blocks differ — {_diff(gvcf_ref, vds_ref)}")
+    if errors:
         raise ValueError(
-            f"Combined VDS does not match the source gVCF over {TEST_INTERVAL}. "
-            f"Sites only in gVCF: {only_gvcf}; sites only in VDS: {only_vds}; "
-            f"genotype mismatches (site, gvcf, vds): {mismatched}."
+            f"Combined VDS does not match the source gVCF over {TEST_INTERVAL}: "
+            + "; ".join(errors)
         )
 
     logger.info(
-        "Verified %d variant call(s) in the VDS match the source gVCF over %s.",
+        "Verified %d variant call(s) and %d interior reference block(s) in the VDS "
+        "match the source gVCF over %s.",
         len(vds_calls),
+        len(vds_ref),
         TEST_INTERVAL,
     )
 
@@ -156,7 +191,7 @@ def validate_vds(vds_path: str, test: bool, manifest_path: str) -> None:
     Runs Hail's :meth:`VariantDataset.validate` (the canonical structural check) plus
     cheap sanity counts: non-empty data, expected sample count, and (in test mode) that
     all variant loci fall within :data:`TEST_INTERVAL`. In test mode it additionally
-    cross-checks every variant call against the source gVCF via
+    cross-checks the variant calls and reference blocks against the source gVCF via
     :func:`_verify_test_vds_against_gvcf`.
 
     :param vds_path: Path to the VDS to validate.
