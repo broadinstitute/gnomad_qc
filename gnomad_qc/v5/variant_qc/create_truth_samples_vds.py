@@ -25,7 +25,6 @@ from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import (
     _get_batch_resource_kwargs,
     _init_hail,
-    get_logging_path,
     qc_temp_prefix,
 )
 from gnomad_qc.v5.resources.variant_qc import (
@@ -215,55 +214,48 @@ def main(args):
         else truth_samples_vds.path
     )
 
-    try:
-        if args.create_truth_samples_vds:
-            check_resource_existence(
-                input_step_resources={"manifest": [manifest_path]},
-                output_step_resources={"--create-truth-samples-vds": [output_path]},
-                overwrite=overwrite,
-            )
-
-            gvcf_paths = read_gvcf_paths(manifest_path)
-
-            if test:
-                # Cheapest possible real run: combine a single gVCF over one small
-                # interval, written to a temp path.
-                gvcf_paths = gvcf_paths[:1]
-                interval_kwargs = {"intervals": [TEST_INTERVAL]}
-                logger.info("Test mode: combining 1 gVCF over %s.", TEST_INTERVAL)
-            else:
-                # Genome-optimized partitioning for the full combine.
-                interval_kwargs = {"use_genome_default_intervals": True}
-
-            logger.info(
-                "Running the VDS combiner on %d gVCF(s) -> %s",
-                len(gvcf_paths),
-                output_path,
-            )
-            combiner = hl.vds.new_combiner(
-                output_path=output_path,
-                temp_path=qc_temp_prefix(environment=environment, days=4),
-                # Save the combiner plan so a failed/interrupted run can resume.
-                save_path=get_truth_samples_combiner_plan(test=test),
-                gvcf_paths=gvcf_paths,
-                reference_genome="GRCh38",
-                # Overwrite any stale saved combiner plan when --overwrite is set.
-                force=overwrite,
-                **interval_kwargs,
-            )
-            combiner.run()
-
-        if args.validate_truth_samples_vds:
-            check_resource_existence(
-                input_step_resources={"--create-truth-samples-vds": [output_path]},
-            )
-            validate_vds(output_path, test, manifest_path)
-
-    finally:
-        logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(
-            get_logging_path("create_truth_samples_vds", environment=environment)
+    if args.create_truth_samples_vds:
+        check_resource_existence(
+            input_step_resources={"manifest": [manifest_path]},
+            output_step_resources={"--create-truth-samples-vds": [output_path]},
+            overwrite=overwrite,
         )
+
+        gvcf_paths = read_gvcf_paths(manifest_path)
+
+        if test:
+            # Cheapest possible real run: combine a single gVCF over one small
+            # interval, written to a temp path.
+            gvcf_paths = gvcf_paths[:1]
+            interval_kwargs = {"intervals": [TEST_INTERVAL]}
+            logger.info("Test mode: combining 1 gVCF over %s.", TEST_INTERVAL)
+        else:
+            # Genome-optimized partitioning for the full combine.
+            interval_kwargs = {"use_genome_default_intervals": True}
+
+        logger.info(
+            "Running the VDS combiner on %d gVCF(s) -> %s",
+            len(gvcf_paths),
+            output_path,
+        )
+        combiner = hl.vds.new_combiner(
+            output_path=output_path,
+            temp_path=qc_temp_prefix(environment=environment, days=4),
+            # Save the combiner plan so a failed/interrupted run can resume.
+            save_path=get_truth_samples_combiner_plan(test=test),
+            gvcf_paths=gvcf_paths,
+            reference_genome="GRCh38",
+            # Overwrite any stale saved combiner plan when --overwrite is set.
+            force=overwrite,
+            **interval_kwargs,
+        )
+        combiner.run()
+
+    if args.validate_truth_samples_vds:
+        check_resource_existence(
+            input_step_resources={"--create-truth-samples-vds": [output_path]},
+        )
+        validate_vds(output_path, test, manifest_path)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
