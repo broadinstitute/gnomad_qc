@@ -189,12 +189,13 @@ def main(args):
     # NOTE: Script assumes we will only run this in Batch.
     environment = "batch"
     overwrite = args.overwrite
+    test = args.test
     _init_hail("create_truth_samples_vds", environment=environment)
 
     manifest_path = args.manifest_path
     output_path = (
         f"{qc_temp_prefix(environment=environment)}truth_samples.vds"
-        if args.test
+        if test
         else truth_samples_vds.path
     )
 
@@ -208,7 +209,7 @@ def main(args):
 
             gvcf_paths = read_gvcf_paths(manifest_path)
 
-            if args.test:
+            if test:
                 # Cheapest possible real run: combine a single gVCF over one small
                 # interval, written to a temp path.
                 gvcf_paths = gvcf_paths[:1]
@@ -233,7 +234,7 @@ def main(args):
                 output_path=output_path,
                 temp_path=qc_temp_prefix(environment=environment, days=4),
                 # Save the combiner plan so a failed/interrupted run can resume.
-                save_path=get_truth_samples_combiner_plan(test=args.test),
+                save_path=get_truth_samples_combiner_plan(test=test),
                 gvcf_paths=gvcf_paths,
                 reference_genome="GRCh38",
                 # Overwrite any stale saved combiner plan when --overwrite is set.
@@ -246,7 +247,7 @@ def main(args):
             check_resource_existence(
                 input_step_resources={"--create-truth-samples-vds": [output_path]},
             )
-            validate_vds(output_path, args.test, manifest_path)
+            validate_vds(output_path, test, manifest_path)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
