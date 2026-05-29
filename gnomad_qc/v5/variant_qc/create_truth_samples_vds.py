@@ -40,8 +40,14 @@ logging.basicConfig(
 logger = logging.getLogger("create_truth_samples_vds")
 logger.setLevel(logging.INFO)
 
-# Small interval (PCSK9 gene interval) used by --test.
-TEST_INTERVAL = "chr1:55039447-55064852"
+# Small interval (PCSK9 gene) used by --test to keep the combiner run quick and cheap.
+# A value Interval (not a parsed expression) so it can be passed straight to
+# new_combiner, which reads interval.point_type at construction.
+TEST_INTERVAL = hl.Interval(
+    hl.Locus("chr1", 55039447, reference_genome="GRCh38"),
+    hl.Locus("chr1", 55064852, reference_genome="GRCh38"),
+    includes_end=True,
+)
 
 
 def read_gvcf_paths(manifest_path: str) -> List[str]:
@@ -84,7 +90,6 @@ def _verify_test_vds_against_gvcf(vds: hl.vds.VariantDataset, gvcf_path: str) ->
     :param gvcf_path: Path to the single source gVCF that was combined.
     :return: None.
     """
-    interval = hl.parse_locus_interval(TEST_INTERVAL, reference_genome="GRCh38")
     non_ref = "<NON_REF>"
 
     # Source gVCF: variant calls over the interval.
@@ -94,7 +99,7 @@ def _verify_test_vds_against_gvcf(vds: hl.vds.VariantDataset, gvcf_path: str) ->
         reference_genome="GRCh38",
         array_elements_required=False,
     )
-    gvcf = hl.filter_intervals(gvcf, [interval])
+    gvcf = hl.filter_intervals(gvcf, [TEST_INTERVAL])
     gvcf = gvcf.filter_rows(hl.any(gvcf.alleles[1:].map(lambda a: a != non_ref)))
     gvcf = gvcf.annotate_rows(_alleles=gvcf.alleles.filter(lambda a: a != non_ref))
     gvcf_calls = {
@@ -102,7 +107,7 @@ def _verify_test_vds_against_gvcf(vds: hl.vds.VariantDataset, gvcf_path: str) ->
     }
 
     # Combined VDS: variant calls over the interval (LGT/LA -> global GT).
-    vd = hl.filter_intervals(vds.variant_data, [interval])
+    vd = hl.filter_intervals(vds.variant_data, [TEST_INTERVAL])
     vd = vd.annotate_entries(_gt=hl.vds.lgt_to_gt(vd.LGT, vd.LA))
     vds_calls = {
         (str(e.locus), tuple(e.alleles)): str(e._gt) for e in vd.entries().collect()
@@ -167,9 +172,8 @@ def validate_vds(vds_path: str, test: bool, manifest_path: str) -> None:
     if test:
         if n_samples != 1:
             raise ValueError(f"Expected 1 sample in test VDS, found {n_samples}.")
-        interval = hl.parse_locus_interval(TEST_INTERVAL, reference_genome="GRCh38")
-        n_outside = vds.variant_data.filter_rows(
-            ~interval.contains(vds.variant_data.locus)
+        n_outside = hl.filter_intervals(
+            vds.variant_data, [TEST_INTERVAL], keep=False
         ).count_rows()
         if n_outside:
             raise ValueError(
@@ -224,13 +228,7 @@ def main(args):
                 # Cheapest possible real run: combine a single gVCF over one small
                 # interval, written to a temp path.
                 gvcf_paths = gvcf_paths[:1]
-                interval_kwargs = {
-                    "intervals": [
-                        hl.parse_locus_interval(
-                            TEST_INTERVAL, reference_genome="GRCh38"
-                        )
-                    ]
-                }
+                interval_kwargs = {"intervals": [TEST_INTERVAL]}
                 logger.info("Test mode: combining 1 gVCF over %s.", TEST_INTERVAL)
             else:
                 # Genome-optimized partitioning for the full combine.
