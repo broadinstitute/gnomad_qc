@@ -66,3 +66,19 @@ truth_samples_vds = VariantDatasetResource(
 """
 VDS containing 8 GiaB samples.
 """
+
+
+def get_truth_samples_combiner_plan(test: bool = False) -> str:
+    """
+    Return the path to the truth-samples VDS combiner plan (combiner ``save_path``).
+
+    The plan lets a failed or interrupted combiner run be resumed. It is written to the
+    writable batch variant QC tree (or a temp path for tests).
+
+    :param test: Whether to return a temporary test path. Default is False.
+    :return: Path to the combiner plan JSON.
+    """
+    if test:
+        return f"{qc_temp_prefix(environment='batch', days=4)}truth_samples_combiner_plan.json"
+
+    return f"{_variant_qc_root(environment='batch')}/aou/truth_samples/truth_samples_combiner_plan.json"
