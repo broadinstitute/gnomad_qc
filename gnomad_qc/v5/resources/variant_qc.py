@@ -39,18 +39,18 @@ def _variant_qc_root(
 
 
 ######################################################################
-# Control sample resources
+# Truth sample resources
 ######################################################################
 
 
-control_samples_aou_gvcfs_bucket = (
+truth_samples_aou_gvcfs_bucket = (
     f"gs://{AOU_BUCKET}/wgs/short_read/snpindel/aux/qc/control_samples/"
 )
 """
 Bucket containing gVCFs from 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the same protocol as the AoU v8 data.
 """
 
-control_samples_vds = VariantDatasetResource(
+truth_samples_vds = VariantDatasetResource(
     f"{_variant_qc_root(test=False)}/control_samples.vds",
 )
 """
