@@ -19,6 +19,7 @@ import logging
 from typing import List
 
 import hail as hl
+import hailtop.fs as hfs
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v5.resources.basics import (
@@ -60,7 +61,7 @@ def read_gvcf_paths(manifest_path: str) -> List[str]:
     :param manifest_path: GCS path to the single-column TSV of gVCF paths.
     :return: List of gVCF GCS paths.
     """
-    with hl.hadoop_open(manifest_path) as f:
+    with hfs.open(manifest_path) as f:
         gvcf_paths = [line.strip() for line in f if line.strip().startswith("gs://")]
 
     if not gvcf_paths:
