@@ -136,7 +136,15 @@ def _verify_test_vds_against_gvcf(vds: hl.vds.VariantDataset, gvcf_path: str) ->
         (str(e.locus), tuple(e.alleles)): str(e._gt) for e in vd.entries().collect()
     }
 
-    # --- Reference blocks (interior only; combiner clips at interval boundaries) ---
+    # --- Reference blocks ---
+    # NOTE: interior-only comparison. The combiner imports only `test_interval`, so a
+    # reference block straddling either boundary is CLIPPED to the interval (its start is
+    # bumped up to / its END pulled back to the boundary). Such a block then no longer
+    # matches the gVCF's original (un-clipped) block, which would be a spurious failure.
+    # Interior blocks (start strictly after the interval start AND END strictly before
+    # the interval end) are never clipped, so they must match the gVCF exactly. We
+    # therefore drop the (at most two) boundary blocks from BOTH sides via the
+    # `start_pos < ... < end_pos` guards below and compare only the interior.
     # gVCF reference blocks have <NON_REF> as their only ALT and an INFO/END field.
     ref = gvcf.filter_rows(hl.all(gvcf.alleles[1:].map(lambda a: a == non_ref)))
     gvcf_ref = {
