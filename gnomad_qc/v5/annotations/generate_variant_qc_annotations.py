@@ -235,9 +235,9 @@ def run_generate_sib_stats(
     """
     Generate sibling stats from the AoU VDS and relatedness info.
 
-    Sibling stats only require autosomal, bi-allelic sites for the (typically <4%
-    of samples that form) sibling pairs. To avoid doing per-entry work on the full
-    sample set, this function:
+    Sibling stats only require autosomal, bi-allelic sites for the subset of samples
+    that form sibling pairs. To avoid doing per-entry work on the full sample set,
+    this function:
 
         - Derives the sibling sample set from `relatedness_ht` first (no MT scan).
         - Loads the VDS already filtered to those samples and autosomes, keeping
@@ -254,7 +254,7 @@ def run_generate_sib_stats(
         testing.
     :return: Table containing sibling stats.
     """
-    # Sibling sample set, kept as a Hail Table to avoid localizing ~15K IDs.
+    # Sibling sample set, kept as a Hail Table to avoid localizing the IDs.
     sib_ht = relatedness_ht.filter(relatedness_ht.relationship == SIBLINGS)
     sib_samples_ht = (
         sib_ht.key_by(s=sib_ht.i.s)
