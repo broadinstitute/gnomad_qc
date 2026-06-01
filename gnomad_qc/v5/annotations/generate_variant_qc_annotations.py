@@ -7,6 +7,7 @@ from typing import Dict
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import get_truth_ht
+from gnomad.sample_qc.relatedness import SIBLINGS
 from gnomad.utils.annotations import (
     annotate_allele_info,
     get_lowqual_expr,
@@ -226,18 +227,60 @@ def run_generate_trio_stats(
 
 
 def run_generate_sib_stats(
-    mt: hl.MatrixTable,
     relatedness_ht: hl.Table,
+    environment: str,
+    test: bool = False,
+    test_n_partitions: int = None,
 ) -> hl.Table:
     """
-    Generate sibling stats from a VariantDataset and relatedness info.
+    Generate sibling stats from the AoU VDS and relatedness info.
 
-    :param mt: Input MatrixTable.
+    Sibling stats only require autosomal, bi-allelic sites for the (typically <4%
+    of samples that form) sibling pairs. To avoid doing per-entry work on the full
+    sample set, this function:
+
+        - Derives the sibling sample set from `relatedness_ht` first (no MT scan).
+        - Loads the VDS already filtered to those samples and autosomes, keeping
+          only the entries needed for adj (LGT/LAD/GQ).
+        - Filters to bi-allelic sites and uses LGT/LAD directly instead of running
+          `sparse_split_multi` (valid because LGT == GT and LAD == AD at bi-allelic
+          sites). Multi-allelic-derived variants are therefore excluded from sibling
+          stats.
+
     :param relatedness_ht: Table containing relatedness info.
+    :param environment: Environment to load the VDS from. One of "rwb" or "batch".
+    :param test: Whether to load the test VDS. Default is False.
+    :param test_n_partitions: Optional number of VDS partitions to filter to for
+        testing.
     :return: Table containing sibling stats.
     """
+    # Sibling sample set, kept as a Hail Table to avoid localizing ~15K IDs.
+    sib_ht = relatedness_ht.filter(relatedness_ht.relationship == SIBLINGS)
+    sib_samples_ht = (
+        sib_ht.key_by(s=sib_ht.i.s)
+        .select()
+        .union(sib_ht.key_by(s=sib_ht.j.s).select())
+        .distinct()
+    )
+
+    # NOTE: Checked sibling IDs; none have sample ID collisions, so they match the
+    # VDS sample IDs directly (no 'aou_' prefix needed).
+    vds = get_aou_vds(
+        high_quality_only=True,
+        autosomes_only=True,
+        filter_samples=sib_samples_ht,
+        entries_to_keep=["LGT", "LAD", "GQ"],
+        filter_partitions=range(test_n_partitions) if test_n_partitions else None,
+        test=test,
+        environment=environment,
+    )
+
+    mt = vds.variant_data
+    # Bi-allelic only, no split: at bi-allelic sites LGT == GT and LAD == AD.
+    mt = mt.filter_rows(hl.len(mt.alleles) == 2)
+    mt = mt.annotate_entries(GT=mt.LGT, AD=mt.LAD)
+    # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
     mt = annotate_adj_no_dp(mt)
-    mt = hl.experimental.sparse_split_multi(mt)
     return generate_sib_stats(mt, relatedness_ht)
 
 
@@ -431,19 +474,6 @@ def main(args):
             " --transmitted-singletons or --sibling-singletons"
         )
 
-    # Load VDS only if needed for create_info_ht or generate_sibling_stats.
-    if args.create_info_ht or args.generate_sibling_stats:
-        # NOTE: VDS will have 'aou_' prefix on sample IDs.
-        vds = get_aou_vds(
-            high_quality_only=True,
-            filter_partitions=range(test_n_partitions) if test_n_partitions else None,
-            annotate_meta=True,
-            # NOTE: Using args.test here so that sibling stats test can be calculated from
-            # a few partitions of the full (not test) VDS).
-            test=args.test,
-            environment=environment,
-        )
-
     try:
         if args.create_info_ht:
             _check_resource_existence(
@@ -452,6 +482,17 @@ def main(args):
                     "info_ht": [info_ht_path],
                 },
                 overwrite=overwrite,
+            )
+
+            # NOTE: VDS will have 'aou_' prefix on sample IDs.
+            vds = get_aou_vds(
+                high_quality_only=True,
+                filter_partitions=(
+                    range(test_n_partitions) if test_n_partitions else None
+                ),
+                annotate_meta=True,
+                test=test,
+                environment=environment,
             )
 
             ht = create_info_ht(
@@ -513,8 +554,13 @@ def main(args):
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
+            # NOTE: args.test (not combined test) so a --test-n-partitions run reads
+            # partitions of the full VDS rather than the 10-sample test VDS.
             ht = run_generate_sib_stats(
-                vds.variant_data, relatedness(environment=environment).ht()
+                relatedness(environment=environment).ht(),
+                environment=environment,
+                test=args.test,
+                test_n_partitions=test_n_partitions,
             )
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
