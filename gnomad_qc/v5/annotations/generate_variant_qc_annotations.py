@@ -271,6 +271,7 @@ def run_generate_sib_stats(
         filter_samples=sib_samples_ht,
         entries_to_keep=["LGT", "LAD", "GQ"],
         filter_partitions=range(test_n_partitions) if test_n_partitions else None,
+        log_sample_counts=False,
         test=test,
         environment=environment,
     )
