@@ -270,6 +270,13 @@ def run_generate_sib_stats(
         autosomes_only=True,
         filter_samples=sib_samples_ht,
         entries_to_keep=["LGT", "LAD", "GQ"],
+        # remove_dead_alleles=True (the default) does a full-width per-row aggregation
+        # over the LA entry field (genome-wide, all samples) when dropping hard-filtered
+        # samples -- purely to recode/remove AC==0 alleles at multi-allelic sites. It
+        # runs *before* entries_to_keep prunes fields, so it forces decoding LA (which
+        # we don't even keep). We only use bi-allelic sites (len(alleles)==2,
+        # no split), so this is wasted work.
+        remove_dead_alleles=False,
         filter_partitions=range(test_n_partitions) if test_n_partitions else None,
         log_sample_counts=False,
         test=test,
