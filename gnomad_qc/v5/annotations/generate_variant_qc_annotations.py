@@ -228,6 +228,7 @@ def run_generate_trio_stats(
 
 def run_generate_sib_stats(
     relatedness_ht: hl.Table,
+    info_ht: hl.Table,
     environment: str,
     test: bool = False,
     test_n_partitions: int = None,
@@ -240,14 +241,18 @@ def run_generate_sib_stats(
     this function:
 
         - Derives the sibling sample set from `relatedness_ht` first (no MT scan).
-        - Loads the VDS already filtered to those samples and autosomes, keeping
-          only the entries needed for adj (LGT/LAD/GQ).
-        - Filters to bi-allelic sites and uses LGT/LAD directly instead of running
-          `sparse_split_multi` (valid because LGT == GT and LAD == AD at bi-allelic
-          sites). Multi-allelic-derived variants are therefore excluded from sibling
-          stats.
+        - Loads the VDS already filtered to those samples and autosomes, keeping only
+          the entries needed for the split + adj (LA/LGT/LAD/GQ).
+        - Filters to natively bi-allelic sites (multi-allelic-derived variants are
+          excluded from sibling stats), then runs `sparse_split_multi`. Filtering to
+          bi-allelic first means the split does no multi-allelic explosion -- it only
+          puts alleles in minimal representation (so keys match the split `info_ht`) and
+          downcodes entries, and that per-entry work stays lazy.
+        - Restricts to AC_high_quality_raw == 2 (doubleton) loci from `info_ht`, since
+          only sibling singletons are used downstream.
 
     :param relatedness_ht: Table containing relatedness info.
+    :param info_ht: Info Table (with AC_info) used to restrict to AC == 2 loci.
     :param environment: Environment to load the VDS from. One of "rwb" or "batch".
     :param test: Whether to load the test VDS. Default is False.
     :param test_n_partitions: Optional number of VDS partitions to filter to for
@@ -269,9 +274,12 @@ def run_generate_sib_stats(
         high_quality_only=True,
         autosomes_only=True,
         filter_samples=sib_samples_ht,
-        entries_to_keep=["LGT", "LAD", "GQ"],
-        # Set remove_dead_alleles to False since sibling stats only run on bi-allelic sites
-        # (len(alleles)==2, no split).
+        # LA is needed by sparse_split_multi to downcode LGT/LAD; like the other
+        # entries it is only decoded for the rows that survive the AC==2 restriction.
+        entries_to_keep=["LA", "LGT", "LAD", "GQ"],
+        # remove_dead_alleles=True would do a full-width per-row LA aggregation when
+        # dropping hard-filtered samples; sibling stats don't need dead-allele recoding
+        # (we restrict to bi-allelic doubletons), so disable it.
         remove_dead_alleles=False,
         filter_partitions=range(test_n_partitions) if test_n_partitions else None,
         log_sample_counts=False,
@@ -280,9 +288,16 @@ def run_generate_sib_stats(
     )
 
     mt = vds.variant_data
-    # Bi-allelic only, no split: at bi-allelic sites LGT == GT and LAD == AD.
+    # Keep only natively bi-allelic sites (the AoU VDS is about 77% biallelics), then split
+    # Filtering to bi-allelic first means the split is explosion-free: it just min_reps
+    # the alleles (so keys match the split info_ht) and downcodes LGT/LAD -> GT/AD.
+    # The per-entry downcode is lazy, so it only materializes
+    # for the rows that survive the AC==2 restriction below.
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
-    mt = mt.annotate_entries(GT=mt.LGT, AD=mt.LAD)
+    mt = hl.experimental.sparse_split_multi(mt)
+    # Restrict to AC_high_quality_raw == 2 (doubleton) loci.
+    ac2_loci = info_ht.filter(info_ht.AC_info.AC_high_quality_raw == 2).select()
+    mt = mt.semi_join_rows(ac2_loci)
     # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
     mt = annotate_adj_no_dp(mt)
     return generate_sib_stats(mt, relatedness_ht)
@@ -552,16 +567,20 @@ def main(args):
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
+            # args.test (not combined test): a --test-n-partitions run reads partitions
+            # of the full VDS, so it needs the full (non-test) info HT for AC and for
+            # matching split keys.
+            sib_info_ht_path = get_info_ht(test=args.test, environment=environment).path
             _check_resource_existence(
                 environment=environment,
+                input_step_resources={"info_ht": [sib_info_ht_path]},
                 output_step_resources={"sib_stats_ht": [sib_stats_ht_path]},
                 overwrite=overwrite,
             )
             # Note: Checked sibling IDs; none of them have sample ID collisions.
-            # NOTE: args.test (not combined test) so a --test-n-partitions run reads
-            # partitions of the full VDS rather than the 10-sample test VDS.
             ht = run_generate_sib_stats(
                 relatedness(environment=environment).ht(),
+                hl.read_table(sib_info_ht_path),
                 environment=environment,
                 test=args.test,
                 test_n_partitions=test_n_partitions,
