@@ -227,6 +227,7 @@ def create_dense_trio_mt(
     fam_ht: hl.Table,
     meta_ht: hl.Table,
     test: bool = False,
+    full_trios_chr20: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     environment: str = "rwb",
 ) -> hl.MatrixTable:
@@ -236,6 +237,9 @@ def create_dense_trio_mt(
     :param fam_ht: Table with family information.
     :param meta_ht: Table with metadata information.
     :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
+    :param full_trios_chr20: Whether to densify *all* trios on whole chr20 (no sample
+        or partition subset) to get an overhead-independent per-genomic-unit cost that
+        can be scaled to whole-genome (~46x). Default is False.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
@@ -267,7 +271,7 @@ def create_dense_trio_mt(
     vds = get_aou_vds(
         filter_samples=meta_ht,
         filter_partitions=range(2) if test else None,
-        chrom="chr20" if test else None,
+        chrom="chr20" if (test or full_trios_chr20) else None,
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
         environment=environment,
@@ -282,6 +286,7 @@ def main(args):
 
     overwrite = args.overwrite
     test = args.test
+    full_trios_chr20 = args.full_trios_chr20
 
     try:
 
@@ -298,7 +303,9 @@ def main(args):
             test=test, environment=environment
         )
         trios_path = trios(test=test, environment=environment).path
-        dense_trio_mt_path = dense_trios(test=test, environment=environment).path
+        dense_trio_mt_path = dense_trios(
+            test=test or full_trios_chr20, environment=environment
+        ).path
 
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
@@ -430,6 +437,7 @@ def main(args):
                 hl.import_fam(final_ped_path),
                 meta_ht,
                 test=test,
+                full_trios_chr20=full_trios_chr20,
                 naive_coalesce_partitions=naive_coalesce_partitions,
                 environment=environment,
             )
@@ -596,6 +604,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     dense_trio_mt_args.add_argument(
         "--create-dense-trio-mt",
         help=("Create a dense MT for high quality trios."),
+        action="store_true",
+    )
+    dense_trio_mt_args.add_argument(
+        "--full-trios-chr20",
+        help=(
+            "Densify all trios on whole chr20 (no sample or partition subset) for cost "
+            "calibration. Writes to the test output path. Scale the resulting "
+            "overhead-subtracted cost by ~46x to estimate whole-genome cost. Do not "
+            "combine with --test."
+        ),
         action="store_true",
     )
     dense_trio_mt_args.add_argument(
