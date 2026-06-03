@@ -228,7 +228,7 @@ def run_generate_trio_stats(
 
 def run_generate_sib_stats(
     relatedness_ht: hl.Table,
-    info_ht: hl.Table,
+    info_ht_path: str,
     environment: str,
     test: bool = False,
     test_n_partitions: int = None,
@@ -252,7 +252,8 @@ def run_generate_sib_stats(
           only sibling singletons are used downstream.
 
     :param relatedness_ht: Table containing relatedness info.
-    :param info_ht: Info Table (with AC_info) used to restrict to AC == 2 loci.
+    :param info_ht_path: Path to the info HT (with AC_info), used to restrict to AC == 2
+        loci. Read co-partitioned with the MT so the semi-join is shuffle-free.
     :param environment: Environment to load the VDS from. One of "rwb" or "batch".
     :param test: Whether to load the test VDS. Default is False.
     :param test_n_partitions: Optional number of VDS partitions to filter to for
@@ -295,7 +296,15 @@ def run_generate_sib_stats(
     # for the rows that survive the AC==2 restriction below.
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = hl.experimental.sparse_split_multi(mt)
-    # Restrict to AC_high_quality_raw == 2 (doubleton) loci.
+    # Restrict to AC_high_quality_raw == 2 (doubleton) loci. Read the info HT with the
+    # same partition count as the MT: both derive from the same VDS, so matching the count
+    # makes the bounds align closely. semi_join_rows lowers to
+    # filter_rows(is_defined(index(...))), whose index-join would otherwise have to
+    # repartition the AC==2 side to the MT's partitioner; aligned partitioning keeps that
+    # cheap (closer to a zip). (For a full prod run mt.n_partitions() is the autosomal VDS
+    # count; for --test-n-partitions the counts match but the MT is a contiguous slice
+    # while the info HT spans the genome, so alignment only fully holds for prod.)
+    info_ht = hl.read_table(info_ht_path, _n_partitions=mt.n_partitions())
     ac2_loci = info_ht.filter(info_ht.AC_info.AC_high_quality_raw == 2).select()
     mt = mt.semi_join_rows(ac2_loci)
     # Add adj before generate_sib_stats so it skips its own (DP-requiring) annotate_adj.
@@ -580,11 +589,17 @@ def main(args):
             # Note: Checked sibling IDs; none of them have sample ID collisions.
             ht = run_generate_sib_stats(
                 relatedness(environment=environment).ht(),
-                hl.read_table(sib_info_ht_path),
+                sib_info_ht_path,
                 environment=environment,
                 test=args.test,
                 test_n_partitions=test_n_partitions,
             )
+            # Checkpoint to materialize the aggregation at full (~per-VDS-partition)
+            # parallelism before coalescing the output. A lazy naive_coalesce on the
+            # write would otherwise run the whole upstream decode/aggregation at the
+            # coalesced partition count.
+            ht = ht.checkpoint(hl.utils.new_temp_file("sib_stats", "ht"))
+            ht = ht.naive_coalesce(args.sib_stats_n_partitions)
             ht.write(sib_stats_ht_path, overwrite=overwrite)
 
         if args.create_variant_qc_annotation_ht:
@@ -716,6 +731,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--generate-sibling-stats",
         help="Calculates sibling stats.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--sib-stats-n-partitions",
+        help=(
+            "Number of partitions to coalesce the final sibling stats HT to (applied"
+            " after a checkpoint so it doesn't throttle the aggregation)."
+        ),
+        type=int,
+        default=5000,
     )
     parser.add_argument(
         "--create-info-ht",
