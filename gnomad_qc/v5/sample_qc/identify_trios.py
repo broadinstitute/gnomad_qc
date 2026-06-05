@@ -266,12 +266,13 @@ def create_dense_trio_mt(
 
         meta_ht = meta_ht.filter(hl.literal(trio_samples).contains(meta_ht.s))
 
-    # v4 used `entries_to_keep` to filter non `gvcf_info` entries, but
-    # AoU VDS only has GQ, RGQ, PS, LGT, LAD, LA, FT entries.
+    # Keep all AoU VDS entries except FT (genotype-level filtering information
+    # from AoU).
     vds = get_aou_vds(
         filter_samples=meta_ht,
         filter_partitions=range(2) if test else None,
         chrom="chr20" if (test or full_trios_chr20) else None,
+        entries_to_keep=["GQ", "RGQ", "PS", "LGT", "LAD", "LA"],
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
         environment=environment,
