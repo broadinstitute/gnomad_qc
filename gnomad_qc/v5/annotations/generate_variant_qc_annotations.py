@@ -41,7 +41,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
+from gnomad_qc.v5.resources.sample_qc import get_dense_trio_mt, pedigree, relatedness
 
 logging.basicConfig(
     format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
@@ -499,8 +499,13 @@ def main(args):
                 overwrite=overwrite,
             )
 
+            # Trio stats use autosomes only; union the per-chromosome dense trio MTs.
             ht = run_generate_trio_stats(
-                dense_trios(test=test, environment=environment).mt(),
+                get_dense_trio_mt(
+                    [f"chr{i}" for i in range(1, 23)],
+                    test=test,
+                    environment=environment,
+                ),
                 pedigree(test=test, environment=environment).pedigree(),
             )
             ht.write(trio_stats_ht_path, overwrite=overwrite)
