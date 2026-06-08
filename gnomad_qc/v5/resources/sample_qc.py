@@ -1,5 +1,8 @@
 """Script containing sample QC related resources."""
 
+from typing import List
+
+import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     PedigreeResource,
@@ -814,14 +817,17 @@ def trios(
 
 
 def dense_trios(
+    chrom: str,
     split: bool = False,
     test: bool = False,
     environment: str = "batch",
     read_only: bool = False,
 ) -> VersionedMatrixTableResource:
     """
-    Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+    Get the VersionedMatrixTableResource for the per-chromosome dense trio MatrixTable.
 
+    :param chrom: Single chromosome (e.g. 'chr20') for the per-chromosome dense trio MT.
+        The dense trio MT is densified one chromosome at a time.
     :param split: Whether to get the resource for the split trio MatrixTable.
     :param test: Whether to use a tmp path for a test resource.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
@@ -835,8 +841,36 @@ def dense_trios(
             version: MatrixTableResource(
                 f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}"
                 f"/relatedness/trios/aou.genomes.v{version}.trios.dense"
-                f"{'.split' if split else ''}.mt"
+                f"{'.split' if split else ''}"
+                f".{chrom}.mt"
             )
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+def get_dense_trio_mt(
+    chroms: List[str],
+    test: bool = False,
+    environment: str = "batch",
+) -> hl.MatrixTable:
+    """
+    Union the per-chromosome dense trio MatrixTables for `chroms` into one MatrixTable.
+
+    The dense trio MT is densified one chromosome at a time (see ``create_dense_trio_mt``
+    in ``identify_trios.py``); this lazily unions their rows. The per-chromosome MTs share
+    the same trio columns (built from the same pedigree and metadata), so ``union_rows``,
+    which requires matching column keys, aligns them.
+
+    :param chroms: Chromosomes whose per-chromosome dense trio MTs to union.
+    :param test: Whether to read the test-path MTs. Default is False.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
+        or "batch".
+    :return: Dense trio MatrixTable spanning `chroms`.
+    """
+    mts = [
+        dense_trios(test=test, chrom=c, environment=environment).mt() for c in chroms
+    ]
+    if len(mts) == 1:
+        return mts[0]
+    return mts[0].union_rows(*mts[1:])
