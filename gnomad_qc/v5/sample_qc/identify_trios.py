@@ -285,9 +285,6 @@ def main(args):
             test=test, environment=environment
         )
         trios_path = trios(test=test, environment=environment).path
-        dense_trio_mt_path = dense_trios(
-            test=test, chrom=chrom, environment=environment
-        ).path
 
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
@@ -408,6 +405,9 @@ def main(args):
                 )
             logger.info("Creating dense trio MT...")
             logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")
+            dense_trio_mt_path = dense_trios(
+                test=test, chrom=chrom, environment=environment
+            ).path
             _check_resource_existence(
                 environment=environment,
                 output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
