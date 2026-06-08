@@ -257,7 +257,7 @@ def main(args):
         ht = ht.annotate(
             lcr_or_segdup=(ht.region_flags.lcr | ht.region_flags.segdup),
             most_severe_csq=ht.vep.most_severe_consequence,
-            phylop_score=ht.in_silico_predictors.pphylop,
+            phylop_score=ht.in_silico_predictors.phylop,
         )
 
         # Keep only fields needed for downstream depletion annotations.
@@ -289,7 +289,7 @@ def main(args):
 
         logger.info("Writing hom depletion check results...")
         ht = ht.naive_coalesce(50)
-        ht.write("gs://gnomad-kristen/hom_depletion_af_check_all.ht", overwrite=True)
+        ht.write("gs://gnomad-kristen/hom_depletion_af_check_all_0.ht", overwrite=True)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
