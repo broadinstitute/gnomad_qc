@@ -12,9 +12,11 @@ on the CLI flags. They are mutually exclusive (the ``__main__`` block
 validates this):
 
 1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
-   runs wherever you launch it, does NOT initialize Hail, builds and
-   submits a Hail Batch of relay jobs, then returns. Used for the
-   prod-scale AoU compute (the dataset is too big for one job).
+   runs wherever you launch it, does not call ``_init_hail`` (but the
+   ``_SUCCESS``/output skip-checks via ``_file_exists_for_env`` do
+   initialize the Hail backend), builds and submits a Hail Batch of
+   relay jobs, then returns. Used for the prod-scale AoU compute (the
+   dataset is too big for one job).
 2. WORKER (``--run-chunk`` or ``--run-merge``): each relay container the
    orchestrator submitted re-invokes THIS script with ``--run-chunk`` /
    ``--run-merge``. Initializes Hail, does exactly one chunk/merge unit,
@@ -34,46 +36,49 @@ in-process invocation first; fan-out then reads them from disk.
 
 Processing Workflow:
 --------------------
-Per-project setup (--project-name {aou,gnomad}):
-1. (AoU only) Write the downsampling HT (--write-aou-downsampling-ht).
-2. Write the group membership HT (--write-group-membership-ht): strata =
-   sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
-   --reduce-min-aggs to write the leaf-only variant.
-3. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
-   Strict single-job via --compute-all-cov-release-stats-ht, or the
-   prod-scale fan-out (--use-batch-fanout then --merge-cov-chunks). See
-   "Execution roles" above for how those dispatch.
+Per-project setup (--project-name {aou,gnomad})::
 
-Per-project merge (--project-name gnomad):
-4. Build the gnomAD v5 coverage HT (--merge-gnomad-coverage) and AN HT
-   (--merge-gnomad-an) by subtracting the consent-drop samples from the
-   v4 release HTs.
+    1. (AoU only) Write the downsampling HT (--write-aou-downsampling-ht).
+    2. Write the group membership HT (--write-group-membership-ht): strata =
+       sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
+       --reduce-min-aggs to write the leaf-only variant.
+    3. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
+       Strict single-job via --compute-all-cov-release-stats-ht, or the
+       prod-scale fan-out (--use-batch-fanout then --merge-cov-chunks). See
+       "Execution roles" above for how those dispatch.
 
-Release assembly (--project-name aou):
-5. Join AoU + gnomAD v5 outputs and export release files:
-   --export-coverage-release-files (coverage HT + TSV)
-   --export-an-release-files (AN HT + TSV)
-   --merge-qual-hists (qual hists HT; gnomAD v4 hists are reused as-is —
-   they were not recomputed for v5).
+Per-project merge (--project-name gnomad)::
 
-Usage Examples:
----------------
-# Per-chunk fan-out compute + merge on Hail Batch (the prod path):
-python compute_coverage.py --project-name aou --environment batch \\
-    --use-batch-fanout --partitions-per-chunk 2
-python compute_coverage.py --project-name aou --environment batch \\
-    --merge-cov-chunks --n-partitions 10000
+    4. Build the gnomAD v5 coverage HT (--merge-gnomad-coverage) and AN HT
+       (--merge-gnomad-an) by subtracting the consent-drop samples from the
+       v4 release HTs.
 
-# Strict whole-VDS compute on rwb:
-python compute_coverage.py --project-name aou --environment rwb \\
-    --compute-all-cov-release-stats-ht
+Release assembly (--project-name aou)::
 
-# gnomAD v4 consent-drop subtraction + AoU/gnomAD merge:
-python compute_coverage.py --project-name gnomad --environment dataproc \\
-    --merge-gnomad-coverage --merge-gnomad-an
-python compute_coverage.py --project-name aou --environment batch \\
-    --export-coverage-release-files --export-an-release-files \\
-    --merge-qual-hists
+    5. Join AoU + gnomAD v5 outputs and export release files:
+       --export-coverage-release-files (coverage HT + TSV)
+       --export-an-release-files (AN HT + TSV)
+       --merge-qual-hists (qual hists HT; gnomAD v4 hists are reused as-is —
+       they were not recomputed for v5).
+
+Usage Examples::
+
+    # Per-chunk fan-out compute + merge on Hail Batch (the prod path):
+    python compute_coverage.py --project-name aou --environment batch \\
+        --use-batch-fanout --partitions-per-chunk 3
+    python compute_coverage.py --project-name aou --environment batch \\
+        --merge-cov-chunks --n-partitions 10000
+
+    # Strict whole-VDS compute on rwb:
+    python compute_coverage.py --project-name aou --environment rwb \\
+        --compute-all-cov-release-stats-ht
+
+    # gnomAD v4 consent-drop subtraction + AoU/gnomAD merge:
+    python compute_coverage.py --project-name gnomad --environment dataproc \\
+        --merge-gnomad-coverage --merge-gnomad-an
+    python compute_coverage.py --project-name aou --environment batch \\
+        --export-coverage-release-files --export-an-release-files \\
+        --merge-qual-hists
 """
 
 import argparse
@@ -150,6 +155,13 @@ COVERAGE_OVER_X_BINS = (1, 5, 10, 15, 20, 25, 30, 50, 100)
 # per-row from their leaf-children, which is what made the reduced AoU
 # run more expensive than the non-reduced one.
 PINNED_LEAF_GROUPS = [{"group": "adj"}, {"group": "raw"}]
+
+# All Hail Batch jobs (chunk relays + merges) are pinned to the region the
+# input data lives in: the AoU VDS, vep_context, and outputs are all
+# us-central1. Co-locating the workers with the data avoids inter-region GCS
+# egress, and since the relays are non-spot (j.spot(False)) there's no
+# spot-capacity reason to spread across regions.
+BATCH_REGIONS = ["us-central1"]
 
 
 def get_downsampling_ht(ht: hl.Table) -> hl.Table:
@@ -293,6 +305,7 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
     try:
         return file_exists(path)
     except PermissionError as e:
+        # This PermissionError was isolated to Hail 0.2.138.
         if environment == "batch":
             logger.warning(
                 "file_exists check on %s raised PermissionError %s; assuming exists.",
@@ -387,9 +400,7 @@ def _resolve_group_membership_ht_path(
     :return: Fully resolved group_membership HT path.
     """
     path = group_membership(test=test, data_set=project, environment=environment).path
-    if reduce_min_aggs:
-        path = path.rstrip("/").removesuffix(".ht") + "_reduce.ht"
-    return path
+    return _apply_path_suffix(path, "reduce" if reduce_min_aggs else None)
 
 
 def _log_name_for_run(
@@ -483,6 +494,60 @@ def _derive_chunk_locus_intervals(
                 )
             )
     return sub_intervals
+
+
+def _balanced_locus_intervals(
+    ht: hl.Table, n_partitions: int
+) -> List[hl.utils.Interval]:
+    """
+    Derive ``n_partitions`` balanced bare-``Locus`` intervals from a locus-keyed table.
+
+    Uses ``Table._calculate_new_partitions`` (balanced by the table's own key
+    distribution, per Hail-team guidance "read all the tables with the same
+    partitions") instead of an ``aggregate_rows`` min/max scan, then converts the
+    ``Struct(locus=...)`` interval points into bare-``Locus`` intervals so they can
+    be passed to both ``hl.vds.read_vds(intervals=...)`` and
+    ``hl.read_table(_intervals=...)`` to co-partition a VDS and a sites table at
+    read time (a shuffle-free densify join).
+
+    :param ht: Locus-keyed Table (e.g. ``vep_context`` keyed by ``locus`` or a VDS
+        ``reference_data.rows()``) to derive balanced partition boundaries from.
+    :param n_partitions: Number of balanced partitions/intervals to derive.
+    :return: List of bare-``Locus`` ``hl.Interval`` objects.
+    """
+    struct_intervals = ht._calculate_new_partitions(n_partitions)
+    return [
+        hl.Interval(
+            iv.start["locus"],
+            iv.end["locus"],
+            includes_start=iv.includes_start,
+            includes_end=iv.includes_end,
+        )
+        for iv in struct_intervals
+    ]
+
+
+def _derive_ref_partition_intervals(
+    n_partitions: int, chrom: Optional[List[str]] = None
+) -> List[hl.utils.Interval]:
+    """
+    Derive ``n_partitions`` balanced locus intervals from the vep_context sites table.
+
+    Used by the strict single-job path to co-partition the VDS and vep_context
+    reads (see :func:`_balanced_locus_intervals`). Restricting to ``chrom`` first
+    keeps the intervals aligned with a ``--chrom``-filtered run.
+
+    :param n_partitions: Number of balanced partitions/intervals to derive.
+    :param chrom: Optional list of contigs to restrict vep_context to before
+        deriving partitions, so the intervals match a ``--chrom``-filtered run.
+    :return: List of bare-``Locus`` ``hl.Interval`` objects.
+    """
+    ref_ht = vep_context.versions["105"].ht().key_by("locus")
+    if chrom:
+        ref_ht = hl.filter_intervals(
+            ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+        )
+    return _balanced_locus_intervals(ref_ht, n_partitions)
 
 
 def compute_all_release_stats_per_ref_site(
@@ -583,6 +648,10 @@ def compute_all_release_stats_per_ref_site(
     sex_expr = reduce(lambda x, field: x[field], sex_karyotype_field.split("."), vmt)
     vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
     rmt = vds.reference_data
+    # Computing LEN is only needed for VDS written before Hail 0.2.134, which
+    # added LEN to the reference data; future VDS versions ship it already, so
+    # this branch can be dropped once the inputs are all >= 0.2.134.
+    # https://hail.is/docs/0.2/change_log.html#version-0-2-134
     if "LEN" not in rmt.entry:
         rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
     vds = hl.vds.VariantDataset(rmt, vmt)
@@ -1046,10 +1115,11 @@ def _load_project_vds(
     Centralizes the project-conditional VDS load that's needed by both the
     chunk worker (``_run_coverage_chunk``) and the strict path (``main``):
 
-    - filter_partitions vs read_intervals routing on AoU
-      (``sub_intervals`` takes precedence; ``partition_range`` is the
-      fallback). gnomAD v5 doesn't yet plumb ``read_intervals``, so
-      ``sub_intervals`` is ignored there.
+    - filter_partitions vs read_intervals routing (both AoU and gnomAD):
+      ``sub_intervals`` takes precedence; ``partition_range`` is the
+      fallback. When ``sub_intervals`` is provided the VDS is read with
+      ``read_intervals`` so it's co-partitioned with the vep_context read
+      on the same intervals (a shuffle-free densify join).
     - AoU-specific DP synthesis from LAD + ``annotate_adj_no_dp`` (the AoU
       v8 VDS lacks DP, which ``compute_stats_per_ref_site`` requires).
     - ``test_sample_subset`` application: AoU only, reads ``meta`` from
@@ -1057,7 +1127,7 @@ def _load_project_vds(
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
-    :param partition_range: VDS partition indices (e.g. ``list(range(2))``)
+    :param partition_range: VDS partition indices (e.g. ``list(range(3))``)
         or ``None`` for the full VDS.
     :param sub_intervals: Locus sub-intervals for read-time partitioning
         (AoU only; ignored for gnomAD).
@@ -1093,12 +1163,11 @@ def _load_project_vds(
             vds = hl.vds.filter_samples(vds, meta_ht)
     else:
         sex_karyotype_field = "meta.sex_imputation.sex_karyotype"
-        # gnomad_v5 path doesn't yet plumb read_intervals through to
-        # get_gnomad_v3_vds; fall back to filter_partitions.
         vds = get_gnomad_v5_genomes_vds(
             release_only=True,
             consent_drop_only=True,
-            filter_partitions=partition_range,
+            filter_partitions=None if sub_intervals else partition_range,
+            read_intervals=sub_intervals,
             annotate_meta=True,
             chrom=chrom,
         )
@@ -1174,12 +1243,12 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     Steps:
       1. Probe-load the VDS via
-         ``filter_partitions=range(chunk_start, chunk_stop)`` and derive the
-         chunk's per-contig locus extent via ``_derive_chunk_locus_intervals``.
-      2. Subdivide the extent into ``--read-subintervals-per-chunk`` locus
-         sub-intervals and re-read the VDS via
-         ``hl.vds.read_vds(intervals=sub_intervals)`` — one VDS partition per
-         sub-interval (no shuffle).
+         ``filter_partitions=range(chunk_start, chunk_stop)`` and derive
+         ``--read-subintervals-per-chunk`` balanced locus sub-intervals over the
+         chunk via ``_balanced_locus_intervals`` (``_calculate_new_partitions``,
+         not an ``aggregate_rows`` scan).
+      2. Re-read the VDS via ``hl.vds.read_vds(intervals=sub_intervals)`` — one
+         VDS partition per sub-interval (no shuffle).
       3. Read ``vep_context`` with the same ``_intervals=sub_intervals`` —
          co-partitioned with the VDS, so the densify join is shuffle-free.
       4. Run ``compute_all_release_stats_per_ref_site``.
@@ -1241,9 +1310,11 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
                 filter_partitions=partition_range,
                 chrom=chrom,
             )
-        sub_intervals = _derive_chunk_locus_intervals(vds_probe, n_subdivisions=n_sub)
+        sub_intervals = _balanced_locus_intervals(
+            vds_probe.reference_data.rows(), n_sub
+        )
         logger.info(
-            "Derived %d sub-intervals from chunk [%d, %d) for read-time"
+            "Derived %d balanced sub-intervals from chunk [%d, %d) for read-time"
             " partitioning.",
             len(sub_intervals),
             start,
@@ -1328,6 +1399,11 @@ def _build_setup_command(
     runtime rather than relying on what's baked into the Docker image. The
     image provides ``hail`` and system dependencies. Mirrors the equivalent
     helper in ``generate_frequency.py`` from earlier this branch.
+
+    Also writes the Hail ``config.ini`` (Batch billing project,
+    ``remote_tmpdir``, and GCS requester-pays project) so the relay's
+    ``hl.init(backend="batch")`` finds them; see the inline comment below
+    for why both the XDG and legacy paths are written.
 
     Also patches ``/gsa-key/key.json`` with a ``quota_project_id`` field
     so requester-pays reads (e.g., the AoU VDS) succeed from the QoB
@@ -1465,7 +1541,7 @@ def _submit_chunk_batch(
     ``chunk_indices`` is the already-filtered pending set.
 
     :param args: Parsed CLI args (reads ``project_name``,
-        ``total_partitions``, ``partitions_per_chunk``, ``regions``,
+        ``total_partitions``, ``partitions_per_chunk``,
         ``read_subintervals_per_chunk``, ``cov_and_an_output_suffix``,
         ``batch_image``, ``chunk_cpu/memory/storage``,
         ``chunk_attempts``, ``batch_dry_run``).
@@ -1487,7 +1563,6 @@ def _submit_chunk_batch(
     project = args.project_name
     total = args.total_partitions
     pp = args.partitions_per_chunk
-    regions = args.regions or ["us-central1"]
     batch_name = (
         f"v5_cov_{project}_{total}p_{pp}ppc_sub{args.read_subintervals_per_chunk}"
     )
@@ -1513,7 +1588,7 @@ def _submit_chunk_batch(
             j.cpu(args.chunk_cpu)
             j.memory(args.chunk_memory)
             j.storage(args.chunk_storage)
-            j.regions(regions)
+            j.regions(BATCH_REGIONS)
             # Chunk relay is a coordinator waiting on the inner QoB
             # driver/workers; preemption mid-wait orphans the inner batch.
             j.spot(False)
@@ -1551,13 +1626,23 @@ def _orchestrate_coverage_batch(
     until the wave finishes — which (a) bounds the number of
     concurrently-running chunk relays and their nested QoB drivers to
     ``--wave-size`` so a ~tens-of-thousands-chunk prod run doesn't
-    overwhelm the shared Hail Batch service / GCP quota, and (b) is the
+    overwhelm the shared Hail Batch service, and (b) is the
     only safe option: Hail Batch's progress display is a process-global
     rich.Live, so *concurrent* ``batch.run()`` calls crash with ``Only
     one live display may be active at once`` (sequential calls are
     fine). Within a wave, Hail Batch's own scheduler runs the relay jobs
     in parallel up to worker-pool capacity. Set ``--wave-size <= 0`` (or
     >= the pending count) for a single batch (legacy behavior).
+
+    Note on the binding constraint: these relays and their nested QoB
+    drivers/workers run on the **Hail Batch service's** autoscaled worker
+    pool (provisioned in the Hail team's GCP project), not on
+    gnomad-production Compute/Dataproc. So ``--wave-size`` is bounded by
+    the shared service's capacity and by any per-billing-project
+    concurrent-core cap the Hail team configures for ``gnomad-production``
+    — *not* by gnomad-production's own GCP CPU / in-use-IP quota. Confirm
+    that cap (and acceptable concurrency on the shared deployment) with
+    the Hail team before the prod run.
 
     By default each chunk's inner QoB creates its own separate Hail Batch;
     pass ``--experimental`` to attach the inner QoB to this outer batch
@@ -1739,7 +1824,7 @@ def _submit_merge_batch(
     last (possibly smaller) group still produces a valid coalesce.
 
     :param args: Parsed CLI args (reads ``project_name``,
-        ``cov_and_an_output_suffix``, ``regions``, ``batch_image``,
+        ``cov_and_an_output_suffix``, ``batch_image``,
         ``merge_cpu``, ``merge_memory``, ``merge_storage``,
         ``chunk_attempts``, ``batch_dry_run``).
     :param backend_kwargs: kwargs for the per-call
@@ -1758,7 +1843,6 @@ def _submit_merge_batch(
     :return: None.
     """
     project = args.project_name
-    regions = args.regions or ["us-central1"]
     batch_name = f"v5_cov_merge_L{level:02d}_{project}"
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
@@ -1781,7 +1865,7 @@ def _submit_merge_batch(
             j.cpu(args.merge_cpu)
             j.memory(args.merge_memory)
             j.storage(args.merge_storage)
-            j.regions(regions)
+            j.regions(BATCH_REGIONS)
             # Merge relay is a coordinator waiting on inner union+write;
             # preemption mid-wait orphans the inner job.
             j.spot(False)
@@ -1848,7 +1932,7 @@ def _orchestrate_coverage_merge(
         ``methods_branch``, ``gcp_billing_project``,
         ``batch_billing_project``, ``batch_remote_tmpdir``,
         ``batch_image``, ``merge_cpu``, ``merge_memory``,
-        ``final_merge_storage``, ``regions``, ``chunk_attempts``,
+        ``final_merge_storage``, ``chunk_attempts``,
         ``cov_and_an_output_suffix``, ``batch_dry_run``).
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
     :return: None.
@@ -1940,18 +2024,18 @@ def _orchestrate_coverage_merge(
             n_in,
             n_out,
         )
-        if pending:
-            _submit_merge_batch(
-                args=args,
-                backend_kwargs=backend_kwargs,
-                group_indices=pending,
-                groups=groups,
-                group_output_paths=out_paths,
-                setup_cmd=setup_cmd,
-                common_flags_str=common_flags_str,
-                script=script,
-                level=level,
-            )
+        # _submit_merge_batch no-ops when there are no pending merges.
+        _submit_merge_batch(
+            args=args,
+            backend_kwargs=backend_kwargs,
+            group_indices=pending,
+            groups=groups,
+            group_output_paths=out_paths,
+            setup_cmd=setup_cmd,
+            common_flags_str=common_flags_str,
+            script=script,
+            level=level,
+        )
         inputs = out_paths
         level += 1
 
@@ -1974,7 +2058,7 @@ def _orchestrate_coverage_merge(
     j.cpu(args.merge_cpu)
     j.memory(args.merge_memory)
     j.storage(args.final_merge_storage)
-    j.regions(args.regions or ["us-central1"])
+    j.regions(BATCH_REGIONS)
     # Same coordinator-waiting-on-inner-job rationale as group merges.
     j.spot(False)
     j.n_max_attempts(args.chunk_attempts)
@@ -2123,9 +2207,7 @@ def main(args):
             downsampling_ht_path = get_aou_downsampling(
                 test=test, environment=environment
             ).path
-            meta_ht = hl.read_table(
-                meta(data_type="genomes", environment=environment).path
-            )
+            meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         # --- SETUP (prerequisites): write the input HTs the COMPUTE
         # phase (and the fan-out workers) read from disk. ---
@@ -2151,7 +2233,7 @@ def main(args):
             if project == "gnomad":
                 logger.info("Writing gnomAD group membership HT...")
                 group_membership_ht = get_group_membership_ht(
-                    hl.read_table(v4_meta(data_type="genomes").path),
+                    v4_meta(data_type="genomes").ht(),
                     project=project,
                     reduce_min_aggs=args.reduce_min_aggs,
                 )
@@ -2181,9 +2263,25 @@ def main(args):
                 output_step_resources={"coverage_and_an_ht": [cov_and_an_ht_path]},
                 overwrite=overwrite,
             )
+            # Optionally co-partition the VDS and vep_context reads into
+            # args.read_partitions balanced partitions so the densify join is
+            # shuffle-free (Hail-team guidance: read all tables with the same
+            # partitions). Honors --chrom: the intervals are derived from the
+            # chrom-restricted vep_context so they match the filtered VDS.
+            strict_sub_intervals = None
+            if args.read_partitions:
+                logger.info(
+                    "Deriving %d balanced read partitions to co-partition the VDS"
+                    " and vep_context (shuffle-free densify join).",
+                    args.read_partitions,
+                )
+                strict_sub_intervals = _derive_ref_partition_intervals(
+                    args.read_partitions, chrom=chrom
+                )
             vds, sex_karyotype_field = _load_project_vds(
                 project=project,
                 environment=environment,
+                sub_intervals=strict_sub_intervals,
                 chrom=chrom,
                 test=test,
                 test_sample_subset=args.test_sample_subset,
@@ -2192,6 +2290,7 @@ def main(args):
                 vds_filtered=vds,
                 partition_count=0,
                 chrom=chrom,
+                sub_intervals=strict_sub_intervals,
             )
             validate_vds(vds)
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
@@ -2576,6 +2675,20 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Compute the all sites coverage, allele number, and quality histogram HT.",
         action="store_true",
     )
+    parser.add_argument(
+        "--read-partitions",
+        type=int,
+        default=None,
+        help=(
+            "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
+            " co-partition the VDS and vep_context reads into this many balanced"
+            " partitions (derived via vep_context._calculate_new_partitions) so the"
+            " densify join is shuffle-free. Default None reads each with its native"
+            " partitioning. Honors --chrom (intervals derived from the"
+            " chrom-restricted vep_context). Used for the single gnomAD dataproc"
+            " job, which is not chunked/fanned out."
+        ),
+    )
 
     coverage_args = parser.add_argument_group(
         "Compute coverage release stats HT.",
@@ -2646,11 +2759,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     fanout_group.add_argument(
         "--partitions-per-chunk",
         type=int,
-        default=2,
+        default=3,
         help=(
-            "Number of VDS partitions per chunk job. Default 2 (matches the"
-            " driver-comfort load validated in the variance-experiment"
-            " runs)."
+            "Number of VDS partitions per chunk job. Default 3 (the"
+            " driver-comfort load used for the prod AoU runs). IMPORTANT:"
+            " this must be identical across the compute"
+            " (--use-batch-fanout) and merge (--merge-cov-chunks) reruns."
+            " Chunk discovery derives the expected chunk count from"
+            " --total-partitions / --partitions-per-chunk, so passing a"
+            " different value on the merge silently unions the wrong set of"
+            " chunk HTs (no error) and skews the expected-chunk check."
         ),
     )
     fanout_group.add_argument(
@@ -2688,7 +2806,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " of concurrently-running chunk relays (and their nested QoB"
             " drivers) is bounded by --wave-size. Prevents a single"
             " ~tens-of-thousands-job batch from overwhelming the shared"
-            " Hail Batch service / GCP quota. Waves are restartable: a"
+            " Hail Batch service. Note: these jobs run on the Hail Batch"
+            " service's worker pool (the Hail team's GCP project), not"
+            " gnomad-production Compute/Dataproc, so the binding limit is"
+            " the shared service's capacity / any per-billing-project core"
+            " cap set by the Hail team — not gnomad-production's own GCP"
+            " quota. Waves are restartable: a"
             " rerun skips chunks whose _SUCCESS already exists. Set <= 0"
             " or >= total chunk count for a single batch (legacy"
             " behavior). Default 1000."
@@ -2728,13 +2851,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "GCS scratch path for hb.ServiceBackend. Defaults to the value"
             " encoded in `_build_setup_command` config."
         ),
-    )
-    fanout_group.add_argument(
-        "--regions",
-        type=str,
-        nargs="+",
-        default=None,
-        help="GCP regions for chunk + merge jobs. Default ['us-central1'].",
     )
     fanout_group.add_argument(
         "--chunk-cpu",
@@ -2915,7 +3031,14 @@ if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
 
-    batch_args = [
+    # Every argument that only makes sense with --environment=batch lives in
+    # this one list so the validation is complete and easy to scan. "Provided"
+    # is detected by comparing against the parser default, which works
+    # uniformly for None-default args, value-default args (--chunk-cpu /
+    # -memory / -storage), and store_true flags (--experimental and the
+    # --use-batch-fanout / --merge-cov-chunks mode flags) — so no arg has to
+    # be left out just because it has a non-None default.
+    batch_only_args = [
         "app_name",
         "driver_cores",
         "driver_memory",
@@ -2926,12 +3049,21 @@ if __name__ == "__main__":
         "worker_memory",
         "chunk_worker_cores",
         "chunk_worker_memory",
+        "chunk_cpu",
+        "chunk_memory",
+        "chunk_storage",
+        "experimental",
+        "use_batch_fanout",
+        "merge_cov_chunks",
     ]
-    provided_batch_args = [arg for arg in batch_args if getattr(args, arg) is not None]
+    provided_batch_args = [
+        a for a in batch_only_args if getattr(args, a) != parser.get_default(a)
+    ]
     if provided_batch_args and args.environment != "batch":
         parser.error(
-            f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
-            f"require --environment=batch"
+            "Batch-only arguments ("
+            + ", ".join("--" + a.replace("_", "-") for a in provided_batch_args)
+            + ") require --environment=batch"
         )
 
     # --jvm-heap-size only applies to the in-process JVM under --experimental.
@@ -3016,9 +3148,5 @@ if __name__ == "__main__":
     if args.run_merge:
         if args.merge_output is None or not args.merge_inputs:
             parser.error("--run-merge requires --merge-output and --merge-inputs.")
-    if args.use_batch_fanout and args.environment != "batch":
-        parser.error("--use-batch-fanout requires --environment=batch.")
-    if args.merge_cov_chunks and args.environment != "batch":
-        parser.error("--merge-cov-chunks requires --environment=batch.")
 
     main(args)

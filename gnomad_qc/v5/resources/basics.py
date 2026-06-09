@@ -567,6 +567,7 @@ def get_gnomad_v5_genomes_vds(
     annotate_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -592,6 +593,11 @@ def get_gnomad_v5_genomes_vds(
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
         in the provided list.
+    :param read_intervals: Optional list of locus intervals passed through to
+        ``get_gnomad_v3_vds`` / ``hl.vds.read_vds`` at read time. Creates one VDS
+        partition per interval so the VDS can be co-partitioned with another table
+        read on the same intervals (a shuffle-free join). Mutually exclusive with
+        ``filter_partitions``.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
         False.
@@ -624,6 +630,7 @@ def get_gnomad_v5_genomes_vds(
         samples_meta=False,
         test=test,
         filter_partitions=filter_partitions,
+        read_intervals=read_intervals,
         chrom=chrom,
         autosomes_only=autosomes_only,
         sex_chr_only=sex_chr_only,
