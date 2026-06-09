@@ -106,6 +106,7 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
+from gnomad.utils.file_utils import repartition_for_join
 from gnomad.utils.sparse_mt import (
     compute_stats_per_ref_site,
     get_allele_number_agg_func,
@@ -496,45 +497,16 @@ def _derive_chunk_locus_intervals(
     return sub_intervals
 
 
-def _balanced_locus_intervals(
-    ht: hl.Table, n_partitions: int
-) -> List[hl.utils.Interval]:
-    """
-    Derive ``n_partitions`` balanced bare-``Locus`` intervals from a locus-keyed table.
-
-    Uses ``Table._calculate_new_partitions`` (balanced by the table's own key
-    distribution, per Hail-team guidance "read all the tables with the same
-    partitions") instead of an ``aggregate_rows`` min/max scan, then converts the
-    ``Struct(locus=...)`` interval points into bare-``Locus`` intervals so they can
-    be passed to both ``hl.vds.read_vds(intervals=...)`` and
-    ``hl.read_table(_intervals=...)`` to co-partition a VDS and a sites table at
-    read time (a shuffle-free densify join).
-
-    :param ht: Locus-keyed Table (e.g. ``vep_context`` keyed by ``locus`` or a VDS
-        ``reference_data.rows()``) to derive balanced partition boundaries from.
-    :param n_partitions: Number of balanced partitions/intervals to derive.
-    :return: List of bare-``Locus`` ``hl.Interval`` objects.
-    """
-    struct_intervals = ht._calculate_new_partitions(n_partitions)
-    return [
-        hl.Interval(
-            iv.start["locus"],
-            iv.end["locus"],
-            includes_start=iv.includes_start,
-            includes_end=iv.includes_end,
-        )
-        for iv in struct_intervals
-    ]
-
-
 def _derive_ref_partition_intervals(
     n_partitions: int, chrom: Optional[List[str]] = None
 ) -> List[hl.utils.Interval]:
     """
     Derive ``n_partitions`` balanced locus intervals from the vep_context sites table.
 
-    Used by the strict single-job path to co-partition the VDS and vep_context
-    reads (see :func:`_balanced_locus_intervals`). Restricting to ``chrom`` first
+    Thin wrapper over ``gnomad.utils.file_utils.repartition_for_join`` (balanced
+    ``_calculate_new_partitions`` intervals, per Hail-team guidance "read all the
+    tables with the same partitions") used by the strict single-job path to
+    co-partition the VDS and vep_context reads. Restricting to ``chrom`` first
     keeps the intervals aligned with a ``--chrom``-filtered run.
 
     :param n_partitions: Number of balanced partitions/intervals to derive.
@@ -547,7 +519,7 @@ def _derive_ref_partition_intervals(
         ref_ht = hl.filter_intervals(
             ref_ht, [hl.parse_locus_interval(c) for c in chrom]
         )
-    return _balanced_locus_intervals(ref_ht, n_partitions)
+    return repartition_for_join(ref_ht, n_partitions=n_partitions, locus_intervals=True)
 
 
 def compute_all_release_stats_per_ref_site(
@@ -1174,6 +1146,41 @@ def _load_project_vds(
     return vds, sex_karyotype_field
 
 
+def _probe_vds(
+    project: str,
+    environment: str,
+    partition_range: Optional[List[int]],
+    chrom: Optional[List[str]],
+) -> hl.vds.VariantDataset:
+    """
+    Cheap reference_data-bounds probe-load of the per-project VDS for a partition range.
+
+    Loads via ``filter_partitions`` only (no sample filtering / DP synthesis); the
+    caller derives a locus extent from ``reference_data`` (e.g. via
+    ``repartition_for_join``). Used by both the chunk worker and the strict path's
+    ``--test-n-partitions`` co-partitioning branch.
+
+    :param project: "aou" or "gnomad".
+    :param environment: Compute environment.
+    :param partition_range: VDS partition indices to probe (e.g.
+        ``list(range(2))``) or ``None`` for the full VDS.
+    :param chrom: Optional list of contigs to filter to.
+    :return: Probe VDS (reference/variant data only).
+    """
+    if project == "aou":
+        return get_aou_vds(
+            filter_partitions=partition_range,
+            chrom=chrom,
+            environment=environment,
+            remove_hard_filtered_samples=False,
+            log_sample_counts=False,
+        )
+    return get_gnomad_v5_genomes_vds(
+        filter_partitions=partition_range,
+        chrom=chrom,
+    )
+
+
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
     partition_count: int,
@@ -1245,8 +1252,8 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
       1. Probe-load the VDS via
          ``filter_partitions=range(chunk_start, chunk_stop)`` and derive
          ``--read-subintervals-per-chunk`` balanced locus sub-intervals over the
-         chunk via ``_balanced_locus_intervals`` (``_calculate_new_partitions``,
-         not an ``aggregate_rows`` scan).
+         chunk via ``repartition_for_join`` (``_calculate_new_partitions``, not an
+         ``aggregate_rows`` scan).
       2. Re-read the VDS via ``hl.vds.read_vds(intervals=sub_intervals)`` — one
          VDS partition per sub-interval (no shuffle).
       3. Read ``vep_context`` with the same ``_intervals=sub_intervals`` —
@@ -1297,21 +1304,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     sub_intervals: Optional[List[hl.utils.Interval]] = None
     if n_sub > 1 and not chrom:
         # Probe: cheap reference_data-bounds load via filter_partitions.
-        if project == "aou":
-            vds_probe = get_aou_vds(
-                filter_partitions=partition_range,
-                chrom=chrom,
-                environment=environment,
-                remove_hard_filtered_samples=False,
-                log_sample_counts=False,
-            )
-        else:
-            vds_probe = get_gnomad_v5_genomes_vds(
-                filter_partitions=partition_range,
-                chrom=chrom,
-            )
-        sub_intervals = _balanced_locus_intervals(
-            vds_probe.reference_data.rows(), n_sub
+        vds_probe = _probe_vds(project, environment, partition_range, chrom)
+        sub_intervals = repartition_for_join(
+            vds_probe.reference_data.rows(), n_partitions=n_sub, locus_intervals=True
         )
         logger.info(
             "Derived %d balanced sub-intervals from chunk [%d, %d) for read-time"
@@ -2263,24 +2258,43 @@ def main(args):
                 output_step_resources={"coverage_and_an_ht": [cov_and_an_ht_path]},
                 overwrite=overwrite,
             )
+            # --test-n-partitions: read only the first N partitions of the VDS
+            # for a cheap test (the strict path otherwise reads the whole VDS).
+            # partition_count scopes the ref_ht to those partitions' extent when
+            # not co-partitioning.
+            test_n = args.test_n_partitions
+            strict_partition_range = list(range(test_n)) if test_n else None
+
             # Optionally co-partition the VDS and vep_context reads into
-            # args.read_partitions balanced partitions so the densify join is
+            # args.partitions_for_rep_on_read balanced partitions so the densify join is
             # shuffle-free (Hail-team guidance: read all tables with the same
-            # partitions). Honors --chrom: the intervals are derived from the
-            # chrom-restricted vep_context so they match the filtered VDS.
+            # partitions). With --test-n-partitions the intervals are derived from
+            # those partitions' extent; otherwise from the (chrom-restricted)
+            # vep_context.
             strict_sub_intervals = None
-            if args.read_partitions:
+            if args.partitions_for_rep_on_read:
                 logger.info(
                     "Deriving %d balanced read partitions to co-partition the VDS"
                     " and vep_context (shuffle-free densify join).",
-                    args.read_partitions,
+                    args.partitions_for_rep_on_read,
                 )
-                strict_sub_intervals = _derive_ref_partition_intervals(
-                    args.read_partitions, chrom=chrom
-                )
+                if test_n:
+                    probe = _probe_vds(
+                        project, environment, strict_partition_range, chrom
+                    )
+                    strict_sub_intervals = repartition_for_join(
+                        probe.reference_data.rows(),
+                        n_partitions=args.partitions_for_rep_on_read,
+                        locus_intervals=True,
+                    )
+                else:
+                    strict_sub_intervals = _derive_ref_partition_intervals(
+                        args.partitions_for_rep_on_read, chrom=chrom
+                    )
             vds, sex_karyotype_field = _load_project_vds(
                 project=project,
                 environment=environment,
+                partition_range=strict_partition_range,
                 sub_intervals=strict_sub_intervals,
                 chrom=chrom,
                 test=test,
@@ -2288,7 +2302,7 @@ def main(args):
             )
             ref_ht = _build_chunk_ref_ht(
                 vds_filtered=vds,
-                partition_count=0,
+                partition_count=test_n or 0,
                 chrom=chrom,
                 sub_intervals=strict_sub_intervals,
             )
@@ -2676,7 +2690,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--read-partitions",
+        "--partitions-for-rep-on-read",
         type=int,
         default=None,
         help=(
@@ -2687,6 +2701,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " partitioning. Honors --chrom (intervals derived from the"
             " chrom-restricted vep_context). Used for the single gnomAD dataproc"
             " job, which is not chunked/fanned out."
+        ),
+    )
+    parser.add_argument(
+        "--test-n-partitions",
+        type=int,
+        default=None,
+        help=(
+            "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
+            " read just the first N partitions of the VDS for a cheap test (the"
+            " strict path otherwise reads the whole VDS; replaces the dropped"
+            " --test-2-partitions). The ref_ht is scoped to those partitions'"
+            " locus extent. Combine with --partitions-for-rep-on-read to co-partition just"
+            " those N partitions. Default None reads the whole VDS."
         ),
     )
 
