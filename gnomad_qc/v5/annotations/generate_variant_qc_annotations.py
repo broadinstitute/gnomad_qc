@@ -42,7 +42,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
 )
 from gnomad_qc.v5.resources.sample_qc import (
-    DENSE_TRIO_TEST_CHROM,
+    DENSE_TRIO_TEST_CHROMS,
     dense_trios,
     get_dense_trio_chroms,
     pedigree,
@@ -504,9 +504,9 @@ def main(args):
                     "--chrom is required for --generate-trio-stats; trio stats are "
                     "computed one chromosome at a time (combine with --union-trio-stats)."
                 )
-            if test and chrom != DENSE_TRIO_TEST_CHROM:
+            if test and chrom not in DENSE_TRIO_TEST_CHROMS:
                 raise ValueError(
-                    f"--test computes trio stats only for {DENSE_TRIO_TEST_CHROM}; got "
+                    f"--test computes trio stats only for {DENSE_TRIO_TEST_CHROMS}; got "
                     f"--chrom {chrom}."
                 )
             logger.info("Generating trio stats for %s...", chrom)

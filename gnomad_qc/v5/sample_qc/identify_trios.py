@@ -27,7 +27,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
-    DENSE_TRIO_TEST_CHROM,
+    DENSE_TRIO_TEST_CHROMS,
     dense_trios,
     duplicates,
     ped_filter_param_json_path,
@@ -404,10 +404,10 @@ def main(args):
                     "--chrom is required for --create-dense-trio-mt; the dense trio MT "
                     "is densified one chromosome at a time."
                 )
-            if test and chrom != DENSE_TRIO_TEST_CHROM:
+            if test and chrom not in DENSE_TRIO_TEST_CHROMS:
                 raise ValueError(
-                    f"--test densifies only the test chromosome "
-                    f"{DENSE_TRIO_TEST_CHROM}; got --chrom {chrom}."
+                    f"--test densifies only the test chromosomes "
+                    f"{DENSE_TRIO_TEST_CHROMS}; got --chrom {chrom}."
                 )
             logger.info("Creating dense trio MT...")
             logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")

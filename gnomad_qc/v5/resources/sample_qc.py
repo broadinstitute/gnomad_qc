@@ -848,10 +848,11 @@ def dense_trios(
     )
 
 
-# Chromosome the dense trio MT is densified on for test runs. Single source of truth for
-# both the test chromosome consumers process (``get_dense_trio_chroms``) and the
-# ``--test`` densify in identify_trios.py.
-DENSE_TRIO_TEST_CHROM = "chr20"
+# Chromosomes the dense trio MT is densified on for test runs. Single source of truth for
+# both the test chromosomes consumers process (``get_dense_trio_chroms``) and the
+# ``--test`` densify in identify_trios.py. Two chromosomes so the per-chromosome union is
+# exercised in test.
+DENSE_TRIO_TEST_CHROMS = ["chr20", "chr21"]
 
 
 def get_dense_trio_chroms(test: bool = False) -> List[str]:
@@ -864,6 +865,6 @@ def get_dense_trio_chroms(test: bool = False) -> List[str]:
     the large dense MTs.
 
     :param test: Whether this is a test run. Default is False.
-    :return: ``[DENSE_TRIO_TEST_CHROM]`` when `test`, else the autosomes.
+    :return: ``DENSE_TRIO_TEST_CHROMS`` when `test`, else the autosomes.
     """
-    return [DENSE_TRIO_TEST_CHROM] if test else [f"chr{i}" for i in range(1, 23)]
+    return DENSE_TRIO_TEST_CHROMS if test else [f"chr{i}" for i in range(1, 23)]
