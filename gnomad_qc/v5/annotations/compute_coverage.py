@@ -253,36 +253,6 @@ def get_group_membership_ht(
     return ht
 
 
-def validate_vds(vds: hl.vds.VariantDataset) -> None:
-    """
-    Validate VDS before densify.
-
-    Code is taken from https://github.com/hail-is/hail/blob/858f3ab30c2bcc46d6e57fdbfe408284b4b3de53/hail/python/hail/vds/variant_dataset.py#L271
-    at suggestion from Chris Vittal.
-
-    :param vds: Input VDS.
-    :return: None; raises ValueError if VDS is not valid.
-    """
-    rd = vds.reference_data
-    vd = vds.variant_data
-
-    ref_cols = rd.col_key.collect()
-    var_cols = vd.col_key.collect()
-
-    if len(ref_cols) != len(var_cols):
-        raise ValueError(
-            f"mismatch in number of columns: reference data has {ref_cols} columns, variant data has {var_cols} columns"
-        )
-
-    if ref_cols != var_cols:
-        first_mismatch = 0
-        while ref_cols[first_mismatch] == var_cols[first_mismatch]:
-            first_mismatch += 1
-        raise ValueError(
-            f"mismatch in columns keys: ref={ref_cols[first_mismatch]}, var={var_cols[first_mismatch]} at position {first_mismatch}"
-        )
-
-
 def _file_exists_for_env(path: str, environment: str) -> bool:
     """
     Check if a path exists, tolerant of permission errors in batch mode.
@@ -1333,8 +1303,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         sub_intervals=sub_intervals,
     )
 
-    validate_vds(vds)
-
     cov_and_an_ht = compute_all_release_stats_per_ref_site(
         vds,
         ref_ht,
@@ -2102,7 +2070,7 @@ def main(args):
     """
     project = args.project_name
     environment = args.environment
-    test = args.test
+    test = args.test or args.test_n_partitions is not None
     chrom = args.chrom
     overwrite = args.overwrite
 
@@ -2275,7 +2243,7 @@ def main(args):
             if args.partitions_for_rep_on_read:
                 logger.info(
                     "Deriving %d balanced read partitions to co-partition the VDS"
-                    " and vep_context (shuffle-free densify join).",
+                    " and vep_context.",
                     args.partitions_for_rep_on_read,
                 )
                 if test_n:
@@ -2306,7 +2274,7 @@ def main(args):
                 chrom=chrom,
                 sub_intervals=strict_sub_intervals,
             )
-            validate_vds(vds)
+
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
                 ref_ht,
