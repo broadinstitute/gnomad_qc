@@ -499,13 +499,9 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            # Trio stats use autosomes only; union the per-chromosome dense trio MTs.
+            # `get_dense_trio_mt` defaults to the autosomes (and chr20 if test is specified).
             ht = run_generate_trio_stats(
-                get_dense_trio_mt(
-                    [f"chr{i}" for i in range(1, 23)],
-                    test=test,
-                    environment=environment,
-                ),
+                get_dense_trio_mt(test=test, environment=environment),
                 pedigree(test=test, environment=environment).pedigree(),
             )
             ht.write(trio_stats_ht_path, overwrite=overwrite)

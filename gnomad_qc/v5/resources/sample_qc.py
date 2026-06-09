@@ -1,6 +1,6 @@
 """Script containing sample QC related resources."""
 
-from typing import List
+from typing import List, Optional
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -850,7 +850,7 @@ def dense_trios(
 
 
 def get_dense_trio_mt(
-    chroms: List[str],
+    chroms: Optional[List[str]] = None,
     test: bool = False,
     environment: str = "batch",
 ) -> hl.MatrixTable:
@@ -862,12 +862,16 @@ def get_dense_trio_mt(
     the same trio columns (built from the same pedigree and metadata), so ``union_rows``,
     which requires matching column keys, aligns them.
 
-    :param chroms: Chromosomes whose per-chromosome dense trio MTs to union.
+    :param chroms: Chromosomes whose per-chromosome dense trio MTs to union. Default is
+        None, which uses the autosomes, or just 'chr20' when `test` (the test dense trio
+        MT is densified on chr20).
     :param test: Whether to read the test-path MTs. Default is False.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
     :return: Dense trio MatrixTable spanning `chroms`.
     """
+    if chroms is None:
+        chroms = ["chr20"] if test else [f"chr{i}" for i in range(1, 23)]
     mts = [
         dense_trios(test=test, chrom=c, environment=environment).mt() for c in chroms
     ]
