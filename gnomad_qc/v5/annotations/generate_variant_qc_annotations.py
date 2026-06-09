@@ -41,7 +41,13 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.sample_qc import get_dense_trio_mt, pedigree, relatedness
+from gnomad_qc.v5.resources.sample_qc import (
+    DENSE_TRIO_TEST_CHROM,
+    dense_trios,
+    get_dense_trio_chroms,
+    pedigree,
+    relatedness,
+)
 
 logging.basicConfig(
     format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
@@ -492,18 +498,44 @@ def main(args):
             hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
 
         if args.generate_trio_stats:
-            logger.info("Generating trio stats...")
+            chrom = args.chrom
+            if chrom is None:
+                raise ValueError(
+                    "--chrom is required for --generate-trio-stats; trio stats are "
+                    "computed one chromosome at a time (combine with --union-trio-stats)."
+                )
+            if test and chrom != DENSE_TRIO_TEST_CHROM:
+                raise ValueError(
+                    f"--test computes trio stats only for {DENSE_TRIO_TEST_CHROM}; got "
+                    f"--chrom {chrom}."
+                )
+            logger.info("Generating trio stats for %s...", chrom)
+            per_chrom_trio_stats_path = get_trio_stats(
+                test=test, environment=environment, chrom=chrom
+            ).path
+            _check_resource_existence(
+                environment=environment,
+                output_step_resources={"trio_stats_ht": [per_chrom_trio_stats_path]},
+                overwrite=overwrite,
+            )
+            ht = run_generate_trio_stats(
+                dense_trios(test=test, chrom=chrom, environment=environment).mt(),
+                pedigree(test=test, environment=environment).pedigree(),
+            )
+            ht.write(per_chrom_trio_stats_path, overwrite=overwrite)
+
+        if args.union_trio_stats:
+            logger.info("Unioning per-chromosome trio stats...")
             _check_resource_existence(
                 environment=environment,
                 output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
             )
-
-            # `get_dense_trio_mt` defaults to the autosomes (and chr20 if test is specified).
-            ht = run_generate_trio_stats(
-                get_dense_trio_mt(test=test, environment=environment),
-                pedigree(test=test, environment=environment).pedigree(),
-            )
+            hts = [
+                get_trio_stats(test=test, environment=environment, chrom=c).ht()
+                for c in get_dense_trio_chroms(test)
+            ]
+            ht = hts[0] if len(hts) == 1 else hts[0].union(*hts[1:])
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.generate_sibling_stats:
@@ -641,8 +673,25 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--generate-trio-stats",
-        help="Calculates trio stats.",
+        help=(
+            "Calculate trio stats for a single chromosome (--chrom). Run once per "
+            "chromosome, then combine with --union-trio-stats."
+        ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--union-trio-stats",
+        help="Union the per-chromosome trio stats HTs into the combined trio stats HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--chrom",
+        help=(
+            "Single chromosome (e.g. 'chr20'). Required for --generate-trio-stats; trio "
+            "stats are computed one chromosome at a time."
+        ),
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--generate-sibling-stats",

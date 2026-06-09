@@ -1,8 +1,7 @@
 """Script containing sample QC related resources."""
 
-from typing import List, Optional
+from typing import List
 
-import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     PedigreeResource,
@@ -849,32 +848,22 @@ def dense_trios(
     )
 
 
-def get_dense_trio_mt(
-    chroms: Optional[List[str]] = None,
-    test: bool = False,
-    environment: str = "batch",
-) -> hl.MatrixTable:
+# Chromosome the dense trio MT is densified on for test runs. Single source of truth for
+# both the test chromosome consumers process (``get_dense_trio_chroms``) and the
+# ``--test`` densify in identify_trios.py.
+DENSE_TRIO_TEST_CHROM = "chr20"
+
+
+def get_dense_trio_chroms(test: bool = False) -> List[str]:
     """
-    Union the per-chromosome dense trio MatrixTables for `chroms` into one MatrixTable.
+    Get the chromosomes the dense trio MT spans.
 
     The dense trio MT is densified one chromosome at a time (see ``create_dense_trio_mt``
-    in ``identify_trios.py``); this lazily unions their rows. The per-chromosome MTs share
-    the same trio columns (built from the same pedigree and metadata), so ``union_rows``,
-    which requires matching column keys, aligns them.
+    in ``identify_trios.py``); consumers (trio stats, de novo calling) process those
+    chromosomes individually and union their per-chromosome outputs, rather than unioning
+    the large dense MTs.
 
-    :param chroms: Chromosomes whose per-chromosome dense trio MTs to union. Default is
-        None, which uses the autosomes, or just 'chr20' when `test` (the test dense trio
-        MT is densified on chr20).
-    :param test: Whether to read the test-path MTs. Default is False.
-    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
-        or "batch".
-    :return: Dense trio MatrixTable spanning `chroms`.
+    :param test: Whether this is a test run. Default is False.
+    :return: ``[DENSE_TRIO_TEST_CHROM]`` when `test`, else the autosomes.
     """
-    if chroms is None:
-        chroms = ["chr20"] if test else [f"chr{i}" for i in range(1, 23)]
-    mts = [
-        dense_trios(test=test, chrom=c, environment=environment).mt() for c in chroms
-    ]
-    if len(mts) == 1:
-        return mts[0]
-    return mts[0].union_rows(*mts[1:])
+    return [DENSE_TRIO_TEST_CHROM] if test else [f"chr{i}" for i in range(1, 23)]
