@@ -90,6 +90,7 @@ import argparse
 import logging
 import re
 import subprocess
+import time
 from functools import reduce
 from typing import List, NamedTuple, Optional, Sequence, Set, Tuple
 
@@ -1376,6 +1377,14 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         reduce_min_aggs=args.reduce_min_aggs,
     )
 
+    # F:1230 measurement: time the per-chunk VDS probe vs. total chunk runtime
+    # so a test run reveals whether precomputing the probe once is worth the
+    # refactor (the probe re-opens the VDS to derive sub-intervals before the
+    # real read). ``repartition_for_join`` forces ``_calculate_new_partitions``
+    # (a driver action), so the elapsed span captures the probe's real cost.
+    chunk_t0 = time.monotonic()
+    probe_secs = 0.0
+
     sub_intervals: Optional[List[hl.utils.Interval]] = None
     if n_sub > 1 and chrom:
         logger.warning(
@@ -1386,16 +1395,19 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         )
     if n_sub > 1 and not chrom:
         # Probe: cheap reference_data-bounds load via filter_partitions.
+        probe_t0 = time.monotonic()
         vds_probe = _probe_vds(project, environment, partition_range, chrom)
         sub_intervals = repartition_for_join(
             vds_probe.reference_data.rows(), n_partitions=n_sub, locus_intervals=True
         )
+        probe_secs = time.monotonic() - probe_t0
         logger.info(
             "Derived %d balanced sub-intervals from chunk [%d, %d) for read-time"
-            " partitioning.",
+            " partitioning in %.1fs (F:1230 probe timing).",
             len(sub_intervals),
             start,
             stop,
+            probe_secs,
         )
 
     vds, sex_karyotype_field = _load_project_vds(
@@ -1424,7 +1436,23 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
     )
+    write_t0 = time.monotonic()
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
+    write_secs = time.monotonic() - write_t0
+    total_secs = time.monotonic() - chunk_t0
+    # F:1230 measurement: probe as a fraction of total. A small fraction means
+    # precomputing the probe once is not worth the refactor; a large one means
+    # it is. (The span between probe and write is lazy IR construction, ~0s.)
+    logger.info(
+        "Chunk [%d, %d) F:1230 timing: probe=%.1fs write=%.1fs total=%.1fs"
+        " (probe=%.1f%% of total).",
+        start,
+        stop,
+        probe_secs,
+        write_secs,
+        total_secs,
+        (100.0 * probe_secs / total_secs) if total_secs > 0 else 0.0,
+    )
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
 
