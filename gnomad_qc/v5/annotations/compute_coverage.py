@@ -2387,6 +2387,7 @@ def main(args):
             )
             n_missing = missing_ht.count()
             n_sites = sites_ht.count()
+            n_merged = merged_ht.count()
             if n_missing:
                 # Report a sample so we can tell a benign VDS-ref-extent boundary
                 # gap (a handful of sites, no VDS reference data) from a real
@@ -2400,7 +2401,24 @@ def main(args):
                     " small scattered count is likely VDS-reference boundary gaps"
                     " (sites with no reference data) — inspect before releasing."
                 )
-            logger.info("Validation passed: all %d vep_context sites present.", n_sites)
+            # A ⊆ merged is now proven (n_missing == 0). The chunks read their
+            # reference sites FROM this sites table, so merged ⊆ A holds by
+            # construction; a row-count mismatch would mean duplicate loci
+            # (e.g. overlapping chunk sub-intervals), so assert exact equality
+            # to close the reverse direction empirically.
+            if n_merged != n_sites:
+                raise ValueError(
+                    f"cov_and_an HT at {cov_and_an_ht_path} has {n_merged} rows"
+                    f" but covers all {n_sites} vep_context sites — the"
+                    f" {n_merged - n_sites} extra row(s) indicate duplicate loci"
+                    " (e.g. overlapping chunk sub-intervals). Inspect before"
+                    " releasing."
+                )
+            logger.info(
+                "Validation passed: cov_and_an HT == vep_context sites exactly"
+                " (%d rows, no missing, no extras).",
+                n_sites,
+            )
 
         # --- COMPUTE (strict, single job): whole-VDS per-ref-site
         # coverage/AN/qual-hists. Prod AoU does this via ROLE 1 fan-out
