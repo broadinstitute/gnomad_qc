@@ -320,22 +320,34 @@ def _chunk_path(cov_and_an_ht_path: str, idx: int) -> str:
     return f"{base}_chunks/{idx:08d}.chunk.ht"
 
 
-def _group_path(cov_and_an_ht_path: str, level: int, group_idx: int) -> str:
+def _group_path(
+    cov_and_an_ht_path: str,
+    level: int,
+    group_idx: int,
+    partitions_per_chunk: int,
+    merge_group_size: int,
+) -> str:
     """
-    Return a per-group merged HT path under ``<cov_and_an_path>_merge_groups/``.
+    Return a per-group merged HT path under ``<cov_and_an_path>_merge_groups_*/``.
 
-    Level-tagged so a recursive merge tree (multiple levels of grouping
-    when chunk count exceeds ``merge_group_size`` once-over) doesn't
-    overwrite earlier-level outputs.
+    Level-tagged so a recursive merge tree (multiple levels of grouping when chunk
+    count exceeds ``merge_group_size`` once-over) doesn't overwrite earlier-level
+    outputs. The merge-groups directory also encodes the tree-shape params
+    (``partitions_per_chunk`` + ``merge_group_size``): a rerun with a different
+    value writes to a fresh directory rather than silently reusing / mixing stale
+    group HTs from an incompatible tree shape.
 
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
     :param level: Merge-tree level (1-indexed); level N output is the
         input to level N+1.
     :param group_idx: Group index within this level (zero-based).
-    :return: ``<cov_and_an_path>_merge_groups/L<level:02d>_<idx:08d>.ht``.
+    :param partitions_per_chunk: Partitions per chunk (tree-base shape).
+    :param merge_group_size: Chunk HTs per group-merge job (tree fan-in).
+    :return: Per-group HT path.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_merge_groups/L{level:02d}_{group_idx:08d}.ht"
+    tree = f"pp{partitions_per_chunk}_gs{merge_group_size}"
+    return f"{base}_merge_groups_{tree}/L{level:02d}_{group_idx:08d}.ht"
 
 
 def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
@@ -2075,7 +2087,14 @@ def _orchestrate_coverage_merge(
         n_out = (n_in + gs - 1) // gs
         groups = [inputs[i : i + gs] for i in range(0, n_in, gs)]
         out_paths = [
-            _group_path(cov_and_an_ht_path, level, idx) for idx in range(n_out)
+            _group_path(
+                cov_and_an_ht_path,
+                level,
+                idx,
+                args.partitions_per_chunk,
+                args.merge_group_size,
+            )
+            for idx in range(n_out)
         ]
 
         if args.overwrite:
@@ -3247,6 +3266,20 @@ if __name__ == "__main__":
         "experimental",
         "use_batch_fanout",
         "merge_cov_chunks",
+        # Fan-out / merge orchestration args (only consumed by the batch
+        # orchestrator + relays); passing them in a non-batch env is a mistake.
+        "total_partitions",
+        "partitions_per_chunk",
+        "read_subintervals_per_chunk",
+        "wave_size",
+        "merge_group_size",
+        "methods_branch",
+        "batch_image",
+        "chunk_attempts",
+        "merge_cpu",
+        "merge_memory",
+        "merge_storage",
+        "final_merge_storage",
     ]
     provided_batch_args = [
         a for a in batch_only_args if getattr(args, a) != parser.get_default(a)
