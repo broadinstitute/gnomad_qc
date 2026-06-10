@@ -174,8 +174,12 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     - 10,000
     - 100,000
     - Genetic ancestry group sizes for AFR, AMR, NFE
-    Note that the only desired genetic ancestry group sizes are AFR, AMR, and NFE,
-    but code will also generate downsamplings for all other groups.
+
+    Only AFR, AMR, and NFE per-group downsamplings are generated: the gen_anc
+    expression is restricted to those groups before ``annotate_downsamplings``,
+    which adds each present group's sample count to the downsamplings list and a
+    per-group index. The global 10k/100k still cover all samples (they use a
+    gen-anc-independent global index).
 
     :param ht: Input Table.
     :return: Table with downsampling groups.
@@ -184,9 +188,13 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
         "Determining downsampling groups for AoU...",
     )
     downsamplings = DOWNSAMPLINGS["v5"]
-    ht = annotate_downsamplings(
-        ht, downsamplings, ht.genetic_ancestry_inference.gen_anc
+    # Restrict per-group downsamplings to the desired genetic ancestry groups so
+    # annotate_downsamplings doesn't generate them for every other group too.
+    gen_anc = ht.genetic_ancestry_inference.gen_anc
+    gen_anc = hl.or_missing(
+        hl.literal({"afr", "amr", "nfe"}).contains(gen_anc), gen_anc
     )
+    ht = annotate_downsamplings(ht, downsamplings, gen_anc)
     return ht
 
 
@@ -471,7 +479,7 @@ def _derive_ref_partition_intervals(
     n_partitions: int, chrom: Optional[List[str]] = None
 ) -> List[hl.utils.Interval]:
     """
-    Derive ``n_partitions`` balanced locus intervals from the vep_context sites table.
+    Derive balanced locus intervals from the vep_context sites table.
 
     Thin wrapper over ``gnomad.utils.file_utils.repartition_for_join`` (balanced
     ``_calculate_new_partitions`` intervals, per Hail-team guidance "read all the
@@ -479,7 +487,9 @@ def _derive_ref_partition_intervals(
     co-partition the VDS and vep_context reads. Restricting to ``chrom`` first
     keeps the intervals aligned with a ``--chrom``-filtered run.
 
-    :param n_partitions: Number of balanced partitions/intervals to derive.
+    :param n_partitions: Number of balanced partitions to derive when positive; a
+        falsy value (0) uses ``repartition_for_join``'s default
+        1.1x-of-native-partitions multiplier (no number to guess for the full run).
     :param chrom: Optional list of contigs to restrict vep_context to before
         deriving partitions, so the intervals match a ``--chrom``-filtered run.
     :return: List of bare-``Locus`` ``hl.Interval`` objects.
@@ -489,7 +499,11 @@ def _derive_ref_partition_intervals(
         ref_ht = hl.filter_intervals(
             ref_ht, [hl.parse_locus_interval(c) for c in chrom]
         )
-    return repartition_for_join(ref_ht, n_partitions=n_partitions, locus_intervals=True)
+    return repartition_for_join(
+        ref_ht,
+        locus_intervals=True,
+        **({"n_partitions": n_partitions} if n_partitions else {}),
+    )
 
 
 def compute_all_release_stats_per_ref_site(
@@ -542,12 +556,21 @@ def compute_all_release_stats_per_ref_site(
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
-        """Build adj/raw GQ + DP histograms from a [GQ, DP, adj] expression triple."""
-        return qual_hist_expr(
-            gq_expr=qual_expr[0],
-            dp_expr=qual_expr[1],
-            adj_expr=qual_expr[2] == 1,
-            split_adj_and_raw=True,
+        """
+        Build adj-only GQ + DP histograms from a [GQ, DP, adj] expression triple.
+
+        Selecting ``.qual_hists`` (the adj-filtered struct) drops the unfiltered
+        ``raw_qual_hists``: those aggregations are never referenced, so Hail prunes
+        them. Raw qual hists are not loaded into the browser and were approved for
+        removal from v5 (saves the extra per-site histogram aggregation).
+        """
+        return hl.struct(
+            qual_hists=qual_hist_expr(
+                gq_expr=qual_expr[0],
+                dp_expr=qual_expr[1],
+                adj_expr=qual_expr[2] == 1,
+                split_adj_and_raw=True,
+            ).qual_hists
         )
 
     # Set up coverage bins.
@@ -577,9 +600,10 @@ def compute_all_release_stats_per_ref_site(
     if project == "aou":
         entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
 
-        # Below we use just the raw group for qual hist computations because qual hists
-        # has its own built-in adj filtering when adj is passed as an argument and will
-        # produce both adj and raw histograms.
+        # Below we use just the raw group for qual hist computations because
+        # qual_hist_expr does its own adj filtering when adj is passed as an
+        # argument; we keep only the adj-filtered histograms (see _get_hists --
+        # raw qual hists were approved for removal from v5).
         entry_agg_group_membership["qual_hists"] = [{"group": "raw"}]
 
     logger.info(
@@ -985,9 +1009,11 @@ def join_aou_and_gnomad_qual_hists_ht(
         "gq_hist_all",
         "dp_hist_all",
     ]
+    # Only adj qual_hists are kept in v5 (raw_qual_hists were dropped at compute
+    # time; see _get_hists). The reused gnomAD v4 hists still carry raw_qual_hists,
+    # but we don't merge or emit it.
     hist_structs = {
         "qual_hists": qual_hists,
-        "raw_qual_hists": qual_hists,
     }
     hists_expr = {
         hist_struct: hl.struct(
@@ -2233,18 +2259,24 @@ def main(args):
             test_n = args.test_n_partitions
             strict_partition_range = list(range(test_n)) if test_n else None
 
-            # Optionally co-partition the VDS and vep_context reads into
-            # args.partitions_for_rep_on_read balanced partitions so the densify join is
-            # shuffle-free (Hail-team guidance: read all tables with the same
-            # partitions). With --test-n-partitions the intervals are derived from
-            # those partitions' extent; otherwise from the (chrom-restricted)
-            # vep_context.
+            # Optionally co-partition the VDS and vep_context reads so the densify
+            # join is shuffle-free (Hail-team guidance: read all tables with the
+            # same partitions). The full run uses repartition_for_join's 1.1x
+            # native-partition multiplier (bare flag); a value gives an explicit
+            # count. With --test-n-partitions the intervals are derived from those
+            # partitions' extent; otherwise from the (chrom-restricted) vep_context.
             strict_sub_intervals = None
-            if args.partitions_for_rep_on_read:
+            if args.partitions_for_rep_on_read is not None:
+                # 0 (bare flag) -> repartition_for_join's 1.1x multiplier;
+                # a positive int -> that explicit partition count.
+                n = args.partitions_for_rep_on_read
                 logger.info(
-                    "Deriving %d balanced read partitions to co-partition the VDS"
-                    " and vep_context.",
-                    args.partitions_for_rep_on_read,
+                    "Co-partitioning the VDS and vep_context reads (%s).",
+                    (
+                        f"{n} balanced partitions"
+                        if n
+                        else "repartition_for_join 1.1x native-partition multiplier"
+                    ),
                 )
                 if test_n:
                     probe = _probe_vds(
@@ -2252,12 +2284,12 @@ def main(args):
                     )
                     strict_sub_intervals = repartition_for_join(
                         probe.reference_data.rows(),
-                        n_partitions=args.partitions_for_rep_on_read,
                         locus_intervals=True,
+                        **({"n_partitions": n} if n else {}),
                     )
                 else:
                     strict_sub_intervals = _derive_ref_partition_intervals(
-                        args.partitions_for_rep_on_read, chrom=chrom
+                        n, chrom=chrom
                     )
             vds, sex_karyotype_field = _load_project_vds(
                 project=project,
@@ -2660,15 +2692,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--partitions-for-rep-on-read",
         type=int,
+        nargs="?",
+        const=0,
         default=None,
         help=(
             "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
-            " co-partition the VDS and vep_context reads into this many balanced"
-            " partitions (derived via vep_context._calculate_new_partitions) so the"
-            " densify join is shuffle-free. Default None reads each with its native"
-            " partitioning. Honors --chrom (intervals derived from the"
-            " chrom-restricted vep_context). Used for the single gnomAD dataproc"
-            " job, which is not chunked/fanned out."
+            " co-partition the VDS and vep_context reads (via repartition_for_join)"
+            " so the densify join is shuffle-free. Pass the flag with NO value to"
+            " use repartition_for_join's default 1.1x-of-native-partitions"
+            " multiplier (recommended for the full run -- no number to guess), or"
+            " pass an explicit integer partition count (handy for small tests)."
+            " Omit the flag entirely to read each with its native partitioning."
+            " Honors --chrom. Used for the single gnomAD dataproc job, which is not"
+            " chunked/fanned out."
         ),
     )
     parser.add_argument(
