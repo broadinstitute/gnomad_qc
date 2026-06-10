@@ -2348,17 +2348,25 @@ def main(args):
             logger.info("Validating cov_and_an HT covers all vep_context sites...")
             sites_ht = hl.read_table(_vep_context_sites_path(environment, test))
             merged_ht = hl.read_table(cov_and_an_ht_path)
-            n_missing = sites_ht.anti_join(merged_ht).count()
-            if n_missing:
-                raise ValueError(
-                    f"cov_and_an HT at {cov_and_an_ht_path} is MISSING {n_missing}"
-                    " vep_context site(s) after fan-out + merge — sites were"
-                    " dropped. Re-run --use-batch-fanout / --merge-cov-chunks."
-                )
-            logger.info(
-                "Validation passed: all %d vep_context sites present.",
-                sites_ht.count(),
+            missing_ht = sites_ht.anti_join(merged_ht).checkpoint(
+                new_temp_file("cov_an_missing_sites", "ht")
             )
+            n_missing = missing_ht.count()
+            n_sites = sites_ht.count()
+            if n_missing:
+                # Report a sample so we can tell a benign VDS-ref-extent boundary
+                # gap (a handful of sites, no VDS reference data) from a real
+                # dropped chunk (large, clustered count).
+                sample = [str(x) for x in missing_ht.head(15).locus.collect()]
+                raise ValueError(
+                    f"cov_and_an HT at {cov_and_an_ht_path} is MISSING"
+                    f" {n_missing}/{n_sites} vep_context site(s) after fan-out +"
+                    f" merge. Sample missing loci: {sample}. A large/clustered"
+                    " count means a dropped chunk (re-run the fan-out/merge); a"
+                    " small scattered count is likely VDS-reference boundary gaps"
+                    " (sites with no reference data) — inspect before releasing."
+                )
+            logger.info("Validation passed: all %d vep_context sites present.", n_sites)
 
         # --- COMPUTE (strict, single job): whole-VDS per-ref-site
         # coverage/AN/qual-hists. Prod AoU does this via ROLE 1 fan-out
