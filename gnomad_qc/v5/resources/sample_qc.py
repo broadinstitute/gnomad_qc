@@ -855,7 +855,9 @@ def dense_trios(
 DENSE_TRIO_TEST_CHROMS = ["chr20", "chr21"]
 
 
-def get_dense_trio_chroms(test: bool = False) -> List[str]:
+def get_dense_trio_chroms(
+    test: bool = False, include_sex_chr: bool = False
+) -> List[str]:
     """
     Get the chromosomes the dense trio MT spans.
 
@@ -865,6 +867,14 @@ def get_dense_trio_chroms(test: bool = False) -> List[str]:
     the large dense MTs.
 
     :param test: Whether this is a test run. Default is False.
-    :return: ``DENSE_TRIO_TEST_CHROMS`` when `test`, else the autosomes.
+    :param include_sex_chr: Whether to include chrX and chrY. Trio stats use autosomes
+        only; de novo calling sets this True. Ignored when `test` is set. Default is False.
+    :return: ``DENSE_TRIO_TEST_CHROMS`` when `test`, else the autosomes (plus chrX and
+        chrY when `include_sex_chr`).
     """
-    return DENSE_TRIO_TEST_CHROMS if test else [f"chr{i}" for i in range(1, 23)]
+    if test:
+        return DENSE_TRIO_TEST_CHROMS
+    chroms = [f"chr{i}" for i in range(1, 23)]
+    if include_sex_chr:
+        chroms += ["chrX", "chrY"]
+    return chroms
