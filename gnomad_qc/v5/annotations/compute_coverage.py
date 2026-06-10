@@ -2805,19 +2805,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " at compute time)."
         ),
     )
-    parser.add_argument(
-        "--test-sample-subset",
-        action="store_true",
-        help=(
-            "When `--test` is set on AoU, additionally subsample the AoU"
-            " sample set to ~0.1%% via `meta_ht.sample(0.001)`. Default"
-            " off: a `--test` run uses all samples but the partition /"
-            " chrom subset, so AN values are stable and comparable"
-            " across runs. Useful for a cheap tiny-cohort sanity check"
-            " rather than a real-scale slice."
-        ),
-    )
-
     test_group = parser.add_argument_group(
         "Test mode",
         "Route inputs/outputs to test paths and (optionally) filter data.",
@@ -2831,7 +2818,33 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " ``--chrom``: combine for a chrom-filtered test run."
         ),
     )
-    parser.add_argument(
+    test_group.add_argument(
+        "--test-sample-subset",
+        action="store_true",
+        help=(
+            "When `--test` is set on AoU, additionally subsample the AoU"
+            " sample set to ~0.1%% via `meta_ht.sample(0.001)`. Default"
+            " off: a `--test` run uses all samples but the partition /"
+            " chrom subset, so AN values are stable and comparable"
+            " across runs. Useful for a cheap tiny-cohort sanity check"
+            " rather than a real-scale slice."
+        ),
+    )
+    test_group.add_argument(
+        "--test-n-partitions",
+        type=int,
+        default=None,
+        help=(
+            "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
+            " read just the first N partitions of the VDS for a cheap test (the"
+            " strict path otherwise reads the whole VDS; replaces the dropped"
+            " --test-2-partitions). The ref_ht is scoped to those partitions'"
+            " locus extent. Combine with --partitions-for-rep-on-read to"
+            " co-partition just those N partitions. Default None reads the whole"
+            " VDS."
+        ),
+    )
+    test_group.add_argument(
         "--chrom",
         nargs="+",
         default=None,
@@ -2902,20 +2915,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " chunked/fanned out."
         ),
     )
-    parser.add_argument(
-        "--test-n-partitions",
-        type=int,
-        default=None,
-        help=(
-            "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
-            " read just the first N partitions of the VDS for a cheap test (the"
-            " strict path otherwise reads the whole VDS; replaces the dropped"
-            " --test-2-partitions). The ref_ht is scoped to those partitions'"
-            " locus extent. Combine with --partitions-for-rep-on-read to co-partition just"
-            " those N partitions. Default None reads the whole VDS."
-        ),
-    )
-
     coverage_args = parser.add_argument_group(
         "Compute coverage release stats HT.",
     )
