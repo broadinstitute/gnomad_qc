@@ -526,14 +526,22 @@ def main(args):
 
         if args.union_trio_stats:
             logger.info("Unioning per-chromosome trio stats...")
+            chroms = get_dense_trio_chroms(test)
+            per_chrom_trio_stats_paths = [
+                get_trio_stats(test=test, environment=environment, chrom=c).path
+                for c in chroms
+            ]
             _check_resource_existence(
                 environment=environment,
+                input_step_resources={
+                    "trio_stats_per_chrom": per_chrom_trio_stats_paths
+                },
                 output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
             )
             hts = [
                 get_trio_stats(test=test, environment=environment, chrom=c).ht()
-                for c in get_dense_trio_chroms(test)
+                for c in chroms
             ]
             ht = hts[0] if len(hts) == 1 else hts[0].union(*hts[1:])
             ht.write(trio_stats_ht_path, overwrite=overwrite)
