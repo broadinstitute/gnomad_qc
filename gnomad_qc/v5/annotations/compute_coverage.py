@@ -257,6 +257,8 @@ def get_group_membership_ht(
             reduce_to_minimal_groups=reduce_min_aggs,
             force_leaf_groups=PINNED_LEAF_GROUPS,
         )
+    else:
+        raise ValueError(f"project must be 'aou' or 'gnomad', got {project!r}")
 
     return ht
 
@@ -284,10 +286,16 @@ def _file_exists_for_env(path: str, environment: str) -> bool:
     try:
         return file_exists(path)
     except PermissionError as e:
-        # This PermissionError was isolated to Hail 0.2.138.
+        # This PermissionError was isolated to Hail 0.2.138's anonymous probe of
+        # requester-pays paths. Treating it as "exists" is a workaround, but it is
+        # dangerous: a genuine creds/bucket misconfig would mark a never-written
+        # chunk as present and let the merge run over missing data. Logged at ERROR
+        # so a broad perms problem (many "assumed exists") is visible, not silent.
         if environment == "batch":
-            logger.warning(
-                "file_exists check on %s raised PermissionError %s; assuming exists.",
+            logger.error(
+                "file_exists on %s raised PermissionError (%s); ASSUMING EXISTS"
+                " (Hail 0.2.138 workaround). If many of these appear, a real"
+                " permissions problem may be silently skipping unwritten chunks.",
                 path,
                 e,
             )
@@ -1298,6 +1306,13 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     )
 
     sub_intervals: Optional[List[hl.utils.Interval]] = None
+    if n_sub > 1 and chrom:
+        logger.warning(
+            "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
+            "per-chunk=%d) is disabled; this chunk uses the slower filter_partitions"
+            " + locus-extent path (test/prod path divergence).",
+            n_sub,
+        )
     if n_sub > 1 and not chrom:
         # Probe: cheap reference_data-bounds load via filter_partitions.
         vds_probe = _probe_vds(project, environment, partition_range, chrom)
