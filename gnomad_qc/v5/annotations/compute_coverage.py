@@ -88,9 +88,10 @@ Usage Examples::
 
 import argparse
 import logging
+import re
 import subprocess
 from functools import reduce
-from typing import List, NamedTuple, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Sequence, Set, Tuple
 
 import hail as hl
 import hailtop.batch as hb
@@ -318,6 +319,27 @@ def _chunk_path(cov_and_an_ht_path: str, idx: int) -> str:
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
     return f"{base}_chunks/{idx:08d}.chunk.ht"
+
+
+def _list_present_chunk_indices(cov_and_an_ht_path: str) -> Set[int]:
+    """
+    Return the set of chunk indices with a completed (``_SUCCESS``) output.
+
+    One ``hl.hadoop_ls`` glob of ``<…>_chunks/*/_SUCCESS`` instead of a per-chunk
+    ``file_exists`` probe (tens of thousands of serial GCS stats at prod scale).
+    Keying on ``_SUCCESS`` (not the dir) means a partially-written chunk is
+    correctly treated as absent; a missing ``_chunks/`` dir returns an empty set.
+
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
+    :return: Set of completed chunk indices.
+    """
+    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
+    present: Set[int] = set()
+    for entry in hl.hadoop_ls(f"{base}_chunks/*/_SUCCESS"):
+        m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry["path"])
+        if m:
+            present.add(int(m.group(1)))
+    return present
 
 
 def _group_path(
@@ -1810,13 +1832,9 @@ def _orchestrate_coverage_batch(
     if args.overwrite:
         pending_indices = list(range(n_chunks))
     else:
-        pending_indices = []
-        for idx in range(n_chunks):
-            path = _chunk_path(cov_and_an_ht_path, idx)
-            if _file_exists_for_env(path, "batch"):
-                logger.info("Skipping already-complete chunk %d at %s", idx, path)
-            else:
-                pending_indices.append(idx)
+        # One directory listing instead of n_chunks serial existence probes.
+        present = _list_present_chunk_indices(cov_and_an_ht_path)
+        pending_indices = [idx for idx in range(n_chunks) if idx not in present]
     logger.info(
         "Coverage fan-out: %d chunks total, %d pending, %d skipped"
         " (overwrite=%s, project=%s)",
@@ -1882,14 +1900,11 @@ def _orchestrate_coverage_batch(
             script=script,
             wave_label=wave_label,
         )
-        # batch.run() does not raise on per-job failure, so re-probe this wave's
-        # chunk outputs and surface any that did not land (rather than only
-        # discovering them at --merge-cov-chunks time).
-        failed = [
-            idx
-            for idx in wave_indices
-            if not _file_exists_for_env(_chunk_path(cov_and_an_ht_path, idx), "batch")
-        ]
+        # batch.run() does not raise on per-job failure, so re-check this wave's
+        # chunk outputs (one listing) and surface any that did not land (rather
+        # than only discovering them at --merge-cov-chunks time).
+        present = _list_present_chunk_indices(cov_and_an_ht_path)
+        failed = [idx for idx in wave_indices if idx not in present]
         if failed:
             logger.warning(
                 "Wave %d/%d complete but %d/%d chunk(s) MISSING after run"
@@ -2036,14 +2051,14 @@ def _orchestrate_coverage_merge(
         )
 
     n_chunks = (total + pp - 1) // pp
-    chunk_paths = [_chunk_path(cov_and_an_ht_path, i) for i in range(n_chunks)]
 
     logger.info("Verifying %d expected chunk HTs exist...", n_chunks)
-    missing = [p for p in chunk_paths if not _file_exists_for_env(p, "batch")]
+    present = _list_present_chunk_indices(cov_and_an_ht_path)
+    missing = [i for i in range(n_chunks) if i not in present]
     if missing:
         raise FileNotFoundError(
             f"--merge-cov-chunks: {len(missing)} of {n_chunks} chunks"
-            f" missing (first few: {missing[:5]}). Run --use-batch-fanout"
+            f" missing (first few idx: {missing[:5]}). Run --use-batch-fanout"
             " to (re)compute missing chunks first."
         )
     logger.info("All %d chunks present.", n_chunks)
@@ -2080,7 +2095,7 @@ def _orchestrate_coverage_merge(
     # Intermediate levels: each emits a level-tagged group HT per output.
     # Iterates while #inputs > gs; stops when one final merge can union
     # everything remaining.
-    inputs = chunk_paths
+    inputs = [_chunk_path(cov_and_an_ht_path, i) for i in range(n_chunks)]
     level = 1
     while len(inputs) > gs:
         n_in = len(inputs)
