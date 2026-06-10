@@ -2445,11 +2445,13 @@ def main(args):
                 group_membership_ht=hl.read_table(group_membership_ht_path),
                 reduce_min_aggs=args.reduce_min_aggs,
             )
-            cov_and_an_ht = cov_and_an_ht.checkpoint(
-                new_temp_file(f"{project}_cov_and_an", "ht")
-            )
             if args.n_partitions is not None:
-                cov_and_an_ht = cov_and_an_ht.naive_coalesce(args.n_partitions)
+                # Checkpoint to temp only to stabilize before the coalesce; when
+                # not coalescing, write straight to the destination (skip a full
+                # temp write+read of the whole-VDS result).
+                cov_and_an_ht = cov_and_an_ht.checkpoint(
+                    new_temp_file(f"{project}_cov_and_an", "ht")
+                ).naive_coalesce(args.n_partitions)
             cov_and_an_ht.write(cov_and_an_ht_path, overwrite=overwrite)
 
         # --- ASSEMBLE (gnomAD): subtract the consent-drop cohort from
@@ -2531,9 +2533,12 @@ def main(args):
             aou_ht = hl.read_table(cov_and_an_ht_path).drop("AN", "qual_hists")
             gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
             ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
-            ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
             if args.n_partitions is not None:
-                ht = ht.naive_coalesce(args.n_partitions)
+                # Temp checkpoint only to stabilize the join before the coalesce;
+                # otherwise the destination checkpoint below materializes it once.
+                ht = ht.checkpoint(
+                    new_temp_file("aou_and_gnomad_cov_join", "ht")
+                ).naive_coalesce(args.n_partitions)
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
             ht.export(cov_tsv_path)
 
@@ -2562,14 +2567,17 @@ def main(args):
             aou_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_ht = hl.read_table(gnomad_an_ht_path)
             ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
-            ht = ht.checkpoint(new_temp_file("aou_and_gnomad_an_join", "ht"))
             ht = ht.select("AN")
             ht = ht.select_globals(
                 strata_meta=ht.strata_meta,
                 strata_sample_count=ht.strata_sample_count,
             )
             if args.n_partitions is not None:
-                ht = ht.naive_coalesce(args.n_partitions)
+                # join_aou_and_gnomad_an_ht already checkpoints; the extra temp
+                # checkpoint is only to stabilize before the coalesce.
+                ht = ht.checkpoint(
+                    new_temp_file("aou_and_gnomad_an_join", "ht")
+                ).naive_coalesce(args.n_partitions)
             ht = ht.checkpoint(an_ht_path, overwrite=overwrite)
             ht = ht.transmute(AN=ht.AN[0])
             ht.export(an_tsv_path)
