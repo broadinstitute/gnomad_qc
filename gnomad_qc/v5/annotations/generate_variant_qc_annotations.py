@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import Dict
+from typing import Dict, List
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
@@ -403,6 +403,80 @@ def get_tp_ht_for_vcf_export(
     return tp_hts
 
 
+def _derive_chunk_locus_intervals(
+    vds_filtered: hl.vds.VariantDataset,
+    n_subdivisions: int = 1,
+    reference_genome: str = "GRCh38",
+) -> List[hl.utils.Interval]:
+    """
+    Derive per-contig locus sub-intervals covering the filtered VDS reference_data.
+
+    :param vds_filtered: VDS already filtered to the chunk's partitions.
+    :param n_subdivisions: Number of equal-position sub-intervals per contig.
+    :param reference_genome: Reference genome for constructed `hl.Locus` objects.
+    :return: List of `hl.Interval` objects covering the VDS chunk.
+    """
+    rd = vds_filtered.reference_data
+    bounds = rd.aggregate_rows(
+        hl.agg.group_by(
+            rd.locus.contig,
+            hl.struct(
+                lo=hl.agg.min(rd.locus.position),
+                hi=hl.agg.max(rd.locus.position),
+            ),
+        )
+    )
+    n = max(n_subdivisions, 1)
+    sub_intervals: List[hl.utils.Interval] = []
+    for contig, b in bounds.items():
+        lo, hi = b.lo, b.hi + 1
+        total = max(hi - lo, 1)
+        step = max(total // n, 1)
+        for i in range(n):
+            sub_lo = lo + i * step
+            sub_hi = lo + (i + 1) * step if i < n - 1 else hi
+            if sub_hi <= sub_lo:
+                continue
+            sub_intervals.append(
+                hl.Interval(
+                    hl.Locus(contig, sub_lo, reference_genome=reference_genome),
+                    hl.Locus(contig, sub_hi, reference_genome=reference_genome),
+                    includes_start=True,
+                    includes_end=False,
+                )
+            )
+    return sub_intervals
+
+
+def compute_chunks(args):
+    """
+    Derive per-contig locus sub-intervals for a chunk of the VDS.
+
+    :param args: Parsed CLI args.
+    :return: List of locus intervals covering the chunk.
+    """
+    environment = args.environment
+    start, stop = args.chunk_start, args.chunk_stop
+    partition_range = list(range(start, stop))
+
+    n_sub = max(args.read_subintervals_per_chunk, 1)
+
+    vds_probe = get_aou_vds(
+        filter_partitions=partition_range,
+        environment=environment,
+        remove_hard_filtered_samples=False,
+        log_sample_counts=False,
+    )
+
+    sub_intervals = _derive_chunk_locus_intervals(vds_probe, n_subdivisions=n_sub)
+
+    logger.info(
+        "Chunk partitions %d-%d: derived %d sub-intervals", start, stop, len(sub_intervals)
+    )
+
+    return sub_intervals
+
+
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     environment = args.environment
@@ -416,7 +490,15 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     test = args.test or test_n_partitions is not None
 
-    info_ht_path = get_info_ht(test=test, environment=environment).path
+    sub_intervals = None
+    if args.explode_partitions:
+        logger.info("Explode partitions...")
+        sub_intervals = compute_chunks(args)
+        logger.info("Derived %d sub-intervals from chunk", len(sub_intervals))
+
+    info_ht_path = args.info_ht_path or get_info_ht(
+        test=test, environment=environment
+    ).path
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
     sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
     variant_qc_annotation_ht_path = get_variant_qc_annotations(
@@ -436,7 +518,12 @@ def main(args):
         # NOTE: VDS will have 'aou_' prefix on sample IDs.
         vds = get_aou_vds(
             high_quality_only=True,
-            filter_partitions=range(test_n_partitions) if test_n_partitions else None,
+            filter_partitions=(
+                None
+                if sub_intervals
+                else range(test_n_partitions) if test_n_partitions else None
+            ),
+            read_intervals=sub_intervals,
             annotate_meta=True,
             # NOTE: Using args.test here so that sibling stats test can be calculated from
             # a few partitions of the full (not test) VDS).
@@ -654,6 +741,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
+        "--info-ht-path",
+        help=(
+            "Optional override path for the info HT output. "
+            "If set, this path is used instead of the default resource path."
+        ),
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
         "--lowqual-indel-phred-het-prior",
         help="Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.",
         default=40,
@@ -661,6 +757,31 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--export-info-vcf", help="Export info ht as VCF.", action="store_true"
+    )
+
+    chunk_args = parser.add_argument_group("Chunk processing parameters")
+    chunk_args.add_argument(
+        "--explode-partitions",
+        help="Derive locus sub-intervals for chunk processing.",
+        action="store_true",
+    )
+    chunk_args.add_argument(
+        "--chunk-start",
+        help="Start partition index for chunk processing.",
+        type=int,
+        default=None,
+    )
+    chunk_args.add_argument(
+        "--chunk-stop",
+        help="Stop partition index for chunk processing (exclusive).",
+        type=int,
+        default=None,
+    )
+    chunk_args.add_argument(
+        "--read-subintervals-per-chunk",
+        help="Number of locus sub-intervals to subdivide each chunk into. Default is 1 (legacy behavior).",
+        type=int,
+        default=1,
     )
 
     variant_qc_annotation_args = parser.add_argument_group(

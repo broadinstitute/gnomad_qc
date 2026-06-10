@@ -348,6 +348,7 @@ def get_aou_vds(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -378,6 +379,8 @@ def get_aou_vds(
         `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
+    :param read_intervals: Optional list of locus intervals passed to `hl.vds.read_vds`
+        at read time. Mutually exclusive with `filter_partitions`.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
@@ -396,8 +399,13 @@ def get_aou_vds(
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    if filter_partitions and read_intervals:
+        raise ValueError(
+            "`filter_partitions` and `read_intervals` are mutually exclusive."
+        )
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
-    vds = aou_v8_resource.vds()
+    read_args = {"intervals": read_intervals} if read_intervals else None
+    vds = aou_v8_resource.vds(read_args=read_args)
 
     if isinstance(chrom, str):
         chrom = [chrom]
