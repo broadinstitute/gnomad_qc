@@ -42,10 +42,15 @@ Per-project setup (--project-name {aou,gnomad})::
     2. Write the group membership HT (--write-group-membership-ht): strata =
        sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
        --reduce-min-aggs to write the leaf-only variant.
+    2b. Write the preprocessed vep_context sites HT (--write-vep-context-sites):
+        deduped/telomere-stripped/locus-keyed sites read co-partitioned by every
+        chunk (so the dedup + strip runs once, not per chunk).
     3. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
        Strict single-job via --compute-all-cov-release-stats-ht, or the
        prod-scale fan-out (--use-batch-fanout then --merge-cov-chunks). See
        "Execution roles" above for how those dispatch.
+    3b. (full runs) Validate the merged HT covers every vep_context site
+        (--validate-cov-and-an) — anti-join, fail on any dropped site.
 
 Per-project merge (--project-name gnomad)::
 
@@ -1185,62 +1190,82 @@ def _probe_vds(
     )
 
 
-def _build_chunk_ref_ht(
-    vds_filtered: hl.vds.VariantDataset,
-    partition_count: int,
-    chrom: Optional[List[str]],
-    sub_intervals: Optional[List[hl.utils.Interval]] = None,
-) -> hl.Table:
+def _vep_context_sites_path(environment: str) -> str:
     """
-    Build the per-chunk ``ref_ht`` aligned to the VDS chunk's locus extent.
+    Return the path to the preprocessed vep_context sites HT (30-day storage).
 
-    When ``sub_intervals`` is provided, reads ``vep_context`` directly with
-    ``_intervals=sub_intervals`` so the ref_ht is read into one partition per
-    sub-interval — co-partitioned with the VDS that was read with the same
-    intervals. No shuffle, no checkpoint.
+    The content (deduped, telomere/centromere-stripped, locus-keyed vep_context)
+    is the same for test and prod, so a single per-environment path is used.
 
-    Otherwise (the strict/no-fanout path or single-interval chunks), reads
-    ``vep_context`` whole, filters to ``chrom`` (when set) or to the VDS
-    chunk's per-contig locus extent (via ``_derive_chunk_locus_intervals``
-    with ``n_subdivisions=1``), then strips to the locus key and removes
-    telomeres/centromeres.
-
-    :param vds_filtered: VDS already filtered to the chunk's partitions
-        (locus extent is derived from its ``reference_data``).
-    :param partition_count: When > 0 and ``sub_intervals`` is None and
-        ``chrom`` is None, triggers the locus-extent filter against the
-        VDS chunk. 0 means "whole VDS, no chunk filter."
-    :param chrom: Optional list of contigs to filter ``vep_context`` to.
-        Takes precedence over ``partition_count``-driven locus filtering.
-    :param sub_intervals: Optional read-time intervals for
-        ``vep_context``; takes precedence over both ``chrom`` and the
-        locus-extent filter.
-    :return: Reference HT keyed by locus, with telomeres/centromeres
-        removed.
+    :param environment: Compute environment.
+    :return: GCS path to the preprocessed sites HT.
     """
-    if sub_intervals is not None:
-        logger.info(
-            "Reading vep_context with %d sub-intervals (one partition per interval).",
-            len(sub_intervals),
-        )
-        ref_ht = vep_context.versions["105"].ht(read_args={"_intervals": sub_intervals})
-    else:
-        ref_ht = vep_context.versions["105"].ht()
-        if chrom:
-            ref_ht = hl.filter_intervals(
-                ref_ht, [hl.parse_locus_interval(c) for c in chrom]
-            )
-        elif partition_count > 0:
-            chunk_intervals = _derive_chunk_locus_intervals(vds_filtered)
-            logger.info("Chunk locus intervals: %s", hl.eval(chunk_intervals))
-            ref_ht = hl.filter_intervals(ref_ht, chunk_intervals)
+    return f"{qc_temp_prefix(environment=environment, days=30)}vep_context_sites.ht"
 
-    ref_ht = ref_ht.key_by("locus").select().distinct()
+
+def _build_vep_context_sites_ht() -> hl.Table:
+    """
+    Build the locus-keyed, deduped, telomere/centromere-stripped vep_context sites HT.
+
+    This is the per-ref-site set the coverage/AN compute aggregates at. Previously
+    this dedup + strip ran inside every chunk (``.distinct()`` shuffle + a driver
+    ``collect()`` of the telomere intervals, ~48k times); it is now done once via
+    ``--write-vep-context-sites`` and read co-partitioned per chunk.
+
+    :return: Locus-keyed sites HT.
+    """
+    ref_ht = vep_context.versions["105"].ht().key_by("locus").select().distinct()
     ref_ht = hl.filter_intervals(
         ref_ht,
         telomeres_and_centromeres.ht().interval.collect(),
         keep=False,
     )
+    return ref_ht
+
+
+def _build_chunk_ref_ht(
+    vds_filtered: hl.vds.VariantDataset,
+    partition_count: int,
+    chrom: Optional[List[str]],
+    sites_path: str,
+    sub_intervals: Optional[List[hl.utils.Interval]] = None,
+) -> hl.Table:
+    """
+    Build the per-chunk ``ref_ht`` from the preprocessed vep_context sites HT.
+
+    Reads ``sites_path`` (already locus-keyed, deduped, and telomere/centromere-
+    stripped by ``--write-vep-context-sites``). When ``sub_intervals`` is provided,
+    reads with ``_intervals=sub_intervals`` so the ref_ht is co-partitioned with the
+    VDS read on the same intervals (shuffle-free densify join). Otherwise (the
+    strict path / single-interval chunks) reads the whole sites HT and filters to
+    ``chrom`` (when set) or the VDS chunk's per-contig locus extent.
+
+    :param vds_filtered: VDS already filtered to the chunk's partitions
+        (the locus extent is derived from its ``reference_data``).
+    :param partition_count: When > 0 and ``sub_intervals``/``chrom`` are None,
+        triggers the locus-extent filter against the VDS chunk. 0 means "whole".
+    :param chrom: Optional list of contigs to filter to (takes precedence over
+        the ``partition_count`` locus-extent filter).
+    :param sites_path: Path to the preprocessed vep_context sites HT.
+    :param sub_intervals: Optional read-time intervals; take precedence over both
+        ``chrom`` and the locus-extent filter.
+    :return: Reference HT keyed by locus.
+    """
+    if sub_intervals is not None:
+        logger.info(
+            "Reading vep_context sites with %d sub-intervals (one partition each).",
+            len(sub_intervals),
+        )
+        return hl.read_table(sites_path, _intervals=sub_intervals)
+
+    ref_ht = hl.read_table(sites_path)
+    if chrom:
+        ref_ht = hl.filter_intervals(
+            ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+        )
+    elif partition_count > 0:
+        chunk_intervals = _derive_chunk_locus_intervals(vds_filtered)
+        ref_ht = hl.filter_intervals(ref_ht, chunk_intervals)
     return ref_ht
 
 
@@ -1341,6 +1366,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         vds_filtered=vds,
         partition_count=n,
         chrom=chrom,
+        sites_path=_vep_context_sites_path(environment),
         sub_intervals=sub_intervals,
     )
 
@@ -1741,6 +1767,16 @@ def _orchestrate_coverage_batch(
         raise ValueError(
             "--use-batch-fanout requires --total-partitions and"
             " --partitions-per-chunk to be > 0."
+        )
+
+    # Fail fast (before submitting thousands of jobs) if the preprocessed
+    # vep_context sites HT the chunks read isn't there yet.
+    sites_path = _vep_context_sites_path(args.environment)
+    if not _file_exists_for_env(sites_path, "batch"):
+        raise FileNotFoundError(
+            f"vep_context sites HT not found at {sites_path}. Run"
+            " --write-vep-context-sites first (it is a prerequisite for the"
+            " chunk compute)."
         )
 
     n_chunks = (total + pp - 1) // pp
@@ -2226,6 +2262,15 @@ def main(args):
 
         # --- SETUP (prerequisites): write the input HTs the COMPUTE
         # phase (and the fan-out workers) read from disk. ---
+        if args.write_vep_context_sites:
+            logger.info("Writing preprocessed vep_context sites HT...")
+            sites_path = _vep_context_sites_path(environment)
+            check_resource_existence(
+                output_step_resources={"vep_context_sites": [sites_path]},
+                overwrite=overwrite,
+            )
+            _build_vep_context_sites_ht().write(sites_path, overwrite=overwrite)
+
         if args.write_aou_downsampling_ht:
             logger.info("Writing AoU downsampling HT...")
             check_resource_existence(
@@ -2264,6 +2309,26 @@ def main(args):
                     reduce_min_aggs=args.reduce_min_aggs,
                 )
             group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
+
+        # --- VALIDATE: every intended vep_context site got AN/coverage after
+        # the fan-out + merge. Run only on a FULL run (a partial/--test run
+        # covers only its partitions' sites, so the anti-join would flag the
+        # rest as missing). ---
+        if args.validate_cov_and_an:
+            logger.info("Validating cov_and_an HT covers all vep_context sites...")
+            sites_ht = hl.read_table(_vep_context_sites_path(environment))
+            merged_ht = hl.read_table(cov_and_an_ht_path)
+            n_missing = sites_ht.anti_join(merged_ht).count()
+            if n_missing:
+                raise ValueError(
+                    f"cov_and_an HT at {cov_and_an_ht_path} is MISSING {n_missing}"
+                    " vep_context site(s) after fan-out + merge — sites were"
+                    " dropped. Re-run --use-batch-fanout / --merge-cov-chunks."
+                )
+            logger.info(
+                "Validation passed: all %d vep_context sites present.",
+                sites_ht.count(),
+            )
 
         # --- COMPUTE (strict, single job): whole-VDS per-ref-site
         # coverage/AN/qual-hists. Prod AoU does this via ROLE 1 fan-out
@@ -2330,6 +2395,7 @@ def main(args):
                 vds_filtered=vds,
                 partition_count=test_n or 0,
                 chrom=chrom,
+                sites_path=_vep_context_sites_path(environment),
                 sub_intervals=strict_sub_intervals,
             )
 
@@ -2708,6 +2774,26 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-aou-downsampling-ht",
         help="Write v5 downsampling HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--write-vep-context-sites",
+        help=(
+            "Preprocess vep_context once into a deduped, telomere/centromere-"
+            "stripped, locus-keyed sites HT (30-day storage) that every chunk reads"
+            " co-partitioned. Prerequisite for the compute; run before"
+            " --use-batch-fanout / --compute-all-cov-release-stats-ht."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--validate-cov-and-an",
+        help=(
+            "Anti-join the vep_context sites HT against the merged cov_and_an HT and"
+            " fail if any site is missing (i.e. dropped during fan-out + merge)."
+            " Run after --merge-cov-chunks on a FULL run only (a partial/--test run"
+            " covers only its partitions' sites)."
+        ),
         action="store_true",
     )
     parser.add_argument(
