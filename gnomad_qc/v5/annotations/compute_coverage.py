@@ -85,7 +85,7 @@ import argparse
 import logging
 import subprocess
 from functools import reduce
-from typing import List, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 import hail as hl
 import hailtop.batch as hb
@@ -1457,17 +1457,24 @@ def _build_setup_command(
     )
 
 
-def _build_chunk_common_flags(args: argparse.Namespace) -> str:
+def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
     """
-    Build the CLI flag string shared by every per-chunk relay invocation.
+    Build the CLI flag string shared by per-chunk / per-merge relay invocations.
 
-    Translates the orchestrator's ``args.Namespace`` into a CLI string
-    that's appended to each chunk relay's ``--run-chunk`` command. Per-chunk
-    flags (``--chunk-start``, ``--chunk-stop``, ``--chunk-output``) are
-    added by ``_submit_chunk_batch``; this helper covers everything else
-    a chunk relay needs to mirror the orchestrator's config.
+    Translates the orchestrator's ``args.Namespace`` into a CLI string appended to
+    each relay's ``--run-chunk`` / ``--run-merge`` command. The shared base
+    (project / environment / billing / tmp-dir / n-partitions / experimental /
+    app-name / output-suffix / QoB driver+worker sizing) is common to both. With
+    ``chunk=True`` the read/compute flags a chunk relay also needs
+    (``--read-subintervals-per-chunk``, ``--reduce-min-aggs``,
+    ``--test-sample-subset``, ``--chrom``, ``--test``) are appended; the merge
+    relay (which only unions HTs) omits them. Per-job flags (``--chunk-*`` /
+    ``--merge-*``) are added by the submit helpers. Flag order is irrelevant to
+    argparse.
 
     :param args: Parsed CLI args.
+    :param chunk: If True, include the chunk-only read/compute flags; if False,
+        build the (smaller) merge relay flag set.
     :return: Space-joined ``--flag value`` string.
     """
     flags = [
@@ -1475,27 +1482,19 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         "--environment batch",
         f"--gcp-billing-project {args.gcp_billing_project}",
         f"--tmp-dir-days {args.tmp_dir_days}",
-        f"--read-subintervals-per-chunk {args.read_subintervals_per_chunk}",
     ]
     if args.n_partitions is not None:
         flags.append(f"--n-partitions {args.n_partitions}")
     if args.experimental:
-        # Pass through only if user opted in. With --experimental the inner
-        # QoB driver attaches to this outer batch (HAIL_BATCH_ID); without
-        # it, each chunk's QoB creates its own Hail Batch.
+        # With --experimental the inner QoB driver attaches to this outer batch
+        # (HAIL_BATCH_ID); without it, each relay's QoB creates its own Hail Batch.
         flags.append("--experimental")
-    if args.reduce_min_aggs:
-        flags.append("--reduce-min-aggs")
-    if args.test_sample_subset:
-        flags.append("--test-sample-subset")
-    if args.cov_and_an_output_suffix:
-        flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
-    if args.chrom:
-        flags.append(f"--chrom {' '.join(args.chrom)}")
-    if args.test:
-        flags.append("--test")
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
+    if args.cov_and_an_output_suffix:
+        flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
+    # QoB driver/worker sizing; merge workers reuse the chunk sizing (same
+    # QoB-from-container shape).
     if args.chunk_driver_cores is not None:
         flags.append(f"--driver-cores {args.chunk_driver_cores}")
     if args.chunk_driver_memory:
@@ -1504,7 +1503,87 @@ def _build_chunk_common_flags(args: argparse.Namespace) -> str:
         flags.append(f"--worker-cores {args.chunk_worker_cores}")
     if args.chunk_worker_memory:
         flags.append(f"--worker-memory {args.chunk_worker_memory}")
+    if chunk:
+        flags.append(
+            f"--read-subintervals-per-chunk {args.read_subintervals_per_chunk}"
+        )
+        if args.reduce_min_aggs:
+            flags.append("--reduce-min-aggs")
+        if args.test_sample_subset:
+            flags.append("--test-sample-subset")
+        if args.chrom:
+            flags.append(f"--chrom {' '.join(args.chrom)}")
+        if args.test:
+            flags.append("--test")
     return " ".join(flags)
+
+
+class _RelayJobSpec(NamedTuple):
+    """One relay job's per-job config for :func:`_submit_relay_batch`."""
+
+    name: str
+    cpu: float
+    memory: str
+    storage: str
+    command: str
+
+
+def _submit_relay_batch(
+    args: argparse.Namespace,
+    backend_kwargs: dict,
+    batch_name: str,
+    job_specs: List[_RelayJobSpec],
+    log_label: str,
+) -> None:
+    """
+    Build and submit one Hail Batch of relay jobs sharing the same config.
+
+    Shared skeleton for ``_submit_chunk_batch`` and ``_submit_merge_batch``: each
+    relay job is a non-spot coordinator container (preemption mid-wait would orphan
+    its inner QoB job) pinned to ``BATCH_REGIONS``, with ``--chunk-attempts``
+    retries. Parallelism comes from Hail Batch's own scheduler running the N jobs
+    concurrently. No-ops (skips ``batch.run()``) when ``job_specs`` is empty.
+
+    :param args: Parsed CLI args (reads ``batch_image``, ``chunk_attempts``,
+        ``batch_dry_run``).
+    :param backend_kwargs: kwargs for the ``hb.ServiceBackend(...)`` constructor.
+    :param batch_name: Hail Batch name.
+    :param job_specs: Per-job config (name + QoB sizing + command).
+    :param log_label: Noun for log messages ("chunk" / "merge").
+    :return: None.
+    """
+    if not job_specs:
+        logger.info(
+            "  no pending %s jobs for %s; skipping batch.run()", log_label, batch_name
+        )
+        return
+
+    backend = hb.ServiceBackend(**backend_kwargs)
+    try:
+        batch = hb.Batch(name=batch_name, backend=backend)
+        for spec in job_specs:
+            j = batch.new_job(name=spec.name)
+            j.image(args.batch_image)
+            j.cpu(spec.cpu)
+            j.memory(spec.memory)
+            j.storage(spec.storage)
+            j.regions(BATCH_REGIONS)
+            # Relay is a coordinator waiting on its inner QoB job; preemption
+            # mid-wait orphans that inner job, so relays are non-spot.
+            j.spot(False)
+            j.n_max_attempts(args.chunk_attempts)
+            j.command(spec.command)
+
+        logger.info(
+            "Submitting Hail Batch '%s': %d %s jobs (dry_run=%s)",
+            batch_name,
+            len(job_specs),
+            log_label,
+            args.batch_dry_run,
+        )
+        batch.run(dry_run=args.batch_dry_run)
+    finally:
+        backend.close()
 
 
 def _submit_chunk_batch(
@@ -1542,7 +1621,7 @@ def _submit_chunk_batch(
         chunk writes to a sibling ``_chunks/<idx>.chunk.ht``.
     :param setup_cmd: Shell prefix from ``_build_setup_command``.
     :param common_flags_str: Shared CLI flags from
-        ``_build_chunk_common_flags``.
+        ``_build_relay_common_flags(args, chunk=True)``.
     :param script: Path to the script inside the relay container.
     :param wave_label: Optional suffix appended to the Hail Batch name to
         distinguish per-wave batches (e.g. ``"w03of49"``). None for a
@@ -1560,45 +1639,27 @@ def _submit_chunk_batch(
     if wave_label:
         batch_name += f"_{wave_label}"
 
-    if not chunk_indices:
-        logger.info("  no pending chunks for %s; skipping batch.run()", batch_name)
-        return
-
-    backend = hb.ServiceBackend(**backend_kwargs)
-    try:
-        batch = hb.Batch(name=batch_name, backend=backend)
-
-        for idx in chunk_indices:
-            path = _chunk_path(cov_and_an_ht_path, idx)
-            start = idx * pp
-            stop = min(start + pp, total)
-            j = batch.new_job(name=f"cov_chunk_{idx:06d}_{start}_{stop}")
-            j.image(args.batch_image)
-            j.cpu(args.chunk_cpu)
-            j.memory(args.chunk_memory)
-            j.storage(args.chunk_storage)
-            j.regions(BATCH_REGIONS)
-            # Chunk relay is a coordinator waiting on the inner QoB
-            # driver/workers; preemption mid-wait orphans the inner batch.
-            j.spot(False)
-            j.n_max_attempts(args.chunk_attempts)
-            j.command(
-                f"{setup_cmd}"
-                f"{script} --run-chunk"
-                f" --chunk-start {start} --chunk-stop {stop}"
-                f" --chunk-output {path}"
-                f" {common_flags_str}"
-            )
-
-        logger.info(
-            "Submitting Hail Batch '%s': %d chunk jobs (dry_run=%s)",
-            batch_name,
-            len(chunk_indices),
-            args.batch_dry_run,
+    job_specs = []
+    for idx in chunk_indices:
+        path = _chunk_path(cov_and_an_ht_path, idx)
+        start = idx * pp
+        stop = min(start + pp, total)
+        command = (
+            f"{setup_cmd}{script} --run-chunk"
+            f" --chunk-start {start} --chunk-stop {stop}"
+            f" --chunk-output {path}"
+            f" {common_flags_str}"
         )
-        batch.run(dry_run=args.batch_dry_run)
-    finally:
-        backend.close()
+        job_specs.append(
+            _RelayJobSpec(
+                name=f"cov_chunk_{idx:06d}_{start}_{stop}",
+                cpu=args.chunk_cpu,
+                memory=args.chunk_memory,
+                storage=args.chunk_storage,
+                command=command,
+            )
+        )
+    _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "chunk")
 
 
 def _orchestrate_coverage_batch(
@@ -1650,7 +1711,7 @@ def _orchestrate_coverage_batch(
         ``total_partitions``, ``partitions_per_chunk``, ``wave_size``,
         ``overwrite``, ``methods_branch``, ``gcp_billing_project``,
         ``batch_billing_project``, ``batch_remote_tmpdir``, plus
-        everything ``_build_chunk_common_flags`` and
+        everything ``_build_relay_common_flags`` and
         ``_submit_chunk_batch`` read).
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path
         (resolved by ``main``). Each chunk writes to
@@ -1706,7 +1767,7 @@ def _orchestrate_coverage_batch(
     if args.batch_remote_tmpdir:
         backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
 
-    common_flags_str = _build_chunk_common_flags(args)
+    common_flags_str = _build_relay_common_flags(args, chunk=True)
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
 
     wave_size = args.wave_size
@@ -1749,46 +1810,6 @@ def _orchestrate_coverage_batch(
         logger.info("Wave %d/%d complete.", wi, n_waves)
 
 
-def _build_merge_common_flags(args: argparse.Namespace) -> str:
-    """
-    Build the CLI flag string shared by every per-merge relay invocation.
-
-    Per-merge flags (``--merge-output``, ``--merge-inputs``,
-    ``--merge-coalesce-to``) are added by ``_submit_merge_batch`` and the
-    final-merge dispatch in ``_orchestrate_coverage_merge``; this helper
-    covers everything else a merge relay needs to mirror the
-    orchestrator's config.
-
-    :param args: Parsed CLI args.
-    :return: Space-joined ``--flag value`` string.
-    """
-    flags = [
-        f"--project-name {args.project_name}",
-        "--environment batch",
-        f"--gcp-billing-project {args.gcp_billing_project}",
-        f"--tmp-dir-days {args.tmp_dir_days}",
-    ]
-    if args.n_partitions is not None:
-        flags.append(f"--n-partitions {args.n_partitions}")
-    if args.experimental:
-        flags.append("--experimental")
-    if args.app_name:
-        flags.append(f"--app-name {args.app_name}")
-    if args.cov_and_an_output_suffix:
-        flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
-    # Reuse the per-chunk QoB driver/worker sizing for merge workers — the
-    # merge worker is also QoB-from-container, same shape as the chunk relay.
-    if args.chunk_driver_cores is not None:
-        flags.append(f"--driver-cores {args.chunk_driver_cores}")
-    if args.chunk_driver_memory:
-        flags.append(f"--driver-memory {args.chunk_driver_memory}")
-    if args.chunk_worker_cores is not None:
-        flags.append(f"--worker-cores {args.chunk_worker_cores}")
-    if args.chunk_worker_memory:
-        flags.append(f"--worker-memory {args.chunk_worker_memory}")
-    return " ".join(flags)
-
-
 def _submit_merge_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
@@ -1825,7 +1846,7 @@ def _submit_merge_batch(
         this level's merge writes to.
     :param setup_cmd: Shell prefix from ``_build_setup_command``.
     :param common_flags_str: Shared CLI flags from
-        ``_build_merge_common_flags``.
+        ``_build_relay_common_flags(args, chunk=False)``.
     :param script: Path to the script inside the relay container.
     :param level: Merge-tree level (1-indexed); used in the batch and
         job names.
@@ -1836,47 +1857,26 @@ def _submit_merge_batch(
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
 
-    if not group_indices:
-        logger.info("  no pending merges for %s; skipping batch.run()", batch_name)
-        return
-
-    backend = hb.ServiceBackend(**backend_kwargs)
-    try:
-        batch = hb.Batch(name=batch_name, backend=backend)
-
-        for group_idx in group_indices:
-            output_path = group_output_paths[group_idx]
-            group_inputs = groups[group_idx]
-            inputs_str = " ".join(group_inputs)
-            coalesce_to = len(group_inputs)
-            j = batch.new_job(name=f"cov_merge_L{level:02d}_{group_idx:06d}")
-            j.image(args.batch_image)
-            j.cpu(args.merge_cpu)
-            j.memory(args.merge_memory)
-            j.storage(args.merge_storage)
-            j.regions(BATCH_REGIONS)
-            # Merge relay is a coordinator waiting on inner union+write;
-            # preemption mid-wait orphans the inner job.
-            j.spot(False)
-            j.n_max_attempts(args.chunk_attempts)
-            j.command(
-                f"{setup_cmd}"
-                f"{script} --run-merge"
-                f" --merge-output {output_path}"
-                f" --merge-coalesce-to {coalesce_to}"
-                f" --merge-inputs {inputs_str}"
-                f" {common_flags_str}"
-            )
-
-        logger.info(
-            "Submitting Hail Batch '%s': %d merge jobs (dry_run=%s)",
-            batch_name,
-            len(group_indices),
-            args.batch_dry_run,
+    job_specs = []
+    for group_idx in group_indices:
+        group_inputs = groups[group_idx]
+        command = (
+            f"{setup_cmd}{script} --run-merge"
+            f" --merge-output {group_output_paths[group_idx]}"
+            f" --merge-coalesce-to {len(group_inputs)}"
+            f" --merge-inputs {' '.join(group_inputs)}"
+            f" {common_flags_str}"
         )
-        batch.run(dry_run=args.batch_dry_run)
-    finally:
-        backend.close()
+        job_specs.append(
+            _RelayJobSpec(
+                name=f"cov_merge_L{level:02d}_{group_idx:06d}",
+                cpu=args.merge_cpu,
+                memory=args.merge_memory,
+                storage=args.merge_storage,
+                command=command,
+            )
+        )
+    _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "merge")
 
 
 def _orchestrate_coverage_merge(
@@ -1975,7 +1975,7 @@ def _orchestrate_coverage_merge(
         backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
 
     script = "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py"
-    common_flags_str = _build_merge_common_flags(args)
+    common_flags_str = _build_relay_common_flags(args, chunk=False)
 
     # Intermediate levels: each emits a level-tagged group HT per output.
     # Iterates while #inputs > gs; stops when one final merge can union
