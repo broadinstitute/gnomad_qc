@@ -1807,7 +1807,32 @@ def _orchestrate_coverage_batch(
             script=script,
             wave_label=wave_label,
         )
-        logger.info("Wave %d/%d complete.", wi, n_waves)
+        # batch.run() does not raise on per-job failure, so re-probe this wave's
+        # chunk outputs and surface any that did not land (rather than only
+        # discovering them at --merge-cov-chunks time).
+        failed = [
+            idx
+            for idx in wave_indices
+            if not _file_exists_for_env(_chunk_path(cov_and_an_ht_path, idx), "batch")
+        ]
+        if failed:
+            logger.warning(
+                "Wave %d/%d complete but %d/%d chunk(s) MISSING after run"
+                " (rerun --use-batch-fanout to retry); missing indices: %s%s",
+                wi,
+                n_waves,
+                len(failed),
+                len(wave_indices),
+                failed[:25],
+                " ..." if len(failed) > 25 else "",
+            )
+        else:
+            logger.info(
+                "Wave %d/%d complete; all %d chunks present.",
+                wi,
+                n_waves,
+                len(wave_indices),
+            )
 
 
 def _submit_merge_batch(
@@ -2040,42 +2065,28 @@ def _orchestrate_coverage_merge(
     final_batch_name = f"v5_cov_merge_final_{project}"
     if args.cov_and_an_output_suffix:
         final_batch_name += f"_{args.cov_and_an_output_suffix}"
-    final_backend = hb.ServiceBackend(**backend_kwargs)
-    final_batch = hb.Batch(name=final_batch_name, backend=final_backend)
-    j = final_batch.new_job(name="cov_merge_final")
-    j.image(args.batch_image)
-    j.cpu(args.merge_cpu)
-    j.memory(args.merge_memory)
-    j.storage(args.final_merge_storage)
-    j.regions(BATCH_REGIONS)
-    # Same coordinator-waiting-on-inner-job rationale as group merges.
-    j.spot(False)
-    j.n_max_attempts(args.chunk_attempts)
-    inputs_str = " ".join(inputs)
     coalesce_flag = (
         f" --merge-coalesce-to {args.n_partitions}"
         if args.n_partitions is not None
         else ""
     )
-    j.command(
-        f"{setup_cmd}"
-        f"{script} --run-merge"
-        f" --merge-output {cov_and_an_ht_path}"
-        f"{coalesce_flag}"
-        f" --merge-inputs {inputs_str}"
-        f" {common_flags_str}"
+    logger.info("Final merge: %d inputs -> %s", len(inputs), cov_and_an_ht_path)
+    final_spec = _RelayJobSpec(
+        name="cov_merge_final",
+        cpu=args.merge_cpu,
+        memory=args.merge_memory,
+        storage=args.final_merge_storage,
+        command=(
+            f"{setup_cmd}{script} --run-merge"
+            f" --merge-output {cov_and_an_ht_path}"
+            f"{coalesce_flag}"
+            f" --merge-inputs {' '.join(inputs)}"
+            f" {common_flags_str}"
+        ),
     )
-    logger.info(
-        "Submitting Hail Batch '%s': final merge (%d inputs -> %s, dry_run=%s)",
-        final_batch_name,
-        len(inputs),
-        cov_and_an_ht_path,
-        args.batch_dry_run,
+    _submit_relay_batch(
+        args, backend_kwargs, final_batch_name, [final_spec], "final-merge"
     )
-    try:
-        final_batch.run(dry_run=args.batch_dry_run)
-    finally:
-        final_backend.close()
 
 
 def main(args):
