@@ -1342,15 +1342,23 @@ def _build_chunk_intervals_ht(
         n_partitions=n_chunks * n_sub,
         locus_intervals=True,
     )
-    if len(all_subs) != n_chunks * n_sub:
+    n_subs = len(all_subs)
+    if n_subs < n_chunks:
         raise ValueError(
-            f"repartition_for_join returned {len(all_subs)} sub-intervals but"
-            f" {n_chunks} chunks x {n_sub} sub = {n_chunks * n_sub} were requested;"
-            " the data is too sparse to subdivide this finely (lower"
-            " --read-subintervals-per-chunk or --total-partitions)."
+            f"repartition_for_join returned only {n_subs} sub-intervals for"
+            f" {n_chunks} chunks; the data is too sparse to give every chunk a"
+            " sub-interval (lower --total-partitions or --partitions-per-chunk)."
         )
+    # Distribute the returned sub-intervals into n_chunks contiguous, disjoint,
+    # covering groups (sizes differ by <=1). repartition_for_join caps at the data's
+    # natural split points, so it can return a few fewer than the requested
+    # n_chunks*n_sub (e.g. 99 for 100) -- we cannot assume exactly n_sub per chunk,
+    # but the union still covers the full extent regardless of the per-chunk count.
     rg = all_subs[0].start.reference_genome
-    per_chunk = [all_subs[i * n_sub : (i + 1) * n_sub] for i in range(n_chunks)]
+    per_chunk = [
+        all_subs[(i * n_subs) // n_chunks : ((i + 1) * n_subs) // n_chunks]
+        for i in range(n_chunks)
+    ]
     ht = hl.utils.range_table(n_chunks, n_partitions=1)
     ht = ht.annotate(
         chunk_start=ht.idx * partitions_per_chunk,
@@ -1361,10 +1369,12 @@ def _build_chunk_intervals_ht(
     )
     ht = ht.key_by("chunk_start").drop("idx")
     logger.info(
-        "Built chunk-intervals HT: %d chunks x %d sub-intervals each"
-        " (ref_block_max_length=%d).",
+        "Built chunk-intervals HT: %d chunks, %d sub-intervals total (%d-%d per"
+        " chunk; ref_block_max_length=%d).",
         n_chunks,
-        n_sub,
+        n_subs,
+        min(len(p) for p in per_chunk),
+        max(len(p) for p in per_chunk),
         max_ref_block_len,
     )
     return ht
