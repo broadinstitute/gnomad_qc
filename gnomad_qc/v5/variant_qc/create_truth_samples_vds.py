@@ -325,7 +325,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Overwrite the output VDS and any stale saved combiner plan.",
+        help="Overwrite any stale saved combiner plan. Does not overwrite an existing VDS (the combiner will fail if the output VDS already exists, regardless of this flag).",
         action="store_true",
     )
     parser.add_argument(
