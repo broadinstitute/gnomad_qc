@@ -2,7 +2,7 @@
 
 import logging
 from os import getenv
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -216,7 +216,7 @@ _UNSTATTABLE_BUCKET_PREFIXES = (
 
 def _drop_unstattable_resources(
     step_resources: Optional[Dict[str, List]],
-) -> Optional[Dict[str, List]]:
+) -> Tuple[Optional[Dict[str, List]], List[str]]:
     """
     Drop resources in unstattable buckets from a step-resource dict.
 
@@ -228,25 +228,27 @@ def _drop_unstattable_resources(
     :param step_resources: A dictionary with keys as pipeline steps and values as lists
         of resources (path strings or resource objects with a `.path` attribute).
         Default is None.
-    :return: The same dictionary with unstattable resources removed, and any steps left
-        with no resources dropped. None if `step_resources` is None.
+    :return: A tuple of (filtered dictionary with unstattable resources removed and any
+        steps left with no resources dropped, list of the dropped resource paths). The
+        filtered dictionary is None if `step_resources` is None.
     """
     if step_resources is None:
-        return None
+        return None, []
 
     filtered = {}
+    skipped = []
     for step, resources in step_resources.items():
-        kept = [
-            r
-            for r in resources
-            if not (r if isinstance(r, str) else r.path).startswith(
-                _UNSTATTABLE_BUCKET_PREFIXES
-            )
-        ]
+        kept = []
+        for r in resources:
+            path = r if isinstance(r, str) else r.path
+            if path.startswith(_UNSTATTABLE_BUCKET_PREFIXES):
+                skipped.append(path)
+            else:
+                kept.append(r)
         if kept:
             filtered[step] = kept
 
-    return filtered
+    return filtered, skipped
 
 
 def _check_resource_existence(
@@ -278,13 +280,20 @@ def _check_resource_existence(
     :return: None.
     """
     if environment == "batch":
-        logger.info(
-            "Skipping resource existence checks for unstattable bucket resources "
-            "(read-only Batch and controlled-access AoU buckets). To replace any "
-            "existing outputs there, run with --overwrite."
+        input_step_resources, skipped_input = _drop_unstattable_resources(
+            input_step_resources
         )
-        input_step_resources = _drop_unstattable_resources(input_step_resources)
-        output_step_resources = _drop_unstattable_resources(output_step_resources)
+        output_step_resources, skipped_output = _drop_unstattable_resources(
+            output_step_resources
+        )
+        skipped = skipped_input + skipped_output
+        if skipped:
+            logger.info(
+                "Skipping resource existence checks for the following unstattable "
+                "bucket resources (read-only Batch and controlled-access AoU buckets). "
+                "To replace any existing outputs there, run with --overwrite:\n%s",
+                "\n".join(skipped),
+            )
 
     check_resource_existence(
         input_step_resources=input_step_resources,
