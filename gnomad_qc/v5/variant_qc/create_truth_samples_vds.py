@@ -38,6 +38,7 @@ from gnomad_qc.v5.resources.variant_qc import (
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
+    force=True,
 )
 logger = logging.getLogger("create_truth_samples_vds")
 logger.setLevel(logging.INFO)
