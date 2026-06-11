@@ -87,6 +87,7 @@ Usage Examples::
 """
 
 import argparse
+import json
 import logging
 import re
 import subprocess
@@ -96,6 +97,7 @@ from typing import List, NamedTuple, Optional, Sequence, Set, Tuple
 
 import hail as hl
 import hailtop.batch as hb
+import hailtop.fs as hfs
 from gnomad.resources.grch38.gnomad import CURRENT_GENOME_AN_RELEASE as v4_AN_RELEASE
 from gnomad.resources.grch38.gnomad import (
     CURRENT_GENOME_COVERAGE_RELEASE as v4_COVERAGE_RELEASE,
@@ -1272,37 +1274,75 @@ def _build_vep_context_sites_ht(
 
 def _chunk_intervals_path(environment: str, test: bool = False) -> str:
     """
-    Return the path to the precomputed per-chunk read sub-intervals HT (30-day storage).
+    Return the path to the precomputed per-chunk read sub-intervals JSON (30-day storage).
 
     Written once by ``--write-chunk-intervals`` (F:1230): a single VDS open derives
     the balanced read sub-intervals for *every* chunk, replacing the per-chunk probe
-    (a redundant ~200s VDS open on each of ~48k chunks). The HT is keyed by
-    ``chunk_start`` (the chunk's first VDS partition index,
-    ``chunk_index * partitions_per_chunk``), with each chunk's
-    ``array<interval<locus>>`` of sub-intervals and the VDS ``ref_block_max_length``
-    (for the leading-edge boundary fix, see :func:`_expand_leading_edges`).
+    (a redundant ~400s VDS open on each of ~48k chunks). Stored as a plain JSON file
+    (not a Hail Table) so the worker reads it driver-side with ``hailtop.fs`` -- no
+    QoB job, so no query-on-batch cold-start. The JSON maps ``chunk_start`` (the
+    chunk's first VDS partition index, ``chunk_index * partitions_per_chunk``, as a
+    string key) to that chunk's serialized sub-intervals, alongside the VDS
+    ``ref_block_max_length`` and reference-genome name (for the leading-edge boundary
+    fix, see :func:`_expand_leading_edges`).
 
     :param environment: Compute environment.
     :param test: If True, return the test-scoped intervals path.
-    :return: GCS path to the precomputed chunk-intervals HT.
+    :return: GCS path to the precomputed chunk-intervals JSON.
     """
-    name = "chunk_intervals_test.ht" if test else "chunk_intervals.ht"
+    name = "chunk_intervals_test.json" if test else "chunk_intervals.json"
     return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
 
 
-def _build_chunk_intervals_ht(
+def _interval_to_list(iv: hl.utils.Interval) -> list:
+    """
+    Serialize a locus interval to a JSON-friendly list.
+
+    :param iv: Locus interval (Python ``hl.Interval`` with ``hl.Locus`` endpoints).
+    :return: ``[start_contig, start_pos, end_contig, end_pos, includes_start,
+        includes_end]``.
+    """
+    return [
+        iv.start.contig,
+        iv.start.position,
+        iv.end.contig,
+        iv.end.position,
+        iv.includes_start,
+        iv.includes_end,
+    ]
+
+
+def _interval_from_list(t: list, reference_genome: str) -> hl.utils.Interval:
+    """
+    Reconstruct a locus interval from its :func:`_interval_to_list` serialization.
+
+    :param t: ``[start_contig, start_pos, end_contig, end_pos, includes_start,
+        includes_end]``.
+    :param reference_genome: Reference-genome name (e.g. "GRCh38").
+    :return: Locus interval.
+    """
+    sc, sp, ec, ep, incs, ince = t
+    return hl.Interval(
+        hl.Locus(sc, sp, reference_genome=reference_genome),
+        hl.Locus(ec, ep, reference_genome=reference_genome),
+        includes_start=incs,
+        includes_end=ince,
+    )
+
+
+def _build_chunk_intervals(
     project: str,
     environment: str,
     total_partitions: int,
     partitions_per_chunk: int,
     n_sub: int,
     chrom: Optional[List[str]] = None,
-) -> hl.Table:
+) -> dict:
     """
     Precompute every chunk's balanced read sub-intervals in ONE VDS open (F:1230).
 
     Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join``, a
-    redundant ~200s VDS open on each of ~48k chunks). Opens the VDS once over the
+    redundant ~400s VDS open on each of ~48k chunks). Opens the VDS once over the
     leading ``total_partitions``, derives ``n_chunks * n_sub`` balanced sub-intervals
     over the full reference-data locus extent via ``repartition_for_join``, and
     slices them into per-chunk groups of ``n_sub`` consecutive intervals. The
@@ -1310,11 +1350,10 @@ def _build_chunk_intervals_ht(
     union of all chunks' sites equals the per-chunk-probe scheme) rather than
     native-partition ranges; each is keyed by its ``chunk_start`` so the worker looks
     itself up with the ``--chunk-start`` it already receives (no orchestrator change).
-    ``ref_block_max_length`` is carried per row for the leading-edge boundary fix.
 
-    NOTE (prod scaling): this round-trips all ``n_chunks * n_sub`` intervals through a
-    single ``hl.literal`` (fine at test scale; ~2.4M intervals at full AoU scale would
-    need a partitioned/streamed write instead) — see the prototype caveat in the PR.
+    Returns a JSON-serializable dict (intervals as plain lists) rather than a Hail
+    Table, so the worker reads it driver-side without a QoB job; this also avoids
+    materializing ~2.4M intervals through a single ``hl.literal`` at full AoU scale.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
@@ -1323,8 +1362,8 @@ def _build_chunk_intervals_ht(
         ``chunk_start = chunk_index * partitions_per_chunk``.
     :param n_sub: Read sub-intervals per chunk (``--read-subintervals-per-chunk``).
     :param chrom: Optional list of contigs to filter to.
-    :return: HT keyed by ``chunk_start`` with ``sub_intervals`` and
-        ``ref_block_max_length`` per row.
+    :return: Dict with ``ref_block_max_length``, ``reference_genome``, and ``chunks``
+        (str(chunk_start) -> list of serialized sub-intervals).
     """
     n_chunks = (total_partitions + partitions_per_chunk - 1) // partitions_per_chunk
     vds = _probe_vds(project, environment, list(range(total_partitions)), chrom)
@@ -1355,29 +1394,30 @@ def _build_chunk_intervals_ht(
     # n_chunks*n_sub (e.g. 99 for 100) -- we cannot assume exactly n_sub per chunk,
     # but the union still covers the full extent regardless of the per-chunk count.
     rg = all_subs[0].start.reference_genome
-    per_chunk = [
-        all_subs[(i * n_subs) // n_chunks : ((i + 1) * n_subs) // n_chunks]
+    chunks = {
+        str(i * partitions_per_chunk): [
+            _interval_to_list(iv)
+            for iv in all_subs[
+                (i * n_subs) // n_chunks : ((i + 1) * n_subs) // n_chunks
+            ]
+        ]
         for i in range(n_chunks)
-    ]
-    ht = hl.utils.range_table(n_chunks, n_partitions=1)
-    ht = ht.annotate(
-        chunk_start=ht.idx * partitions_per_chunk,
-        ref_block_max_length=max_ref_block_len,
-        sub_intervals=hl.literal(
-            per_chunk, hl.tarray(hl.tarray(hl.tinterval(hl.tlocus(rg))))
-        )[ht.idx],
-    )
-    ht = ht.key_by("chunk_start").drop("idx")
+    }
+    sizes = [len(v) for v in chunks.values()]
     logger.info(
-        "Built chunk-intervals HT: %d chunks, %d sub-intervals total (%d-%d per"
+        "Built chunk-intervals: %d chunks, %d sub-intervals total (%d-%d per"
         " chunk; ref_block_max_length=%d).",
         n_chunks,
         n_subs,
-        min(len(p) for p in per_chunk),
-        max(len(p) for p in per_chunk),
+        min(sizes),
+        max(sizes),
         max_ref_block_len,
     )
-    return ht
+    return {
+        "ref_block_max_length": max_ref_block_len,
+        "reference_genome": rg.name,
+        "chunks": chunks,
+    }
 
 
 def _build_chunk_ref_ht(
@@ -1558,18 +1598,22 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         intervals_path = _chunk_intervals_path(environment, test)
         if _file_exists_for_env(intervals_path, environment):
             # F:1230 precompute hit: --write-chunk-intervals already derived every
-            # chunk's sub-intervals in one shared VDS open, so read this chunk's row
-            # (keyed by chunk_start) instead of re-probing the VDS (~200s open) here.
-            iht = hl.read_table(intervals_path)
-            rows = iht.filter(iht.chunk_start == start).take(1)
-            if not rows:
+            # chunk's sub-intervals in one shared VDS open. Read this chunk's entry
+            # from the JSON driver-side (hailtop.fs, NOT a QoB job) so we skip both
+            # the ~400s VDS re-open AND the query-on-batch cold-start a Hail-Table
+            # read would incur as this worker's first action.
+            with hfs.open(intervals_path) as f:
+                data = json.load(f)
+            key = str(start)
+            if key not in data["chunks"]:
                 raise ValueError(
-                    f"chunk_start={start} absent from precomputed chunk-intervals HT"
+                    f"chunk_start={start} absent from precomputed chunk-intervals"
                     f" {intervals_path}; regenerate --write-chunk-intervals with the"
                     " same --total-partitions / --partitions-per-chunk."
                 )
-            sub_intervals = list(rows[0].sub_intervals)
-            max_ref_block_len = rows[0].ref_block_max_length
+            rg = data["reference_genome"]
+            sub_intervals = [_interval_from_list(t, rg) for t in data["chunks"][key]]
+            max_ref_block_len = data["ref_block_max_length"]
             probe_secs = time.monotonic() - probe_t0
             logger.info(
                 "Read %d precomputed sub-intervals for chunk [%d, %d) in %.1fs"
@@ -2574,14 +2618,17 @@ def main(args):
                 output_step_resources={"chunk_intervals": [intervals_path]},
                 overwrite=overwrite,
             )
-            _build_chunk_intervals_ht(
+            chunk_intervals = _build_chunk_intervals(
                 project=project,
                 environment=environment,
                 total_partitions=args.total_partitions,
                 partitions_per_chunk=args.partitions_per_chunk,
                 n_sub=max(args.read_subintervals_per_chunk, 1),
                 chrom=chrom,
-            ).write(intervals_path, overwrite=overwrite)
+            )
+            with hfs.open(intervals_path, "w") as f:
+                json.dump(chunk_intervals, f)
+            logger.info("Wrote chunk-intervals JSON: %s", intervals_path)
 
         if args.write_aou_downsampling_ht:
             logger.info("Writing AoU downsampling HT...")
@@ -3152,13 +3199,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--write-chunk-intervals",
         help=(
             "F:1230: precompute every chunk's balanced read sub-intervals in ONE VDS"
-            " open and store them (30-day storage), keyed by chunk_start ="
-            " chunk_index * --partitions-per-chunk, so each fan-out chunk reads its"
-            " sub-intervals instead of re-probing the VDS (~200s open per chunk)."
-            " Uses --total-partitions / --partitions-per-chunk /"
-            " --read-subintervals-per-chunk (pass the same values as the fan-out)."
+            " open and store them as a JSON file (30-day storage), keyed by"
+            " chunk_start = chunk_index * --partitions-per-chunk, so each fan-out"
+            " chunk reads its sub-intervals driver-side instead of re-probing the VDS"
+            " (~400s open per chunk). Uses --total-partitions / --partitions-per-chunk"
+            " / --read-subintervals-per-chunk (pass the same values as the fan-out)."
             " Optional: workers fall back to per-chunk probing if absent. With"
-            " --test, writes a separate _test table."
+            " --test, writes a separate _test file."
         ),
         action="store_true",
     )
