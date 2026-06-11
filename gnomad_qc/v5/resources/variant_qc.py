@@ -61,7 +61,7 @@ The combiner therefore reads the gVCF paths from this manifest by known object p
 """
 
 truth_samples_vds = VariantDatasetResource(
-    f"{_variant_qc_root(test=False)}/control_samples.vds",
+    f"{_variant_qc_root(test=False, environment='batch')}/aou/truth_samples/control_samples.vds",
 )
 """
 VDS containing 8 GiaB samples.
