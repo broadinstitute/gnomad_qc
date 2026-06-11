@@ -79,12 +79,13 @@ def read_gvcf_paths(manifest_path: str) -> List[str]:
     with hfs.open(manifest_path) as f:
         gvcf_paths = [line.strip() for line in f if line.strip().startswith("gs://")]
 
-    if not gvcf_paths:
+    n_truth_samples = 8
+    if len(gvcf_paths) != n_truth_samples:
         raise ValueError(
-            f"No gVCF paths (lines starting with 'gs://') found in {manifest_path}."
+            f"Expected {n_truth_samples} gVCF path(s) in {manifest_path}, found "
+            f"{len(gvcf_paths)}."
         )
 
-    logger.info("Read %d gVCF path(s) from %s.", len(gvcf_paths), manifest_path)
     return gvcf_paths
 
 
