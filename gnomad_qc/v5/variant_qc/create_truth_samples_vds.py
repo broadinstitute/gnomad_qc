@@ -43,6 +43,9 @@ logging.basicConfig(
 logger = logging.getLogger("create_truth_samples_vds")
 logger.setLevel(logging.INFO)
 
+# Number of GiaB truth samples expected in the manifest (one gVCF per sample).
+N_TRUTH_SAMPLES = 8
+
 # Small interval (PCSK9 gene) used by --test to keep the combiner run quick and cheap.
 _TEST_CONTIG, _TEST_START, _TEST_END = "chr1", 55039447, 55064852
 TEST_INTERVAL = f"{_TEST_CONTIG}:{_TEST_START}-{_TEST_END}"
@@ -67,12 +70,13 @@ def _test_interval() -> hl.utils.Interval:
     )
 
 
-def read_gvcf_paths(manifest_path: str) -> List[str]:
+def read_and_check_gvcf_paths(manifest_path: str) -> List[str]:
     """
-    Read the list of truth-sample gVCF paths from a single-column TSV manifest.
+    Read and validate the truth-sample gVCF paths from a single-column TSV manifest.
 
     Lines that do not start with ``gs://`` (e.g. a header line, blank lines, or
-    comments) are ignored, so the manifest can optionally have a header.
+    comments) are ignored, so the manifest can optionally have a header. Raises if the
+    manifest does not contain exactly :data:`N_TRUTH_SAMPLES` paths.
 
     :param manifest_path: GCS path to the single-column TSV of gVCF paths.
     :return: List of gVCF GCS paths.
@@ -80,10 +84,9 @@ def read_gvcf_paths(manifest_path: str) -> List[str]:
     with hfs.open(manifest_path) as f:
         gvcf_paths = [line.strip() for line in f if line.strip().startswith("gs://")]
 
-    n_truth_samples = 8
-    if len(gvcf_paths) != n_truth_samples:
+    if len(gvcf_paths) != N_TRUTH_SAMPLES:
         raise ValueError(
-            f"Expected {n_truth_samples} gVCF path(s) in {manifest_path}, found "
+            f"Expected {N_TRUTH_SAMPLES} gVCF path(s) in {manifest_path}, found "
             f"{len(gvcf_paths)}."
         )
 
@@ -243,12 +246,11 @@ def validate_vds(vds_path: str, test: bool, manifest_path: str) -> None:
                 "restriction did not work."
             )
         # Cross-check the combined data against the single source gVCF.
-        _verify_test_vds_against_gvcf(vds, read_gvcf_paths(manifest_path)[0])
+        _verify_test_vds_against_gvcf(vds, read_and_check_gvcf_paths(manifest_path)[0])
     else:
-        n_expected = len(read_gvcf_paths(manifest_path))
-        if n_samples != n_expected:
+        if n_samples != N_TRUTH_SAMPLES:
             raise ValueError(
-                f"Expected {n_expected} samples (one per manifest gVCF), found "
+                f"Expected {N_TRUTH_SAMPLES} samples (one per manifest gVCF), found "
                 f"{n_samples}."
             )
 
@@ -283,7 +285,7 @@ def main(args):
             overwrite=overwrite,
         )
 
-        gvcf_paths = read_gvcf_paths(manifest_path)
+        gvcf_paths = read_and_check_gvcf_paths(manifest_path)
 
         if test:
             # Cheapest possible real run: combine a single gVCF over one small
