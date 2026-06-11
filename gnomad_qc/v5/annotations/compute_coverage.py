@@ -1316,6 +1316,51 @@ def _build_chunk_ref_ht(
     return ref_ht
 
 
+def _expand_leading_edges(
+    intervals: List[hl.utils.Interval], max_ref_block_len: int
+) -> List[hl.utils.Interval]:
+    """
+    Back up each contig's first interval start by ``max_ref_block_len - 1``.
+
+    Each chunk is a separate ``read_vds(intervals=...)`` that gates reference
+    blocks by their START locus. A reference block straddling in from the
+    PREVIOUS chunk (start < this chunk's first locus, END inside it) is therefore
+    dropped, silently undercounting coverage/AN at the chunk's leading sites for
+    every sample whose block straddles. Widening ONLY the VDS read's leading edge
+    per contig pulls those straddlers back in; the cumulative densify scan then
+    carries them forward to this chunk's sites. The sites (``ref_ht``) read is
+    left unchanged, so the chunk still emits only its own (disjoint) sites — no
+    site is computed by two chunks, so there is no double-counting. ``ref_block_
+    max_length`` is a hard cap, so a block live at the leading edge starts within
+    ``max_ref_block_len - 1`` bases before it; backing up exactly that catches
+    every straddler and no earlier (irrelevant) block.
+
+    :param intervals: Sorted locus intervals (one VDS read-partition each).
+    :param max_ref_block_len: The VDS ``ref_block_max_length`` global value.
+    :return: Intervals with each contig's leading start backed up (clamped at 1).
+    """
+    seen_contigs: Set[str] = set()
+    expanded: List[hl.utils.Interval] = []
+    for interval in intervals:
+        contig = interval.start.contig
+        if contig in seen_contigs:
+            expanded.append(interval)
+            continue
+        seen_contigs.add(contig)
+        new_pos = max(interval.start.position - (max_ref_block_len - 1), 1)
+        expanded.append(
+            hl.Interval(
+                hl.Locus(
+                    contig, new_pos, reference_genome=interval.start.reference_genome
+                ),
+                interval.end,
+                includes_start=interval.includes_start,
+                includes_end=interval.includes_end,
+            )
+        )
+    return expanded
+
+
 def _run_coverage_chunk(args: argparse.Namespace) -> None:
     """
     Compute one chunk of the coverage/AN HT and write it to ``args.chunk_output``.
@@ -1386,6 +1431,11 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     probe_secs = 0.0
 
     sub_intervals: Optional[List[hl.utils.Interval]] = None
+    # The VDS read uses the same intervals EXCEPT each contig's leading edge is
+    # backed up by ref_block_max_length-1 to capture reference blocks straddling
+    # in from the previous chunk (see _expand_leading_edges). The sites/ref_ht
+    # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
+    vds_read_intervals: Optional[List[hl.utils.Interval]] = None
     if n_sub > 1 and chrom:
         logger.warning(
             "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
@@ -1409,12 +1459,27 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             stop,
             probe_secs,
         )
+        # Back up the VDS read's leading edge per contig so reference blocks
+        # straddling in from the previous chunk are not gated out (else coverage/
+        # AN is undercount at the chunk's first <=max_len sites).
+        rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+        if rbml_field not in vds_probe.reference_data.globals:
+            raise ValueError(
+                f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
+                " straddling chunk boundaries cannot be bounded; run"
+                " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
+                " on the VDS first."
+            )
+        max_ref_block_len = hl.eval(
+            vds_probe.reference_data.index_globals()[rbml_field]
+        )
+        vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
 
     vds, sex_karyotype_field = _load_project_vds(
         project=project,
         environment=environment,
         partition_range=partition_range,
-        sub_intervals=sub_intervals,
+        sub_intervals=vds_read_intervals,
         chrom=chrom,
         test=test,
         test_sample_subset=args.test_sample_subset,
