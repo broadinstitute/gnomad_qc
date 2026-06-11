@@ -1,9 +1,11 @@
 """
 Script to create a VDS of the 8 Genomes-in-a-Bottle (GiaB) truth samples from their gVCFs.
 
-The GiaB gVCFs were sequenced with the same protocol as the AoU v8 data and live in
-``truth_samples_aou_gvcfs_bucket``. They are already reblocked, so they are passed
-straight into Hail's VDS combiner (no reblocking step).
+The GiaB gVCFs were sequenced with the same protocol as the AoU v8 data and live in the
+AoU control-samples bucket
+(``gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/``).
+They are already reblocked, so they are passed straight into Hail's VDS combiner (no
+reblocking step).
 
 The combiner needs the per-gVCF paths up front. The truth-sample bucket cannot be
 listed and the sample IDs might be sensitive, so neither the paths nor the IDs are stored

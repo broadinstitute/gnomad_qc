@@ -8,7 +8,7 @@ from gnomad_qc.v5.resources.basics import (
     _validate_environment,
     qc_temp_prefix,
 )
-from gnomad_qc.v5.resources.constants import AOU_BUCKET, CURRENT_VARIANT_QC_VERSION
+from gnomad_qc.v5.resources.constants import CURRENT_VARIANT_QC_VERSION
 
 
 def _variant_qc_root(
@@ -42,15 +42,9 @@ def _variant_qc_root(
 # Truth sample resources
 ######################################################################
 
-
-truth_samples_aou_gvcfs_bucket = (
-    f"gs://{AOU_BUCKET}/wgs/short_read/snpindel/aux/qc/control_samples/"
-)
-"""
-AoU bucket containing gVCFs from 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the same protocol as the AoU v8 data.
-
-Stored for reference but not used directly.
-"""
+# NOTE: The gVCFs from the 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the
+# same protocol as the AoU v8 data live in the AoU bucket:
+#   gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/
 
 truth_samples_gvcf_paths = f"{_variant_qc_root(environment='batch')}/aou/truth_samples/truth_samples_gvcf_paths.tsv"
 """
