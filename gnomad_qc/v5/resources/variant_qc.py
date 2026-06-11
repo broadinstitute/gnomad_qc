@@ -42,7 +42,7 @@ def _variant_qc_root(
 # Truth sample resources
 ######################################################################
 
-truth_samples_gvcf_paths = f"{_variant_qc_root(environment='batch')}/aou/truth_samples/truth_samples_gvcf_paths.tsv"
+truth_samples_gvcf_paths = f"{_variant_qc_root(version='5.0', environment='batch')}/aou/truth_samples/truth_samples_gvcf_paths.tsv"
 """
 Path to a single-column TSV listing the GCS path to each truth-sample gVCF (one per line).
 
