@@ -51,7 +51,7 @@ truth_samples_gvcf_paths = f"{_variant_qc_root(environment='batch')}/aou/truth_s
 Path to a single-column TSV listing the GCS path to each truth-sample gVCF (one per line).
 
 The sample IDs are intentionally not stored in this repo, and the truth-sample bucket cannot be listed
-The combiner therefore reads the gVCF paths from this manifest by known object paths rather than globbing the bucket.å
+The combiner therefore reads the gVCF paths from this manifest by known object paths rather than globbing the bucket.
 """
 
 truth_samples_vds = VariantDatasetResource(
