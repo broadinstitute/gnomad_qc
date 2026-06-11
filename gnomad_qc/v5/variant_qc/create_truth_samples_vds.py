@@ -211,8 +211,9 @@ def validate_vds(vds_path: str, test: bool, manifest_path: str) -> None:
 
     :param vds_path: Path to the VDS to validate.
     :param test: Whether the VDS was produced by a ``--test`` run (1 gVCF, one interval).
-    :param manifest_path: Manifest path, used to determine the expected sample count for
-        a full (non-test) run.
+    :param manifest_path: Manifest path. Only used in test mode, to locate the single
+        source gVCF for the cross-check; a full run validates against
+        :data:`N_TRUTH_SAMPLES`.
     :return: None.
     """
     vds = hl.vds.read_vds(vds_path)
