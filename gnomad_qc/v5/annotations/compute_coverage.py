@@ -1270,6 +1270,106 @@ def _build_vep_context_sites_ht(
     return ref_ht
 
 
+def _chunk_intervals_path(environment: str, test: bool = False) -> str:
+    """
+    Return the path to the precomputed per-chunk read sub-intervals HT (30-day storage).
+
+    Written once by ``--write-chunk-intervals`` (F:1230): a single VDS open derives
+    the balanced read sub-intervals for *every* chunk, replacing the per-chunk probe
+    (a redundant ~200s VDS open on each of ~48k chunks). The HT is keyed by
+    ``chunk_start`` (the chunk's first VDS partition index,
+    ``chunk_index * partitions_per_chunk``), with each chunk's
+    ``array<interval<locus>>`` of sub-intervals and the VDS ``ref_block_max_length``
+    (for the leading-edge boundary fix, see :func:`_expand_leading_edges`).
+
+    :param environment: Compute environment.
+    :param test: If True, return the test-scoped intervals path.
+    :return: GCS path to the precomputed chunk-intervals HT.
+    """
+    name = "chunk_intervals_test.ht" if test else "chunk_intervals.ht"
+    return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
+
+
+def _build_chunk_intervals_ht(
+    project: str,
+    environment: str,
+    total_partitions: int,
+    partitions_per_chunk: int,
+    n_sub: int,
+    chrom: Optional[List[str]] = None,
+) -> hl.Table:
+    """
+    Precompute every chunk's balanced read sub-intervals in ONE VDS open (F:1230).
+
+    Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join``, a
+    redundant ~200s VDS open on each of ~48k chunks). Opens the VDS once over the
+    leading ``total_partitions``, derives ``n_chunks * n_sub`` balanced sub-intervals
+    over the full reference-data locus extent via ``repartition_for_join``, and
+    slices them into per-chunk groups of ``n_sub`` consecutive intervals. The
+    resulting chunks are balanced-by-data locus slices (disjoint and covering, so the
+    union of all chunks' sites equals the per-chunk-probe scheme) rather than
+    native-partition ranges; each is keyed by its ``chunk_start`` so the worker looks
+    itself up with the ``--chunk-start`` it already receives (no orchestrator change).
+    ``ref_block_max_length`` is carried per row for the leading-edge boundary fix.
+
+    NOTE (prod scaling): this round-trips all ``n_chunks * n_sub`` intervals through a
+    single ``hl.literal`` (fine at test scale; ~2.4M intervals at full AoU scale would
+    need a partitioned/streamed write instead) — see the prototype caveat in the PR.
+
+    :param project: "aou" or "gnomad".
+    :param environment: Compute environment.
+    :param total_partitions: Number of leading VDS partitions the run processes.
+    :param partitions_per_chunk: Native partitions per chunk; sets
+        ``chunk_start = chunk_index * partitions_per_chunk``.
+    :param n_sub: Read sub-intervals per chunk (``--read-subintervals-per-chunk``).
+    :param chrom: Optional list of contigs to filter to.
+    :return: HT keyed by ``chunk_start`` with ``sub_intervals`` and
+        ``ref_block_max_length`` per row.
+    """
+    n_chunks = (total_partitions + partitions_per_chunk - 1) // partitions_per_chunk
+    vds = _probe_vds(project, environment, list(range(total_partitions)), chrom)
+    rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+    if rbml_field not in vds.reference_data.globals:
+        raise ValueError(
+            f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
+            " straddling chunk boundaries cannot be bounded; run"
+            " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
+            " on the VDS first."
+        )
+    max_ref_block_len = hl.eval(vds.reference_data.index_globals()[rbml_field])
+    all_subs = repartition_for_join(
+        vds.reference_data.rows(),
+        n_partitions=n_chunks * n_sub,
+        locus_intervals=True,
+    )
+    if len(all_subs) != n_chunks * n_sub:
+        raise ValueError(
+            f"repartition_for_join returned {len(all_subs)} sub-intervals but"
+            f" {n_chunks} chunks x {n_sub} sub = {n_chunks * n_sub} were requested;"
+            " the data is too sparse to subdivide this finely (lower"
+            " --read-subintervals-per-chunk or --total-partitions)."
+        )
+    rg = all_subs[0].start.reference_genome
+    per_chunk = [all_subs[i * n_sub : (i + 1) * n_sub] for i in range(n_chunks)]
+    ht = hl.utils.range_table(n_chunks, n_partitions=1)
+    ht = ht.annotate(
+        chunk_start=ht.idx * partitions_per_chunk,
+        ref_block_max_length=max_ref_block_len,
+        sub_intervals=hl.literal(
+            per_chunk, hl.tarray(hl.tarray(hl.tinterval(hl.tlocus(rg))))
+        )[ht.idx],
+    )
+    ht = ht.key_by("chunk_start").drop("idx")
+    logger.info(
+        "Built chunk-intervals HT: %d chunks x %d sub-intervals each"
+        " (ref_block_max_length=%d).",
+        n_chunks,
+        n_sub,
+        max_ref_block_len,
+    )
+    return ht
+
+
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
     partition_count: int,
@@ -1444,35 +1544,64 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             n_sub,
         )
     if n_sub > 1 and not chrom:
-        # Probe: cheap reference_data-bounds load via filter_partitions.
         probe_t0 = time.monotonic()
-        vds_probe = _probe_vds(project, environment, partition_range, chrom)
-        sub_intervals = repartition_for_join(
-            vds_probe.reference_data.rows(), n_partitions=n_sub, locus_intervals=True
-        )
-        probe_secs = time.monotonic() - probe_t0
-        logger.info(
-            "Derived %d balanced sub-intervals from chunk [%d, %d) for read-time"
-            " partitioning in %.1fs (F:1230 probe timing).",
-            len(sub_intervals),
-            start,
-            stop,
-            probe_secs,
-        )
+        intervals_path = _chunk_intervals_path(environment, test)
+        if _file_exists_for_env(intervals_path, environment):
+            # F:1230 precompute hit: --write-chunk-intervals already derived every
+            # chunk's sub-intervals in one shared VDS open, so read this chunk's row
+            # (keyed by chunk_start) instead of re-probing the VDS (~200s open) here.
+            iht = hl.read_table(intervals_path)
+            rows = iht.filter(iht.chunk_start == start).take(1)
+            if not rows:
+                raise ValueError(
+                    f"chunk_start={start} absent from precomputed chunk-intervals HT"
+                    f" {intervals_path}; regenerate --write-chunk-intervals with the"
+                    " same --total-partitions / --partitions-per-chunk."
+                )
+            sub_intervals = list(rows[0].sub_intervals)
+            max_ref_block_len = rows[0].ref_block_max_length
+            probe_secs = time.monotonic() - probe_t0
+            logger.info(
+                "Read %d precomputed sub-intervals for chunk [%d, %d) in %.1fs"
+                " (F:1230 precompute hit; per-chunk VDS probe skipped).",
+                len(sub_intervals),
+                start,
+                stop,
+                probe_secs,
+            )
+        else:
+            # No precompute HT: probe this chunk's VDS to derive its sub-intervals
+            # (cheap reference_data-bounds load via filter_partitions).
+            vds_probe = _probe_vds(project, environment, partition_range, chrom)
+            sub_intervals = repartition_for_join(
+                vds_probe.reference_data.rows(),
+                n_partitions=n_sub,
+                locus_intervals=True,
+            )
+            rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+            if rbml_field not in vds_probe.reference_data.globals:
+                raise ValueError(
+                    f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
+                    " straddling chunk boundaries cannot be bounded; run"
+                    " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
+                    " on the VDS first."
+                )
+            max_ref_block_len = hl.eval(
+                vds_probe.reference_data.index_globals()[rbml_field]
+            )
+            probe_secs = time.monotonic() - probe_t0
+            logger.info(
+                "Derived %d balanced sub-intervals from chunk [%d, %d) by probing the"
+                " VDS in %.1fs (F:1230 probe; no precompute HT).",
+                len(sub_intervals),
+                start,
+                stop,
+                probe_secs,
+            )
         # Back up the VDS read's leading edge per contig so reference blocks
         # straddling in from the previous chunk are not gated out (else coverage/
-        # AN is undercount at the chunk's first <=max_len sites).
-        rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
-        if rbml_field not in vds_probe.reference_data.globals:
-            raise ValueError(
-                f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
-                " straddling chunk boundaries cannot be bounded; run"
-                " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
-                " on the VDS first."
-            )
-        max_ref_block_len = hl.eval(
-            vds_probe.reference_data.index_globals()[rbml_field]
-        )
+        # AN is undercount at the chunk's first <=max_len sites). The sites/ref_ht
+        # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
         vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
 
     vds, sex_karyotype_field = _load_project_vds(
@@ -2428,6 +2557,22 @@ def main(args):
                 sites_path, overwrite=overwrite
             )
 
+        if args.write_chunk_intervals:
+            logger.info("Precomputing per-chunk read sub-intervals (F:1230)...")
+            intervals_path = _chunk_intervals_path(environment, test=test)
+            check_resource_existence(
+                output_step_resources={"chunk_intervals": [intervals_path]},
+                overwrite=overwrite,
+            )
+            _build_chunk_intervals_ht(
+                project=project,
+                environment=environment,
+                total_partitions=args.total_partitions,
+                partitions_per_chunk=args.partitions_per_chunk,
+                n_sub=max(args.read_subintervals_per_chunk, 1),
+                chrom=chrom,
+            ).write(intervals_path, overwrite=overwrite)
+
         if args.write_aou_downsampling_ht:
             logger.info("Writing AoU downsampling HT...")
             check_resource_existence(
@@ -2990,6 +3135,20 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " writes a cheap, separate _test table scoped to the test partition"
             " extent (--test-n-partitions or --total-partitions) instead of the"
             " whole genome."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--write-chunk-intervals",
+        help=(
+            "F:1230: precompute every chunk's balanced read sub-intervals in ONE VDS"
+            " open and store them (30-day storage), keyed by chunk_start ="
+            " chunk_index * --partitions-per-chunk, so each fan-out chunk reads its"
+            " sub-intervals instead of re-probing the VDS (~200s open per chunk)."
+            " Uses --total-partitions / --partitions-per-chunk /"
+            " --read-subintervals-per-chunk (pass the same values as the fan-out)."
+            " Optional: workers fall back to per-chunk probing if absent. With"
+            " --test, writes a separate _test table."
         ),
         action="store_true",
     )
