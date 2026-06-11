@@ -42,16 +42,15 @@ def _variant_qc_root(
 # Truth sample resources
 ######################################################################
 
-# NOTE: The gVCFs from the 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the
-# same protocol as the AoU v8 data live in the AoU bucket:
-#   gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/
-
 truth_samples_gvcf_paths = f"{_variant_qc_root(environment='batch')}/aou/truth_samples/truth_samples_gvcf_paths.tsv"
 """
 Path to a single-column TSV listing the GCS path to each truth-sample gVCF (one per line).
 
-The sample IDs are intentionally not stored in this repo, and the truth-sample bucket cannot be listed
-The combiner therefore reads the gVCF paths from this manifest by known object paths rather than globbing the bucket.
+The truth samples are 8 Genomes-in-a-Bottle (GiaB) samples sequenced with the same protocol as the AoU v8 data.
+Their gVCFs are stored here: gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/
+
+The sample IDs are intentionally not stored in this repo. The combiner therefore reads the gVCF paths from this
+manifest by known object paths rather than globbing the bucket.
 """
 
 truth_samples_vds = VariantDatasetResource(
