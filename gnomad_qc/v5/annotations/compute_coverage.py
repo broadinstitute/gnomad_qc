@@ -1284,7 +1284,9 @@ def _chunk_intervals_path(environment: str, test: bool = False) -> str:
     chunk's first VDS partition index, ``chunk_index * partitions_per_chunk``, as a
     string key) to that chunk's serialized sub-intervals, alongside the VDS
     ``ref_block_max_length`` and reference-genome name (for the leading-edge boundary
-    fix, see :func:`_expand_leading_edges`).
+    fix, see :func:`_expand_leading_edges`) and the ``total_partitions`` /
+    ``partitions_per_chunk`` layout the worker validates its chunk against (the keys
+    mis-align if the precompute and fan-out use different values).
 
     :param environment: Compute environment.
     :param test: If True, return the test-scoped intervals path.
@@ -1362,8 +1364,10 @@ def _build_chunk_intervals(
         ``chunk_start = chunk_index * partitions_per_chunk``.
     :param n_sub: Read sub-intervals per chunk (``--read-subintervals-per-chunk``).
     :param chrom: Optional list of contigs to filter to.
-    :return: Dict with ``ref_block_max_length``, ``reference_genome``, and ``chunks``
-        (str(chunk_start) -> list of serialized sub-intervals).
+    :return: Dict with ``total_partitions`` and ``partitions_per_chunk`` (the layout
+        the worker validates its chunk against), ``ref_block_max_length``,
+        ``reference_genome``, and ``chunks`` (str(chunk_start) -> list of serialized
+        sub-intervals).
     """
     n_chunks = (total_partitions + partitions_per_chunk - 1) // partitions_per_chunk
     vds = _probe_vds(project, environment, list(range(total_partitions)), chrom)
@@ -1414,6 +1418,8 @@ def _build_chunk_intervals(
         max_ref_block_len,
     )
     return {
+        "total_partitions": total_partitions,
+        "partitions_per_chunk": partitions_per_chunk,
         "ref_block_max_length": max_ref_block_len,
         "reference_genome": rg.name,
         "chunks": chunks,
@@ -1604,6 +1610,29 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             # read would incur as this worker's first action.
             with hfs.open(intervals_path) as f:
                 data = json.load(f)
+            # Guard: the precompute is layout-specific -- keyed by
+            # chunk_start = chunk_index * partitions_per_chunk. If this fan-out runs
+            # a different --partitions-per-chunk / --total-partitions than the
+            # precompute did, chunk_start keys silently mis-align (a chunk could read
+            # intervals built for a different extent). Verify this chunk [start, stop)
+            # is exactly what the stored layout produces (also rejects a stale file
+            # written before the layout was recorded).
+            json_total = data.get("total_partitions")
+            json_ppc = data.get("partitions_per_chunk")
+            if (
+                json_ppc is None
+                or json_total is None
+                or start % json_ppc != 0
+                or stop != min(start + json_ppc, json_total)
+            ):
+                raise ValueError(
+                    f"This chunk [{start}, {stop}) does not match the precomputed"
+                    f" chunk-intervals layout (total_partitions={json_total},"
+                    f" partitions_per_chunk={json_ppc}) in {intervals_path}. The"
+                    " precompute and fan-out must use the same --total-partitions /"
+                    " --partitions-per-chunk; regenerate --write-chunk-intervals"
+                    " (or delete the stale file)."
+                )
             key = str(start)
             if key not in data["chunks"]:
                 raise ValueError(
