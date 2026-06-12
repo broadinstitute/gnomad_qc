@@ -91,7 +91,6 @@ import json
 import logging
 import re
 import subprocess
-import time
 from functools import reduce
 from typing import List, NamedTuple, Optional, Sequence, Set, Tuple
 
@@ -1276,7 +1275,7 @@ def _chunk_intervals_path(environment: str, test: bool = False) -> str:
     """
     Return the path to the precomputed per-chunk read sub-intervals JSON (30-day storage).
 
-    Written once by ``--write-chunk-intervals`` (F:1230): a single VDS open derives
+    Written once by ``--write-chunk-intervals``: a single VDS open derives
     the balanced read sub-intervals for *every* chunk, replacing the per-chunk probe
     (a redundant ~400s VDS open on each of ~48k chunks). Stored as a plain JSON file
     (not a Hail Table) so the worker reads it driver-side with ``hailtop.fs`` -- no
@@ -1341,7 +1340,7 @@ def _build_chunk_intervals(
     chrom: Optional[List[str]] = None,
 ) -> dict:
     """
-    Precompute every chunk's balanced read sub-intervals in ONE VDS open (F:1230).
+    Precompute every chunk's balanced read sub-intervals in ONE VDS open.
 
     Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join``, a
     redundant ~400s VDS open on each of ~48k chunks). Opens the VDS once over the
@@ -1526,15 +1525,17 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     (``main`` does this via ``_init_hail`` before dispatching here).
 
     Steps:
-      1. Probe-load the VDS via
-         ``filter_partitions=range(chunk_start, chunk_stop)`` and derive
-         ``--read-subintervals-per-chunk`` balanced locus sub-intervals over the
-         chunk via ``repartition_for_join`` (``_calculate_new_partitions``, not an
-         ``aggregate_rows`` scan).
-      2. Re-read the VDS via ``hl.vds.read_vds(intervals=sub_intervals)`` — one
-         VDS partition per sub-interval (no shuffle).
-      3. Read ``vep_context`` with the same ``_intervals=sub_intervals`` —
-         co-partitioned with the VDS, so the densify join is shuffle-free.
+      1. Obtain this chunk's ``--read-subintervals-per-chunk`` balanced locus
+         sub-intervals: read them driver-side from the precomputed JSON
+         (``--write-chunk-intervals``) when present, else fall back to probing the
+         VDS (``filter_partitions`` + ``repartition_for_join``).
+      2. Re-read the VDS via ``hl.vds.read_vds(intervals=...)`` — one partition per
+         sub-interval (no shuffle) — with each contig's leading edge backed up by
+         ``ref_block_max_length - 1`` (``_expand_leading_edges``) so reference
+         blocks straddling in from the previous chunk are not gated out.
+      3. Read ``vep_context`` with the same (un-widened) ``_intervals=sub_intervals``
+         — co-partitioned with the VDS so the densify join is shuffle-free, and the
+         chunk emits only its own disjoint sites.
       4. Run ``compute_all_release_stats_per_ref_site``.
       5. Write to ``args.chunk_output``.
 
@@ -1578,14 +1579,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         reduce_min_aggs=args.reduce_min_aggs,
     )
 
-    # F:1230 measurement: time the per-chunk VDS probe vs. total chunk runtime
-    # so a test run reveals whether precomputing the probe once is worth the
-    # refactor (the probe re-opens the VDS to derive sub-intervals before the
-    # real read). ``repartition_for_join`` forces ``_calculate_new_partitions``
-    # (a driver action), so the elapsed span captures the probe's real cost.
-    chunk_t0 = time.monotonic()
-    probe_secs = 0.0
-
     sub_intervals: Optional[List[hl.utils.Interval]] = None
     # The VDS read uses the same intervals EXCEPT each contig's leading edge is
     # backed up by ref_block_max_length-1 to capture reference blocks straddling
@@ -1600,14 +1593,13 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             n_sub,
         )
     if n_sub > 1 and not chrom:
-        probe_t0 = time.monotonic()
         intervals_path = _chunk_intervals_path(environment, test)
         if _file_exists_for_env(intervals_path, environment):
-            # F:1230 precompute hit: --write-chunk-intervals already derived every
-            # chunk's sub-intervals in one shared VDS open. Read this chunk's entry
-            # from the JSON driver-side (hailtop.fs, NOT a QoB job) so we skip both
-            # the ~400s VDS re-open AND the query-on-batch cold-start a Hail-Table
-            # read would incur as this worker's first action.
+            # Precompute hit: --write-chunk-intervals already derived every chunk's
+            # sub-intervals in one shared VDS open. Read this chunk's entry from the
+            # JSON driver-side (hailtop.fs, NOT a QoB job) so we skip both the ~400s
+            # VDS re-open AND the query-on-batch cold-start a Hail-Table read would
+            # incur as this worker's first action.
             with hfs.open(intervals_path) as f:
                 data = json.load(f)
             # Guard: the precompute is layout-specific -- keyed by
@@ -1643,17 +1635,15 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             rg = data["reference_genome"]
             sub_intervals = [_interval_from_list(t, rg) for t in data["chunks"][key]]
             max_ref_block_len = data["ref_block_max_length"]
-            probe_secs = time.monotonic() - probe_t0
             logger.info(
-                "Read %d precomputed sub-intervals for chunk [%d, %d) in %.1fs"
-                " (F:1230 precompute hit; per-chunk VDS probe skipped).",
+                "Read %d precomputed sub-intervals for chunk [%d, %d)"
+                " (precompute hit; per-chunk VDS probe skipped).",
                 len(sub_intervals),
                 start,
                 stop,
-                probe_secs,
             )
         else:
-            # No precompute HT: probe this chunk's VDS to derive its sub-intervals
+            # No precompute file: probe this chunk's VDS to derive its sub-intervals
             # (cheap reference_data-bounds load via filter_partitions).
             vds_probe = _probe_vds(project, environment, partition_range, chrom)
             sub_intervals = repartition_for_join(
@@ -1672,14 +1662,12 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             max_ref_block_len = hl.eval(
                 vds_probe.reference_data.index_globals()[rbml_field]
             )
-            probe_secs = time.monotonic() - probe_t0
             logger.info(
                 "Derived %d balanced sub-intervals from chunk [%d, %d) by probing the"
-                " VDS in %.1fs (F:1230 probe; no precompute HT).",
+                " VDS (probe fallback; no precompute file).",
                 len(sub_intervals),
                 start,
                 stop,
-                probe_secs,
             )
         # Back up the VDS read's leading edge per contig so reference blocks
         # straddling in from the previous chunk are not gated out (else coverage/
@@ -1713,23 +1701,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
     )
-    write_t0 = time.monotonic()
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
-    write_secs = time.monotonic() - write_t0
-    total_secs = time.monotonic() - chunk_t0
-    # F:1230 measurement: probe as a fraction of total. A small fraction means
-    # precomputing the probe once is not worth the refactor; a large one means
-    # it is. (The span between probe and write is lazy IR construction, ~0s.)
-    logger.info(
-        "Chunk [%d, %d) F:1230 timing: probe=%.1fs write=%.1fs total=%.1fs"
-        " (probe=%.1f%% of total).",
-        start,
-        stop,
-        probe_secs,
-        write_secs,
-        total_secs,
-        (100.0 * probe_secs / total_secs) if total_secs > 0 else 0.0,
-    )
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
 
@@ -2641,7 +2613,7 @@ def main(args):
             )
 
         if args.write_chunk_intervals:
-            logger.info("Precomputing per-chunk read sub-intervals (F:1230)...")
+            logger.info("Precomputing per-chunk read sub-intervals...")
             intervals_path = _chunk_intervals_path(environment, test=test)
             check_resource_existence(
                 output_step_resources={"chunk_intervals": [intervals_path]},
@@ -2699,9 +2671,9 @@ def main(args):
             group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
 
         # --- VALIDATE: every intended vep_context site got AN/coverage after
-        # the fan-out + merge. Run only on a FULL run (a partial/--test run
-        # covers only its partitions' sites, so the anti-join would flag the
-        # rest as missing). ---
+        # the fan-out + merge. Valid under --test too: it reads the test-scoped
+        # vep_context sites table (_vep_context_sites_path(test=...)), so both
+        # sides cover the same partition extent and the anti-join is exact. ---
         if args.validate_cov_and_an:
             logger.info("Validating cov_and_an HT covers all vep_context sites...")
             sites_ht = hl.read_table(_vep_context_sites_path(environment, test))
@@ -3179,9 +3151,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
             " read just the first N partitions of the VDS for a cheap test (the"
-            " strict path otherwise reads the whole VDS; replaces the dropped"
-            " --test-2-partitions). The ref_ht is scoped to those partitions'"
-            " locus extent. Combine with --partitions-for-rep-on-read to"
+            " strict path otherwise reads the whole VDS). The ref_ht is scoped to"
+            " those partitions' locus extent. Combine with --partitions-for-rep-on-read"
+            " to"
             " co-partition just those N partitions. Default None reads the whole"
             " VDS."
         ),
@@ -3227,8 +3199,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-chunk-intervals",
         help=(
-            "F:1230: precompute every chunk's balanced read sub-intervals in ONE VDS"
-            " open and store them as a JSON file (30-day storage), keyed by"
+            "Precompute every chunk's balanced read sub-intervals in ONE VDS open"
+            " and store them as a JSON file (30-day storage), keyed by"
             " chunk_start = chunk_index * --partitions-per-chunk, so each fan-out"
             " chunk reads its sub-intervals driver-side instead of re-probing the VDS"
             " (~400s open per chunk). Uses --total-partitions / --partitions-per-chunk"
