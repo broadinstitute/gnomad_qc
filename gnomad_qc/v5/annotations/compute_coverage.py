@@ -107,6 +107,7 @@ from gnomad.resources.grch38.reference_data import (
     vep_context,
 )
 from gnomad.utils.annotations import (
+    COVERAGE_OVER_X_BINS,
     annotate_downsamplings,
     build_freq_stratification_list,
     generate_freq_group_membership_array,
@@ -153,8 +154,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("v5_coverage_and_an")
 logger.setLevel(logging.INFO)
-
-COVERAGE_OVER_X_BINS = (1, 5, 10, 15, 20, 25, 30, 50, 100)
 
 # Overall groups that non-reducible aggregations (coverage_stats →
 # {"group": "adj"}, qual_hists → {"group": "raw"}) are pinned to via
