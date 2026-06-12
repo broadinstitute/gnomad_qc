@@ -6,5 +6,6 @@ hail-*.log
 *.pyo
 __pycache__/
 
-# Per-developer local Claude Code notes (machine-specific, not shared)
+# Claude local files
 CLAUDE.local.md
+.claude/settings.local.json
