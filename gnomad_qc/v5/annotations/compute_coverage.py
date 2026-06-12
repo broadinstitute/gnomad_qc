@@ -472,10 +472,10 @@ def _derive_chunk_locus_intervals(
 
     The vep_context HT (used as ``ref_ht``) and the AoU VDS have independent
     partition layouts, so chunking each by its own partition index would not
-    yield the same locus range. Instead, we derive the locus extent of the
-    VDS chunk and use it to align ``ref_ht`` to the same range.
+    yield the same loci. Instead, we derive the loci within the VDS chunk and
+    use them to align ``ref_ht`` to those same loci.
 
-    When ``n_subdivisions > 1``, each contig's ``lo..hi`` extent is split into
+    When ``n_subdivisions > 1``, each contig's ``lo..hi`` range is split into
     that many equal-position sub-intervals. The returned objects are concrete
     ``hl.Interval`` instances (NOT ``IntervalExpression`` s — ``read_vds`` /
     ``read_matrix_table``'s ``_intervals=`` reader path requires Python-native
@@ -486,7 +486,7 @@ def _derive_chunk_locus_intervals(
     ``n_subdivisions=1`` (default), returns one big interval per contig.
 
     :param vds_filtered: VDS already filtered to the chunk's partitions
-        (the locus extent is derived from its ``reference_data``).
+        (the loci within the chunk are derived from its ``reference_data``).
     :param n_subdivisions: Number of equal-position sub-intervals per
         contig. Default 1 (one interval per contig).
     :param reference_genome: Reference genome name for the constructed
@@ -1202,7 +1202,7 @@ def _probe_vds(
     Cheap reference_data-bounds probe-load of the per-project VDS for a partition range.
 
     Loads via ``filter_partitions`` only (no sample filtering / DP synthesis); the
-    caller derives a locus extent from ``reference_data`` (e.g. via
+    caller derives the loci from ``reference_data`` (e.g. via
     ``repartition_for_join``). Used by both the chunk worker and the strict path's
     ``--test-n-partitions`` co-partitioning branch.
 
@@ -1231,9 +1231,9 @@ def _vep_context_sites_path(environment: str, test: bool = False) -> str:
     """
     Return the path to the preprocessed vep_context sites HT (30-day storage).
 
-    Prod is genome-wide; a ``--test`` write is scoped to the test VDS partition
-    extent and written to a separate ``_test`` path so it never clobbers the
-    genome-wide prod table.
+    Prod is genome-wide; a ``--test`` write is scoped to the loci within the test
+    VDS partitions and written to a separate ``_test`` path so it never clobbers
+    the genome-wide prod table.
 
     :param environment: Compute environment.
     :param test: If True, return the test-scoped sites path.
@@ -1255,8 +1255,8 @@ def _build_vep_context_sites_ht(
     ``--write-vep-context-sites`` and read co-partitioned per chunk.
 
     :param intervals: Optional locus intervals to scope the table to (read-time
-        pruned); used for a cheap ``--test`` write scoped to the test partition
-        extent. None preprocesses the whole genome.
+        pruned); used for a cheap ``--test`` write scoped to the loci within the
+        test partitions. None preprocesses the whole genome.
     :return: Locus-keyed sites HT.
     """
     if intervals is not None:
@@ -1346,7 +1346,7 @@ def _build_chunk_intervals(
     Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join``, a
     redundant ~400s VDS open on each of ~48k chunks). Opens the VDS once over the
     leading ``total_partitions``, derives ``n_chunks * n_sub`` balanced sub-intervals
-    over the full reference-data locus extent via ``repartition_for_join``, and
+    over all the reference-data loci via ``repartition_for_join``, and
     slices them into per-chunk groups of ``n_sub`` consecutive intervals. The
     resulting chunks are balanced-by-data locus slices (disjoint and covering, so the
     union of all chunks' sites equals the per-chunk-probe scheme) rather than
@@ -1396,7 +1396,7 @@ def _build_chunk_intervals(
     # covering groups (sizes differ by <=1). repartition_for_join caps at the data's
     # natural split points, so it can return a few fewer than the requested
     # n_chunks*n_sub (e.g. 99 for 100) -- we cannot assume exactly n_sub per chunk,
-    # but the union still covers the full extent regardless of the per-chunk count.
+    # but the union still covers all loci regardless of the per-chunk count.
     rg = all_subs[0].start.reference_genome
     chunks = {
         str(i * partitions_per_chunk): [
@@ -1441,17 +1441,17 @@ def _build_chunk_ref_ht(
     reads with ``_intervals=sub_intervals`` so the ref_ht is co-partitioned with the
     VDS read on the same intervals. Otherwise (the
     strict path / single-interval chunks) reads the whole sites HT and filters to
-    ``chrom`` (when set) or the VDS chunk's per-contig locus extent.
+    ``chrom`` (when set) or the per-contig loci within the VDS chunk.
 
     :param vds_filtered: VDS already filtered to the chunk's partitions
-        (the locus extent is derived from its ``reference_data``).
+        (the loci within the chunk are derived from its ``reference_data``).
     :param partition_count: When > 0 and ``sub_intervals``/``chrom`` are None,
-        triggers the locus-extent filter against the VDS chunk. 0 means "whole".
+        filters ``ref_ht`` to the loci within the VDS chunk. 0 means "whole".
     :param chrom: Optional list of contigs to filter to (takes precedence over
-        the ``partition_count`` locus-extent filter).
+        the ``partition_count``-driven filter to the chunk's loci).
     :param sites_path: Path to the preprocessed vep_context sites HT.
     :param sub_intervals: Optional read-time intervals; take precedence over both
-        ``chrom`` and the locus-extent filter.
+        ``chrom`` and the filter to the chunk's loci.
     :return: Reference HT keyed by locus.
     """
     if sub_intervals is not None:
@@ -1542,7 +1542,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     When ``--read-subintervals-per-chunk=1`` (legacy behavior), skips the
     probe/re-read and reads the VDS once via ``filter_partitions``, then
-    builds ``ref_ht`` via the locus-extent filter path.
+    builds ``ref_ht`` via the chunk-loci filter path.
 
     :param args: Parsed CLI args; reads ``project_name``, ``environment``,
         ``chunk_start``, ``chunk_stop``, ``test``, ``chrom``,
@@ -1590,7 +1590,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         logger.warning(
             "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
             "per-chunk=%d) is disabled; this chunk uses the slower filter_partitions"
-            " + locus-extent path (test/prod path divergence).",
+            " + chunk-loci filter path (test/prod path divergence).",
             n_sub,
         )
     if n_sub > 1 and not chrom:
@@ -1607,7 +1607,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             # chunk_start = chunk_index * partitions_per_chunk. If this fan-out runs
             # a different --partitions-per-chunk / --total-partitions than the
             # precompute did, chunk_start keys silently mis-align (a chunk could read
-            # intervals built for a different extent). Verify this chunk [start, stop)
+            # intervals built for a different chunk's loci). Verify this chunk [start, stop)
             # is exactly what the stored layout produces (also rejects a stale file
             # written before the layout was recorded).
             json_total = data.get("total_partitions")
@@ -2601,7 +2601,7 @@ def main(args):
             )
             site_intervals = None
             if test:
-                # Scope the test sites table to the test VDS's partition extent so
+                # Scope the test sites table to the loci within the test VDS's partitions so
                 # we don't preprocess the whole genome for a tiny test. Range is
                 # the test compute's partition count: --test-n-partitions (strict)
                 # or --total-partitions (fan-out). Pass the same value you use for
@@ -2612,7 +2612,7 @@ def main(args):
                 )
                 site_intervals = _derive_chunk_locus_intervals(probe)
                 logger.info(
-                    "Test sites scoped to first %d partitions' extent.",
+                    "Test sites scoped to the loci within the first %d partitions.",
                     n_test_parts,
                 )
             _build_vep_context_sites_ht(site_intervals).write(
@@ -2680,7 +2680,8 @@ def main(args):
         # --- VALIDATE: every intended vep_context site got AN/coverage after
         # the fan-out + merge. Valid under --test too: it reads the test-scoped
         # vep_context sites table (_vep_context_sites_path(test=...)), so both
-        # sides cover the same partition extent and the anti-join is exact. ---
+        # sides cover the loci within the same partitions and the anti-join is
+        # exact. ---
         if args.validate_cov_and_an:
             logger.info("Validating cov_and_an HT covers all vep_context sites...")
             sites_ht = hl.read_table(_vep_context_sites_path(environment, test))
@@ -2692,7 +2693,7 @@ def main(args):
             n_sites = sites_ht.count()
             n_merged = merged_ht.count()
             if n_missing:
-                # Report a sample so we can tell a benign VDS-ref-extent boundary
+                # Report a sample so we can tell a benign VDS-reference-data boundary
                 # gap (a handful of sites, no VDS reference data) from a real
                 # dropped chunk (large, clustered count).
                 sample = [str(x) for x in missing_ht.head(15).locus.collect()]
@@ -2738,7 +2739,7 @@ def main(args):
             )
             # --test-n-partitions: read only the first N partitions of the VDS
             # for a cheap test (the strict path otherwise reads the whole VDS).
-            # partition_count scopes the ref_ht to those partitions' extent when
+            # partition_count scopes the ref_ht to the loci within those partitions when
             # not co-partitioning.
             test_n = args.test_n_partitions
             strict_partition_range = list(range(test_n)) if test_n else None
@@ -2747,8 +2748,9 @@ def main(args):
             # join is shuffle-free (Hail-team guidance: read all tables with the
             # same partitions). The full run uses repartition_for_join's 1.1x
             # native-partition multiplier (bare flag); a value gives an explicit
-            # count. With --test-n-partitions the intervals are derived from those
-            # partitions' extent; otherwise from the (chrom-restricted) vep_context.
+            # count. With --test-n-partitions the intervals are derived from the
+            # loci within those partitions; otherwise from the (chrom-restricted)
+            # vep_context.
             strict_sub_intervals = None
             if args.partitions_for_rep_on_read is not None:
                 # 0 (bare flag) -> repartition_for_join's 1.1x multiplier;
@@ -3159,7 +3161,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
             " read just the first N partitions of the VDS for a cheap test (the"
             " strict path otherwise reads the whole VDS). The ref_ht is scoped to"
-            " those partitions' locus extent. Combine with --partitions-for-rep-on-read"
+            " the loci within those partitions. Combine with --partitions-for-rep-on-read"
             " to"
             " co-partition just those N partitions. Default None reads the whole"
             " VDS."
@@ -3197,8 +3199,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "stripped, locus-keyed sites HT (30-day storage) that every chunk reads"
             " co-partitioned. Prerequisite for the compute; run before"
             " --use-batch-fanout / --compute-all-cov-release-stats-ht. With --test,"
-            " writes a cheap, separate _test table scoped to the test partition"
-            " extent (--test-n-partitions or --total-partitions) instead of the"
+            " writes a cheap, separate _test table scoped to the loci within the"
+            " test partitions (--test-n-partitions or --total-partitions) instead of the"
             " whole genome."
         ),
         action="store_true",
@@ -3223,7 +3225,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Anti-join the vep_context sites HT against the merged cov_and_an HT and"
             " fail if any site is missing (i.e. dropped during fan-out + merge)."
             " Run after --merge-cov-chunks. Works for --test too (the _test sites"
-            " table is scoped to the same partition extent as the test compute)."
+            " table is scoped to the loci within the same partitions as the test compute)."
         ),
         action="store_true",
     )
@@ -3336,7 +3338,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=50,
         help=(
-            "Per-chunk: subdivide the chunk's locus extent into this many"
+            "Per-chunk: subdivide the loci within a chunk into this many"
             " equal-position sub-intervals, then re-read both the VDS"
             " (`hl.vds.read_vds(intervals=...)`) and `vep_context`"
             " (`hl.read_table(_intervals=...)`) with those intervals. One"
