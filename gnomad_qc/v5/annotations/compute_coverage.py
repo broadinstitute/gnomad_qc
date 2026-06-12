@@ -79,9 +79,9 @@ Usage Examples::
         --compute-all-cov-release-stats-ht
 
     # gnomAD v4 consent-drop subtraction + AoU/gnomAD merge:
-    python compute_coverage.py --project-name gnomad --environment dataproc \\
+    hailctl dataproc submit cluster-name compute_coverage.py --project-name gnomad --environment dataproc \\
         --merge-gnomad-coverage --merge-gnomad-an
-    python compute_coverage.py --project-name aou --environment batch \\
+    hailctl dataproc submit cluster-name compute_coverage.py --project-name aou --environment batch \\
         --export-coverage-release-files --export-an-release-files \\
         --merge-qual-hists
 """
@@ -326,18 +326,20 @@ def _list_present_chunk_indices(cov_and_an_ht_path: str) -> Set[int]:
     """
     Return the set of chunk indices with a completed (``_SUCCESS``) output.
 
-    One ``hl.hadoop_ls`` glob of ``<…>_chunks/*/_SUCCESS`` instead of a per-chunk
+    One ``hailtop.fs.ls`` glob of ``<…>_chunks/*/_SUCCESS`` instead of a per-chunk
     ``file_exists`` probe (tens of thousands of serial GCS stats at prod scale).
     Keying on ``_SUCCESS`` (not the dir) means a partially-written chunk is
     correctly treated as absent; a missing ``_chunks/`` dir returns an empty set.
+    ``hailtop.fs`` is used (not ``hl.hadoop_ls``) so the orchestrator can list
+    chunks without spinning up a Hail backend.
 
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
     :return: Set of completed chunk indices.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
     present: Set[int] = set()
-    for entry in hl.hadoop_ls(f"{base}_chunks/*/_SUCCESS"):
-        m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry["path"])
+    for entry in hfs.ls(f"{base}_chunks/*/_SUCCESS"):
+        m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
         if m:
             present.add(int(m.group(1)))
     return present
@@ -1135,7 +1137,7 @@ def _load_project_vds(
       ``sub_intervals`` takes precedence; ``partition_range`` is the
       fallback. When ``sub_intervals`` is provided the VDS is read with
       ``read_intervals`` so it's co-partitioned with the vep_context read
-      on the same intervals (a shuffle-free densify join).
+      on the same intervals.
     - AoU-specific DP synthesis from LAD + ``annotate_adj_no_dp`` (the AoU
       v8 VDS lacks DP, which ``compute_stats_per_ref_site`` requires).
     - ``test_sample_subset`` application: AoU only, reads ``meta`` from
@@ -1437,7 +1439,7 @@ def _build_chunk_ref_ht(
     Reads ``sites_path`` (already locus-keyed, deduped, and telomere/centromere-
     stripped by ``--write-vep-context-sites``). When ``sub_intervals`` is provided,
     reads with ``_intervals=sub_intervals`` so the ref_ht is co-partitioned with the
-    VDS read on the same intervals (shuffle-free densify join). Otherwise (the
+    VDS read on the same intervals. Otherwise (the
     strict path / single-interval chunks) reads the whole sites HT and filters to
     ``chrom`` (when set) or the VDS chunk's per-contig locus extent.
 
@@ -2471,8 +2473,9 @@ def main(args):
     picture):
 
       - ROLE 1 ORCHESTRATOR (``--use-batch-fanout`` /
-        ``--merge-cov-chunks``): submit a Hail Batch, NO Hail init,
-        return.
+        ``--merge-cov-chunks``): submit a Hail Batch and return; skips the
+        configured _init_hail, though its GCS skip-checks still spin up a
+        default Hail backend (see the ROLE 1 comment).
       - ROLE 2 WORKER (``--run-chunk`` / ``--run-merge``): init Hail,
         run one chunk/merge unit, return — *before* the try/finally.
       - ROLE 3 IN-PROCESS PIPELINE (no role flag): init Hail, run the
@@ -2486,8 +2489,12 @@ def main(args):
 
     # ===================================================================
     # ROLE 1: ORCHESTRATOR — submit a Hail Batch of relay jobs and return
-    # WITHOUT initializing Hail (each per-chunk relay spawns its own QoB
-    # driver). Returns here; never reaches _init_hail or the try/finally.
+    # (each per-chunk relay spawns its own QoB driver). Skips the configured
+    # _init_hail below; chunk listing uses hailtop.fs (no Hail backend), but
+    # NOTE _file_exists_for_env's file_exists (hl.hadoop_exists) still triggers
+    # a *default* hl.init() on first call, so a Hail backend is still spun up
+    # here for the prereq existence check. Returns before the configured
+    # _init_hail and the try/finally.
     #   --use-batch-fanout : scatter the per-chunk compute.
     #   --merge-cov-chunks : tree-reduce the chunk HTs (run after fanout).
     # ===================================================================
@@ -2519,11 +2526,12 @@ def main(args):
         merge_output=args.merge_output,
     )
 
-    # QoB / dataproc init — reached by ROLE 2 (worker) and ROLE 3
-    # (in-process pipeline) only; ROLE 1 returned above. ``--experimental``
-    # attaches the QoB driver to an existing Hail Batch (batch_id
-    # auto-resolved from HAIL_BATCH_ID inside _init_hail); otherwise each
-    # run creates its own Hail Batch.
+    # Configured QoB / dataproc init — reached by ROLE 2 (worker) and ROLE 3
+    # (in-process pipeline) only; ROLE 1 returned above (it only ever spun up a
+    # default backend for GCS listing, not this configured context).
+    # ``--experimental`` attaches the QoB driver to an existing Hail Batch
+    # (batch_id auto-resolved from HAIL_BATCH_ID inside _init_hail); otherwise
+    # each run creates its own Hail Batch.
     _init_hail(
         log_name,
         environment,
