@@ -7,7 +7,7 @@ histograms for each project and joins them to create the v5 coverage and AN HT/T
 
 Execution roles:
 ----------------
-This script dispatches three process roles by ``main` on the CLI flags.
+This script dispatches three process roles by ``main`` on the CLI flags.
 They are mutually exclusive (the ``__main__`` block validates this):
 
 1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
@@ -743,7 +743,7 @@ def _rename_cov_annotations(
     row_fields = list(ht.row_value)
     rename_dict = {f: f"{f}_{project}" for f in row_fields}
     ht = ht.rename(rename_dict)
-    if project == "gnomad" or project == "gnomad_release":
+    if project == "gnomad_release":
         # Revert v4 genomes fraction over X bins to sample count over X bins.
         ht = ht.transmute(
             **{
@@ -1989,7 +1989,7 @@ def _submit_chunk_batch(
     total = args.total_partitions
     ppc = args.partitions_per_chunk
     batch_name = (
-        f"v5_cov_{project}_{total}p_{pp}ppc_sub{args.read_subintervals_per_chunk}"
+        f"v5_cov_{project}_{total}p_{ppc}ppc_sub{args.read_subintervals_per_chunk}"
     )
     if args.cov_and_an_output_suffix:
         batch_name += f"_{args.cov_and_an_output_suffix}"
@@ -2038,7 +2038,7 @@ def _orchestrate_coverage_batch(
     rich.Live, so *concurrent* ``batch.run()`` calls crash with ``Only
     one live display may be active at once``. Within a wave, Hail Batch's
     own scheduler runs the relay jobs in parallel up to worker-pool capacity.
-    Set ``--wave-size <= 0` (or >= the pending count) for a single batch
+    Set ``--wave-size <= 0`` (or >= the pending count) for a single batch
     (legacy behavior).
 
     Note on the binding constraint: these relays and their nested QoB
