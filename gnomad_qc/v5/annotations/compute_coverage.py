@@ -3,13 +3,12 @@ Compute coverage, allele number, and quality histograms for gnomAD v5 genomes.
 
 v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set.
 This script computes per-reference-site coverage, AN, and (AoU only) qual
-histograms for each project track and joins them into the v5 release HT/TSV.
+histograms for each project and joins them to create the v5 coverage and AN HT/TSV.
 
 Execution roles:
 ----------------
-One entry-point (this script), three process roles dispatched by ``main``
-on the CLI flags. They are mutually exclusive (the ``__main__`` block
-validates this):
+This script dispatches three process roles by ``main` on the CLI flags.
+They are mutually exclusive (the ``__main__`` block validates this):
 
 1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
    runs wherever you launch it, does not call ``_init_hail`` (but the
@@ -18,9 +17,9 @@ validates this):
    relay jobs, then returns. Used for the prod-scale AoU compute (the
    dataset is too big for one job).
 2. WORKER (``--run-chunk`` or ``--run-merge``): each relay container the
-   orchestrator submitted re-invokes THIS script with ``--run-chunk`` /
+   orchestrator submitted re-invokes this script with ``--run-chunk`` /
    ``--run-merge``. Initializes Hail, does exactly one chunk/merge unit,
-   and returns BEFORE the try/finally. The chunk worker is what actually
+   and returns before the try/finally. The chunk worker is what actually
    calls ``compute_all_release_stats_per_ref_site``.
 3. IN-PROCESS PIPELINE (none of the above flags): initializes Hail and
    runs the try/finally step chain. Reached only when not orchestrating
@@ -42,25 +41,25 @@ Per-project setup (--project-name {aou,gnomad})::
     2. Write the group membership HT (--write-group-membership-ht): strata =
        sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
        --reduce-min-aggs to write the leaf-only variant.
-    2b. Write the preprocessed vep_context sites HT (--write-vep-context-sites):
+    3. Write the preprocessed vep_context sites HT (--write-vep-context-sites):
         deduped/telomere-stripped/locus-keyed sites read co-partitioned by every
         chunk (so the dedup + strip runs once, not per chunk).
-    3. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
+    4. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
        Strict single-job via --compute-all-cov-release-stats-ht, or the
        prod-scale fan-out (--use-batch-fanout then --merge-cov-chunks). See
        "Execution roles" above for how those dispatch.
-    3b. Validate the merged HT covers every vep_context site
+    5. Validate the merged HT covers every vep_context site
         (--validate-cov-and-an) — anti-join, fail on any dropped site.
 
 Per-project merge (--project-name gnomad)::
 
-    4. Build the gnomAD v5 coverage HT (--merge-gnomad-coverage) and AN HT
+    6. Build the gnomAD v5 coverage HT (--merge-gnomad-coverage) and AN HT
        (--merge-gnomad-an) by subtracting the consent-drop samples from the
        v4 release HTs.
 
 Release assembly (--project-name aou)::
 
-    5. Join AoU + gnomAD v5 outputs and export release files:
+    7. Join AoU + gnomAD v5 outputs and export release files:
        --export-coverage-release-files (coverage HT + TSV)
        --export-an-release-files (AN HT + TSV)
        --merge-qual-hists (qual hists HT; gnomAD v4 hists are reused as-is —
@@ -68,20 +67,19 @@ Release assembly (--project-name aou)::
 
 Usage Examples::
 
-    # Per-chunk fan-out compute + merge on Hail Batch (the prod path):
+    # Per-chunk fan-out compute + merge (on batch):
     python compute_coverage.py --project-name aou --environment batch \\
         --use-batch-fanout --partitions-per-chunk 3
     python compute_coverage.py --project-name aou --environment batch \\
         --merge-cov-chunks --n-partitions 10000
 
-    # Strict whole-VDS compute on rwb:
-    python compute_coverage.py --project-name aou --environment rwb \\
-        --compute-all-cov-release-stats-ht
-
-    # gnomAD v4 consent-drop subtraction + AoU/gnomAD merge:
-    hailctl dataproc submit cluster-name compute_coverage.py --project-name gnomad --environment dataproc \\
+    # gnomAD v4 consent-drop subtraction (on dataproc):
+    hailctl dataproc submit cluster-name compute_coverage.py \\
+        --project-name gnomad --environment dataproc \\
         --merge-gnomad-coverage --merge-gnomad-an
-    hailctl dataproc submit cluster-name compute_coverage.py --project-name aou --environment batch \\
+
+    # AoU/gnomAD release assembly (on batch):
+    python compute_coverage.py --project-name aou --environment batch \\
         --export-coverage-release-files --export-an-release-files \\
         --merge-qual-hists
 """

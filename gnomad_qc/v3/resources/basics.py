@@ -55,10 +55,9 @@ def get_gnomad_v3_vds(
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
         in the provided list.
     :param read_intervals: Optional list of locus intervals passed to
-        ``hl.vds.read_vds`` at read time. Creates one VDS partition per interval,
+        `hl.vds.read_vds` at read time. Creates one VDS partition per interval,
         so the VDS can be co-partitioned with another table read on the same
-        intervals (a shuffle-free join). Mutually exclusive with
-        ``filter_partitions`` and ``n_partitions``.
+        intervals. Mutually exclusive with `filter_partitions` and `n_partitions`.
     :param chrom: Optional argument to filter the VDS to specific chromosomes.
     :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
         False.
