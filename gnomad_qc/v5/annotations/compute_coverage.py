@@ -1067,7 +1067,16 @@ def join_aou_and_gnomad_an_ht(
     subset_meta = ht.index_globals().strata_meta_gnomad.map(
         lambda d: hl.dict(d.items().append(("subset", "non-aou")))
     )
-    ht = ht.annotate(AN=ht.AN.extend(ht.AN_gnomad))
+    # AN_gnomad is missing where the gnomAD release has no row for an AoU locus (in
+    # prod both cover the same sites; a test over disjoint regions may not). Treat a
+    # missing gnomAD AN as all-zero so the appended entries -- and the array length --
+    # stay defined at every locus.
+    n_gnomad = hl.len(ht.index_globals().strata_meta_gnomad)
+    ht = ht.annotate(
+        AN=ht.AN.extend(
+            hl.or_else(ht.AN_gnomad, hl.range(n_gnomad).map(lambda _: hl.int64(0)))
+        )
+    )
     ht = ht.annotate_globals(
         strata_meta=ht.strata_meta.extend(subset_meta),
         strata_sample_count=ht.strata_sample_count.extend(
