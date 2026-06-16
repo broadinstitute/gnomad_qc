@@ -1025,6 +1025,12 @@ def join_aou_and_gnomad_an_ht(
     """
     Join AoU and gnomAD AN HTs for release.
 
+    The combined (AoU + gnomAD) per-stratum AN is written first as the unlabeled
+    "global" entries; within those, the AoU-only downsampling strata use the key
+    ``"aou-downsampling"`` (gnomAD does not downsample). The gnomAD-only AN is then
+    appended as a ``"non-aou"`` subset (each appended ``strata_meta`` entry carries
+    ``{"subset": "non-aou"}``).
+
     :param aou_ht: AoU AN HT.
     :param gnomad_ht: gnomAD v5 genomes AN HT.
     :return: Joined HT.
@@ -1041,10 +1047,32 @@ def join_aou_and_gnomad_an_ht(
         project_2="gnomad",
         operation="sum",
     )
+    # Downsampling strata are AoU-only (gnomAD does not downsample); rename the
+    # "downsampling" key to "aou-downsampling" so the array is self-describing.
+    global_meta = [
+        {("aou-downsampling" if k == "downsampling" else k): v for k, v in d.items()}
+        for d in joint_strata_meta
+    ]
     ht = ht.annotate(AN=joint_an)
     ht = ht.annotate_globals(
-        strata_meta=joint_strata_meta,
+        strata_meta=global_meta,
         strata_sample_count=count_arrays_dict["counts"],
+    )
+
+    # Append the gnomAD-only AN as the "non-aou" subset. The global (AoU + gnomAD)
+    # entries set above stay unlabeled; each appended entry gets {"subset": "non-aou"}
+    # added to its strata_meta. No re-aggregation is needed -- the gnomAD side (row
+    # AN_gnomad and the strata_meta_gnomad / strata_sample_count_gnomad globals)
+    # survives the join, so we extend the three parallel arrays in lockstep.
+    subset_meta = ht.index_globals().strata_meta_gnomad.map(
+        lambda d: hl.dict(d.items().append(("subset", "non-aou")))
+    )
+    ht = ht.annotate(AN=ht.AN.extend(ht.AN_gnomad))
+    ht = ht.annotate_globals(
+        strata_meta=ht.strata_meta.extend(subset_meta),
+        strata_sample_count=ht.strata_sample_count.extend(
+            ht.index_globals().strata_sample_count_gnomad
+        ),
     )
     return ht
 
