@@ -428,6 +428,27 @@ def _resolve_group_membership_ht_path(
     return _apply_path_suffix(path, "reduce" if reduce_min_aggs else None)
 
 
+def _gnomad_v5_merged_path(environment: str, coverage_type: str, test: bool) -> str:
+    """
+    Return the gnomAD v5 merged (consent-drop-subtracted) coverage/AN HT path.
+
+    Written by ``--merge-gnomad-coverage`` / ``--merge-gnomad-an`` and read back
+    by the ``--export-*`` join, so the write and read sides must resolve to the
+    same path. ``test`` routes to a separate ``_test`` path so a test run never
+    clobbers (or reads) the prod intermediate.
+
+    :param environment: Compute environment.
+    :param coverage_type: "coverage" or "allele_number".
+    :param test: If True, append ``_test`` to keep test isolated from prod.
+    :return: GCS path to the gnomAD v5 merged HT.
+    """
+    name = "coverage" if coverage_type == "coverage" else "an"
+    return (
+        f"{qc_temp_prefix(environment=environment)}"
+        f"gnomad_v5_genomes_{name}{'_test' if test else ''}.ht"
+    )
+
+
 def _log_name_for_run(
     run_chunk: bool,
     run_merge: bool,
@@ -2791,9 +2812,8 @@ def main(args):
         # the v4 release coverage/AN HTs to get gnomAD v5. ---
         if args.merge_gnomad_coverage:
             logger.info("Building gnomAD v5 coverage HT (subtracting consent-drop)...")
-            merged_gnomad_coverage_ht_path = (
-                f"{qc_temp_prefix(environment=environment)}"
-                "gnomad_v5_genomes_coverage.ht"
+            merged_gnomad_coverage_ht_path = _gnomad_v5_merged_path(
+                environment, "coverage", test
             )
             check_resource_existence(
                 output_step_resources={
@@ -2814,8 +2834,8 @@ def main(args):
 
         if args.merge_gnomad_an:
             logger.info("Building gnomAD v5 AN HT (subtracting consent-drop)...")
-            merged_gnomad_an_ht_path = (
-                f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
+            merged_gnomad_an_ht_path = _gnomad_v5_merged_path(
+                environment, "allele_number", test
             )
             check_resource_existence(
                 output_step_resources={
@@ -2842,6 +2862,12 @@ def main(args):
         # HT/TSVs + merge qual hists. Run as a separate invocation after
         # ROLE 1 fan-out + --merge-cov-chunks have produced the AoU
         # cov_and_an HT. ---
+        # TODO: Decide which environment this will run in.
+        # Option 1: override paths with command line args to decouple from environment.
+        # Option 2: Make resources data set aware, also decouples.
+        # Option 3: Copy one output to the other env bucket with a --stage step
+        # Option 4: Have the final AN and cov tables write to a dedicated location,
+        # accessible by merge step env
         if args.export_coverage_release_files:
             logger.info("Exporting coverage release HT and TSV...")
             cov_ht_path = release_coverage_path(
@@ -2851,9 +2877,8 @@ def main(args):
                 environment=environment,
             )
             cov_tsv_path = release_coverage_tsv_path(test=test, environment=environment)
-            gnomad_coverage_ht_path = (
-                f"{qc_temp_prefix(environment=environment)}"
-                "gnomad_v5_genomes_coverage.ht"
+            gnomad_coverage_ht_path = _gnomad_v5_merged_path(
+                environment, "coverage", test
             )
             check_resource_existence(
                 input_step_resources={"gnomad_coverage_ht": [gnomad_coverage_ht_path]},
@@ -2885,8 +2910,8 @@ def main(args):
             an_tsv_path = release_all_sites_an_tsv_path(
                 test=test, environment=environment
             )
-            gnomad_an_ht_path = (
-                f"{qc_temp_prefix(environment=environment)}gnomad_v5_genomes_an.ht"
+            gnomad_an_ht_path = _gnomad_v5_merged_path(
+                environment, "allele_number", test
             )
             check_resource_existence(
                 input_step_resources={"gnomad_an_ht": [gnomad_an_ht_path]},
