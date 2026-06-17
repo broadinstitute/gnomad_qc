@@ -379,7 +379,7 @@ def get_aou_vds(
         `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
-    :param read_intervals: Optional list of locus intervals passed to ``hl.vds.read_vds`` at read time. Creates one VDS partition per interval. Use this (not ``filter_intervals``) when you need to subdivide a chunk's locus extent into more partitions without a shuffle. Mutually exclusive with ``filter_partitions``.
+    :param read_intervals: Optional list of locus intervals passed to ``hl.vds.read_vds`` at read time. Creates one VDS partition per interval. Use this (not ``filter_intervals``) when you need to subdivide the loci within a chunk into more partitions without a shuffle. Mutually exclusive with ``filter_partitions``.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.

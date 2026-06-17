@@ -1278,7 +1278,7 @@ def _probe_vds(
     )
 
 
-def _vep_context_sites_path(environment: str, test: bool = False) -> str:
+def _vep_context_sites_path(test: bool = False) -> str:
     """
     Return the path to the preprocessed vep_context sites HT (30-day storage).
 
@@ -1286,12 +1286,11 @@ def _vep_context_sites_path(environment: str, test: bool = False) -> str:
     VDS partitions and written to a separate ``_test`` path so it never clobbers
     the genome-wide prod table.
 
-    :param environment: Compute environment.
     :param test: If True, return the test-scoped sites path.
     :return: GCS path to the preprocessed sites HT.
     """
-    name = "vep_context_sites_test.ht" if test else "vep_context_sites.ht"
-    return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
+    # Pin to dataproc so it is accessible everywhere
+    return f"{qc_temp_prefix(environment='dataproc', days=30)}{'vep_context_sites_test.ht' if test else 'vep_context_sites.ht'}"
 
 
 def _build_vep_context_sites_ht(
@@ -1741,7 +1740,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         vds_filtered=vds,
         partition_count=n,
         chrom=chrom,
-        sites_path=_vep_context_sites_path(environment, test),
+        sites_path=_vep_context_sites_path(test),
         sub_intervals=sub_intervals,
     )
 
@@ -2138,7 +2137,7 @@ def _orchestrate_coverage_batch(
 
     # Fail fast (before submitting thousands of jobs) if the preprocessed
     # vep_context sites HT the chunks read isn't there yet.
-    sites_path = _vep_context_sites_path(args.environment, args.test)
+    sites_path = _vep_context_sites_path(args.test)
     if not _file_exists_for_env(sites_path, "batch"):
         raise FileNotFoundError(
             f"vep_context sites HT not found at {sites_path}. Run"
@@ -2628,7 +2627,7 @@ def main(args):
         # have to re-compute it each time.
         if args.write_vep_context_sites:
             logger.info("Writing preprocessed vep_context sites HT...")
-            sites_path = _vep_context_sites_path(environment, test=test)
+            sites_path = _vep_context_sites_path(test=test)
             check_resource_existence(
                 output_step_resources={"vep_context_sites": [sites_path]},
                 overwrite=overwrite,
@@ -2780,7 +2779,7 @@ def main(args):
                 vds_filtered=vds,
                 partition_count=test_n or 0,
                 chrom=chrom,
-                sites_path=_vep_context_sites_path(environment, test),
+                sites_path=_vep_context_sites_path(test),
                 sub_intervals=strict_sub_intervals,
             )
 
@@ -2806,7 +2805,7 @@ def main(args):
         # prior fan-out + merge) and before the gnomAD subtraction reads it.
         if args.validate_cov_and_an:
             logger.info("Validating cov_and_an HT covers all vep_context sites...")
-            sites_ht = hl.read_table(_vep_context_sites_path(environment, test))
+            sites_ht = hl.read_table(_vep_context_sites_path(test))
             merged_ht = hl.read_table(cov_and_an_ht_path)
             missing_ht = sites_ht.anti_join(merged_ht).checkpoint(
                 new_temp_file("cov_an_missing_sites", "ht")
