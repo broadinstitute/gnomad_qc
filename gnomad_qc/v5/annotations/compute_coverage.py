@@ -1382,6 +1382,33 @@ def _interval_from_list(t: list, reference_genome: str) -> hl.utils.Interval:
     )
 
 
+def _parse_region_interval(
+    s: str, reference_genome: str = "GRCh38"
+) -> hl.utils.Interval:
+    """
+    Parse a ``contig:start-end`` string into a half-open Python locus interval.
+
+    Returns a concrete ``hl.utils.Interval`` (not a Hail ``IntervalExpression``,
+    which ``hl.parse_locus_interval`` would give) so it can be passed to
+    ``read_args={"_intervals": ...}`` for read-time partition pruning -- that path
+    requires Python-bool ``includes_start`` / ``includes_end``. Half-open ``[start,
+    end)`` so adjacent intervals stay disjoint (no double-counted loci). Used by
+    ``--test-region``.
+
+    :param s: Interval string, e.g. ``chr1:55058666-55108666`` (commas allowed).
+    :param reference_genome: Reference-genome name. Default "GRCh38".
+    :return: ``[start, end)`` locus interval.
+    """
+    contig, span = s.split(":")
+    start_pos, end_pos = (int(p.replace(",", "")) for p in span.split("-"))
+    return hl.Interval(
+        hl.Locus(contig, start_pos, reference_genome=reference_genome),
+        hl.Locus(contig, end_pos, reference_genome=reference_genome),
+        includes_start=True,
+        includes_end=False,
+    )
+
+
 def _build_chunk_intervals(
     project: str,
     environment: str,
@@ -1636,14 +1663,27 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     # in from the previous chunk (see _expand_leading_edges). The sites/ref_ht
     # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
     vds_read_intervals: Optional[List[hl.utils.Interval]] = None
-    if n_sub > 1 and chrom:
+    if args.test_region:
+        # Explicit region (--test-region): this chunk's sub-intervals ARE the
+        # passed intervals (one read partition each); skip the partition-based
+        # derivation. Widen the VDS read's leading edge for reference blocks
+        # straddling in from before the region, same as the precompute path below.
+        sub_intervals = [_parse_region_interval(r) for r in args.test_region]
+        rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+        max_ref_block_len = hl.eval(
+            _probe_vds(project, environment, [0], None).reference_data.index_globals()[
+                rbml_field
+            ]
+        )
+        vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
+    elif n_sub > 1 and chrom:
         logger.warning(
             "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
             "per-chunk=%d) is disabled; this chunk uses the slower filter_partitions"
             " + chunk-loci filter path (test/prod path divergence).",
             n_sub,
         )
-    if n_sub > 1 and not chrom:
+    elif n_sub > 1 and not chrom:
         intervals_path = _chunk_intervals_path(environment, test)
         if _file_exists_for_env(intervals_path, environment):
             # Precompute hit: --write-chunk-intervals already derived every chunk's
@@ -1881,8 +1921,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
     app-name / output-suffix / QoB driver+worker sizing) is common to both. With
     ``chunk=True`` the read/compute flags a chunk relay also needs
     (``--read-subintervals-per-chunk``, ``--reduce-min-aggs``,
-    ``--test-sample-subset``, ``--chrom``, ``--test``) are appended; the merge
-    relay (which only unions HTs) omits them. Per-job flags (``--chunk-*`` /
+    ``--test-sample-subset``, ``--chrom``, ``--test-region``, ``--test``) are
+    appended; the merge relay (which only unions HTs) omits them. Per-job flags (``--chunk-*`` /
     ``--merge-*``) are added by the submit helpers. Flag order is irrelevant to
     argparse.
 
@@ -1927,6 +1967,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
             flags.append("--test-sample-subset")
         if args.chrom:
             flags.append(f"--chrom {' '.join(args.chrom)}")
+        if args.test_region:
+            flags.append(f"--test-region {' '.join(args.test_region)}")
         if args.test:
             flags.append("--test")
     return " ".join(flags)
@@ -2515,7 +2557,9 @@ def main(args):
     """
     project = args.project_name
     environment = args.environment
-    test = args.test or args.test_n_partitions is not None
+    test = (
+        args.test or args.test_n_partitions is not None or args.test_region is not None
+    )
     chrom = args.chrom
     overwrite = args.overwrite
     reduce_min_aggs = args.reduce_min_aggs
@@ -2633,7 +2677,18 @@ def main(args):
                 overwrite=overwrite,
             )
             site_intervals = None
-            if test:
+            if test and args.test_region:
+                # Explicit region (--test-region): scope the sites to these intervals
+                # directly. vep_context is reference data, so no VDS probe is needed;
+                # this preprocesses a dense, non-telomeric test region (the first VDS
+                # partitions are the chr1 telomere).
+                site_intervals = [_parse_region_interval(r) for r in args.test_region]
+                logger.info(
+                    "Test sites scoped to %d explicit --test-region interval(s): %s",
+                    len(site_intervals),
+                    args.test_region,
+                )
+            elif test:
                 # Scope the test sites table to the loci within the test VDS's
                 # partitions so we don't preprocess the whole genome for a tiny test.
                 # Range is the test compute's partition count: --test-n-partitions
@@ -2743,7 +2798,14 @@ def main(args):
             # intervals come from the loci within those partitions; otherwise from
             # the (chrom-restricted) vep_context.
             strict_sub_intervals = None
-            if args.partitions_for_rep_on_read is not None:
+            if args.test_region:
+                # Explicit region: read the VDS and the sites at these intervals (one
+                # read partition each); skip the partition-based scoping entirely.
+                strict_partition_range = None
+                strict_sub_intervals = [
+                    _parse_region_interval(r) for r in args.test_region
+                ]
+            elif args.partitions_for_rep_on_read is not None:
                 n = args.partitions_for_rep_on_read
                 logger.info(
                     "Co-partitioning the VDS and vep_context reads (%s).",
@@ -2766,11 +2828,24 @@ def main(args):
                     strict_sub_intervals = _derive_ref_partition_intervals(
                         n, chrom=chrom
                     )
+
+            # The VDS read uses the same intervals as the sites, EXCEPT for a region
+            # test the leading edge is backed up by ref_block_max_length-1 to capture
+            # reference blocks straddling in from before the region (the sites read
+            # stays un-widened), mirroring the chunk worker's boundary fix.
+            strict_vds_read_intervals = strict_sub_intervals
+            if args.test_region:
+                rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+                rbml_probe = _probe_vds(project, environment, [0], None)
+                strict_vds_read_intervals = _expand_leading_edges(
+                    strict_sub_intervals,
+                    hl.eval(rbml_probe.reference_data.index_globals()[rbml_field]),
+                )
             vds, sex_karyotype_field = _load_project_vds(
                 project=project,
                 environment=environment,
                 partition_range=strict_partition_range,
-                sub_intervals=strict_sub_intervals,
+                sub_intervals=strict_vds_read_intervals,
                 chrom=chrom,
                 test=test,
                 test_sample_subset=args.test_sample_subset,
@@ -3211,6 +3286,24 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Filter input data to these contigs (e.g."
             " ``--chrom chr22 chrX chrY``). Default: no chrom filter."
             " Independent of --test."
+        ),
+    )
+    test_group.add_argument(
+        "--test-region",
+        nargs="+",
+        default=None,
+        help=(
+            "For --write-vep-context-sites, the strict"
+            " --compute-all-cov-release-stats-ht compute, and the fan-out chunk"
+            " worker: scope the test to these explicit locus intervals instead of"
+            " the first N VDS partitions (e.g."
+            " ``--test-region chr1:55058666-55108666 chr1:55108666-55158666``)."
+            " The vep_context sites HT and the VDS read are both pruned to these"
+            " intervals (one read partition per interval); the VDS read's leading"
+            " edge is widened for reference blocks straddling in from before the"
+            " region (sites stay un-widened). Use to test a dense, non-telomeric"
+            " region -- the first VDS partitions are the chr1 telomere."
+            " Auto-enables test mode; mutually exclusive with --test-n-partitions."
         ),
     )
 
@@ -3748,6 +3841,12 @@ if __name__ == "__main__":
         parser.error(
             "--merge-cov-chunks is a separate step from"
             " --compute-all-cov-release-stats-ht; do not pass both."
+        )
+    if args.test_region and args.test_n_partitions is not None:
+        parser.error(
+            "--test-region and --test-n-partitions are mutually exclusive:"
+            " --test-region scopes to explicit intervals, --test-n-partitions"
+            " to the first N VDS partitions."
         )
     if args.run_chunk:
         if args.chunk_stop <= args.chunk_start:
