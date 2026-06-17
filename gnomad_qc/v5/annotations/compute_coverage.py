@@ -2903,8 +2903,9 @@ def main(args):
         # Option 1: override paths with command line args to decouple from environment.
         # Option 2: Make resources data set aware, also decouples.
         # Option 3: Copy one output to the other env bucket with a --stage step
-        # Option 4: Have the final AN and cov tables write to a dedicated location,
-        # accessible by merge step env
+        # Option 4: Have the final dataset AN and cov tables write to a dedicated l
+        # ocation, accessible by merge step env (currently implemented via command line,
+        # used batch so the gnomad v4 and consent merge AN table wrote to batch bucket)
         if args.export_coverage_release_files:
             logger.info("Exporting coverage release HT and TSV...")
             cov_ht_path = release_coverage_path(
