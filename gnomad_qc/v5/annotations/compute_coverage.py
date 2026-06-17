@@ -1260,13 +1260,15 @@ def _probe_vds(
     environment: str,
     partition_range: Optional[List[int]],
     chrom: Optional[List[str]],
+    filter_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.vds.VariantDataset:
     """
-    Cheap reference_data-bounds probe-load of the per-project VDS for a partition range.
+    Cheap reference_data-bounds probe-load of the per-project VDS.
 
-    Loads via ``filter_partitions`` only (no sample filtering / DP synthesis); the
-    caller derives the loci from ``reference_data`` (e.g. via
-    ``repartition_for_join``). Used by both the chunk worker and the strict path's
+    Loads via ``filter_partitions`` (or ``filter_intervals``) only (no sample
+    filtering / DP synthesis); the caller derives the loci from ``reference_data``
+    (e.g. via ``repartition_for_join``). Used by the chunk worker (both the normal
+    partition-range path and the ``--test-region`` fan-out) and the strict path's
     ``--test-n-partitions`` co-partitioning branch.
 
     :param project: "aou" or "gnomad".
@@ -1274,6 +1276,9 @@ def _probe_vds(
     :param partition_range: VDS partition indices to probe (e.g.
         ``list(range(2))``) or ``None`` for the full VDS.
     :param chrom: Optional list of contigs to filter to.
+    :param filter_intervals: Optional locus intervals to bound the probe to (via
+        ``hl.vds.filter_intervals``, splitting straddling reference blocks). Used by
+        the ``--test-region`` fan-out to probe just the region's reference-data loci.
     :return: Probe VDS (reference/variant data only).
     """
     if project == "aou":
@@ -1283,10 +1288,12 @@ def _probe_vds(
             environment=environment,
             remove_hard_filtered_samples=False,
             log_sample_counts=False,
+            filter_intervals=filter_intervals,
         )
     return get_gnomad_v5_genomes_vds(
         filter_partitions=partition_range,
         chrom=chrom,
+        filter_intervals=filter_intervals,
     )
 
 
@@ -1679,15 +1686,51 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     # straddling reference blocks) instead of read_intervals; this holds those.
     vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
     if args.test_region:
-        # Explicit region (--test-region): read the VDS via filter_intervals (NOT
-        # read_intervals + leading-edge widening). get_*_vds passes these to
-        # hl.vds.filter_intervals(split_reference_blocks=True), which SPLITS
-        # reference blocks straddling the region edge -- the in-region piece keeps
-        # the block's coverage, so no AN is lost, and the read stays bounded (no
-        # backing up by gnomAD's enormous ref_block_max_length). The sites HT
-        # (locus-keyed, no ref blocks) is read at the same intervals.
-        sub_intervals = [_parse_region_interval(r) for r in args.test_region]
-        vds_filter_intervals = sub_intervals
+        # Explicit region (--test-region): scope the chunk to these intervals, then
+        # fan out exactly like the prod chunk path below so the densify + per-site
+        # aggregation is spread across many small partitions. Reading the whole
+        # region as one partition per interval pins a single worker at its memory
+        # limit and gets OOM-killed on AoU's large sample count (the dense per-site
+        # agg over ~245k samples does not fit one worker).
+        region_intervals = [_parse_region_interval(r) for r in args.test_region]
+        if n_sub > 1:
+            # Probe the VDS bounded to the region (filter_intervals splits straddling
+            # reference blocks, so the probe's reference-data loci span exactly the
+            # region), balance those loci into n_sub sub-intervals, and read them via
+            # read_intervals with each contig's leading edge widened -- the same
+            # machinery (and the same no-data-loss guarantee) the prod fan-out uses
+            # and validates, just scoped to the region instead of a partition range.
+            vds_probe = _probe_vds(
+                project, environment, None, chrom, filter_intervals=region_intervals
+            )
+            sub_intervals = repartition_for_join(
+                vds_probe.reference_data.rows(),
+                n_partitions=n_sub,
+                locus_intervals=True,
+            )
+            rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+            if rbml_field not in vds_probe.reference_data.globals:
+                raise ValueError(
+                    f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
+                    " straddling sub-interval boundaries cannot be bounded; run"
+                    " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
+                    " on the VDS first."
+                )
+            max_ref_block_len = hl.eval(
+                vds_probe.reference_data.index_globals()[rbml_field]
+            )
+            vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
+            logger.info(
+                "Region fan-out: balanced %d --test-region interval(s) into %d read"
+                " sub-intervals (read via read_intervals + leading-edge widening).",
+                len(region_intervals),
+                len(sub_intervals),
+            )
+        else:
+            # n_sub == 1: no fan-out -- read the region as one partition per interval
+            # via filter_intervals (splits straddling reference blocks; bounded).
+            sub_intervals = region_intervals
+            vds_filter_intervals = region_intervals
     elif n_sub > 1 and chrom:
         logger.warning(
             "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
