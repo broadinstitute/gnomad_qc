@@ -1174,6 +1174,7 @@ def _load_project_vds(
     environment: str,
     partition_range: Optional[List[int]] = None,
     sub_intervals: Optional[List[hl.utils.Interval]] = None,
+    filter_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[List[str]] = None,
     test: bool = False,
     test_sample_subset: bool = False,
@@ -1200,6 +1201,11 @@ def _load_project_vds(
         or ``None`` for the full VDS.
     :param sub_intervals: Locus sub-intervals for read-time partitioning
         (AoU only; ignored for gnomAD).
+    :param filter_intervals: Locus intervals passed to ``get_*_vds`` as
+        ``filter_intervals`` (``split_reference_blocks=True``): subsets the VDS to
+        these intervals and SPLITS reference blocks straddling the edges, so the
+        in-region piece keeps its coverage with a bounded read (no backing the read
+        up by ``ref_block_max_length``). Used by ``--test-region``.
     :param chrom: Optional list of contigs to filter to.
     :param test: Whether this is a test run (gates ``test_sample_subset``).
     :param test_sample_subset: If True (AoU only, and ``test``), subsample
@@ -1210,8 +1216,11 @@ def _load_project_vds(
         sex_karyotype_field = "meta.sex_karyotype"
         vds = get_aou_vds(
             release_only=True,
-            filter_partitions=None if sub_intervals else partition_range,
+            filter_partitions=(
+                None if (sub_intervals or filter_intervals) else partition_range
+            ),
             read_intervals=sub_intervals,
+            filter_intervals=filter_intervals,
             annotate_meta=True,
             chrom=chrom,
             environment=environment,
@@ -1235,8 +1244,11 @@ def _load_project_vds(
         vds = get_gnomad_v5_genomes_vds(
             release_only=True,
             consent_drop_only=True,
-            filter_partitions=None if sub_intervals else partition_range,
+            filter_partitions=(
+                None if (sub_intervals or filter_intervals) else partition_range
+            ),
             read_intervals=sub_intervals,
+            filter_intervals=filter_intervals,
             annotate_meta=True,
             chrom=chrom,
         )
@@ -1663,19 +1675,19 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     # in from the previous chunk (see _expand_leading_edges). The sites/ref_ht
     # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
     vds_read_intervals: Optional[List[hl.utils.Interval]] = None
+    # For --test-region the VDS is read via filter_intervals (which splits
+    # straddling reference blocks) instead of read_intervals; this holds those.
+    vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
     if args.test_region:
-        # Explicit region (--test-region): this chunk's sub-intervals ARE the
-        # passed intervals (one read partition each); skip the partition-based
-        # derivation. Widen the VDS read's leading edge for reference blocks
-        # straddling in from before the region, same as the precompute path below.
+        # Explicit region (--test-region): read the VDS via filter_intervals (NOT
+        # read_intervals + leading-edge widening). get_*_vds passes these to
+        # hl.vds.filter_intervals(split_reference_blocks=True), which SPLITS
+        # reference blocks straddling the region edge -- the in-region piece keeps
+        # the block's coverage, so no AN is lost, and the read stays bounded (no
+        # backing up by gnomAD's enormous ref_block_max_length). The sites HT
+        # (locus-keyed, no ref blocks) is read at the same intervals.
         sub_intervals = [_parse_region_interval(r) for r in args.test_region]
-        rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
-        max_ref_block_len = hl.eval(
-            _probe_vds(project, environment, [0], None).reference_data.index_globals()[
-                rbml_field
-            ]
-        )
-        vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
+        vds_filter_intervals = sub_intervals
     elif n_sub > 1 and chrom:
         logger.warning(
             "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
@@ -1771,6 +1783,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         environment=environment,
         partition_range=partition_range,
         sub_intervals=vds_read_intervals,
+        filter_intervals=vds_filter_intervals,
         chrom=chrom,
         test=test,
         test_sample_subset=args.test_sample_subset,
@@ -2798,13 +2811,16 @@ def main(args):
             # intervals come from the loci within those partitions; otherwise from
             # the (chrom-restricted) vep_context.
             strict_sub_intervals = None
+            strict_filter_intervals = None
             if args.test_region:
-                # Explicit region: read the VDS and the sites at these intervals (one
-                # read partition each); skip the partition-based scoping entirely.
+                # Explicit region: read the VDS via filter_intervals (splits
+                # straddling reference blocks; see the chunk worker) and the sites at
+                # these intervals; skip the partition-based scoping entirely.
                 strict_partition_range = None
                 strict_sub_intervals = [
                     _parse_region_interval(r) for r in args.test_region
                 ]
+                strict_filter_intervals = strict_sub_intervals
             elif args.partitions_for_rep_on_read is not None:
                 n = args.partitions_for_rep_on_read
                 logger.info(
@@ -2829,23 +2845,19 @@ def main(args):
                         n, chrom=chrom
                     )
 
-            # The VDS read uses the same intervals as the sites, EXCEPT for a region
-            # test the leading edge is backed up by ref_block_max_length-1 to capture
-            # reference blocks straddling in from before the region (the sites read
-            # stays un-widened), mirroring the chunk worker's boundary fix.
-            strict_vds_read_intervals = strict_sub_intervals
-            if args.test_region:
-                rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
-                rbml_probe = _probe_vds(project, environment, [0], None)
-                strict_vds_read_intervals = _expand_leading_edges(
-                    strict_sub_intervals,
-                    hl.eval(rbml_probe.reference_data.index_globals()[rbml_field]),
-                )
+            # The VDS read uses the same intervals as the sites via read_intervals,
+            # EXCEPT for --test-region, which reads via filter_intervals (splitting
+            # straddling reference blocks; see the chunk worker) -- so read_intervals
+            # is dropped there.
+            strict_vds_read_intervals = (
+                None if args.test_region else strict_sub_intervals
+            )
             vds, sex_karyotype_field = _load_project_vds(
                 project=project,
                 environment=environment,
                 partition_range=strict_partition_range,
                 sub_intervals=strict_vds_read_intervals,
+                filter_intervals=strict_filter_intervals,
                 chrom=chrom,
                 test=test,
                 test_sample_subset=args.test_sample_subset,
