@@ -1838,6 +1838,33 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         sub_intervals=sub_intervals,
     )
 
+    # TEMP (--test-region only): capture the UPSTREAM densify+agg IR. Inside
+    # compute_stats_per_ref_site the densify (to_dense_mt) and agg_by_strata are
+    # materialized by a checkpoint to an "agg_stats" temp HT; that table's IR holds
+    # the heavy densify + aggregation nodes that the post-agg chunk IR
+    # (chunk_ir_n*.txt) cannot show. Monkeypatch checkpoint to dump that IR once,
+    # before it executes. Remove after the investigation.
+    if args.test_region:
+        _ir_dir = args.chunk_output.rsplit("/", 1)[0]
+        _orig_ckpt = hl.Table.checkpoint
+        _dumped = []
+
+        def _ckpt_dump_ir(self, output, *a, **kw):
+            if "agg_stats" in str(output) and not _dumped:
+                _dumped.append(True)
+                ir_text = str(self._tir)
+                ir_path = _ir_dir + f"/agg_stats_ir_n{n_sub}.txt"
+                with hfs.open(ir_path, "w") as f:
+                    f.write(ir_text)
+                logger.info(
+                    "Wrote agg_stats densify+agg IR (%d chars) to %s",
+                    len(ir_text),
+                    ir_path,
+                )
+            return _orig_ckpt(self, output, *a, **kw)
+
+        hl.Table.checkpoint = _ckpt_dump_ir
+
     cov_and_an_ht = compute_all_release_stats_per_ref_site(
         vds,
         ref_ht,
