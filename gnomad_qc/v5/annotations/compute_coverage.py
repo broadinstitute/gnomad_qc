@@ -193,13 +193,16 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
         "Determining downsampling groups for AoU...",
     )
     downsamplings = DOWNSAMPLINGS["v5"]
-    # Restrict per-group downsamplings to the desired genetic ancestry groups so
-    # annotate_downsamplings doesn't generate them for every other group too.
-    gen_anc = ht.genetic_ancestry_inference.gen_anc
-    gen_anc = hl.or_missing(
-        hl.literal({"afr", "amr", "nfe"}).contains(gen_anc), gen_anc
+    # Restrict the per-group downsamplings to the desired genetic ancestry groups
+    # via gen_ancs_to_downsample so annotate_downsamplings doesn't generate them for
+    # every other group too. The global 10k/100k still cover all samples, and every
+    # group still gets a per-group index (just no per-group downsampling).
+    ht = annotate_downsamplings(
+        ht,
+        downsamplings,
+        ht.genetic_ancestry_inference.gen_anc,
+        gen_ancs_to_downsample=["afr", "amr", "nfe"],
     )
-    ht = annotate_downsamplings(ht, downsamplings, gen_anc)
     return ht
 
 
@@ -1848,6 +1851,15 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
     )
+    # TEMP (IR perf investigation, --test-region only): dump the logical IR the
+    # writer materializes (densify -> agg_by_strata, i.e. the stage4/5/6 nodes) to
+    # GCS so we can map the execution stages to IR nodes. Remove after the dig.
+    if args.test_region:
+        ir_text = str(cov_and_an_ht._tir)
+        ir_path = args.chunk_output.rsplit("/", 1)[0] + f"/chunk_ir_n{n_sub}.txt"
+        with hfs.open(ir_path, "w") as f:
+            f.write(ir_text)
+        logger.info("Wrote chunk compute IR (%d chars) to %s", len(ir_text), ir_path)
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
