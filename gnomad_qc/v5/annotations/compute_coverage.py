@@ -703,9 +703,14 @@ def compute_all_release_stats_per_ref_site(
         mtds = hl.vds.to_merged_sparse_mt(
             vds, ref_allele_function=lambda locus: hl.missing("str")
         )
-        mtds = mtds.annotate_entries(GT=hl.coalesce(mtds.GT, mtds.LGT))
+        # Unify the genotype into LGT: ref blocks carry GT, variant sites carry LGT.
+        # compute_stats_per_ref_site resolves gt_field = GT if present else LGT, and the
+        # AN aggregator reads LGT.ploidy, so we expose LGT alone (drop GT) to match the
+        # VDS/variant_data schema (where only LGT exists). Ploidy is identical for GT and
+        # LGT, so AN is unchanged and ref sites are not undercounted.
+        mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT))
         mtds = mtds.select_entries(
-            *[f for f in ("GT", "GQ", "DP", "adj", "END") if f in mtds.entry]
+            *[f for f in ("LGT", "GQ", "DP", "adj", "END") if f in mtds.entry]
         )
 
     ht = compute_stats_per_ref_site(
