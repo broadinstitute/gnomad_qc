@@ -582,6 +582,7 @@ def compute_all_release_stats_per_ref_site(
     interval_ht: Optional[hl.Table] = None,
     group_membership_ht: Optional[hl.Table] = None,
     reduce_min_aggs: bool = False,
+    experimental_densify: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -689,8 +690,26 @@ def compute_all_release_stats_per_ref_site(
         rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # T3 (experimental, --experimental-densify): merge the VDS into one sparse MT so
+    # compute_stats_per_ref_site takes the lean ``hl.experimental.densify`` scan
+    # (the is_vds=False branch) instead of ``to_dense_mt``'s variant+reference
+    # outer-join + per-cell ``coalesce_join``. The genotype is unified per cell (ref
+    # blocks carry GT, variant sites LGT); AN sums ploidy, which is local/global- and
+    # multiallelic-invariant, and coalesce mirrors what ``to_dense_mt`` does
+    # internally, so outputs match. ``to_merged_sparse_mt`` needs no reference
+    # sequence here (missing ref allele), so it avoids the load_references path.
+    mtds = vds
+    if experimental_densify:
+        mtds = hl.vds.to_merged_sparse_mt(
+            vds, ref_allele_function=lambda locus: hl.missing("str")
+        )
+        mtds = mtds.annotate_entries(GT=hl.coalesce(mtds.GT, mtds.LGT))
+        mtds = mtds.select_entries(
+            *[f for f in ("GT", "GQ", "DP", "adj", "END") if f in mtds.entry]
+        )
+
     ht = compute_stats_per_ref_site(
-        vds,
+        mtds,
         ref_ht,
         entry_agg_funcs,
         interval_ht=interval_ht,
@@ -1226,7 +1245,9 @@ def _load_project_vds(
         vmt = vds.variant_data
         vmt = annotate_adj_no_dp(vmt)
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
-        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+        rmt = vds.reference_data
+        rmt = annotate_adj_no_dp(rmt)
+        vds = hl.vds.VariantDataset(rmt, vmt)
 
         if test and test_sample_subset:
             meta_ht = hl.read_table(
@@ -1872,6 +1893,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         project=project,
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
+        experimental_densify=args.experimental_densify,
     )
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
@@ -2044,6 +2066,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         )
         if args.reduce_min_aggs:
             flags.append("--reduce-min-aggs")
+        if args.experimental_densify:
+            flags.append("--experimental-densify")
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
@@ -3304,6 +3328,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Optional suffix appended to the qual_hists HT path (before the"
             " .ht extension) — analogous to --cov-and-an-output-suffix but"
             " for the --merge-qual-hists output. Use for A/B comparison."
+        ),
+    )
+    parser.add_argument(
+        "--experimental-densify",
+        action="store_true",
+        help=(
+            "T3 (experimental): compute coverage/AN via ``hl.experimental.densify``"
+            " on a merged sparse MT instead of ``hl.vds.to_dense_mt``, skipping the"
+            " variant+reference per-cell coalesce. Output is equivalent; lets us"
+            " A/B the densify cost. Chunk / --use-batch-fanout path only."
         ),
     )
     parser.add_argument(
