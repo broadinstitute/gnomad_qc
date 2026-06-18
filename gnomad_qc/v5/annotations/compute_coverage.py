@@ -1028,11 +1028,11 @@ def join_aou_and_gnomad_an_ht(
     """
     Join AoU and gnomAD AN HTs for release.
 
-    The combined (AoU + gnomAD) per-stratum AN is written first as the unlabeled
-    "global" entries; within those, the AoU-only downsampling strata use the key
-    ``"aou-downsampling"`` (gnomAD does not downsample). The gnomAD-only AN is then
-    appended as a ``"non-aou"`` subset (each appended ``strata_meta`` entry carries
-    ``{"subset": "non-aou"}``).
+    The combined (AoU + gnomAD) per-stratum AN for the strata both projects share is
+    written first as the unlabeled "global" entries (the AoU-only downsampling strata
+    are NOT global). The AoU-only AN is then appended as an ``"aou"`` subset (each
+    appended ``strata_meta`` entry carries ``{"subset": "aou"}``), including the
+    AoU-only downsampling strata -- which thus need no ``"aou-downsampling"`` rename.
 
     :param aou_ht: AoU AN HT.
     :param gnomad_ht: gnomAD v5 genomes AN HT.
@@ -1050,40 +1050,35 @@ def join_aou_and_gnomad_an_ht(
         project_2="gnomad",
         operation="sum",
     )
-    # Downsampling strata are AoU-only (gnomAD does not downsample); rename the
-    # "downsampling" key to "aou-downsampling" so the array is self-describing.
-    global_meta = [
-        {("aou-downsampling" if k == "downsampling" else k): v for k, v in d.items()}
-        for d in joint_strata_meta
-    ]
-    ht = ht.annotate(AN=joint_an)
+    # Global = the AoU + gnomAD combined AN for the strata both projects share (the
+    # standard adj/raw x gen_anc x sex strata). The AoU-only downsampling strata are
+    # NOT global -- they are exposed only in the "aou" subset below -- so drop them
+    # here (joint_strata_meta is a Python list; keep the matching AN / count entries).
+    global_idx = [i for i, d in enumerate(joint_strata_meta) if "downsampling" not in d]
+    global_meta = [joint_strata_meta[i] for i in global_idx]
+    ht = ht.annotate(AN=hl.array([joint_an[i] for i in global_idx]))
     ht = ht.annotate_globals(
         strata_meta=global_meta,
-        strata_sample_count=count_arrays_dict["counts"],
+        strata_sample_count=hl.array(
+            [count_arrays_dict["counts"][i] for i in global_idx]
+        ),
     )
 
-    # Append the gnomAD-only AN as the "non-aou" subset. The global (AoU + gnomAD)
-    # entries set above stay unlabeled; each appended entry gets {"subset": "non-aou"}
-    # added to its strata_meta. No re-aggregation is needed -- the gnomAD side (row
-    # AN_gnomad and the strata_meta_gnomad / strata_sample_count_gnomad globals)
-    # survives the join, so we extend the three parallel arrays in lockstep.
-    subset_meta = ht.index_globals().strata_meta_gnomad.map(
-        lambda d: hl.dict(d.items().append(("subset", "non-aou")))
+    # Append the AoU-only AN as the "aou" subset. The global entries set above stay
+    # unlabeled; each appended entry gets {"subset": "aou"} added to its strata_meta,
+    # including the AoU-only downsampling strata (so they carry the subset tag and
+    # need no "aou-downsampling" key rename). The AoU side (row AN_aou and the
+    # strata_meta_aou / strata_sample_count_aou globals) survives the join, and AN_aou
+    # is always defined (AoU is the left side of the join), so we extend the three
+    # parallel arrays in lockstep with no fill.
+    subset_meta = ht.index_globals().strata_meta_aou.map(
+        lambda d: hl.dict(d.items().append(("subset", "aou")))
     )
-    # AN_gnomad is missing where the gnomAD release has no row for an AoU locus (in
-    # prod both cover the same sites; a test over disjoint regions may not). Treat a
-    # missing gnomAD AN as all-zero so the appended entries -- and the array length --
-    # stay defined at every locus.
-    n_gnomad = hl.len(ht.index_globals().strata_meta_gnomad)
-    ht = ht.annotate(
-        AN=ht.AN.extend(
-            hl.or_else(ht.AN_gnomad, hl.range(n_gnomad).map(lambda _: hl.int64(0)))
-        )
-    )
+    ht = ht.annotate(AN=ht.AN.extend(ht.AN_aou))
     ht = ht.annotate_globals(
         strata_meta=ht.strata_meta.extend(subset_meta),
         strata_sample_count=ht.strata_sample_count.extend(
-            ht.index_globals().strata_sample_count_gnomad
+            ht.index_globals().strata_sample_count_aou
         ),
     )
     return ht
@@ -1851,15 +1846,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
     )
-    # TEMP (IR perf investigation, --test-region only): dump the logical IR the
-    # writer materializes (densify -> agg_by_strata, i.e. the stage4/5/6 nodes) to
-    # GCS so we can map the execution stages to IR nodes. Remove after the dig.
-    if args.test_region:
-        ir_text = str(cov_and_an_ht._tir)
-        ir_path = args.chunk_output.rsplit("/", 1)[0] + f"/chunk_ir_n{n_sub}.txt"
-        with hfs.open(ir_path, "w") as f:
-            f.write(ir_text)
-        logger.info("Wrote chunk compute IR (%d chars) to %s", len(ir_text), ir_path)
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
