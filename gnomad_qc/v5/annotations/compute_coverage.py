@@ -1246,7 +1246,11 @@ def _load_project_vds(
         vmt = annotate_adj_no_dp(vmt)
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
         rmt = vds.reference_data
-        rmt = annotate_adj_no_dp(rmt)
+        # Reference blocks are hom-ref with no AD/LAD; gq_only computes adj from GQ
+        # alone (the AB test is vacuous for non-het calls, so this equals get_adj_expr
+        # for ref blocks). Without adj on ref data, ref-block samples weren't marked
+        # adj, undercounting adj AN/coverage at reference sites.
+        rmt = annotate_adj_no_dp(rmt, gq_only=True)
         vds = hl.vds.VariantDataset(rmt, vmt)
 
         if test and test_sample_subset:
