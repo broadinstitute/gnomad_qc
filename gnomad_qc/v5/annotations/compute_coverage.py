@@ -1111,7 +1111,7 @@ def join_aou_and_gnomad_qual_hists_ht(
         "dp_hist_all",
     ]
     # Only adj qual_hists are kept in v5 (raw_qual_hists were dropped at compute
-    # time; see _get_hists). The reused gnomAD v4 hists still carry raw_qual_hists,
+    # time; see ``_get_hists``). The reused gnomAD v4 hists still carry raw_qual_hists,
     # but we don't merge or emit it.
     hist_structs = {
         "qual_hists": qual_hists,
@@ -1198,8 +1198,7 @@ def _load_project_vds(
     :param environment: Compute environment.
     :param partition_range: VDS partition indices (e.g. ``list(range(3))``)
         or ``None`` for the full VDS.
-    :param sub_intervals: Locus sub-intervals for read-time partitioning
-        (AoU only; ignored for gnomAD).
+    :param sub_intervals: Locus sub-intervals for read-time partitioning.
     :param chrom: Optional list of contigs to filter to.
     :param test: Whether this is a test run (gates ``test_sample_subset``).
     :param test_sample_subset: If True (AoU only, and ``test``), subsample
