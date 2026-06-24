@@ -242,7 +242,7 @@ def get_group_membership_ht(
             ),
         )
 
-    elif project == "gnomad":
+    else:
         # Filter to v4 consent drop samples.
         # NOTE: Not using v5 project meta here because this part will be run in
         # Dataproc.
@@ -262,8 +262,6 @@ def get_group_membership_ht(
             reduce_to_minimal_groups=reduce_min_aggs,
             force_leaf_groups=PINNED_LEAF_GROUPS,
         )
-    else:
-        raise ValueError(f"project must be 'aou' or 'gnomad', got {project!r}")
 
     return ht
 
