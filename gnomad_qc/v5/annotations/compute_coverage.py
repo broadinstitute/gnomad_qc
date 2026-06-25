@@ -12,7 +12,7 @@ They are mutually exclusive (the ``__main__`` block validates this):
 
 1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
    runs wherever you launch it, does not call ``_init_hail`` (but the
-   ``_SUCCESS``/output skip-checks via ``_file_exists_for_env`` do
+   ``_SUCCESS``/output skip-checks via ``file_exists`` do
    initialize the Hail backend), builds and submits a Hail Batch of
    relay jobs, then returns. Used for the prod-scale AoU compute (the
    dataset is too big for one job).
@@ -46,8 +46,10 @@ Per-project setup (--project-name {aou,gnomad})::
         chunk (so the dedup + strip runs once, not per chunk).
     4. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
        Strict single-job via --compute-all-cov-release-stats-ht, or the
-       prod-scale fan-out (--use-batch-fanout then --merge-cov-chunks). See
-       "Execution roles" above for how those dispatch.
+       prod-scale fan-out: optionally --write-chunk-intervals first (one VDS
+       open precomputes each chunk's read sub-intervals; workers probe the VDS
+       per chunk if it is absent), then --use-batch-fanout, then
+       --merge-cov-chunks. See "Execution roles" above for how those dispatch.
     5. Validate the merged HT covers every vep_context site
         (--validate-cov-and-an) — anti-join, fail on any dropped site.
 
@@ -113,7 +115,7 @@ from gnomad.utils.annotations import (
     merge_histograms,
     qual_hist_expr,
 )
-from gnomad.utils.file_utils import repartition_for_join
+from gnomad.utils.file_utils import file_exists, repartition_for_join
 from gnomad.utils.sparse_mt import (
     compute_stats_per_ref_site,
     get_allele_number_agg_func,
@@ -193,8 +195,8 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
         "Determining downsampling groups for AoU...",
     )
     downsamplings = DOWNSAMPLINGS["v5"]
-    # Restrict per-group downsamplings to the desired genetic ancestry groups so
-    # annotate_downsamplings doesn't generate them for every other group too.
+    # Restrict per-group downsamplings to genetic ancestry groups with sizes larger than
+    # the v5 downsampling criteria, i.e. larger than 10k samples.s
     gen_anc = ht.genetic_ancestry_inference.gen_anc
     gen_anc = hl.or_missing(
         hl.literal({"afr", "amr", "nfe"}).contains(gen_anc), gen_anc
@@ -264,46 +266,6 @@ def get_group_membership_ht(
         )
 
     return ht
-
-
-def _file_exists_for_env(path: str, environment: str) -> bool:
-    """
-    Check if a path exists, tolerant of permission errors in batch mode.
-
-    On the batch backend, anonymous file probes against requester-pays
-    buckets can raise permission errors before getting to "exists / does
-    not exist." Treat those *specifically* as "exists" so the chunk is
-    skipped rather than re-run; the next stage will surface a real error
-    if the file is actually broken. Any other exception (network,
-    asyncio, etc.) is re-raised so we fail loud instead of silently
-    skipping work.
-
-    :param path: GCS path to probe.
-    :param environment: Compute environment. Only "batch" activates
-        the permission-error fallback; other environments propagate.
-    :return: True if the file exists (or is assumed to under batch
-        permission errors), False otherwise.
-    """
-    from gnomad.utils.file_utils import file_exists
-
-    try:
-        return file_exists(path)
-    except PermissionError as e:
-        # This PermissionError was isolated to Hail 0.2.138's anonymous probe of
-        # requester-pays paths. Treating it as "exists" is a workaround, but it is
-        # dangerous: a genuine creds/bucket misconfig would mark a never-written
-        # chunk as present and let the merge run over missing data. Logged at ERROR
-        # so a broad perms problem (many "assumed exists") is visible, not silent.
-        if environment == "batch":
-            logger.error(
-                "file_exists on %s raised PermissionError (%s); ASSUMING EXISTS"
-                " (Hail 0.2.138 workaround). If many of these appear, a real"
-                " permissions problem may be silently skipping unwritten chunks.",
-                path,
-                e,
-            )
-            return True
-        raise
 
 
 def _chunk_path(cov_and_an_ht_path: str, idx: int) -> str:
@@ -1682,7 +1644,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         )
     elif n_sub > 1 and not chrom:
         intervals_path = _chunk_intervals_path(environment, test)
-        if _file_exists_for_env(intervals_path, environment):
+        if file_exists(intervals_path):
             # Precompute hit: --write-chunk-intervals already derived every chunk's
             # sub-intervals in one shared VDS open. Read this chunk's entry from the
             # JSON driver-side (hailtop.fs, NOT a QoB job) so we skip both the ~400s
@@ -2177,7 +2139,7 @@ def _orchestrate_coverage_batch(
     # Fail fast (before submitting thousands of jobs) if the preprocessed
     # vep_context sites HT the chunks read isn't there yet.
     sites_path = _vep_context_sites_path(args.test)
-    if not _file_exists_for_env(sites_path, "batch"):
+    if not file_exists(sites_path):
         raise FileNotFoundError(
             f"vep_context sites HT not found at {sites_path}. Run"
             " --write-vep-context-sites first (it is a prerequisite for the"
@@ -2468,7 +2430,7 @@ def _orchestrate_coverage_merge(
         else:
             pending = []
             for idx in range(n_out):
-                if _file_exists_for_env(out_paths[idx], "batch"):
+                if file_exists(out_paths[idx]):
                     logger.info(
                         "Skipping already-complete L%d group %d at %s",
                         level,
@@ -2503,7 +2465,7 @@ def _orchestrate_coverage_merge(
 
     # Final merge: a single job that unions the remaining (<= gs) inputs
     # and writes the canonical output.
-    if not args.overwrite and _file_exists_for_env(cov_and_an_ht_path, "batch"):
+    if not args.overwrite and file_exists(cov_and_an_ht_path):
         logger.info(
             "Final merge HT exists at %s; skipping (pass --overwrite to rewrite).",
             cov_and_an_ht_path,
@@ -2567,7 +2529,7 @@ def main(args):
     # The configured _init_hail and the try/finally below are NEVER reached on
     # an orchestrator run; they belong to the separate ROLE 2 (worker) / ROLE 3
     # (in-process) invocations. Chunk listing uses hailtop.fs (no Hail backend),
-    # but NOTE _file_exists_for_env's file_exists (hl.hadoop_exists) still
+    # but NOTE file_exists (hl.hadoop_exists) still
     # triggers a *default* hl.init() on first call, so a Hail backend IS spun up
     # here for its existence checks.
     #   --use-batch-fanout : scatter the per-chunk compute.
