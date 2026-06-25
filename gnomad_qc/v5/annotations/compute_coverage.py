@@ -92,7 +92,8 @@ import logging
 import re
 import subprocess
 from functools import reduce
-from typing import List, NamedTuple, Optional, Sequence, Set, Tuple
+from itertools import groupby
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 import hail as hl
 import hailtop.batch as hb
@@ -196,7 +197,7 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     )
     downsamplings = DOWNSAMPLINGS["v5"]
     # Restrict per-group downsamplings to genetic ancestry groups with sizes larger than
-    # the v5 downsampling criteria, i.e. larger than 10k samples.s
+    # the v5 global downsampling criteria, i.e. larger than 10k samples.
     gen_anc = ht.genetic_ancestry_inference.gen_anc
     gen_anc = hl.or_missing(
         hl.literal({"afr", "amr", "nfe"}).contains(gen_anc), gen_anc
@@ -624,10 +625,10 @@ def compute_all_release_stats_per_ref_site(
     if project == "aou":
         entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
 
-        # Below we use just the raw group for qual hist computations because
-        # qual_hist_expr does its own adj filtering when adj is passed as an
-        # argument; we keep only the adj-filtered histograms (see _get_hists --
-        # raw qual hists were approved for removal from v5).
+        # Below we use just the raw group for qual hist computations because qual hists
+        # has its own built-in adj filtering when adj is passed as an argument and will
+        # produce both adj and raw histograms. We keep only the adj-filtered histograms
+        # (see _get_hists -- raw qual hists were approved for removal from v5).
         entry_agg_group_membership["qual_hists"] = [{"group": "raw"}]
 
     logger.info(
@@ -639,8 +640,8 @@ def compute_all_release_stats_per_ref_site(
     vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
     rmt = vds.reference_data
     # Computing LEN is only needed for VDS written before Hail 0.2.134, which
-    # added LEN to the reference data; future VDS versions ship it already, so
-    # this branch can be dropped once the inputs are all >= 0.2.134.
+    # added LEN to the reference data; VDS written using Hail 0.2.134 or greater have it
+    # already, so this branch can be dropped once the inputs are all >= 0.2.134.
     # https://hail.is/docs/0.2/change_log.html#version-0-2-134
     if "LEN" not in rmt.entry:
         rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
@@ -981,6 +982,7 @@ def merge_gnomad_an_hts(
 def join_aou_and_gnomad_an_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
+    test: bool = False,
 ) -> hl.Table:
     """
     Join AoU and gnomAD AN HTs for release.
@@ -993,6 +995,9 @@ def join_aou_and_gnomad_an_ht(
 
     :param aou_ht: AoU AN HT.
     :param gnomad_ht: gnomAD v5 genomes AN HT.
+    :param test: If True, zero-fill loci where the gnomAD release has no AN (test
+        regions may not overlap AoU). In prod the sites are identical, so AN_gnomad
+        is always present and is appended directly. Default is False.
     :return: Joined HT.
     """
     aou_ht = _rename_fields(aou_ht, "AN", "aou", rename_globals=True)
@@ -1008,9 +1013,9 @@ def join_aou_and_gnomad_an_ht(
         operation="sum",
     )
     # Downsampling strata are AoU-only (gnomAD does not downsample); rename the
-    # "downsampling" key to "aou-downsampling" so the array is self-describing.
+    # "downsampling" key to "aou_downsampling" so the array is self-describing.
     global_meta = [
-        {("aou-downsampling" if k == "downsampling" else k): v for k, v in d.items()}
+        {("aou_downsampling" if k == "downsampling" else k): v for k, v in d.items()}
         for d in joint_strata_meta
     ]
     ht = ht.annotate(AN=joint_an)
@@ -1027,16 +1032,18 @@ def join_aou_and_gnomad_an_ht(
     subset_meta = ht.index_globals().strata_meta_gnomad.map(
         lambda d: hl.dict(d.items().append(("subset", "non-aou")))
     )
-    # AN_gnomad is missing where the gnomAD release has no row for an AoU locus (in
-    # prod both cover the same sites; a test over disjoint regions may not). Treat a
-    # missing gnomAD AN as all-zero so the appended entries -- and the array length --
-    # stay defined at every locus.
-    n_gnomad = hl.len(ht.index_globals().strata_meta_gnomad)
-    ht = ht.annotate(
-        AN=ht.AN.extend(
-            hl.or_else(ht.AN_gnomad, hl.range(n_gnomad).map(lambda _: hl.int64(0)))
+    # AN_gnomad is missing only where the gnomAD release has no row for an AoU locus.
+    # In prod both cover the same vep_context sites, so it is always present and we
+    # append it directly. A test over disjoint regions can miss it; there, zero-fill so
+    # the appended entries -- and the array length -- stay defined at every locus.
+    if test:
+        n_gnomad = hl.len(ht.index_globals().strata_meta_gnomad)
+        gnomad_an = hl.or_else(
+            ht.AN_gnomad, hl.range(n_gnomad).map(lambda _: hl.int64(0))
         )
-    )
+    else:
+        gnomad_an = ht.AN_gnomad
+    ht = ht.annotate(AN=ht.AN.extend(gnomad_an))
     ht = ht.annotate_globals(
         strata_meta=ht.strata_meta.extend(subset_meta),
         strata_sample_count=ht.strata_sample_count.extend(
@@ -1285,17 +1292,15 @@ def _chunk_intervals_path(environment: str, test: bool = False) -> str:
     """
     Return the path to the precomputed per-chunk read sub-intervals JSON (30-day storage).
 
-    Written once by ``--write-chunk-intervals``: a single VDS open derives
-    the balanced read sub-intervals for *every* chunk, replacing the per-chunk probe
-    (a redundant ~400s VDS open on each of ~48k chunks). Stored as a plain JSON file
-    (not a Hail Table) so the worker reads it driver-side with ``hailtop.fs`` -- no
-    QoB job, so no query-on-batch cold-start. The JSON maps ``chunk_start`` (the
-    chunk's first VDS partition index, ``chunk_index * partitions_per_chunk``, as a
-    string key) to that chunk's serialized sub-intervals, alongside the VDS
-    ``ref_block_max_length`` and reference-genome name (for the leading-edge boundary
-    fix, see :func:``_expand_leading_edges``) and the ``total_partitions`` /
-    ``partitions_per_chunk`` layout the worker validates its chunk against (the keys
-    mis-align if the precompute and fan-out use different values).
+    Written once by ``--write-chunk-intervals``: a single VDS open derives the balanced
+    read sub-intervals for *every* chunk, replacing the per-chunk probe (a redundant
+    ~400s VDS open per chunk). Stored as a plain JSON file (not a Hail Table) so the
+    orchestrator/merge (to enumerate and --chrom-filter chunks) and the worker (to look
+    up its own chunk) read it driver-side with ``hailtop.fs`` -- no QoB job, so no
+    query-on-batch cold-start. The JSON holds ``chunks`` (a list indexed by chunk index;
+    each entry ``{"contig", "intervals"}``, never spanning a contig boundary), the VDS
+    ``ref_block_max_length``, the reference-genome name (for the leading-edge boundary
+    fix, see :func:``_expand_leading_edges``), and ``read_subintervals_per_chunk``.
 
     :param environment: Compute environment.
     :param test: If True, return the test-scoped intervals path.
@@ -1305,7 +1310,7 @@ def _chunk_intervals_path(environment: str, test: bool = False) -> str:
     return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
 
 
-def _interval_to_list(iv: hl.utils.Interval) -> list:
+def _interval_to_list(iv: hl.utils.Interval) -> List[Union[str, int, bool]]:
     """
     Serialize a locus interval to a JSON-friendly list.
 
@@ -1323,7 +1328,9 @@ def _interval_to_list(iv: hl.utils.Interval) -> list:
     ]
 
 
-def _interval_from_list(t: list, reference_genome: str) -> hl.utils.Interval:
+def _interval_from_list(
+    t: List[Union[str, int, bool]], reference_genome: str
+) -> hl.utils.Interval:
     """
     Reconstruct a locus interval from its :func:``_interval_to_list`` serialization.
 
@@ -1368,6 +1375,55 @@ def _parse_region_interval(
     )
 
 
+def _split_intervals_at_contigs(
+    intervals: List[hl.utils.Interval], reference_genome: str
+) -> List[hl.utils.Interval]:
+    """
+    Split any locus interval that straddles a contig boundary into one per contig.
+
+    ``repartition_for_join`` returns a contiguous partition of the keyspace, so the
+    interval covering a contig transition is ``[chrA:x, chrB:y)`` -- it spans the tail
+    of chrA and the head of chrB. Contig-keyed chunking requires every interval (hence
+    every chunk) to belong to exactly one contig, so such intervals are cut at contig
+    lengths; single-contig intervals pass through unchanged. The pieces tile the
+    original interval exactly (no gap or overlap), so coverage is preserved.
+
+    :param intervals: Locus intervals (e.g. from ``repartition_for_join``), sorted.
+    :param reference_genome: Reference-genome name (e.g. "GRCh38").
+    :return: Intervals, each with ``start.contig == end.contig``.
+    """
+    rg = hl.get_reference(reference_genome)
+    contigs = rg.contigs
+    lengths = rg.lengths
+    out: List[hl.utils.Interval] = []
+    for iv in intervals:
+        if iv.start.contig == iv.end.contig:
+            out.append(iv)
+            continue
+        si = contigs.index(iv.start.contig)
+        ei = contigs.index(iv.end.contig)
+        for k in range(si, ei + 1):
+            contig = contigs[k]
+            first, last = k == si, k == ei
+            lo = iv.start.position if first else 1
+            hi = iv.end.position if last else lengths[contig]
+            inc_s = iv.includes_start if first else True
+            inc_e = iv.includes_end if last else True
+            # Drop an empty tail piece (e.g. end at chrB:1 exclusive => nothing on
+            # chrB).
+            if hi < lo or (hi == lo and not (inc_s and inc_e)):
+                continue
+            out.append(
+                hl.Interval(
+                    hl.Locus(contig, lo, reference_genome=reference_genome),
+                    hl.Locus(contig, hi, reference_genome=reference_genome),
+                    includes_start=inc_s,
+                    includes_end=inc_e,
+                )
+            )
+    return out
+
+
 def _build_chunk_intervals(
     project: str,
     environment: str,
@@ -1375,35 +1431,37 @@ def _build_chunk_intervals(
     partitions_per_chunk: int,
     n_sub: int,
     chrom: Optional[List[str]] = None,
-) -> dict:
+    test_n_partitions: Optional[int] = None,
+) -> Dict[str, Any]:
     """
-    Precompute every chunk's balanced read sub-intervals in ONE VDS open.
+    Precompute every chunk's balanced read sub-intervals in ONE VDS open, by contig.
 
-    Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join``, a
-    redundant ~400s VDS open on each of ~48k chunks). Opens the VDS once over the
-    leading ``total_partitions``, derives ``n_chunks * n_sub`` balanced sub-intervals
-    over all the reference-data loci via ``repartition_for_join``, and
-    slices them into per-chunk groups of ``n_sub`` consecutive intervals. The
-    resulting chunks are balanced-by-data locus slices (disjoint and covering, so the
-    union of all chunks' sites equals the per-chunk-probe scheme) rather than
-    native-partition ranges; each is keyed by its ``chunk_start`` so the worker looks
-    itself up with the ``--chunk-start`` it already receives (no orchestrator change).
+    Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join`` on each
+    chunk). Opens the VDS once over the leading ``total_partitions``, derives
+    ``n_chunks * n_sub`` balanced sub-intervals over all reference-data loci, splits any
+    that straddle a contig boundary (:func:`_split_intervals_at_contigs`), then groups
+    them by contig and slices each contig's run into chunks of ``n_sub`` consecutive
+    sub-intervals. So no chunk crosses a contig boundary, and ``--chrom`` can select a
+    single contig's chunks; chunks remain disjoint and their union covers all loci.
 
-    Returns a JSON-serializable dict (intervals as plain lists) rather than a Hail
-    Table, so the worker reads it driver-side without a QoB job; this also avoids
-    materializing ~2.4M intervals through a single ``hl.literal`` at full AoU scale.
+    Returns a JSON-serializable dict (intervals as plain lists), read driver-side by the
+    orchestrator (to enumerate/filter chunks by contig) and the worker (to look up its
+    own chunk by index) without a QoB job.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
-    :param total_partitions: Number of leading VDS partitions the run processes.
-    :param partitions_per_chunk: Native partitions per chunk; sets
-        ``chunk_start = chunk_index * partitions_per_chunk``.
-    :param n_sub: Read sub-intervals per chunk (``--read-subintervals-per-chunk``).
-    :param chrom: Optional list of contigs to filter to.
-    :return: Dict with ``total_partitions`` and ``partitions_per_chunk`` (the layout
-        the worker validates its chunk against), ``ref_block_max_length``,
-        ``reference_genome``, and ``chunks`` (str(chunk_start) -> list of serialized
-        sub-intervals).
+    :param total_partitions: Number of leading VDS partitions to derive intervals over;
+        with ``partitions_per_chunk`` and ``n_sub`` it sets the sub-interval granularity
+        (``n_chunks * n_sub`` balanced sub-intervals).
+    :param partitions_per_chunk: Sets ``n_chunks = ceil(total_partitions / this)``, the
+        sub-interval-count divisor (no longer a chunk key -- chunks are contig-grouped).
+    :param n_sub: Sub-intervals per chunk (``--read-subintervals-per-chunk``).
+    :param chrom: Optional list of contigs to restrict the precompute to.
+    :param test_n_partitions: If set, keep only the first N read sub-intervals (a cheap
+        end-to-end test; combine with ``chrom`` to slice a single contig).
+    :return: Dict with ``read_subintervals_per_chunk``, ``ref_block_max_length``,
+        ``reference_genome``, and ``chunks`` (a list indexed by chunk index; each entry
+        ``{"contig": str, "intervals": [serialized sub-intervals]}``).
     """
     n_chunks = (total_partitions + partitions_per_chunk - 1) // partitions_per_chunk
     vds = _probe_vds(project, environment, list(range(total_partitions)), chrom)
@@ -1421,41 +1479,51 @@ def _build_chunk_intervals(
         n_partitions=n_chunks * n_sub,
         locus_intervals=True,
     )
-    n_subs = len(all_subs)
-    if n_subs < n_chunks:
+    if not all_subs:
         raise ValueError(
-            f"repartition_for_join returned only {n_subs} sub-intervals for"
-            f" {n_chunks} chunks; the data is too sparse to give every chunk a"
-            " sub-interval (lower --total-partitions or --partitions-per-chunk)."
+            "repartition_for_join returned no sub-intervals; the VDS reference_data"
+            " is empty for the requested partitions/contigs."
         )
-    # Distribute the returned sub-intervals into n_chunks contiguous, disjoint,
-    # covering groups (sizes differ by <=1). repartition_for_join caps at the data's
-    # natural split points, so it can return a few fewer than the requested
-    # n_chunks*n_sub (e.g. 99 for 100) -- we cannot assume exactly n_sub per chunk,
-    # but the union still covers all loci regardless of the per-chunk count.
     rg = all_subs[0].start.reference_genome
-    chunks = {
-        str(i * partitions_per_chunk): [
-            _interval_to_list(iv)
-            for iv in all_subs[
-                (i * n_subs) // n_chunks : ((i + 1) * n_subs) // n_chunks
-            ]
-        ]
-        for i in range(n_chunks)
-    }
-    sizes = [len(v) for v in chunks.values()]
+    # Split any sub-interval that straddles a contig boundary (repartition_for_join
+    # returns a contiguous keyspace partition, so the boundary interval is
+    # [chrA:x, chrB:y)), so EVERY interval -- and therefore every chunk -- belongs to
+    # exactly one contig. Then group consecutive same-contig sub-intervals and slice
+    # each contig's run into chunks of <= n_sub. No chunk crosses a contig boundary, so
+    # --chrom selects a single contig's chunks while chunks stay disjoint and cover all
+    # loci.
+    contig_subs = _split_intervals_at_contigs(all_subs, rg.name)
+    if test_n_partitions:
+        # --test-n-partitions: keep only the first N read sub-intervals (already
+        # contig-scoped when --chrom is set) for a cheap end-to-end test.
+        contig_subs = contig_subs[:test_n_partitions]
+    chunks: List[Dict[str, Any]] = []
+    for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
+        contig_ivs = list(group)
+        for j in range(0, len(contig_ivs), n_sub):
+            chunks.append(
+                {
+                    "contig": contig,
+                    "intervals": [
+                        _interval_to_list(iv) for iv in contig_ivs[j : j + n_sub]
+                    ],
+                }
+            )
+    # Defensive: no chunk may mix contigs (--chrom filtering and per-contig disjointness
+    # both depend on it). _interval_to_list = [s_contig, s_pos, e_contig, e_pos, ...].
+    assert all(
+        iv[0] == iv[2] == c["contig"] for c in chunks for iv in c["intervals"]
+    ), "a chunk interval crosses a contig boundary"
     logger.info(
-        "Built chunk-intervals: %d chunks, %d sub-intervals total (%d-%d per"
-        " chunk; ref_block_max_length=%d).",
-        n_chunks,
-        n_subs,
-        min(sizes),
-        max(sizes),
+        "Built chunk-intervals: %d chunks across %d contigs (%d sub-intervals;"
+        " ref_block_max_length=%d).",
+        len(chunks),
+        len({c["contig"] for c in chunks}),
+        len(contig_subs),
         max_ref_block_len,
     )
     return {
-        "total_partitions": total_partitions,
-        "partitions_per_chunk": partitions_per_chunk,
+        "read_subintervals_per_chunk": n_sub,
         "ref_block_max_length": max_ref_block_len,
         "reference_genome": rg.name,
         "chunks": chunks,
@@ -1562,10 +1630,10 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     (``main`` does this via ``_init_hail`` before dispatching here).
 
     Steps:
-      1. Obtain this chunk's ``--read-subintervals-per-chunk`` balanced locus
-         sub-intervals: read them driver-side from the precomputed JSON
-         (``--write-chunk-intervals``) when present, else fall back to probing the
-         VDS (``filter_partitions`` + ``repartition_for_join``).
+      1. Obtain this chunk's balanced locus sub-intervals: for a --test-region run, the
+         passed regions; otherwise this chunk's entry (by index, ``--chunk-start``) in
+         the contig-keyed precompute JSON (``--write-chunk-intervals``, required), read
+         driver-side. A chunk never spans a contig boundary.
       2. Re-read the VDS via ``hl.vds.read_vds(intervals=...)`` — one partition per
          sub-interval (no shuffle) — with each contig's leading edge backed up by
          ``ref_block_max_length - 1`` (``_expand_leading_edges``) so reference
@@ -1575,10 +1643,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
          chunk emits only its own disjoint sites.
       4. Run ``compute_all_release_stats_per_ref_site``.
       5. Write to ``args.chunk_output``.
-
-    When ``--read-subintervals-per-chunk=1`` (legacy behavior), skips the
-    probe/re-read and reads the VDS once via ``filter_partitions``, then
-    builds ``ref_ht`` via the chunk-loci filter path.
 
     :param args: Parsed CLI args; reads ``project_name``, ``environment``,
         ``chunk_start``, ``chunk_stop``, ``test``, ``chrom``,
@@ -1635,94 +1699,42 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             ]
         )
         vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
-    elif n_sub > 1 and chrom:
-        logger.warning(
-            "--chrom is set, so sub-interval co-partitioning (read-subintervals-"
-            "per-chunk=%d) is disabled; this chunk uses the slower filter_partitions"
-            " + chunk-loci filter path (test/prod path divergence).",
-            n_sub,
-        )
-    elif n_sub > 1 and not chrom:
+    else:
+        # Look this chunk up by index in the contig-keyed precompute JSON
+        # (--write-chunk-intervals, required for the fan-out). Read it driver-side
+        # (hailtop.fs, NOT a QoB job) so we skip both the ~400s VDS re-open AND the
+        # query-on-batch cold-start a Hail-Table read would incur as this worker's
+        # first action. --chrom is handled by the orchestrator (it only fans out the
+        # selected contigs' chunks), so the worker just processes chunks[start].
         intervals_path = _chunk_intervals_path(environment, test)
-        if file_exists(intervals_path):
-            # Precompute hit: --write-chunk-intervals already derived every chunk's
-            # sub-intervals in one shared VDS open. Read this chunk's entry from the
-            # JSON driver-side (hailtop.fs, NOT a QoB job) so we skip both the ~400s
-            # VDS re-open AND the query-on-batch cold-start a Hail-Table read would
-            # incur as this worker's first action.
-            with hfs.open(intervals_path) as f:
-                data = json.load(f)
-            # Guard: the precompute is layout-specific -- keyed by
-            # chunk_start = chunk_index * partitions_per_chunk. If this fan-out runs
-            # a different --partitions-per-chunk / --total-partitions than the
-            # precompute did, chunk_start keys silently mis-align (a chunk could read
-            # intervals built for a different chunk's loci). Verify this chunk [start, stop)
-            # is exactly what the stored layout produces (also rejects a stale file
-            # written before the layout was recorded).
-            json_total = data.get("total_partitions")
-            json_ppc = data.get("partitions_per_chunk")
-            if (
-                json_ppc is None
-                or json_total is None
-                or start % json_ppc != 0
-                or stop != min(start + json_ppc, json_total)
-            ):
-                raise ValueError(
-                    f"This chunk [{start}, {stop}) does not match the precomputed"
-                    f" chunk-intervals layout (total_partitions={json_total},"
-                    f" partitions_per_chunk={json_ppc}) in {intervals_path}. The"
-                    " precompute and fan-out must use the same --total-partitions /"
-                    " --partitions-per-chunk; regenerate --write-chunk-intervals"
-                    " (or delete the stale file)."
-                )
-            key = str(start)
-            if key not in data["chunks"]:
-                raise ValueError(
-                    f"chunk_start={start} absent from precomputed chunk-intervals"
-                    f" {intervals_path}; regenerate --write-chunk-intervals with the"
-                    " same --total-partitions / --partitions-per-chunk."
-                )
-            rg = data["reference_genome"]
-            sub_intervals = [_interval_from_list(t, rg) for t in data["chunks"][key]]
-            max_ref_block_len = data["ref_block_max_length"]
-            logger.info(
-                "Read %d precomputed sub-intervals for chunk [%d, %d)"
-                " (precompute hit; per-chunk VDS probe skipped).",
-                len(sub_intervals),
-                start,
-                stop,
+        if not file_exists(intervals_path):
+            raise FileNotFoundError(
+                f"chunk-intervals JSON not found at {intervals_path};"
+                " --write-chunk-intervals is required before the fan-out."
             )
-        else:
-            # No precompute file: probe this chunk's VDS to derive its sub-intervals
-            # (cheap reference_data-bounds load via filter_partitions).
-            vds_probe = _probe_vds(project, environment, partition_range, chrom)
-            sub_intervals = repartition_for_join(
-                vds_probe.reference_data.rows(),
-                n_partitions=n_sub,
-                locus_intervals=True,
+        with hfs.open(intervals_path) as f:
+            data = json.load(f)
+        chunk_meta = data["chunks"]
+        if not 0 <= start < len(chunk_meta):
+            raise ValueError(
+                f"chunk index {start} is out of range [0, {len(chunk_meta)}) in"
+                f" {intervals_path}; the fan-out and precompute are out of sync --"
+                " regenerate --write-chunk-intervals."
             )
-            rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
-            if rbml_field not in vds_probe.reference_data.globals:
-                raise ValueError(
-                    f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
-                    " straddling chunk boundaries cannot be bounded; run"
-                    " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
-                    " on the VDS first."
-                )
-            max_ref_block_len = hl.eval(
-                vds_probe.reference_data.index_globals()[rbml_field]
-            )
-            logger.info(
-                "Derived %d balanced sub-intervals from chunk [%d, %d) by probing the"
-                " VDS (probe fallback; no precompute file).",
-                len(sub_intervals),
-                start,
-                stop,
-            )
-        # Back up the VDS read's leading edge per contig so reference blocks
-        # straddling in from the previous chunk are not gated out (else coverage/
-        # AN is undercount at the chunk's first <=max_len sites). The sites/ref_ht
-        # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
+        entry = chunk_meta[start]
+        rg = data["reference_genome"]
+        sub_intervals = [_interval_from_list(t, rg) for t in entry["intervals"]]
+        max_ref_block_len = data["ref_block_max_length"]
+        logger.info(
+            "Read %d sub-intervals for chunk %d (contig %s) from the precompute.",
+            len(sub_intervals),
+            start,
+            entry["contig"],
+        )
+        # Back up the VDS read's leading edge per contig so reference blocks straddling
+        # in from the previous chunk are not gated out (else coverage/AN is
+        # undercounted at the chunk's first <=max_len sites). The sites/ref_ht read
+        # keeps the un-widened sub_intervals so sites stay disjoint per chunk.
         vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
 
     vds, sex_karyotype_field = _load_project_vds(
@@ -2057,17 +2069,19 @@ def _submit_chunk_batch(
     job_specs = []
     for idx in chunk_indices:
         path = _chunk_path(cov_and_an_ht_path, idx)
-        start = idx * ppc
-        stop = min(start + ppc, total)
+        # Chunk identity is the chunk INDEX: the worker looks itself up in the
+        # contig-keyed JSON by --chunk-start (= idx), and --chunk-stop is idx+1. The
+        # VDS read is interval-based (read_intervals from those sub-intervals), so the
+        # old native-partition range is no longer used.
         command = (
             f"{setup_cmd}{script} --run-chunk"
-            f" --chunk-start {start} --chunk-stop {stop}"
+            f" --chunk-start {idx} --chunk-stop {idx + 1}"
             f" --chunk-output {path}"
             f" {common_flags_str}"
         )
         job_specs.append(
             _RelayJobSpec(
-                name=f"cov_chunk_{idx:06d}_{start}_{stop}",
+                name=f"cov_chunk_{idx:06d}",
                 cpu=args.chunk_cpu,
                 memory=args.chunk_memory,
                 storage=args.chunk_storage,
@@ -2075,6 +2089,52 @@ def _submit_chunk_batch(
             )
         )
     _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "chunk")
+
+
+def _eligible_chunk_indices(
+    args: argparse.Namespace,
+) -> Tuple[List[Optional[str]], List[int]]:
+    """
+    Enumerate fan-out chunks and the subset selected by ``--chrom``.
+
+    Single source of truth shared by the chunk orchestrator and the merge so they
+    always agree on which chunks exist. A ``--test-region`` run is one chunk (the worker
+    derives its sub-intervals from the regions). Otherwise chunks come from the
+    contig-keyed precompute JSON (``--write-chunk-intervals``, required): it is read
+    driver-side (no VDS access -- which is VPC-SC-blocked outside the perimeter) to get
+    each chunk's contig, then only chunks whose contig is in ``--chrom`` are kept (all
+    chunks when ``--chrom`` is unset).
+
+    :param args: Parsed CLI args (reads ``test_region``, ``environment``, ``test``,
+        ``chrom``).
+    :return: ``(chunk_contigs, eligible)`` -- the per-chunk contig (``None`` for the
+        single ``--test-region`` chunk) indexed by chunk index, and the list of eligible
+        chunk indices after the ``--chrom`` filter.
+    """
+    if args.test_region:
+        chunk_contigs: List[Optional[str]] = [None]
+    else:
+        intervals_path = _chunk_intervals_path(args.environment, args.test)
+        if not file_exists(intervals_path):
+            raise FileNotFoundError(
+                f"chunk-intervals JSON not found at {intervals_path}. Run"
+                " --write-chunk-intervals first (required: the fan-out and merge"
+                " enumerate chunks by contig from it)."
+            )
+        with hfs.open(intervals_path) as f:
+            chunk_contigs = [c["contig"] for c in json.load(f)["chunks"]]
+    n_chunks = len(chunk_contigs)
+    if args.chrom:
+        chrom_set = set(args.chrom)
+        eligible = [i for i in range(n_chunks) if chunk_contigs[i] in chrom_set]
+        if not eligible:
+            raise ValueError(
+                f"No chunks match --chrom {args.chrom}; contigs in the precompute:"
+                f" {sorted(c for c in set(chunk_contigs) if c is not None)}."
+            )
+    else:
+        eligible = list(range(n_chunks))
+    return chunk_contigs, eligible
 
 
 def _orchestrate_coverage_batch(
@@ -2132,9 +2192,6 @@ def _orchestrate_coverage_batch(
     :return: None.
     """
     project = args.project_name
-    total = args.total_partitions
-    ppc = args.partitions_per_chunk
-    n_chunks = (total + ppc - 1) // ppc
 
     # Fail fast (before submitting thousands of jobs) if the preprocessed
     # vep_context sites HT the chunks read isn't there yet.
@@ -2146,20 +2203,27 @@ def _orchestrate_coverage_batch(
             " chunk compute)."
         )
 
+    # Enumerate chunks (and the --chrom subset) via the shared helper, so the
+    # orchestrator and the merge always agree on which chunks exist.
+    chunk_contigs, eligible = _eligible_chunk_indices(args)
+    n_chunks = len(chunk_contigs)
+
     # Pre-compute pending chunk indices so the summary log is accurate
     # and so we can short-circuit when nothing is pending.
     if args.overwrite:
-        pending_indices = list(range(n_chunks))
+        pending_indices = list(eligible)
     else:
-        # One directory listing instead of n_chunks serial existence probes.
+        # One directory listing instead of per-chunk serial existence probes.
         present = _list_present_chunk_indices(cov_and_an_ht_path)
-        pending_indices = [idx for idx in range(n_chunks) if idx not in present]
+        pending_indices = [idx for idx in eligible if idx not in present]
     logger.info(
-        "Coverage fan-out: %d chunks total, %d pending, %d skipped"
+        "Coverage fan-out: %d chunks total, %d eligible%s, %d pending, %d skipped"
         " (overwrite=%s, project=%s)",
         n_chunks,
+        len(eligible),
+        f" (--chrom {args.chrom})" if args.chrom else "",
         len(pending_indices),
-        n_chunks - len(pending_indices),
+        len(eligible) - len(pending_indices),
         args.overwrite,
         project,
     )
@@ -2324,10 +2388,10 @@ def _orchestrate_coverage_merge(
     submits Hail Batch jobs (QoB-from-container per job) and exits without
     initializing Hail in this process.
 
-    Discovery: chunk paths are reconstructed from ``--total-partitions`` /
-    ``--partitions-per-chunk``. Every expected chunk must have a
-    ``_SUCCESS`` marker; missing chunks fail loudly so the user re-runs
-    the chunk orchestrator before merging.
+    Discovery: chunks are enumerated from the contig-keyed precompute JSON (via the
+    same ``_eligible_chunk_indices`` the fan-out uses, so the two agree), filtered by
+    ``--chrom`` when set. Every expected chunk must have a ``_SUCCESS`` marker; missing
+    chunks fail loudly so the user re-runs the chunk orchestrator before merging.
 
     Recursive tree: starting from N chunks, each level groups its
     inputs into windows of ``--merge-group-size`` and emits one
@@ -2361,25 +2425,31 @@ def _orchestrate_coverage_merge(
     :return: None.
     """
     project = args.project_name
-    total = args.total_partitions
-    ppc = args.partitions_per_chunk
-    n_chunks = (total + ppc - 1) // ppc
 
-    logger.info("Verifying %d expected chunk HTs exist...", n_chunks)
+    # Enumerate chunks (and the --chrom subset) with the same helper the orchestrator
+    # uses, so the merge expects exactly the chunks the fan-out produced. A --chrom run
+    # merges only that contig's chunks into cov_and_an_ht_path.
+    chunk_contigs, eligible = _eligible_chunk_indices(args)
+    n_chunks = len(chunk_contigs)
+    logger.info(
+        "Verifying %d expected chunk HTs exist (of %d total)...",
+        len(eligible),
+        n_chunks,
+    )
     present = _list_present_chunk_indices(cov_and_an_ht_path)
-    missing = [i for i in range(n_chunks) if i not in present]
+    missing = [i for i in eligible if i not in present]
     if missing:
         raise FileNotFoundError(
-            f"--merge-cov-chunks: {len(missing)} of {n_chunks} chunks"
+            f"--merge-cov-chunks: {len(missing)} of {len(eligible)} expected chunks"
             f" missing (first few idx: {missing[:5]}). Run --use-batch-fanout"
             " to (re)compute missing chunks first."
         )
-    logger.info("All %d chunks present.", n_chunks)
+    logger.info("All %d expected chunks present.", len(eligible))
 
     gs = args.merge_group_size
 
     # Precompute the level shape so we can log the full plan upfront.
-    shape = [n_chunks]
+    shape = [len(eligible)]
     while shape[-1] > gs:
         shape.append((shape[-1] + gs - 1) // gs)
     # shape[-1] is the input count for the final merge (≤ gs). The
@@ -2408,7 +2478,7 @@ def _orchestrate_coverage_merge(
     # Intermediate levels: each emits a level-tagged group HT per output.
     # Iterates while #inputs > gs; stops when one final merge can union
     # everything remaining.
-    inputs = [_chunk_path(cov_and_an_ht_path, i) for i in range(n_chunks)]
+    inputs = [_chunk_path(cov_and_an_ht_path, i) for i in eligible]
     level = 1
     while len(inputs) > gs:
         n_in = len(inputs)
@@ -2689,6 +2759,7 @@ def main(args):
                 partitions_per_chunk=args.partitions_per_chunk,
                 n_sub=max(args.read_subintervals_per_chunk, 1),
                 chrom=chrom,
+                test_n_partitions=args.test_n_partitions,
             )
             with hfs.open(intervals_path, "w") as f:
                 json.dump(chunk_intervals, f)
@@ -2840,6 +2911,29 @@ def main(args):
         if args.validate_cov_and_an:
             logger.info("Validating cov_and_an HT covers all vep_context sites...")
             sites_ht = hl.read_table(_vep_context_sites_path(test))
+            # A scoped run produces cov_and_an for only part of the genome, so validate
+            # against just what ran (else the rest reads as "missing"). A fan-out
+            # --test-n-partitions run covers only the first N sub-intervals (a partial
+            # contig), so scope to exactly the chunks that ran, from the JSON; otherwise
+            # --chrom scopes to whole contigs.
+            intervals_path = _chunk_intervals_path(environment, test)
+            if args.test_n_partitions and file_exists(intervals_path):
+                _, eligible = _eligible_chunk_indices(args)
+                with hfs.open(intervals_path) as f:
+                    cm = json.load(f)
+                rg = cm["reference_genome"]
+                sites_ht = hl.filter_intervals(
+                    sites_ht,
+                    [
+                        _interval_from_list(t, rg)
+                        for i in eligible
+                        for t in cm["chunks"][i]["intervals"]
+                    ],
+                )
+            elif args.chrom:
+                sites_ht = hl.filter_intervals(
+                    sites_ht, [hl.parse_locus_interval(c) for c in args.chrom]
+                )
             merged_ht = hl.read_table(cov_and_an_ht_path)
             missing_ht = sites_ht.anti_join(merged_ht).checkpoint(
                 new_temp_file("cov_an_missing_sites", "ht")
@@ -2994,7 +3088,7 @@ def main(args):
             )
             aou_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_ht = hl.read_table(gnomad_an_ht_path)
-            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
+            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht, test=test)
             ht = ht.select("AN")
             ht = ht.select_globals(
                 strata_meta=ht.strata_meta,
@@ -3228,13 +3322,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Strict single-job compute (--compute-all-cov-release-stats-ht) only:"
-            " read just the first N partitions of the VDS for a cheap test (the"
-            " strict path otherwise reads the whole VDS). The ref_ht is scoped to"
-            " the loci within those partitions. Combine with --partitions-for-rep-on-read"
-            " to"
-            " co-partition just those N partitions. Default None reads the whole"
-            " VDS."
+            "Cheap test over the first N partitions. With --write-chunk-intervals,"
+            " keep the first N read sub-intervals of the precomputed JSON (combine with"
+            " --chrom to slice a single contig), so the fan-out / merge / validate run"
+            " just those. With the strict single-job --compute-all-cov-release-stats-ht,"
+            " instead read the first N native VDS partitions (the genome start, so this"
+            " mode does not compose with --chrom) and scope the ref_ht to their loci;"
+            " combine with --partitions-for-rep-on-read to co-partition just those."
+            " Default None: full run."
         ),
     )
     test_group.add_argument(
@@ -3296,14 +3391,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-chunk-intervals",
         help=(
-            "Precompute every chunk's balanced read sub-intervals in ONE VDS open"
-            " and store them as a JSON file (30-day storage), keyed by"
-            " chunk_start = chunk_index * --partitions-per-chunk, so each fan-out"
-            " chunk reads its sub-intervals driver-side instead of re-probing the VDS"
-            " (~400s open per chunk). Uses --total-partitions / --partitions-per-chunk"
-            " / --read-subintervals-per-chunk (pass the same values as the fan-out)."
-            " Optional: workers fall back to per-chunk probing if absent. With"
-            " --test, writes a separate _test file."
+            "Precompute every chunk's balanced read sub-intervals in ONE VDS open and"
+            " store them as a JSON file (30-day storage): a list of chunks, each tagged"
+            " with its contig and never spanning a contig boundary. REQUIRED before the"
+            " fan-out, which enumerates and --chrom-filters chunks from this file"
+            " driver-side (instead of re-probing the VDS, ~400s per chunk). Uses"
+            " --total-partitions / --partitions-per-chunk /"
+            " --read-subintervals-per-chunk for sub-interval granularity; pass --chrom"
+            " to restrict to some contigs. With --test, writes a separate _test file."
         ),
         action="store_true",
     )
@@ -3618,13 +3713,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--chunk-start",
         type=int,
         default=0,
-        help="First VDS partition index for --run-chunk (inclusive).",
+        help=(
+            "Chunk index for --run-chunk: the chunk's entry in the contig-keyed"
+            " precompute JSON (a --test-region run uses 0). Set by the orchestrator."
+        ),
     )
     worker_group.add_argument(
         "--chunk-stop",
         type=int,
         default=0,
-        help="Last VDS partition index for --run-chunk (exclusive).",
+        help=(
+            "Chunk index end (exclusive); the orchestrator sets it to"
+            " --chunk-start + 1."
+        ),
     )
     worker_group.add_argument(
         "--chunk-output",
