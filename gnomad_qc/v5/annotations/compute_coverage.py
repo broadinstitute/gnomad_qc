@@ -1457,8 +1457,9 @@ def _build_chunk_intervals(
         sub-interval-count divisor (no longer a chunk key -- chunks are contig-grouped).
     :param n_sub: Sub-intervals per chunk (``--read-subintervals-per-chunk``).
     :param chrom: Optional list of contigs to restrict the precompute to.
-    :param test_n_partitions: If set, keep only the first N read sub-intervals (a cheap
-        end-to-end test; combine with ``chrom`` to slice a single contig).
+    :param test_n_partitions: If set, keep only the first N partitions (chunks) --
+        ``N * n_sub`` read sub-intervals -- for a cheap end-to-end test; combine with
+        ``chrom`` to slice a single contig.
     :return: Dict with ``read_subintervals_per_chunk``, ``ref_block_max_length``,
         ``reference_genome``, and ``chunks`` (a list indexed by chunk index; each entry
         ``{"contig": str, "intervals": [serialized sub-intervals]}``).
@@ -1485,18 +1486,12 @@ def _build_chunk_intervals(
             " is empty for the requested partitions/contigs."
         )
     rg = all_subs[0].start.reference_genome
-    # Split any sub-interval that straddles a contig boundary (repartition_for_join
-    # returns a contiguous keyspace partition, so the boundary interval is
-    # [chrA:x, chrB:y)), so EVERY interval -- and therefore every chunk -- belongs to
-    # exactly one contig. Then group consecutive same-contig sub-intervals and slice
-    # each contig's run into chunks of <= n_sub. No chunk crosses a contig boundary, so
-    # --chrom selects a single contig's chunks while chunks stay disjoint and cover all
-    # loci.
     contig_subs = _split_intervals_at_contigs(all_subs, rg.name)
     if test_n_partitions:
-        # --test-n-partitions: keep only the first N read sub-intervals (already
-        # contig-scoped when --chrom is set) for a cheap end-to-end test.
-        contig_subs = contig_subs[:test_n_partitions]
+        # --test-n-partitions N: keep the first N partitions (chunks), i.e. N * n_sub
+        # read sub-intervals (already contig-scoped when --chrom is set), for a cheap
+        # end-to-end test.
+        contig_subs = contig_subs[: test_n_partitions * n_sub]
     chunks: List[Dict[str, Any]] = []
     for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
         contig_ivs = list(group)
@@ -1952,6 +1947,7 @@ class _RelayJobSpec(NamedTuple):
     cpu: float
     memory: str
     storage: str
+    chunk_attempts: int
     command: str
 
 
@@ -1971,11 +1967,10 @@ def _submit_relay_batch(
     retries. Parallelism comes from Hail Batch's own scheduler running the N jobs
     concurrently. No-ops (skips ``batch.run()``) when ``job_specs`` is empty.
 
-    :param args: Parsed CLI args (reads ``batch_image``, ``chunk_attempts``,
-        ``batch_dry_run``).
+    :param args: Parsed CLI args (reads ``batch_image``, ``batch_dry_run``).
     :param backend_kwargs: kwargs for the ``hb.ServiceBackend(...)`` constructor.
     :param batch_name: Hail Batch name.
-    :param job_specs: Per-job config (name + QoB sizing + command).
+    :param job_specs: Per-job config (name + QoB sizing + retry count + command).
     :param log_label: Noun for log messages ("chunk" / "merge").
     :return: None.
     """
@@ -1998,7 +1993,7 @@ def _submit_relay_batch(
             # Relay is a coordinator waiting on its inner QoB job; preemption
             # mid-wait orphans that inner job, so relays are non-spot.
             j.spot(False)
-            j.n_max_attempts(args.chunk_attempts)
+            j.n_max_attempts(spec.chunk_attempts)
             j.command(spec.command)
 
         logger.info(
@@ -2085,6 +2080,7 @@ def _submit_chunk_batch(
                 cpu=args.chunk_cpu,
                 memory=args.chunk_memory,
                 storage=args.chunk_storage,
+                chunk_attempts=args.chunk_attempts,
                 command=command,
             )
         )
@@ -2371,6 +2367,7 @@ def _submit_merge_batch(
                 cpu=args.merge_cpu,
                 memory=args.merge_memory,
                 storage=args.merge_storage,
+                chunk_attempts=args.chunk_attempts,
                 command=command,
             )
         )
@@ -2556,6 +2553,7 @@ def _orchestrate_coverage_merge(
         cpu=args.merge_cpu,
         memory=args.merge_memory,
         storage=args.final_merge_storage,
+        chunk_attempts=args.chunk_attempts,
         command=(
             f"{setup_cmd}{script} --run-merge"
             f" --merge-output {cov_and_an_ht_path}"
@@ -2718,29 +2716,54 @@ def main(args):
                     args.test_region,
                 )
             elif test:
-                # Scope the test sites table to the loci within the test VDS's
-                # partitions so we don't preprocess the whole genome for a tiny test.
-                # Range is the test compute's partition count: --test-n-partitions
-                # (strict) or --total-partitions (fan-out). Pass the same value you use
-                # for the test compute. Validation confirms that the < 12 partitions
-                # context HT test run cover the same loci as the fan-out compute.
-
-                n_test_parts = args.test_n_partitions or args.total_partitions
-                if n_test_parts > 1000:
-                    raise ValueError(
-                        f"--write-vep-context-sites --test would scope to"
-                        f" {n_test_parts} partitions (~whole genome); pass"
-                        " --test-n-partitions or a small --total-partitions."
+                # Scope the test sites to the loci the test compute actually reads, so we
+                # don't preprocess the whole genome for a tiny test. For a fan-out test,
+                # use the chunk-intervals JSON's sub-intervals -- the same loci the
+                # workers read (range(N) native partitions is the genome start = chr1, so
+                # it cannot compose with --chrom). Falls back to the first N native VDS
+                # partitions for the strict single-job path (no JSON). Validation confirms
+                # the test sites cover the same loci as the compute.
+                intervals_path = _chunk_intervals_path(environment, test)
+                if file_exists(intervals_path):
+                    _, eligible = _eligible_chunk_indices(args)
+                    with hfs.open(intervals_path) as f:
+                        cm = json.load(f)
+                    rg_name = cm["reference_genome"]
+                    site_intervals = [
+                        _interval_from_list(t, rg_name)
+                        for i in eligible
+                        for t in cm["chunks"][i]["intervals"]
+                    ]
+                    logger.info(
+                        "Test sites scoped to %d sub-intervals (%d chunks) from the"
+                        " chunk-intervals JSON.",
+                        len(site_intervals),
+                        len(eligible),
                     )
-
-                probe = _probe_vds(
-                    project, environment, list(range(n_test_parts)), chrom
-                )
-                site_intervals = _derive_chunk_locus_intervals(probe)
-                logger.info(
-                    "Test sites scoped to the loci within the first %d partitions.",
-                    n_test_parts,
-                )
+                elif chrom:
+                    raise ValueError(
+                        "--write-vep-context-sites --test --chrom requires the"
+                        " chunk-intervals JSON (run --write-chunk-intervals first):"
+                        " range(N) native partitions is the genome start (chr1) and"
+                        " cannot scope to --chrom."
+                    )
+                else:
+                    n_test_parts = args.test_n_partitions
+                    if not n_test_parts or n_test_parts > 1000:
+                        raise ValueError(
+                            "--write-vep-context-sites --test (strict single-job"
+                            " path) requires --test-n-partitions in 1..1000 to scope"
+                            " the test sites; pass it, or run --write-chunk-intervals"
+                            " first (fan-out test)."
+                        )
+                    probe = _probe_vds(
+                        project, environment, list(range(n_test_parts)), chrom
+                    )
+                    site_intervals = _derive_chunk_locus_intervals(probe)
+                    logger.info(
+                        "Test sites scoped to the loci within the first %d partitions.",
+                        n_test_parts,
+                    )
             _build_vep_context_sites_ht(site_intervals).write(
                 sites_path, overwrite=overwrite
             )
@@ -3322,14 +3345,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Cheap test over the first N partitions. With --write-chunk-intervals,"
-            " keep the first N read sub-intervals of the precomputed JSON (combine with"
-            " --chrom to slice a single contig), so the fan-out / merge / validate run"
-            " just those. With the strict single-job --compute-all-cov-release-stats-ht,"
-            " instead read the first N native VDS partitions (the genome start, so this"
-            " mode does not compose with --chrom) and scope the ref_ht to their loci;"
-            " combine with --partitions-for-rep-on-read to co-partition just those."
-            " Default None: full run."
+            "Cheap test over the first N partitions (chunks). With"
+            " --write-chunk-intervals, keep the first N chunks of the precomputed JSON"
+            " -- N * --read-subintervals-per-chunk sub-intervals (combine with --chrom"
+            " to slice a single contig) -- so the fan-out / merge / validate run just"
+            " those (and --write-vep-context-sites --test scopes to the same loci). With"
+            " the strict single-job --compute-all-cov-release-stats-ht, instead read the"
+            " first N native VDS partitions (the genome start, so this mode does not"
+            " compose with --chrom) and scope the ref_ht to their loci; combine with"
+            " --partitions-for-rep-on-read to co-partition just those. Default None: full"
+            " run."
         ),
     )
     test_group.add_argument(
