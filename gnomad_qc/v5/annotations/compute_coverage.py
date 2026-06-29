@@ -346,6 +346,21 @@ def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
     return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
 
 
+def _results_environment(environment: str, test: bool) -> str:
+    """
+    Return the bucket-selecting environment for coverage release artifacts.
+
+    Release artifacts go to the gnomAD (``dataproc``) bucket regardless of
+    compute environment, so an AoU run in ``batch`` writes to the gnomAD bucket.
+    A test run keeps results in the compute environment's tmp bucket.
+
+    :param environment: Compute environment.
+    :param test: Whether this is a test run.
+    :return: ``"dataproc"`` for a production run; ``environment`` for a test run.
+    """
+    return environment if test else "dataproc"
+
+
 def _resolve_cov_and_an_ht_path(
     project: str,
     environment: str,
@@ -1657,11 +1672,12 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     test = args.test
     chrom = args.chrom
     n_sub = max(args.read_subintervals_per_chunk, 1)
+    results_environment = _results_environment(environment, test)
 
     if args.chunk_output is None:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
-            environment,
+            results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
         )
@@ -1803,7 +1819,7 @@ def _build_setup_command(
     methods_branch: str = "main",
 ) -> str:
     """
-    Build shell commands to download gnomad_qc and gnomad_methods.
+    Build commands to download gnomad_qc and gnomad_methods and set up the pipeline's hail configuration.
 
     Both repos are actively developed, so chunk containers pull them at
     runtime rather than relying on what's baked into the Docker image. The
@@ -2590,6 +2606,7 @@ def main(args):
     chrom = args.chrom
     overwrite = args.overwrite
     reduce_min_aggs = args.reduce_min_aggs
+    results_environment = _results_environment(environment, test)
 
     # ===================================================================
     # ROLE 1: ORCHESTRATOR — submit a Hail Batch of relay jobs, then return
@@ -2606,7 +2623,7 @@ def main(args):
     if args.use_batch_fanout:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
-            environment,
+            results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
         )
@@ -2616,7 +2633,7 @@ def main(args):
     if args.merge_cov_chunks:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
-            environment,
+            results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
         )
@@ -2672,7 +2689,7 @@ def main(args):
     try:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
-            environment,
+            results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
         )
@@ -3000,7 +3017,7 @@ def main(args):
         if args.merge_gnomad_coverage:
             logger.info("Building gnomAD v5 coverage HT (subtracting consent-drop)...")
             merged_gnomad_coverage_ht_path = _gnomad_v5_merged_path(
-                environment, "coverage", test
+                results_environment, "coverage", test
             )
             check_resource_existence(
                 output_step_resources={
@@ -3022,7 +3039,7 @@ def main(args):
         if args.merge_gnomad_an:
             logger.info("Building gnomAD v5 AN HT (subtracting consent-drop)...")
             merged_gnomad_an_ht_path = _gnomad_v5_merged_path(
-                environment, "allele_number", test
+                results_environment, "allele_number", test
             )
             check_resource_existence(
                 output_step_resources={
@@ -3049,24 +3066,19 @@ def main(args):
         # HT/TSVs + merge qual hists. Run as a separate invocation after
         # ROLE 1 fan-out + --merge-cov-chunks have produced the AoU
         # cov_and_an HT. ---
-        # TODO: Decide which environment this will run in.
-        # Option 1: override paths with command line args to decouple from environment.
-        # Option 2: Make resources data set aware, also decouples.
-        # Option 3: Copy one output to the other env bucket with a --stage step
-        # Option 4: Have the final dataset AN and cov tables write to a dedicated l
-        # ocation, accessible by merge step env (currently implemented via command line,
-        # used batch so the gnomad v4 and consent merge AN table wrote to batch bucket)
         if args.export_coverage_release_files:
             logger.info("Exporting coverage release HT and TSV...")
             cov_ht_path = release_coverage_path(
                 public=False,
                 test=test,
                 coverage_type="coverage",
-                environment=environment,
+                environment=results_environment,
             )
-            cov_tsv_path = release_coverage_tsv_path(test=test, environment=environment)
+            cov_tsv_path = release_coverage_tsv_path(
+                test=test, environment=results_environment
+            )
             gnomad_coverage_ht_path = _gnomad_v5_merged_path(
-                environment, "coverage", test
+                results_environment, "coverage", test
             )
             check_resource_existence(
                 input_step_resources={"gnomad_coverage_ht": [gnomad_coverage_ht_path]},
@@ -3093,13 +3105,13 @@ def main(args):
                 public=False,
                 test=test,
                 coverage_type="allele_number",
-                environment=environment,
+                environment=results_environment,
             )
             an_tsv_path = release_all_sites_an_tsv_path(
-                test=test, environment=environment
+                test=test, environment=results_environment
             )
             gnomad_an_ht_path = _gnomad_v5_merged_path(
-                environment, "allele_number", test
+                results_environment, "allele_number", test
             )
             check_resource_existence(
                 input_step_resources={"gnomad_an_ht": [gnomad_an_ht_path]},
@@ -3128,7 +3140,9 @@ def main(args):
 
         if args.merge_qual_hists:
             logger.info("Merging AoU + gnomAD v4 qual hists...")
-            qual_hists_path = qual_hists(test=test, environment=environment).path
+            qual_hists_path = qual_hists(
+                test=test, environment=results_environment
+            ).path
             qual_hists_path = _apply_path_suffix(
                 qual_hists_path, args.qual_hists_output_suffix
             )
