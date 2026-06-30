@@ -18,6 +18,7 @@ def annotate_adj_no_dp(
     mt: hl.MatrixTable,
     adj_gq: int = 30,
     adj_ab: float = 0.2,
+    gq_only: bool = False,
 ) -> hl.MatrixTable:
     """
     Annotate genotypes with adj criteria.
@@ -28,8 +29,15 @@ def annotate_adj_no_dp(
     :param mt: Input MatrixTable.
     :param adj_gq: Minimum GQ. Default is 30.
     :param adj_ab: Minimum allele balance. Default is 0.2.
+    :param gq_only: If True, annotate adj from GQ alone (``adj = GQ >= adj_gq``),
+        bypassing the allele-balance test (which needs AD/LAD). Use for reference
+        data: hom-ref reference blocks carry no AD/LAD, and the AB test is vacuously
+        true for non-het calls, so GQ-only is exactly ``get_adj_expr`` restricted to
+        reference blocks. Default is False.
     :return: MatrixTable with adj annotation.
     """
+    if gq_only:
+        return mt.annotate_entries(adj=mt.GQ >= adj_gq)
     if "LGT" in mt.entry and "LAD" in mt.entry:
         gt_expr = mt.LGT
         ad_expr = mt.LAD

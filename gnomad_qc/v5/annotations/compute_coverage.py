@@ -184,11 +184,11 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     - 100,000
     - Genetic ancestry group sizes for AFR, AMR, NFE
 
-    Only AFR, AMR, and NFE per-group downsamplings are generated: the gen_anc
-    expression is restricted to those groups before ``annotate_downsamplings``,
-    which adds each present group's sample count to the downsamplings list and a
-    per-group index. The global 10k/100k still cover all samples (they use a
-    gen-anc-independent global index).
+    Only AFR, AMR, and NFE per-group downsamplings are generated: the full gen_anc
+    expression is passed to ``annotate_downsamplings`` with
+    ``gen_ancs_to_downsample=["afr", "amr", "nfe"]``, which adds those groups'
+    sample counts to the downsamplings list. Every group still gets a per-group
+    index; the global 10k/100k cover all samples (gen-anc-independent global index).
 
     :param ht: Input Table.
     :return: Table with downsampling groups.
@@ -197,13 +197,16 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
         "Determining downsampling groups for AoU...",
     )
     downsamplings = DOWNSAMPLINGS["v5"]
-    # Restrict per-group downsamplings to genetic ancestry groups with sizes larger than
-    # the v5 global downsampling criteria, i.e. larger than 10k samples.
-    gen_anc = ht.genetic_ancestry_inference.gen_anc
-    gen_anc = hl.or_missing(
-        hl.literal({"afr", "amr", "nfe"}).contains(gen_anc), gen_anc
+    # Restrict the per-group downsamplings to the desired genetic ancestry groups
+    # via gen_ancs_to_downsample so annotate_downsamplings doesn't generate them for
+    # every other group too. The global 10k/100k still cover all samples, and every
+    # group still gets a per-group index (just no per-group downsampling).
+    ht = annotate_downsamplings(
+        ht,
+        downsamplings,
+        ht.genetic_ancestry_inference.gen_anc,
+        gen_ancs_to_downsample=["afr", "amr", "nfe"],
     )
-    ht = annotate_downsamplings(ht, downsamplings, gen_anc)
     return ht
 
 
@@ -446,8 +449,8 @@ def _log_name_for_run(
 
     :param run_chunk: ``--run-chunk`` flag.
     :param run_merge: ``--run-merge`` flag.
-    :param chunk_start: Chunk start partition index (used when ``run_chunk`` is True).
-    :param chunk_stop: Chunk stop partition index (used when ``run_chunk`` is True).
+    :param chunk_start: Chunk start index (used when ``run_chunk`` is True).
+    :param chunk_stop: Chunk stop index, exclusive (used when ``run_chunk`` is True).
     :param merge_output: Merge output HT path (used to derive a label when ``run_merge`` is True).
     :return: Log name; suitable for use as a log-file basename.
     """
@@ -563,6 +566,7 @@ def compute_all_release_stats_per_ref_site(
     interval_ht: Optional[hl.Table] = None,
     group_membership_ht: Optional[hl.Table] = None,
     reduce_min_aggs: bool = False,
+    experimental_densify: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -572,8 +576,9 @@ def compute_all_release_stats_per_ref_site(
         Running this function prior to calculating frequencies removes the need for an additional
         densify for frequency calculations.
 
-    :param vds: Input VDS. Reference data must carry ``END``/``GQ``/``DP``;
-        a ``LEN`` field is added if missing.
+    :param vds: Input VDS. Reference data must carry ``END`` (and ``GQ`` for
+        adj/qual hists); a ``LEN`` field is added if missing. DP is read from
+        variant data only -- missing DP on reference blocks is treated as 0.
     :param ref_ht: Locus-only sites Table (typically derived from
         ``vep_context`` and stripped of telomeres/centromeres) defining
         the reference positions at which to aggregate.
@@ -597,6 +602,11 @@ def compute_all_release_stats_per_ref_site(
         ``compute_stats_per_ref_site`` so AN goes through the
         leaf-reduction path. Requires ``group_membership_ht`` to have
         been built with ``reduce_to_minimal_groups=True``.
+    :param experimental_densify: If True (T3, ``--experimental-densify``),
+        merge the VDS into one sparse MT (``to_merged_sparse_mt``) and unify the
+        genotype into ``LGT`` so ``compute_stats_per_ref_site`` takes the
+        ``hl.experimental.densify`` path instead of ``to_dense_mt``; outputs
+        match. Default is False.
     :return: HT keyed by locus with per-stratum ``AN``, flat
         ``mean``/``over_X``/``median_approx``/``total_DP`` coverage
         fields (from the global adj-filtered group), and
@@ -670,8 +680,32 @@ def compute_all_release_stats_per_ref_site(
         rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # T3 (experimental, --experimental-densify): merge the VDS into one sparse MT so
+    # compute_stats_per_ref_site takes the lean ``hl.experimental.densify`` scan
+    # (the is_vds=False branch) instead of ``to_dense_mt``'s variant+reference
+    # outer-join + per-cell ``coalesce_join``. The genotype is unified per cell (ref
+    # blocks carry GT, variant sites LGT); AN sums ploidy, which is local/global- and
+    # multiallelic-invariant, and coalesce mirrors what ``to_dense_mt`` does
+    # internally, so outputs match. Passing a missing ref allele makes
+    # ``to_merged_sparse_mt`` skip its ``has_sequence``/``sequence_context`` branch,
+    # so no reference-genome FASTA sequence is needed.
+    mtds = vds
+    if experimental_densify:
+        mtds = hl.vds.to_merged_sparse_mt(
+            vds, ref_allele_function=lambda locus: hl.missing("str")
+        )
+        # Unify the genotype into LGT: ref blocks carry GT, variant sites carry LGT.
+        # compute_stats_per_ref_site resolves gt_field = GT if present else LGT, and the
+        # AN aggregator reads LGT.ploidy, so we expose LGT alone (drop GT) to match the
+        # VDS/variant_data schema (where only LGT exists). Ploidy is identical for GT and
+        # LGT, so AN is unchanged and ref sites are not undercounted.
+        mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT))
+        mtds = mtds.select_entries(
+            *[f for f in ("LGT", "GQ", "DP", "adj", "END") if f in mtds.entry]
+        )
+
     ht = compute_stats_per_ref_site(
-        vds,
+        mtds,
         ref_ht,
         entry_agg_funcs,
         interval_ht=interval_ht,
@@ -1007,22 +1041,18 @@ def merge_gnomad_an_hts(
 def join_aou_and_gnomad_an_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
-    test: bool = False,
 ) -> hl.Table:
     """
     Join AoU and gnomAD AN HTs for release.
 
-    The combined (AoU + gnomAD) per-stratum AN is written first as the unlabeled
-    "global" entries; within those, the AoU-only downsampling strata use the key
-    ``"aou_downsampling"`` (gnomAD does not downsample). The gnomAD-only AN is then
-    appended as a ``"non-aou"`` subset (each appended ``strata_meta`` entry carries
-    ``{"subset": "non-aou"}``).
+    The combined (AoU + gnomAD) per-stratum AN for the strata both projects share is
+    written first as the unlabeled "global" entries (the AoU-only downsampling strata
+    are NOT global). The AoU-only AN is then appended as an ``"aou"`` subset (each
+    appended ``strata_meta`` entry carries ``{"subset": "aou"}``), including the
+    AoU-only downsampling strata -- which thus need no ``"aou-downsampling"`` rename.
 
     :param aou_ht: AoU AN HT.
     :param gnomad_ht: gnomAD v5 genomes AN HT.
-    :param test: If True, zero-fill loci where the gnomAD release has no AN (test
-        regions may not overlap AoU). In prod the sites are identical, so AN_gnomad
-        is always present and is appended directly. Default is False.
     :return: Joined HT.
     """
     aou_ht = _rename_fields(aou_ht, "AN", "aou", rename_globals=True)
@@ -1037,42 +1067,35 @@ def join_aou_and_gnomad_an_ht(
         project_2="gnomad",
         operation="sum",
     )
-    # Downsampling strata are AoU-only (gnomAD does not downsample); rename the
-    # "downsampling" key to "aou_downsampling" so the array is self-describing.
-    global_meta = [
-        {("aou_downsampling" if k == "downsampling" else k): v for k, v in d.items()}
-        for d in joint_strata_meta
-    ]
-    ht = ht.annotate(AN=joint_an)
+    # Global = the AoU + gnomAD combined AN for the strata both projects share (the
+    # standard adj/raw x gen_anc x sex strata). The AoU-only downsampling strata are
+    # NOT global -- they are exposed only in the "aou" subset below -- so drop them
+    # here (joint_strata_meta is a Python list; keep the matching AN / count entries).
+    global_idx = [i for i, d in enumerate(joint_strata_meta) if "downsampling" not in d]
+    global_meta = [joint_strata_meta[i] for i in global_idx]
+    ht = ht.annotate(AN=hl.array([joint_an[i] for i in global_idx]))
     ht = ht.annotate_globals(
         strata_meta=global_meta,
-        strata_sample_count=count_arrays_dict["counts"],
+        strata_sample_count=hl.array(
+            [count_arrays_dict["counts"][i] for i in global_idx]
+        ),
     )
 
-    # Append the gnomAD-only AN as the "non-aou" subset. The global (AoU + gnomAD)
-    # entries set above stay unlabeled; each appended entry gets {"subset": "non-aou"}
-    # added to its strata_meta. No re-aggregation is needed -- the gnomAD side (row
-    # AN_gnomad and the strata_meta_gnomad / strata_sample_count_gnomad globals)
-    # survives the join, so we extend the three parallel arrays in lockstep.
-    subset_meta = ht.index_globals().strata_meta_gnomad.map(
-        lambda d: hl.dict(d.items().append(("subset", "non-aou")))
+    # Append the AoU-only AN as the "aou" subset. The global entries set above stay
+    # unlabeled; each appended entry gets {"subset": "aou"} added to its strata_meta,
+    # including the AoU-only downsampling strata (so they carry the subset tag and
+    # need no "aou-downsampling" key rename). The AoU side (row AN_aou and the
+    # strata_meta_aou / strata_sample_count_aou globals) survives the join, and AN_aou
+    # is always defined (AoU is the left side of the join), so we extend the three
+    # parallel arrays in lockstep with no fill.
+    subset_meta = ht.index_globals().strata_meta_aou.map(
+        lambda d: hl.dict(d.items().append(("subset", "aou")))
     )
-    # AN_gnomad is missing only where the gnomAD release has no row for an AoU locus.
-    # In prod both cover the same vep_context sites, so it is always present and we
-    # append it directly. A test over disjoint regions can miss it; there, zero-fill so
-    # the appended entries -- and the array length -- stay defined at every locus.
-    if test:
-        n_gnomad = hl.len(ht.index_globals().strata_meta_gnomad)
-        gnomad_an = hl.or_else(
-            ht.AN_gnomad, hl.range(n_gnomad).map(lambda _: hl.int64(0))
-        )
-    else:
-        gnomad_an = ht.AN_gnomad
-    ht = ht.annotate(AN=ht.AN.extend(gnomad_an))
+    ht = ht.annotate(AN=ht.AN.extend(ht.AN_aou))
     ht = ht.annotate_globals(
         strata_meta=ht.strata_meta.extend(subset_meta),
         strata_sample_count=ht.strata_sample_count.extend(
-            ht.index_globals().strata_sample_count_gnomad
+            ht.index_globals().strata_sample_count_aou
         ),
     )
     return ht
@@ -1166,6 +1189,7 @@ def _load_project_vds(
     environment: str,
     partition_range: Optional[List[int]] = None,
     sub_intervals: Optional[List[hl.utils.Interval]] = None,
+    filter_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[List[str]] = None,
     test: bool = False,
     test_sample_subset: bool = False,
@@ -1191,7 +1215,13 @@ def _load_project_vds(
     :param environment: Compute environment.
     :param partition_range: VDS partition indices (e.g. ``list(range(3))``)
         or ``None`` for the full VDS.
-    :param sub_intervals: Locus sub-intervals for read-time partitioning.
+    :param sub_intervals: Locus sub-intervals for read-time partitioning
+        (AoU only; ignored for gnomAD).
+    :param filter_intervals: Locus intervals passed to ``get_*_vds`` as
+        ``filter_intervals`` (``split_reference_blocks=True``): subsets the VDS to
+        these intervals and SPLITS reference blocks straddling the edges, so the
+        in-region piece keeps its coverage with a bounded read (no backing the read
+        up by ``ref_block_max_length``). Used by ``--test-region``.
     :param chrom: Optional list of contigs to filter to.
     :param test: Whether this is a test run (gates ``test_sample_subset``).
     :param test_sample_subset: If True (AoU only, and ``test``), subsample
@@ -1202,8 +1232,11 @@ def _load_project_vds(
         sex_karyotype_field = "meta.sex_karyotype"
         vds = get_aou_vds(
             release_only=True,
-            filter_partitions=None if sub_intervals else partition_range,
+            filter_partitions=(
+                None if (sub_intervals or filter_intervals) else partition_range
+            ),
             read_intervals=sub_intervals,
+            filter_intervals=filter_intervals,
             annotate_meta=True,
             chrom=chrom,
             environment=environment,
@@ -1211,7 +1244,13 @@ def _load_project_vds(
         vmt = vds.variant_data
         vmt = annotate_adj_no_dp(vmt)
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
-        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+        rmt = vds.reference_data
+        # Reference blocks are hom-ref with no AD/LAD; gq_only computes adj from GQ
+        # alone (the AB test is vacuous for non-het calls, so this equals get_adj_expr
+        # for ref blocks). Without adj on ref data, ref-block samples weren't marked
+        # adj, undercounting adj AN/coverage at reference sites.
+        rmt = annotate_adj_no_dp(rmt, gq_only=True)
+        vds = hl.vds.VariantDataset(rmt, vmt)
 
         if test and test_sample_subset:
             meta_ht = hl.read_table(
@@ -1227,8 +1266,11 @@ def _load_project_vds(
         vds = get_gnomad_v5_genomes_vds(
             release_only=True,
             consent_drop_only=True,
-            filter_partitions=None if sub_intervals else partition_range,
+            filter_partitions=(
+                None if (sub_intervals or filter_intervals) else partition_range
+            ),
             read_intervals=sub_intervals,
+            filter_intervals=filter_intervals,
             annotate_meta=True,
             chrom=chrom,
         )
@@ -1240,13 +1282,15 @@ def _probe_vds(
     environment: str,
     partition_range: Optional[List[int]],
     chrom: Optional[List[str]],
+    filter_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.vds.VariantDataset:
     """
-    Cheap reference_data-bounds probe-load of the per-project VDS for a partition range.
+    Cheap reference_data-bounds probe-load of the per-project VDS.
 
-    Loads via ``filter_partitions`` only (no sample filtering / DP synthesis); the
-    caller derives the loci from ``reference_data`` (e.g. via
-    ``repartition_for_join``). Used by both the chunk worker and the strict path's
+    Loads via ``filter_partitions`` (or ``filter_intervals``) only (no sample
+    filtering / DP synthesis); the caller derives the loci from ``reference_data``
+    (e.g. via ``repartition_for_join``). Used by the chunk worker (both the normal
+    partition-range path and the ``--test-region`` fan-out) and the strict path's
     ``--test-n-partitions`` co-partitioning branch.
 
     :param project: "aou" or "gnomad".
@@ -1254,6 +1298,9 @@ def _probe_vds(
     :param partition_range: VDS partition indices to probe (e.g.
         ``list(range(2))``) or ``None`` for the full VDS.
     :param chrom: Optional list of contigs to filter to.
+    :param filter_intervals: Optional locus intervals to bound the probe to (via
+        ``hl.vds.filter_intervals``, splitting straddling reference blocks). Used by
+        the ``--test-region`` fan-out to probe just the region's reference-data loci.
     :return: Probe VDS (reference/variant data only).
     """
     if project == "aou":
@@ -1263,10 +1310,12 @@ def _probe_vds(
             environment=environment,
             remove_hard_filtered_samples=False,
             log_sample_counts=False,
+            filter_intervals=filter_intervals,
         )
     return get_gnomad_v5_genomes_vds(
         filter_partitions=partition_range,
         chrom=chrom,
+        filter_intervals=filter_intervals,
     )
 
 
@@ -1478,9 +1527,10 @@ def _build_chunk_intervals(
     :param environment: Compute environment.
     :param total_partitions: Number of leading VDS partitions to derive intervals over
         (the probe extent); with ``partitions_per_chunk`` and ``n_sub`` it sets the
-        sub-interval granularity (``n_chunks * n_sub`` balanced sub-intervals). For a
-        test, the caller passes ``--test-n-partitions`` here to scope to the first N
-        VDS partitions (combine with ``chrom`` to slice a single contig).
+        sub-interval granularity (``n_chunks * n_sub`` balanced sub-intervals). The
+        caller passes ``args.test_n_partitions or args.total_partitions``, so for a
+        test ``--test-n-partitions`` overrides this to the first N VDS partitions
+        (combine with ``chrom`` to slice a single contig).
     :param partitions_per_chunk: Sets ``n_chunks = ceil(total_partitions / this)``, the
         sub-interval-count divisor (no longer a chunk key -- chunks are contig-grouped).
     :param n_sub: Sub-intervals per chunk (``--read-subintervals-per-chunk``).
@@ -1664,9 +1714,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     :param args: Parsed CLI args; reads ``project_name``, ``environment``,
         ``chunk_start``, ``chunk_stop``, ``test``, ``test_region``, ``chrom``,
-        ``chunk_output``, ``results_environment``, ``cov_and_an_output_suffix``,
-        ``reduce_min_aggs``, ``test_sample_subset``. Hail must already be
-        initialized.
+        ``read_subintervals_per_chunk``, ``chunk_output``, ``results_environment``,
+        ``cov_and_an_output_suffix``, ``reduce_min_aggs``, ``test_sample_subset``,
+        ``experimental_densify``. Hail must already be initialized.
     :return: None.
     """
     project = args.project_name
@@ -1679,6 +1729,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     test = args.test
     chrom = args.chrom
+    n_sub = max(args.read_subintervals_per_chunk, 1)
     results_environment = _results_environment(
         environment, test, args.results_environment
     )
@@ -1706,19 +1757,56 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     # in from the previous chunk (see _expand_leading_edges). The sites/ref_ht
     # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
     vds_read_intervals: Optional[List[hl.utils.Interval]] = None
+    # For --test-region the VDS is read via filter_intervals (which splits
+    # straddling reference blocks) instead of read_intervals; this holds those.
+    vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
     if args.test_region:
-        # Explicit region (--test-region): this chunk's sub-intervals ARE the
-        # passed intervals (one read partition each); skip the partition-based
-        # derivation. Widen the VDS read's leading edge for reference blocks
-        # straddling in from before the region, same as the precompute path below.
-        sub_intervals = [_parse_region_interval(r) for r in args.test_region]
-        rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
-        max_ref_block_len = hl.eval(
-            _probe_vds(project, environment, [0], None).reference_data.index_globals()[
-                rbml_field
-            ]
-        )
-        vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
+        # Explicit region (--test-region): scope the chunk to these intervals, then
+        # balance them into n_sub sub-intervals using the same probe-and-
+        # repartition_for_join machinery the prod precompute (_build_chunk_intervals)
+        # uses, so the densify + per-site aggregation is spread across many small
+        # partitions. Reading the whole region as one partition per interval pins a
+        # single worker at its memory limit and gets OOM-killed on AoU's large sample
+        # count (the dense per-site agg over ~245k samples does not fit one worker).
+        region_intervals = [_parse_region_interval(r) for r in args.test_region]
+        if n_sub > 1:
+            # Probe the VDS bounded to the region (filter_intervals splits straddling
+            # reference blocks, so the probe's reference-data loci span exactly the
+            # region), balance those loci into n_sub sub-intervals, and read them via
+            # read_intervals with each contig's leading edge widened -- the same
+            # machinery (and the same no-data-loss guarantee) the prod fan-out uses
+            # and validates, just scoped to the region instead of a partition range.
+            vds_probe = _probe_vds(
+                project, environment, None, chrom, filter_intervals=region_intervals
+            )
+            sub_intervals = repartition_for_join(
+                vds_probe.reference_data.rows(),
+                n_partitions=n_sub,
+                locus_intervals=True,
+            )
+            rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
+            if rbml_field not in vds_probe.reference_data.globals:
+                raise ValueError(
+                    f"VDS reference_data lacks the '{rbml_field}' global, so blocks"
+                    " straddling sub-interval boundaries cannot be bounded; run"
+                    " hl.vds.truncate_reference_blocks / store_ref_block_max_length"
+                    " on the VDS first."
+                )
+            max_ref_block_len = hl.eval(
+                vds_probe.reference_data.index_globals()[rbml_field]
+            )
+            vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
+            logger.info(
+                "Region fan-out: balanced %d --test-region interval(s) into %d read"
+                " sub-intervals (read via read_intervals + leading-edge widening).",
+                len(region_intervals),
+                len(sub_intervals),
+            )
+        else:
+            # n_sub == 1: no fan-out -- read the region as one partition per interval
+            # via filter_intervals (splits straddling reference blocks; bounded).
+            sub_intervals = region_intervals
+            vds_filter_intervals = region_intervals
     else:
         # Look this chunk up by index in the per-chunk precompute JSON
         # (--write-chunk-intervals, required for the fan-out). Read it driver-side
@@ -1762,6 +1850,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         environment=environment,
         partition_range=partition_range,
         sub_intervals=vds_read_intervals,
+        filter_intervals=vds_filter_intervals,
         chrom=chrom,
         test=test,
         test_sample_subset=args.test_sample_subset,
@@ -1782,6 +1871,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         project=project,
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
+        experimental_densify=args.experimental_densify,
     )
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
@@ -1913,7 +2003,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
     common to both. With
     ``chunk=True`` the read/compute flags a chunk relay also needs
     (``--read-subintervals-per-chunk``, ``--reduce-min-aggs``,
-    ``--test-sample-subset``, ``--chrom``, ``--test-region``, ``--test``) are
+    ``--experimental-densify``, ``--test-sample-subset``, ``--chrom``,
+    ``--test-region``, ``--test``) are
     appended; the merge relay (which only unions HTs) omits them. Per-job flags (``--chunk-*`` /
     ``--merge-*``) are added by the submit helpers. Flag order is irrelevant to
     argparse.
@@ -1960,6 +2051,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         )
         if args.reduce_min_aggs:
             flags.append("--reduce-min-aggs")
+        if args.experimental_densify:
+            flags.append("--experimental-densify")
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
@@ -2886,20 +2979,24 @@ def main(args):
             strict_partition_range = list(range(test_n)) if test_n else None
 
             # Optionally co-partition the VDS and vep_context reads for more
-            # efficient joins. The bare --partitions-for-rep-on-read
-            # flag uses repartition_for_join's 1.1x native-partition multiplier (the
-            # natural choice for a full run, where there's no count to guess); a
-            # value gives an explicit partition count. With --test-n-partitions the
-            # intervals come from the loci within those partitions; otherwise from
-            # the (chrom-restricted) vep_context.
+            # efficient joins. --test-region (handled in the branch just below)
+            # overrides this and reads via filter_intervals. Otherwise, the bare
+            # --partitions-for-rep-on-read flag uses repartition_for_join's 1.1x
+            # native-partition multiplier (the natural choice for a full run, where
+            # there's no count to guess); a value gives an explicit partition count.
+            # With --test-n-partitions the intervals come from the loci within those
+            # partitions; otherwise from the (chrom-restricted) vep_context.
             strict_sub_intervals = None
+            strict_filter_intervals = None
             if args.test_region:
-                # Explicit region: read the VDS and the sites at these intervals (one
-                # read partition each); skip the partition-based scoping entirely.
+                # Explicit region: read the VDS via filter_intervals (splits
+                # straddling reference blocks; see the chunk worker) and the sites at
+                # these intervals; skip the partition-based scoping entirely.
                 strict_partition_range = None
                 strict_sub_intervals = [
                     _parse_region_interval(r) for r in args.test_region
                 ]
+                strict_filter_intervals = strict_sub_intervals
             elif args.partitions_for_rep_on_read is not None:
                 n = args.partitions_for_rep_on_read
                 logger.info(
@@ -2924,23 +3021,19 @@ def main(args):
                         n, chrom=chrom
                     )
 
-            # The VDS read uses the same intervals as the sites, EXCEPT for a region
-            # test the leading edge is backed up by ref_block_max_length-1 to capture
-            # reference blocks straddling in from before the region (the sites read
-            # stays un-widened), mirroring the chunk worker's boundary fix.
-            strict_vds_read_intervals = strict_sub_intervals
-            if args.test_region:
-                rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
-                rbml_probe = _probe_vds(project, environment, [0], None)
-                strict_vds_read_intervals = _expand_leading_edges(
-                    strict_sub_intervals,
-                    hl.eval(rbml_probe.reference_data.index_globals()[rbml_field]),
-                )
+            # The VDS read uses the same intervals as the sites via read_intervals,
+            # EXCEPT for --test-region, which reads via filter_intervals (splitting
+            # straddling reference blocks; see the chunk worker) -- so read_intervals
+            # is dropped there.
+            strict_vds_read_intervals = (
+                None if args.test_region else strict_sub_intervals
+            )
             vds, sex_karyotype_field = _load_project_vds(
                 project=project,
                 environment=environment,
                 partition_range=strict_partition_range,
                 sub_intervals=strict_vds_read_intervals,
+                filter_intervals=strict_filter_intervals,
                 chrom=chrom,
                 test=test,
                 test_sample_subset=args.test_sample_subset,
@@ -3007,9 +3100,10 @@ def main(args):
             n_sites = sites_ht.count()
             n_merged = merged_ht.count()
             if n_missing:
-                # The compute emits an AN=0 row for every vep_context site (even
-                # those with no VDS reference data), so a site is never legitimately
-                # absent. Report a sample of the missing loci to aid debugging:
+                # The compute emits an AN=0 row for every vep_context site it
+                # processes (AN=0 where there's no VDS reference data), so within the
+                # scoped set a site is never legitimately absent. Report a sample of
+                # the missing loci to aid debugging:
                 # a clustered count points at a dropped chunk, a scattered one at
                 # the compute failing to emit AN=0 rows.
                 sample = [str(x) for x in missing_ht.head(15).locus.collect()]
@@ -3148,7 +3242,7 @@ def main(args):
             )
             aou_ht = hl.read_table(cov_and_an_ht_path).select("AN")
             gnomad_ht = hl.read_table(gnomad_an_ht_path)
-            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht, test=test)
+            ht = join_aou_and_gnomad_an_ht(aou_ht, gnomad_ht)
             ht = ht.select("AN")
             ht = ht.select_globals(
                 strata_meta=ht.strata_meta,
@@ -3355,6 +3449,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--experimental-densify",
+        action="store_true",
+        help=(
+            "T3 (experimental): compute coverage/AN via ``hl.experimental.densify``"
+            " on a merged sparse MT instead of ``hl.vds.to_dense_mt``, skipping the"
+            " variant+reference per-cell coalesce. Output is equivalent; lets us"
+            " A/B the densify cost. Chunk / --use-batch-fanout path only."
+        ),
+    )
+    parser.add_argument(
         "--reduce-min-aggs",
         action="store_true",
         help=(
@@ -3429,11 +3533,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " worker: scope the test to these explicit locus intervals instead of"
             " the first N VDS partitions (e.g."
             " ``--test-region chr1:55058666-55108666 chr1:55108666-55158666``)."
-            " The vep_context sites HT and the VDS read are both pruned to these"
-            " intervals (one read partition per interval); the VDS read's leading"
-            " edge is widened for reference blocks straddling in from before the"
-            " region (sites stay un-widened). Use to test a dense, non-telomeric"
-            " region -- the first VDS partitions are the chr1 telomere."
+            " The vep_context sites HT and the VDS read are scoped to the region;"
+            " straddling reference blocks are handled per path: the strict compute"
+            " (and the chunk worker when --read-subintervals-per-chunk=1) read via"
+            " filter_intervals with split_reference_blocks; the chunk worker fan-out"
+            " (--read-subintervals-per-chunk>1) balances the region into that many"
+            " read sub-intervals and widens the per-contig leading edge instead"
+            " (sites stay un-widened). Use to test a dense, non-telomeric region --"
+            " the first VDS partitions are the chr1 telomere."
             " Auto-enables test mode; mutually exclusive with --test-n-partitions."
         ),
     )
