@@ -346,18 +346,26 @@ def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
     return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
 
 
-def _results_environment(environment: str, test: bool) -> str:
+def _results_environment(
+    environment: str, test: bool, override: Optional[str] = None
+) -> str:
     """
     Return the bucket-selecting environment for coverage release artifacts.
 
     Release artifacts go to the gnomAD (``dataproc``) bucket regardless of
     compute environment, so an AoU run in ``batch`` writes to the gnomAD bucket.
-    A test run keeps results in the compute environment's tmp bucket.
+    A test run keeps results in the compute environment's tmp bucket, unless
+    ``override`` (``--results-environment``) forces a specific bucket -- e.g. to
+    smoke-test the batch-compute -> dataproc-bucket write before a prod run.
 
     :param environment: Compute environment.
     :param test: Whether this is a test run.
-    :return: ``"dataproc"`` for a production run; ``environment`` for a test run.
+    :param override: Explicit results environment (``--results-environment``);
+        takes precedence over the test/prod default when set.
+    :return: ``override`` if set; else ``"dataproc"`` for prod, ``environment`` for test.
     """
+    if override is not None:
+        return override
     return environment if test else "dataproc"
 
 
@@ -1446,7 +1454,6 @@ def _build_chunk_intervals(
     partitions_per_chunk: int,
     n_sub: int,
     chrom: Optional[List[str]] = None,
-    test_n_partitions: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Precompute every chunk's balanced read sub-intervals in ONE VDS open, by contig.
@@ -1465,16 +1472,15 @@ def _build_chunk_intervals(
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
-    :param total_partitions: Number of leading VDS partitions to derive intervals over;
-        with ``partitions_per_chunk`` and ``n_sub`` it sets the sub-interval granularity
-        (``n_chunks * n_sub`` balanced sub-intervals).
+    :param total_partitions: Number of leading VDS partitions to derive intervals over
+        (the probe extent); with ``partitions_per_chunk`` and ``n_sub`` it sets the
+        sub-interval granularity (``n_chunks * n_sub`` balanced sub-intervals). For a
+        test, the caller passes ``--test-n-partitions`` here to scope to the first N
+        VDS partitions (combine with ``chrom`` to slice a single contig).
     :param partitions_per_chunk: Sets ``n_chunks = ceil(total_partitions / this)``, the
         sub-interval-count divisor (no longer a chunk key -- chunks are contig-grouped).
     :param n_sub: Sub-intervals per chunk (``--read-subintervals-per-chunk``).
     :param chrom: Optional list of contigs to restrict the precompute to.
-    :param test_n_partitions: If set, keep only the first N partitions (chunks) --
-        ``N * n_sub`` read sub-intervals -- for a cheap end-to-end test; combine with
-        ``chrom`` to slice a single contig.
     :return: Dict with ``read_subintervals_per_chunk``, ``ref_block_max_length``,
         ``reference_genome``, and ``chunks`` (a list indexed by chunk index; each entry
         ``{"contig": str, "intervals": [serialized sub-intervals]}``).
@@ -1502,11 +1508,6 @@ def _build_chunk_intervals(
         )
     rg = all_subs[0].start.reference_genome
     contig_subs = _split_intervals_at_contigs(all_subs, rg.name)
-    if test_n_partitions:
-        # --test-n-partitions N: keep the first N partitions (chunks), i.e. N * n_sub
-        # read sub-intervals (already contig-scoped when --chrom is set), for a cheap
-        # end-to-end test.
-        contig_subs = contig_subs[: test_n_partitions * n_sub]
     chunks: List[Dict[str, Any]] = []
     for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
         contig_ivs = list(group)
@@ -1672,7 +1673,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     test = args.test
     chrom = args.chrom
     n_sub = max(args.read_subintervals_per_chunk, 1)
-    results_environment = _results_environment(environment, test)
+    results_environment = _results_environment(
+        environment, test, args.results_environment
+    )
 
     if args.chunk_output is None:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
@@ -1929,6 +1932,11 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         flags.append(f"--app-name {args.app_name}")
     if args.cov_and_an_output_suffix:
         flags.append(f"--cov-and-an-output-suffix {args.cov_and_an_output_suffix}")
+    if args.results_environment:
+        # Forward the results-bucket override so a worker's fallback path resolution
+        # matches the orchestrator's (the orchestrator already passes explicit
+        # --chunk-output/--merge-output resolved with it).
+        flags.append(f"--results-environment {args.results_environment}")
     # QoB driver/worker sizing; merge workers reuse the chunk sizing (same
     # QoB-from-container shape).
     if args.chunk_driver_cores is not None:
@@ -1951,6 +1959,10 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
             flags.append(f"--chrom {' '.join(args.chrom)}")
         if args.test_region:
             flags.append(f"--test-region {' '.join(args.test_region)}")
+        # args.test is the canonical test flag (normalized at parse time to include
+        # --test-n-partitions / --test-region). The worker reads its chunk from the
+        # JSON by index, so it needs --test (for test-scoped paths), not the partition
+        # count -- forward --test so the worker resolves the same test paths.
         if args.test:
             flags.append("--test")
     return " ".join(flags)
@@ -2600,13 +2612,15 @@ def main(args):
     """
     project = args.project_name
     environment = args.environment
-    test = (
-        args.test or args.test_n_partitions is not None or args.test_region is not None
-    )
+    # args.test is normalized at parse time to fold in --test-n-partitions /
+    # --test-region.
+    test = args.test
     chrom = args.chrom
     overwrite = args.overwrite
     reduce_min_aggs = args.reduce_min_aggs
-    results_environment = _results_environment(environment, test)
+    results_environment = _results_environment(
+        environment, test, args.results_environment
+    )
 
     # ===================================================================
     # ROLE 1: ORCHESTRATOR — submit a Hail Batch of relay jobs, then return
@@ -2795,11 +2809,12 @@ def main(args):
             chunk_intervals = _build_chunk_intervals(
                 project=project,
                 environment=environment,
-                total_partitions=args.total_partitions,
+                # --test-n-partitions scopes the probe to the first N VDS partitions
+                # (overriding the full-VDS --total-partitions default) for a cheap test.
+                total_partitions=args.test_n_partitions or args.total_partitions,
                 partitions_per_chunk=args.partitions_per_chunk,
                 n_sub=max(args.read_subintervals_per_chunk, 1),
                 chrom=chrom,
-                test_n_partitions=args.test_n_partitions,
             )
             with hfs.open(intervals_path, "w") as f:
                 json.dump(chunk_intervals, f)
@@ -3207,6 +3222,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="rwb",
     )
     env_group.add_argument(
+        "--results-environment",
+        help=(
+            "Override the bucket the coverage release artifacts (cov_and_an,"
+            " gnomAD v5 merged tables, release files, qual-hists) write to,"
+            " independent of the compute --environment. Default (unset): prod"
+            " writes to 'dataproc', a --test run stays in the compute environment."
+            " Set to 'dataproc' to smoke-test the batch-compute -> dataproc-bucket"
+            " write path on a --test run before a prod run."
+        ),
+        choices=["rwb", "batch", "dataproc"],
+        default=None,
+    )
+    env_group.add_argument(
         "--tmp-dir-days",
         type=int,
         default=4,
@@ -3359,16 +3387,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "Cheap test over the first N partitions (chunks). With"
-            " --write-chunk-intervals, keep the first N chunks of the precomputed JSON"
-            " -- N * --read-subintervals-per-chunk sub-intervals (combine with --chrom"
-            " to slice a single contig) -- so the fan-out / merge / validate run just"
-            " those (and --write-vep-context-sites --test scopes to the same loci). With"
-            " the strict single-job --compute-all-cov-release-stats-ht, instead read the"
-            " first N native VDS partitions (the genome start, so this mode does not"
-            " compose with --chrom) and scope the ref_ht to their loci; combine with"
-            " --partitions-for-rep-on-read to co-partition just those. Default None: full"
-            " run."
+            "Cheap test over the first N VDS partitions. With"
+            " --write-chunk-intervals, scopes the probe to those partitions (overriding"
+            " --total-partitions) -> ceil(N / --partitions-per-chunk) chunks, so the"
+            " fan-out / merge / validate run just those (and --write-vep-context-sites"
+            " --test scopes to the same loci); combine with --chrom to slice a single"
+            " contig. With the strict single-job --compute-all-cov-release-stats-ht,"
+            " reads the first N native VDS partitions (the genome start, so this mode"
+            " does not compose with --chrom) and scopes the ref_ht to their loci; combine"
+            " with --partitions-for-rep-on-read to co-partition just those. Default None:"
+            " full run."
         ),
     )
     test_group.add_argument(
@@ -3534,10 +3562,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " HTs produced by --use-batch-fanout. Level 1 (group merges,"
             " sized by --merge-group-size) writes to"
             " <cov_and_an_path>_merge_groups/<idx>.ht; level 2 unions all"
-            " group HTs into <cov_and_an_path>. Chunk discovery uses"
-            " --total-partitions / --partitions-per-chunk (same as"
-            " --use-batch-fanout); missing chunks fail loudly. Requires"
-            " --environment=batch."
+            " group HTs into <cov_and_an_path>. Chunk discovery reads the"
+            " chunk-intervals JSON (same as --use-batch-fanout); missing chunks"
+            " fail loudly. Requires --environment=batch."
         ),
     )
     fanout_group.add_argument(
@@ -3547,12 +3574,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Number of VDS partitions per chunk job. Default 3 (the"
             " driver-comfort load used for the prod AoU runs). IMPORTANT:"
-            " this must be identical across the compute"
-            " (--use-batch-fanout) and merge (--merge-cov-chunks) reruns."
-            " Chunk discovery derives the expected chunk count from"
-            " --total-partitions / --partitions-per-chunk, so passing a"
-            " different value on the merge silently unions the wrong set of"
-            " chunk HTs (no error) and skews the expected-chunk check."
+            " keep identical across --write-chunk-intervals / --use-batch-fanout"
+            " / --merge-cov-chunks. The chunk set is fixed in the JSON at"
+            " --write-chunk-intervals time (n_chunks = ceil(extent /"
+            " --partitions-per-chunk)) and read back by fan-out and merge; a"
+            " mismatch misaligns the merge tree's group-HT paths."
         ),
     )
     fanout_group.add_argument(
@@ -3574,8 +3600,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=145192,
         help=(
-            "Total VDS partition count to scatter across. Default 145192"
-            " (prod AoU VDS partition count). Used by --use-batch-fanout."
+            "Total VDS partition count to scatter across (the full-VDS prod"
+            " extent). Default 145192 (prod AoU VDS partition count). Used by"
+            " --use-batch-fanout; for a test, --test-n-partitions overrides this"
+            " to scope the probe to the first N partitions."
         ),
     )
     fanout_group.add_argument(
@@ -3820,6 +3848,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
 if __name__ == "__main__":
     parser = get_script_argument_parser()
     args = parser.parse_args()
+
+    # --test-n-partitions and --test-region are themselves test runs, so fold them
+    # into the canonical args.test once here. Everything downstream (main, the
+    # orchestrators, and the helpers that resolve test-scoped paths) reads args.test,
+    # so this keeps the test/prod path choice consistent across all of them.
+    args.test = (
+        args.test or args.test_n_partitions is not None or args.test_region is not None
+    )
 
     # Every argument that only makes sense with --environment=batch lives in
     # this one list so the validation is complete and easy to scan. "Provided"
