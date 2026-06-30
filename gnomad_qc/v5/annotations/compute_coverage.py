@@ -8,7 +8,8 @@ histograms for each project and joins them to create the v5 coverage and AN HT/T
 Execution roles:
 ----------------
 This script dispatches three process roles by ``main`` on the CLI flags.
-They are mutually exclusive (the ``__main__`` block validates this):
+They are mutually exclusive -- dispatched by early return in ``main`` (the
+``__main__`` block also rejects conflicting entry-point flags):
 
 1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
    runs wherever you launch it and never initializes Hail (its
@@ -42,7 +43,7 @@ Per-project setup (--project-name {aou,gnomad})::
        sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
        --reduce-min-aggs to write the leaf-only variant.
     3. Write the preprocessed vep_context sites HT (--write-vep-context-sites):
-        deduped/telomere-stripped/locus-keyed sites read co-partitioned by every
+        deduped/telomere+centromere-stripped/locus-keyed sites read co-partitioned by every
         chunk (so the dedup + strip runs once, not per chunk).
     4. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
        Strict single-job via --compute-all-cov-release-stats-ht, or the
@@ -969,8 +970,8 @@ def _merge_an_fields(
     ht: hl.Table, project_1: str, project_2: str, operation: str
 ) -> Tuple[
     hl.expr.ArrayExpression,
-    hl.expr.ArrayExpression,
-    hl.expr.DictExpression,
+    List[Dict[str, str]],
+    Dict[str, hl.expr.ArrayExpression],
 ]:
     """
     Merge AN fields from two projects.
@@ -1216,7 +1217,7 @@ def _load_project_vds(
     :param partition_range: VDS partition indices (e.g. ``list(range(3))``)
         or ``None`` for the full VDS.
     :param sub_intervals: Locus sub-intervals for read-time partitioning
-        (AoU only; ignored for gnomAD).
+        (applies to both AoU and gnomAD).
     :param filter_intervals: Locus intervals passed to ``get_*_vds`` as
         ``filter_intervals`` (``split_reference_blocks=True``): subsets the VDS to
         these intervals and SPLITS reference blocks straddling the edges, so the
@@ -1287,8 +1288,9 @@ def _probe_vds(
     """
     Cheap reference_data-bounds probe-load of the per-project VDS.
 
-    Loads via ``filter_partitions`` (or ``filter_intervals``) only (no sample
-    filtering / DP synthesis); the caller derives the loci from ``reference_data``
+    Loads via ``filter_partitions`` (or ``filter_intervals``) only (no
+    release/subset filtering or DP synthesis, though AoU's base sample exclusion
+    still applies); the caller derives the loci from ``reference_data``
     (e.g. via ``repartition_for_join``). Used by the chunk worker (both the normal
     partition-range path and the ``--test-region`` fan-out) and the strict path's
     ``--test-n-partitions`` co-partitioning branch.
@@ -1893,9 +1895,10 @@ def _run_coverage_merge(
     :param input_paths: HT paths to union.
     :param output_path: Destination HT path.
     :param coalesce_to: If set, ``naive_coalesce`` to this many partitions
-        before writing. For group-level merges, set to roughly the per-chunk
-        partition count to avoid the partition-count blowup
-        (sum-of-input-partitions). For the final merge, set to the desired
+        before writing. For group-level merges, set to the number of input HTs
+        in the group (one output partition per input) to avoid the
+        partition-count blowup (sum-of-input-partitions). For the final merge,
+        set to the desired
         final partition count (e.g. ``--n-partitions``).
     """
     logger.info(
@@ -2174,7 +2177,7 @@ def _submit_chunk_batch(
         ``_build_relay_common_flags(args, chunk=True)``.
     :param script: Path to the script inside the relay container.
     :param wave_label: Optional suffix appended to the Hail Batch name to
-        distinguish per-wave batches (e.g. ``"w03of49"``). None for a
+        distinguish per-wave batches (e.g. ``"w003of049"``). None for a
         single (non-waved) batch.
     :return: None.
     """
@@ -3434,8 +3437,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Optional suffix appended to the cov_and_an HT path (before the"
             " .ht extension). Use to write the output to a sibling location"
-            " for A/B comparison. Applies to both writes (step 3) and reads"
-            " (downstream steps), so pass the same suffix consistently."
+            " for A/B comparison. Applies to both writes (the compute / fan-out"
+            " / merge) and reads (downstream steps), so pass the same suffix"
+            " consistently."
         ),
     )
     parser.add_argument(
@@ -3706,12 +3710,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=50,
         help=(
             "Per-chunk: subdivide the loci within a chunk into this many"
-            " equal-position sub-intervals, then re-read both the VDS"
-            " (``hl.vds.read_vds(intervals=...)``) and ``vep_context``"
-            " (``hl.read_table(_intervals=...)``) with those intervals. One"
-            " partition per sub-interval on both sides, co-partitioned,"
-            " no shuffle. Default 50. Set to 1 to skip the probe/re-read"
-            " and use plain ``filter_partitions`` (legacy behavior)."
+            " data-balanced sub-intervals (computed once at"
+            " --write-chunk-intervals time and stored in the JSON), then re-read"
+            " both the VDS (``hl.vds.read_vds(intervals=...)``) and"
+            " ``vep_context`` (``hl.read_table(_intervals=...)``) with those"
+            " intervals. One partition per sub-interval on both sides,"
+            " co-partitioned, no shuffle. Default 50. The VDS is always read by"
+            " intervals, never by partition index."
         ),
     )
     fanout_group.add_argument(
@@ -3780,8 +3785,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "GCS scratch path for hb.ServiceBackend. Defaults to the value"
-            " encoded in ``_build_setup_command`` config."
+            "GCS scratch path for the orchestrator's hb.ServiceBackend. Default"
+            " None: ServiceBackend uses the Hail config on the host running the"
+            " orchestrator."
         ),
     )
     fanout_group.add_argument(
@@ -3851,7 +3857,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--chunk-attempts",
         type=int,
         default=5,
-        help="Max retry attempts (n_max_attempts) per chunk job.",
+        help="Max retry attempts (n_max_attempts) per relay job (chunk and merge).",
     )
     fanout_group.add_argument(
         "--merge-cpu",
