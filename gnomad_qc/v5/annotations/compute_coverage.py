@@ -11,9 +11,9 @@ This script dispatches three process roles by ``main`` on the CLI flags.
 They are mutually exclusive (the ``__main__`` block validates this):
 
 1. ORCHESTRATOR (``--use-batch-fanout`` or ``--merge-cov-chunks``):
-   runs wherever you launch it, does not call ``_init_hail`` (but the
-   ``_SUCCESS``/output skip-checks via ``file_exists`` do
-   initialize the Hail backend), builds and submits a Hail Batch of
+   runs wherever you launch it and never initializes Hail (its
+   prerequisite / ``_SUCCESS`` skip-checks use ``file_exists``, which is
+   hailtop.fs -- no Hail backend), builds and submits a Hail Batch of
    relay jobs, then returns. Used for the prod-scale AoU compute (the
    dataset is too big for one job).
 2. WORKER (``--run-chunk`` or ``--run-merge``): each relay container the
@@ -46,10 +46,10 @@ Per-project setup (--project-name {aou,gnomad})::
         chunk (so the dedup + strip runs once, not per chunk).
     4. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
        Strict single-job via --compute-all-cov-release-stats-ht, or the
-       prod-scale fan-out: optionally --write-chunk-intervals first (one VDS
-       open precomputes each chunk's read sub-intervals; workers probe the VDS
-       per chunk if it is absent), then --use-batch-fanout, then
-       --merge-cov-chunks. See "Execution roles" above for how those dispatch.
+       prod-scale fan-out: --write-chunk-intervals first (one VDS open
+       precomputes every chunk's read sub-intervals; required -- the fan-out
+       and merge read this JSON to enumerate chunks), then --use-batch-fanout,
+       then --merge-cov-chunks. See "Execution roles" above for how those dispatch.
     5. Validate the merged HT covers every vep_context site
         (--validate-cov-and-an) — anti-join, fail on any dropped site.
 
@@ -69,7 +69,8 @@ Release assembly (--project-name aou)::
 
 Usage Examples::
 
-    # Per-chunk fan-out compute + merge (on batch):
+    # Per-chunk fan-out compute + merge (on batch). Run setup steps 1-3 +
+    # --write-chunk-intervals first; the fan-out reads those outputs:
     python compute_coverage.py --project-name aou --environment batch \\
         --use-batch-fanout --partitions-per-chunk 3
     python compute_coverage.py --project-name aou --environment batch \\
@@ -473,15 +474,14 @@ def _derive_chunk_locus_intervals(
     yield the same loci. Instead, we derive the loci within the VDS chunk and
     use them to align ``ref_ht`` to those same loci.
 
-    When ``n_subdivisions > 1``, each contig's ``lo..hi`` range is split into
-    that many equal-position sub-intervals. The returned objects are concrete
-    ``hl.Interval`` instances (NOT ``IntervalExpression`` s — ``read_vds`` /
-    ``read_matrix_table``'s ``_intervals=`` reader path requires Python-native
-    intervals so the IR can serialize them as partition boundaries). Pass to
-    ``hl.vds.read_vds(intervals=...)`` and ``hl.read_table(_intervals=...)``
-    to co-partition both sides of the densify join at read time, avoiding the
-    shuffle that a post-read ``repartition`` would cost. With
-    ``n_subdivisions=1`` (default), returns one big interval per contig.
+    Returns one concrete ``hl.Interval`` per contig (with ``n_subdivisions=1``,
+    the default and the only value any caller passes). Used to scope sites to the
+    loci within the probed VDS partitions: the strict single-job compute applies
+    it via ``hl.filter_intervals`` to scope ``ref_ht`` (``_build_chunk_ref_ht``),
+    and ``--write-vep-context-sites --test`` feeds it to
+    ``_build_vep_context_sites_ht``, which reads vep_context with ``_intervals=``.
+    ``n_subdivisions > 1`` would split each contig's ``lo..hi`` range into that
+    many equal-position sub-intervals, but no caller does so.
 
     :param vds_filtered: VDS already filtered to the chunk's partitions
         (the loci within the chunk are derived from its ``reference_data``).
@@ -586,7 +586,7 @@ def compute_all_release_stats_per_ref_site(
         coverage and AN.
     :param coverage_over_x_bins: DP thresholds for the ``over_X``
         cumulative-sample-count fields written into the output HT.
-        Default is :data:``COVERAGE_OVER_X_BINS``.
+        Default is :data:`COVERAGE_OVER_X_BINS`.
     :param interval_ht: Optional interval Table forwarded to
         ``compute_stats_per_ref_site`` for partition pruning. Unused on
         the v5 path.
@@ -737,8 +737,8 @@ def _rename_cov_annotations(
     :param ht: Input HT.
     :param project: Project name.
     :param sample_count: Number of samples in HT.
-    :param coverage_over_x_bins: List of boundaries for computing samples over X.
-        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
+    :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
+        Default is :data:`COVERAGE_OVER_X_BINS`.
     :return: Renamed HT.
     """
     # Transform mean back into sum.
@@ -780,8 +780,8 @@ def _merge_coverage_fields(
     :param project_2: Second project name.
     :param sample_count: Total sample count.
     :param operation: Operation to perform on the coverage fields. Must be "sum" or "diff".
-    :param coverage_over_x_bins: List of boundaries for computing samples over X.
-        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
+    :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
+        Default is :data:`COVERAGE_OVER_X_BINS`.
     :return: Merged fields.
     """
     if operation == "diff":
@@ -828,8 +828,8 @@ def merge_gnomad_coverage_hts(
 
     :param gnomad_ht: gnomAD coverage HT (contains coverage for consent drop samples only).
     :param gnomad_release_ht: gnomAD v4 genomes coverage release HT.
-    :param coverage_over_x_bins: List of boundaries for computing samples over X.
-        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
+    :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
+        Default is :data:`COVERAGE_OVER_X_BINS`.
     :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
     :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is 866.
     :return: gnomAD v5 genomes coverage HT.
@@ -880,8 +880,8 @@ def join_aou_and_gnomad_coverage_ht(
 
     :param aou_ht: AoU coverage HT.
     :param gnomad_ht: gnomAD v5 genomes coverage HT.
-    :param coverage_over_x_bins: List of boundaries for computing samples over X.
-        Default is [1, 5, 10, 15, 20, 25, 30, 50, 100].
+    :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
+        Default is :data:`COVERAGE_OVER_X_BINS`.
     :param gnomad_v5_count: Number of release gnomAD v5 genome samples. Default is 76215 - 866.
     :return: Joined HT.
     """
@@ -910,11 +910,13 @@ def _rename_fields(
     """
     Rename fields by adding project name prior to merging Tables.
 
-    Used for AN and qual hists merging but not coverage because
-    coverage does not have globals and also requires extra transformations
-    to transform v4 mean back into sum.
+    Used for AN and qual hists, not coverage: coverage goes through
+    ``_rename_cov_annotations`` instead (it needs the v4 mean->sum transform) and
+    doesn't need the ``strata_meta``/``strata_sample_count`` global renaming this
+    function does.
 
     :param ht: Input HT.
+    :param field_name: Row field to suffix with ``project`` (e.g. ``"AN"``).
     :param project: Project name.
     :param rename_globals: Whether to rename globals.
     :return: Renamed HT.
@@ -1012,7 +1014,7 @@ def join_aou_and_gnomad_an_ht(
 
     The combined (AoU + gnomAD) per-stratum AN is written first as the unlabeled
     "global" entries; within those, the AoU-only downsampling strata use the key
-    ``"aou-downsampling"`` (gnomAD does not downsample). The gnomAD-only AN is then
+    ``"aou_downsampling"`` (gnomAD does not downsample). The gnomAD-only AN is then
     appended as a ``"non-aou"`` subset (each appended ``strata_meta`` entry carries
     ``{"subset": "non-aou"}``).
 
@@ -1178,7 +1180,8 @@ def _load_project_vds(
       ``sub_intervals`` takes precedence; ``partition_range`` is the
       fallback. When ``sub_intervals`` is provided the VDS is read with
       ``read_intervals`` so it's co-partitioned with the vep_context read
-      on the same intervals.
+      (callers may widen the VDS read's leading edge for straddling
+      reference blocks, so the endpoints aren't necessarily identical).
     - AoU-specific DP synthesis from LAD + ``annotate_adj_no_dp`` (the AoU
       v8 VDS lacks DP, which ``compute_stats_per_ref_site`` requires).
     - ``test_sample_subset`` application: AoU only, reads ``meta`` from
@@ -1460,9 +1463,10 @@ def _build_chunk_intervals(
 
     Replaces the per-chunk probe (``_probe_vds`` + ``repartition_for_join`` on each
     chunk). Opens the VDS once over the leading ``total_partitions``, derives
-    ``n_chunks * n_sub`` balanced sub-intervals over all reference-data loci, splits any
-    that straddle a contig boundary (:func:`_split_intervals_at_contigs`), then groups
-    them by contig and slices each contig's run into chunks of ``n_sub`` consecutive
+    ``n_chunks * n_sub`` balanced sub-intervals over all reference-data loci (the
+    pre-split count; the contig split below can add a few), then splits any that
+    straddle a contig boundary (:func:`_split_intervals_at_contigs`), groups them by
+    contig, and slices each contig's run into chunks of ``n_sub`` consecutive
     sub-intervals. So no chunk crosses a contig boundary, and ``--chrom`` can select a
     single contig's chunks; chunks remain disjoint and their union covers all loci.
 
@@ -1554,9 +1558,11 @@ def _build_chunk_ref_ht(
     Reads ``sites_path`` (already locus-keyed, deduped, and telomere/centromere-
     stripped by ``--write-vep-context-sites``). When ``sub_intervals`` is provided,
     reads with ``_intervals=sub_intervals`` so the ref_ht is co-partitioned with the
-    VDS read on the same intervals. Otherwise (the
-    strict path / single-interval chunks) reads the whole sites HT and filters to
-    ``chrom`` (when set) or the per-contig loci within the VDS chunk.
+    VDS read (the VDS read's leading edge may be widened for straddling reference
+    blocks; the sites stay un-widened so they're disjoint per chunk). Otherwise (no
+    read-time sub-intervals -- the partition-range / whole-VDS reads) reads the whole
+    sites HT and filters to ``chrom`` (when set) or the per-contig loci within the
+    VDS chunk.
 
     :param vds_filtered: VDS already filtered to the chunk's partitions
         (the loci within the chunk are derived from its ``reference_data``).
@@ -1643,23 +1649,24 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     Steps:
       1. Obtain this chunk's balanced locus sub-intervals: for a --test-region run, the
          passed regions; otherwise this chunk's entry (by index, ``--chunk-start``) in
-         the contig-keyed precompute JSON (``--write-chunk-intervals``, required), read
+         the per-chunk precompute JSON (``--write-chunk-intervals``, required), read
          driver-side. A chunk never spans a contig boundary.
       2. Re-read the VDS via ``hl.vds.read_vds(intervals=...)`` — one partition per
          sub-interval (no shuffle) — with each contig's leading edge backed up by
          ``ref_block_max_length - 1`` (``_expand_leading_edges``) so reference
          blocks straddling in from the previous chunk are not gated out.
-      3. Read ``vep_context`` with the same (un-widened) ``_intervals=sub_intervals``
-         — co-partitioned with the VDS so the densify join is shuffle-free, and the
-         chunk emits only its own disjoint sites.
+      3. Read the preprocessed vep_context sites HT (``_build_chunk_ref_ht``) with the
+         same (un-widened) ``_intervals=sub_intervals`` — co-partitioned with the VDS
+         so the densify join is shuffle-free, and the chunk emits only its own disjoint
+         sites.
       4. Run ``compute_all_release_stats_per_ref_site``.
       5. Write to ``args.chunk_output``.
 
     :param args: Parsed CLI args; reads ``project_name``, ``environment``,
-        ``chunk_start``, ``chunk_stop``, ``test``, ``chrom``,
-        ``read_subintervals_per_chunk``, ``chunk_output``,
-        ``cov_and_an_output_suffix``, ``reduce_min_aggs``,
-        ``test_sample_subset``. Hail must already be initialized.
+        ``chunk_start``, ``chunk_stop``, ``test``, ``test_region``, ``chrom``,
+        ``chunk_output``, ``results_environment``, ``cov_and_an_output_suffix``,
+        ``reduce_min_aggs``, ``test_sample_subset``. Hail must already be
+        initialized.
     :return: None.
     """
     project = args.project_name
@@ -1672,7 +1679,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
     test = args.test
     chrom = args.chrom
-    n_sub = max(args.read_subintervals_per_chunk, 1)
     results_environment = _results_environment(
         environment, test, args.results_environment
     )
@@ -1714,7 +1720,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         )
         vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
     else:
-        # Look this chunk up by index in the contig-keyed precompute JSON
+        # Look this chunk up by index in the per-chunk precompute JSON
         # (--write-chunk-intervals, required for the fan-out). Read it driver-side
         # (hailtop.fs, NOT a QoB job) so we skip both the ~400s VDS re-open AND the
         # query-on-batch cold-start a Hail-Table read would incur as this worker's
@@ -1903,7 +1909,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
     Translates the orchestrator's ``args.Namespace`` into a CLI string appended to
     each relay's ``--run-chunk`` / ``--run-merge`` command. The shared base
     (project / environment / billing / tmp-dir / n-partitions / experimental /
-    app-name / output-suffix / QoB driver+worker sizing) is common to both. With
+    app-name / output-suffix / results-environment / QoB driver+worker sizing) is
+    common to both. With
     ``chunk=True`` the read/compute flags a chunk relay also needs
     (``--read-subintervals-per-chunk``, ``--reduce-min-aggs``,
     ``--test-sample-subset``, ``--chrom``, ``--test-region``, ``--test``) are
@@ -2093,7 +2100,7 @@ def _submit_chunk_batch(
     for idx in chunk_indices:
         path = _chunk_path(cov_and_an_ht_path, idx)
         # Chunk identity is the chunk INDEX: the worker looks itself up in the
-        # contig-keyed JSON by --chunk-start (= idx), and --chunk-stop is idx+1. The
+        # per-chunk JSON by --chunk-start (= idx), and --chunk-stop is idx+1. The
         # VDS read is interval-based (read_intervals from those sub-intervals), so the
         # old native-partition range is no longer used.
         command = (
@@ -2124,7 +2131,7 @@ def _eligible_chunk_indices(
     Single source of truth shared by the chunk orchestrator and the merge so they
     always agree on which chunks exist. A ``--test-region`` run is one chunk (the worker
     derives its sub-intervals from the regions). Otherwise chunks come from the
-    contig-keyed precompute JSON (``--write-chunk-intervals``, required): it is read
+    per-chunk precompute JSON (``--write-chunk-intervals``, required): it is read
     driver-side (no VDS access -- which is VPC-SC-blocked outside the perimeter) to get
     each chunk's contig, then only chunks whose contig is in ``--chrom`` are kept (all
     chunks when ``--chrom`` is unset).
@@ -2165,7 +2172,7 @@ def _orchestrate_coverage_batch(
     args: argparse.Namespace, cov_and_an_ht_path: str
 ) -> None:
     """
-    Fan per-partition coverage/AN compute out as relay chunk jobs in Hail Batch.
+    Fan coverage/AN compute out as relay chunk jobs in Hail Batch (one job per chunk).
 
     Pending chunks are split into sequential **waves** of
     ``--wave-size`` chunks. Each wave is its own Hail Batch (one relay
@@ -2203,12 +2210,12 @@ def _orchestrate_coverage_batch(
     The merge step is intentionally separate; run ``--merge-cov-chunks``
     after this finishes.
 
-    :param args: Parsed CLI args (reads ``project_name``,
-        ``total_partitions``, ``partitions_per_chunk``, ``wave_size``,
+    :param args: Parsed CLI args (reads ``project_name``, ``wave_size``,
         ``overwrite``, ``methods_branch``, ``gcp_billing_project``,
-        ``batch_billing_project``, ``batch_remote_tmpdir``, plus
-        everything ``_build_relay_common_flags`` and
-        ``_submit_chunk_batch`` read).
+        ``batch_billing_project``, ``batch_remote_tmpdir``, plus everything
+        ``_build_relay_common_flags`` and ``_submit_chunk_batch`` read --
+        the chunk set comes from the chunk-intervals JSON, not
+        ``total_partitions``/``partitions_per_chunk``).
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path
         (resolved by ``main``). Each chunk writes to
         ``<cov_and_an_path>_chunks/<idx>.chunk.ht``; the final HT at
@@ -2346,8 +2353,12 @@ def _submit_merge_batch(
     """
     Build and submit one Hail Batch containing all pending group-merge jobs.
 
-    Each job runs ``--run-merge`` over its assigned inputs and writes to
-    ``<cov_and_an_path>_merge_groups/L<level>_<group_idx>.ht``.
+    Each job runs ``--run-merge`` over its assigned inputs and writes an
+    intermediate per-group HT at
+    ``<cov_and_an_path>_merge_groups_pp<ppc>_gs<group_size>/L<level>_<group_idx>.ht``
+    (via ``_group_path``). Only intermediate levels go through this function; the
+    final union is submitted separately by ``_orchestrate_coverage_merge`` and is
+    the sole job that writes the canonical ``cov_and_an_ht_path``.
     Parallelism is Hail Batch's own job scheduler running the N jobs
     concurrently against the worker pool.
 
@@ -2406,14 +2417,14 @@ def _orchestrate_coverage_merge(
     args: argparse.Namespace, cov_and_an_ht_path: str
 ) -> None:
     """
-    Two-level tree-reduce merge of per-chunk HTs into ``cov_and_an_ht_path``.
+    Recursive tree-reduce merge of per-chunk HTs into ``cov_and_an_ht_path``.
 
     Counterpart to ``_orchestrate_coverage_batch``: this orchestrator runs
     *after* ``--use-batch-fanout`` has produced all per-chunk HTs. It
     submits Hail Batch jobs (QoB-from-container per job) and exits without
     initializing Hail in this process.
 
-    Discovery: chunks are enumerated from the contig-keyed precompute JSON (via the
+    Discovery: chunks are enumerated from the per-chunk precompute JSON (via the
     same ``_eligible_chunk_indices`` the fan-out uses, so the two agree), filtered by
     ``--chrom`` when set. Every expected chunk must have a ``_SUCCESS`` marker; missing
     chunks fail loudly so the user re-runs the chunk orchestrator before merging.
@@ -2439,7 +2450,7 @@ def _orchestrate_coverage_merge(
     skipped; the final HT is skipped if it exists (unless ``--overwrite`` is passed).
 
     :param args: Parsed CLI args (reads ``project_name``,
-        ``total_partitions``, ``partitions_per_chunk``,
+        ``partitions_per_chunk``,
         ``merge_group_size``, ``overwrite``, ``n_partitions``,
         ``methods_branch``, ``gcp_billing_project``,
         ``batch_billing_project``, ``batch_remote_tmpdir``,
@@ -2627,10 +2638,9 @@ def main(args):
     # straight out of main() (each per-chunk relay spawns its own QoB driver).
     # The configured _init_hail and the try/finally below are NEVER reached on
     # an orchestrator run; they belong to the separate ROLE 2 (worker) / ROLE 3
-    # (in-process) invocations. Chunk listing uses hailtop.fs (no Hail backend),
-    # but NOTE file_exists (hl.hadoop_exists) still
-    # triggers a *default* hl.init() on first call, so a Hail backend IS spun up
-    # here for its existence checks.
+    # (in-process) invocations. The existence checks (file_exists) and chunk
+    # listing both use hailtop.fs, so no Hail backend is started on an
+    # orchestrator run.
     #   --use-batch-fanout : scatter the per-chunk compute.
     #   --merge-cov-chunks : tree-reduce the chunk HTs (run after fanout).
     # ===================================================================
@@ -2663,8 +2673,8 @@ def main(args):
     )
 
     # Configured QoB / dataproc init — reached by ROLE 2 (worker) and ROLE 3
-    # (in-process pipeline) only; ROLE 1 returned above (its hail inits only for
-    # the GCS listing, not this configured context).
+    # (in-process pipeline) only; ROLE 1 returned above without starting any Hail
+    # backend (its existence checks / GCS listing use hailtop.fs).
     # ``--experimental`` attaches the QoB driver to an existing Hail Batch
     # (batch_id auto-resolved from HAIL_BATCH_ID inside _init_hail); otherwise
     # each run creates its own Hail Batch.
@@ -3449,9 +3459,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "stripped, locus-keyed sites HT (30-day storage) that every chunk reads"
             " co-partitioned. Prerequisite for the compute; run before"
             " --use-batch-fanout / --compute-all-cov-release-stats-ht. With --test,"
-            " writes a cheap, separate _test table scoped to the loci within the"
-            " test partitions (--test-n-partitions or --total-partitions) instead of the"
-            " whole genome."
+            " writes a cheap, separate _test table scoped to the loci the test compute"
+            " reads -- from the chunk-intervals JSON, or (strict single-job path) the"
+            " first --test-n-partitions VDS partitions -- instead of the whole genome."
         ),
         action="store_true",
     )
@@ -3465,7 +3475,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " driver-side (instead of re-probing the VDS, ~400s per chunk). Uses"
             " --total-partitions / --partitions-per-chunk /"
             " --read-subintervals-per-chunk for sub-interval granularity; pass --chrom"
-            " to restrict to some contigs. With --test, writes a separate _test file."
+            " to restrict to some contigs. With --test, writes a separate _test file and"
+            " --test-n-partitions overrides --total-partitions as the probe extent."
         ),
         action="store_true",
     )
@@ -3558,13 +3569,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--merge-cov-chunks",
         action="store_true",
         help=(
-            "Build and submit the two-level tree-reduce merge of per-chunk"
-            " HTs produced by --use-batch-fanout. Level 1 (group merges,"
-            " sized by --merge-group-size) writes to"
-            " <cov_and_an_path>_merge_groups/<idx>.ht; level 2 unions all"
-            " group HTs into <cov_and_an_path>. Chunk discovery reads the"
-            " chunk-intervals JSON (same as --use-batch-fanout); missing chunks"
-            " fail loudly. Requires --environment=batch."
+            "Build and submit the recursive tree-reduce merge of per-chunk"
+            " HTs produced by --use-batch-fanout. Intermediate levels (group"
+            " merges sized by --merge-group-size) write to"
+            " <cov_and_an_path>_merge_groups_pp<ppc>_gs<group_size>/"
+            "L<level>_<idx>.ht; the merge recurses until one final union writes"
+            " <cov_and_an_path>. Chunk discovery reads the chunk-intervals JSON"
+            " (same as --use-batch-fanout); missing chunks fail loudly. Requires"
+            " --environment=batch."
         ),
     )
     fanout_group.add_argument(
@@ -3601,9 +3613,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=145192,
         help=(
             "Total VDS partition count to scatter across (the full-VDS prod"
-            " extent). Default 145192 (prod AoU VDS partition count). Used by"
-            " --use-batch-fanout; for a test, --test-n-partitions overrides this"
-            " to scope the probe to the first N partitions."
+            " extent). Default 145192 (prod AoU VDS partition count). Consumed by"
+            " --write-chunk-intervals to size the precompute (the fan-out then"
+            " reads that JSON); for a test, --test-n-partitions overrides this to"
+            " scope the probe to the first N partitions."
         ),
     )
     fanout_group.add_argument(
@@ -3781,7 +3794,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help=(
-            "Chunk index for --run-chunk: the chunk's entry in the contig-keyed"
+            "Chunk index for --run-chunk: the chunk's entry in the per-chunk"
             " precompute JSON (a --test-region run uses 0). Set by the orchestrator."
         ),
     )
