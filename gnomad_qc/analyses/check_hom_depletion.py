@@ -1,5 +1,5 @@
 import hail as hl
-from gnomad.resources.grch38.gnomad import public_release
+from gnomad.resources.grch38.gnomad import constraint, public_release
 from gnomad.utils.filtering import filter_to_autosomes
 
 from gnomad_qc.v5.resources.basics import get_logging_path
@@ -161,6 +161,52 @@ def annotate_gerp(ht: hl.Table) -> hl.Table:
     return ht.annotate(gerp=hl.or_else(gerp_ht[ht.locus].S, 0))
 
 
+def annotate_constraint(ht: hl.Table) -> hl.Table:
+    """
+    Annotate gene-level constraint metrics for `most_severe_gene_id`.
+
+    Pulls LoF, missense, and synonymous z-scores, observed/expected (oe) ratios,
+    and oe confidence intervals, plus constraint and gene flags. One transcript is
+    selected per gene, preferring MANE Select and falling back to the canonical
+    transcript. The join is keyed on Ensembl gene ID.
+
+    :param ht: Hail Table containing `most_severe_gene_id` (Ensembl gene ID).
+    :return: Hail Table with added `constraint` struct annotation.
+    """
+    constraint_ht = constraint().ht()
+
+    # Restrict to Ensembl genes.
+    constraint_ht = constraint_ht.filter(constraint_ht.gene_id.startswith("ENSG"))
+
+    # One row per gene: prefer MANE Select, fall back to the canonical transcript.
+    mane_ht = constraint_ht.filter(constraint_ht.mane_select).key_by("gene_id")
+    canonical_ht = constraint_ht.filter(constraint_ht.canonical).key_by("gene_id")
+    canonical_ht = canonical_ht.anti_join(mane_ht)
+    constraint_ht = mane_ht.union(canonical_ht)
+
+    c = constraint_ht[ht.most_severe_gene_id]
+
+    def _metrics(x: hl.expr.StructExpression) -> hl.expr.StructExpression:
+        return hl.struct(
+            z_score=x.z_score,
+            oe=x.oe,
+            oe_ci_lower=x.oe_ci.lower,
+            oe_ci_upper=x.oe_ci.upper,
+        )
+
+    return ht.annotate(
+        constraint=hl.struct(
+            lof=_metrics(c.lof),
+            mis=_metrics(c.mis),
+            syn=_metrics(c.syn),
+            constraint_flags=c.constraint_flags,
+            gene_flags=c.gene_flags,
+            canonical=c.canonical,
+            mane_select=c.mane_select,
+        )
+    )
+
+
 def select_group_output_fields(ht, groups):
     """
     Select and flatten group-specific annotations.
@@ -215,6 +261,7 @@ def select_group_output_fields(ht, groups):
             "gerp": ht.gerp,
             "lcr_or_segdup": ht.lcr_or_segdup,
             "phylop_score": ht.phylop_score,
+            "constraint": ht.constraint,
         }
     )
 
@@ -283,6 +330,9 @@ def main(args):
 
         logger.info("Annotating GERP scores...")
         ht = annotate_gerp(ht)
+
+        logger.info("Annotating gene constraint metrics...")
+        ht = annotate_constraint(ht)
 
         logger.info("Select and flatten output fields...")
         ht = select_group_output_fields(ht, groups)
