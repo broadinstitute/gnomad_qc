@@ -231,9 +231,14 @@ def run_generate_trio_stats(
     return generate_trio_stats(mt)
 
 
+# Per-chromosome trio stats inherit the dense trio MT's fine partitioning
+# (~2k-12k partitions each for a few tens of MB), so each is coalesced to this
+# before writing. The union is then ~22x this (~550 partitions).
+TRIO_STATS_N_PARTITIONS_PER_CHROM = 25
+
 # Target partition count for the combined trio stats HT. union() concatenates the
-# per-chrom partitions (~138k total for ~650 MB of data), so the union is coalesced
-# down to this before writing the production HT.
+# per-chrom partitions, so the union is coalesced down to this before writing the
+# production HT.
 TRIO_STATS_N_PARTITIONS = 500
 
 # adj/raw paired count fields produced by generate_trio_stats_expr.
@@ -659,6 +664,11 @@ def main(args):
                 dense_trios(test=test, chrom=chrom, environment=environment).mt(),
                 pedigree(test=test, environment=environment).pedigree(),
             )
+            # The dense trio MT is finely partitioned, so the per-chrom trio stats
+            # inherit ~thousands of tiny partitions. Checkpoint the full result,
+            # then naive_coalesce off the materialized partitioning before writing.
+            ht = ht.checkpoint(hl.utils.new_temp_file(f"trio_stats_{chrom}", "ht"))
+            ht = ht.naive_coalesce(TRIO_STATS_N_PARTITIONS_PER_CHROM)
             ht.write(per_chrom_trio_stats_path, overwrite=overwrite)
 
         if args.union_trio_stats:
