@@ -231,6 +231,11 @@ def run_generate_trio_stats(
     return generate_trio_stats(mt)
 
 
+# Target partition count for the combined trio stats HT. union() concatenates the
+# per-chrom partitions (~138k total for ~650 MB of data), so the union is coalesced
+# down to this before writing the production HT.
+TRIO_STATS_N_PARTITIONS = 500
+
 # adj/raw paired count fields produced by generate_trio_stats_expr.
 TRIO_STATS_PAIRED_FIELDS = [
     "n_transmitted",
@@ -676,6 +681,11 @@ def main(args):
                 for c in chroms
             ]
             ht = hts[0] if len(hts) == 1 else hts[0].union(*hts[1:])
+            # union() concatenates the per-chrom partitions (~138k total), so
+            # materialize to a temp path first and naive_coalesce off the
+            # checkpointed partitioning before writing the production HT.
+            ht = ht.checkpoint(hl.utils.new_temp_file("union_trio_stats", "ht"))
+            ht = ht.naive_coalesce(TRIO_STATS_N_PARTITIONS)
             ht.write(trio_stats_ht_path, overwrite=overwrite)
 
         if args.validate_trio_stats:
