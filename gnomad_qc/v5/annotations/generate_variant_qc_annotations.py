@@ -232,8 +232,10 @@ def run_generate_trio_stats(
 
 
 # Per-chromosome trio stats inherit the dense trio MT's fine partitioning
-# (~2k-12k partitions each for a few tens of MB), so each is coalesced to this
-# both at generation and as it is read into the union (~22x this, ~550, combined).
+# (~2k-12k partitions each for a few tens of MB), so each is coalesced down to
+# this value -- both at generation and again as it's read into the union.
+# Across the 22 autosomes that's ~22 * 25 = ~550 partitions combined, versus
+# the ~138k we'd get from their native partitionings.
 TRIO_STATS_N_PARTITIONS_PER_CHROM = 25
 
 # adj/raw paired count fields produced by generate_trio_stats_expr.
@@ -683,8 +685,7 @@ def main(args):
             )
             # The per-chrom HTs inherit the dense trio MTs' fine partitioning
             # (~2k-12k partitions each), so naive_coalesce each one as it is read;
-            # union() then concatenates ~22x TRIO_STATS_N_PARTITIONS_PER_CHROM
-            # partitions rather than ~138k.
+            # union() then concatenate to get len(chroms) * TRIO_STATS_N_PARTITIONS_PER_CHROM partitions instead of the sum of every chrom's native count (~138k).
             hts = [
                 get_trio_stats(test=test, environment=environment, chrom=c)
                 .ht()
