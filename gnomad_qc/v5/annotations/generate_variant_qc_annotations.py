@@ -685,7 +685,9 @@ def main(args):
             )
             # The per-chrom HTs inherit the dense trio MTs' fine partitioning
             # (~2k-12k partitions each), so naive_coalesce each one as it is read;
-            # union() then concatenate to get len(chroms) * TRIO_STATS_N_PARTITIONS_PER_CHROM partitions instead of the sum of every chrom's native count (~138k).
+            # union() then concatenate to get len(chroms) *
+            # TRIO_STATS_N_PARTITIONS_PER_CHROM partitions instead of the sum of every
+            # chrom's native count (~138k).
             hts = [
                 get_trio_stats(test=test, environment=environment, chrom=c)
                 .ht()
