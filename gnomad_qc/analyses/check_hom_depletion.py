@@ -1,5 +1,7 @@
 import hail as hl
+from hail.utils import new_temp_file
 from gnomad.resources.grch38.gnomad import constraint, public_release
+from gnomad.resources.grch38.reference_data import clinvar
 from gnomad.utils.filtering import filter_to_autosomes
 
 from gnomad_qc.v5.resources.basics import get_logging_path
@@ -15,6 +17,8 @@ logger.setLevel(logging.INFO)
 
 
 OMIM_PATH = "gs://gnomad-kristen/hom_depletion/omim_2023.tsv"
+IMPC_PATH="gs://gnomad-kristen/hom_depletion/viability.csv.gz" 	#2026-03-16 13:49
+MGI_PATH= "gs://gnomad-kristen/hom_depletion/HOM_AllOrganism.txt"  # accessed 07/07/2026 https://www.informatics.jax.org/homology.shtml	
 
 
 def get_field_name(group: str) -> str:
@@ -145,9 +149,10 @@ def annotate_omim_recessive_gene_label(
         )
     )
 
+    o = omim_ht[ht.most_severe_gene_id]
     return ht.annotate(
-        omim=omim_ht[ht.most_severe_gene_id].omim,
-        is_omim_recessive_gene=hl.is_defined(omim_ht[ht.most_severe_gene_id]),
+        omim=o.omim,
+        is_omim_recessive_gene=hl.is_defined(o),
     )
 
 
@@ -207,6 +212,124 @@ def annotate_constraint(ht: hl.Table) -> hl.Table:
     )
 
 
+def annotate_clinvar(ht: hl.Table) -> hl.Table:
+    """
+    Annotate per-variant ClinVar clinical significance and phenotype (disease) info.
+
+    Joins on locus/alleles and pulls disease names (CLNDN), clinical significance
+    (CLNSIG), and review status (CLNREVSTAT) for any ClinVar variant. Variants not
+    present in ClinVar receive a missing `clinvar` struct.
+
+    :param ht: Hail Table keyed by locus/alleles.
+    :return: Hail Table with a `clinvar` struct annotation.
+    """
+    clinvar_ht = clinvar.ht()
+
+    info = clinvar_ht[ht.key].info
+    return ht.annotate(
+        clinvar=hl.struct(
+            disease=info.CLNDN,  # phenotype / disease name(s)
+            clinical_significance=info.CLNSIG,  # benign, pathogenic, VUS, etc.
+            review_status=info.CLNREVSTAT,
+        )
+    )
+
+
+def get_mouse_to_human_ortholog_ht(mgi_path: str) -> hl.Table:
+    """
+    Build a mouse->human ortholog map from MGI's HomoloGene HOM_AllOrganism report.
+
+    Genes sharing a `DB Class Key` are homologs across organisms. Grouping by that key
+    and separating human (taxon 9606) and mouse (taxon 10090) members yields, per class,
+    the human and mouse symbol sets. Result is keyed by mouse `Symbol` and records the
+    human ortholog(s) plus an `ortholog_type` flag ("one2one" vs "one2many") so non-1:1
+    mappings can be handled downstream.
+
+    :param mgi_path: Path to MGI HOM_AllOrganism.txt (tab-delimited).
+    :return: Table keyed by mouse `Symbol` with `human_symbols` (set) and `ortholog_type`.
+    """
+    homer = hl.import_table(mgi_path, impute=True)
+
+    by_class = homer.group_by(class_key=homer["DB Class Key"]).aggregate(
+        human_symbols=hl.agg.filter(
+            homer["NCBI Taxon ID"] == 9606, hl.agg.collect_as_set(homer["Symbol"])
+        ),
+        mouse_symbols=hl.agg.filter(
+            homer["NCBI Taxon ID"] == 10090, hl.agg.collect_as_set(homer["Symbol"])
+        ),
+    )
+
+    # Keep classes with both a human and a mouse member.
+    by_class = by_class.filter(
+        (hl.len(by_class.human_symbols) > 0) & (hl.len(by_class.mouse_symbols) > 0)
+    )
+    by_class = by_class.annotate(
+        ortholog_type=hl.if_else(
+            (hl.len(by_class.human_symbols) == 1)
+            & (hl.len(by_class.mouse_symbols) == 1),
+            "one2one",
+            "one2many",
+        )
+    )
+
+    # One row per mouse symbol, keyed for joining to the IMPC report.
+    ortholog_ht = by_class.annotate(
+        mouse_symbol=hl.array(by_class.mouse_symbols)
+    ).explode("mouse_symbol")
+
+    return ortholog_ht.key_by("mouse_symbol").select("human_symbols", "ortholog_type")
+
+
+def annotate_impc_viability(
+    ht: hl.Table, impc_path: str, mgi_path: str
+) -> hl.Table:
+    """
+    Annotate mouse-knockout homozygous viability (IMPC) on `most_severe_gene`.
+
+    Viability calls (viable / subviable / lethal) are mapped from mouse to human genes
+    via MGI HomoloGene orthologs. `ortholog_type` records whether the mapping was 1:1;
+    non-one2one genes (duplicated families) should be interpreted with care.
+
+    :param ht: Hail Table containing `most_severe_gene` (human gene symbol).
+    :param impc_path: Path to the IMPC viability.csv.gz report.
+    :param mgi_path: Path to MGI HOM_AllOrganism.txt ortholog report.
+    :return: Hail Table with an `impc` struct annotation.
+    """
+    impc_ht = hl.import_table(
+        impc_path, impute=True, force=True, delimiter=",", quote='"'
+    )
+    ortholog_ht = get_mouse_to_human_ortholog_ht(mgi_path)
+
+    ortholog = ortholog_ht[impc_ht["Gene Symbol"]]
+    impc_ht = impc_ht.annotate(
+        human_symbols=ortholog.human_symbols,
+        ortholog_type=ortholog.ortholog_type,
+        viability_call=impc_ht["Viability Phenotype HOMs/HEMIs"],
+    )
+
+    # Keep genes with a human ortholog, then explode to one row per human symbol.
+    impc_ht = impc_ht.filter(hl.is_defined(impc_ht.human_symbols))
+    impc_ht = impc_ht.annotate(
+        human_symbol=hl.array(impc_ht.human_symbols)
+    ).explode("human_symbol")
+
+    impc_ht = impc_ht.group_by(human_gene=impc_ht.human_symbol).aggregate(
+        viability=hl.agg.collect_as_set(impc_ht.viability_call),
+        ortholog_type=hl.agg.collect_as_set(impc_ht.ortholog_type),
+    )
+
+    impc = impc_ht[ht.most_severe_gene]
+    return ht.annotate(
+        impc=hl.struct(
+            viability=impc.viability,
+            ortholog_type=impc.ortholog_type,
+            is_mouse_ko_lethal=hl.any(
+                lambda x: x.lower().contains("lethal"), hl.array(impc.viability)
+            ),
+        )
+    )
+
+
 def select_group_output_fields(ht, groups):
     """
     Select and flatten group-specific annotations.
@@ -262,6 +385,8 @@ def select_group_output_fields(ht, groups):
             "lcr_or_segdup": ht.lcr_or_segdup,
             "phylop_score": ht.phylop_score,
             "constraint": ht.constraint,
+            "clinvar": ht.clinvar,
+            "impc": ht.impc,
         }
     )
 
@@ -325,6 +450,10 @@ def main(args):
         logger.info("Pull out first gene with most severe consequence...")
         ht = annotate_most_severe_gene(ht)
 
+        # vep and freq are not used downstream and are large; drop before the
+        # gene-keyed joins and checkpoint to cut shuffle/serialization volume.
+        ht = ht.drop("vep", "freq")
+
         logger.info("Annotating OMIM recessive-gene label...")
         ht = annotate_omim_recessive_gene_label(ht, OMIM_PATH)
 
@@ -334,12 +463,21 @@ def main(args):
         logger.info("Annotating gene constraint metrics...")
         ht = annotate_constraint(ht)
 
+        logger.info("Annotating ClinVar clinical significance and phenotype...")
+        ht = annotate_clinvar(ht)
+
+        logger.info("Annotating IMPC mouse-knockout viability...")
+        ht = annotate_impc_viability(ht, IMPC_PATH, MGI_PATH)
+
         logger.info("Select and flatten output fields...")
         ht = select_group_output_fields(ht, groups)
 
+        logger.info("Checkpointing annotated table before final write...")
+        ht = ht.checkpoint(new_temp_file("hom_depletion_pre_write", "ht"))
+
         logger.info("Writing hom depletion check results...")
         ht = ht.naive_coalesce(50)
-        ht.write("gs://gnomad-kristen/hom_depletion_af_check_all_0.ht", overwrite=True)
+        ht.write("gs://gnomad-kristen/hom_depletion_af_check_all_1.ht", overwrite=True)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
