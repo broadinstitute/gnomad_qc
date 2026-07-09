@@ -51,6 +51,13 @@ Per-project setup (--project-name {aou,gnomad})::
        precomputes every chunk's read sub-intervals; required -- the fan-out
        and merge read this JSON to enumerate chunks), then --use-batch-fanout,
        then --merge-cov-chunks. See "Execution roles" above for how those dispatch.
+       Chunk boundaries are sampled without a fixed seed, so each
+       --write-chunk-intervals run yields a different layout; chunk outputs are
+       therefore namespaced by a content hash of that JSON
+       (``_chunks/<hash>/<idx>.chunk.ht``). Re-running the fan-out reuses the
+       existing JSON (same hash) and retries only the missing chunks; regenerating
+       the JSON produces a new hash, so chunks from the old layout are recomputed
+       under the new one rather than silently merged into overlapping loci.
     5. Validate the merged HT covers every vep_context site
         (--validate-cov-and-an) — anti-join, fail on any dropped site.
 
@@ -89,6 +96,7 @@ Usage Examples::
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import re
@@ -274,33 +282,71 @@ def get_group_membership_ht(
     return ht
 
 
-def _chunk_path(cov_and_an_ht_path: str, idx: int) -> str:
+def _chunk_intervals_hash(data: Dict[str, Any]) -> str:
     """
-    Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/``.
+    Return a stable short content hash of the chunk-intervals JSON's boundaries.
+
+    The chunk boundaries come from ``repartition_for_join`` ->
+    ``ht._calculate_new_partitions``, which samples the key distribution WITHOUT a
+    fixed seed, so identical ``(flags, project, VDS)`` inputs produce different cut
+    points on each ``--write-chunk-intervals`` run. Because chunk outputs are keyed
+    only by index and the ``_SUCCESS`` skip-check / merge are existence-only, a chunk
+    left at index N by a PRIOR run (different boundaries) would otherwise pass as
+    "present" and be merged with this run's chunks -> overlapping/duplicate loci,
+    caught only by the final row-count validation. Namespacing every chunk output by
+    this hash (see :func:`_chunk_path`) keeps layouts from different runs in separate
+    directories, so the skip-check and merge -- which list only the current hash's
+    directory -- never mix them; a stale chunk is recomputed rather than silently
+    merged.
+
+    Computed over the boundary-determining content (everything except any embedded
+    ``intervals_hash``), so re-loading the same JSON always yields the same value.
+
+    :param data: Parsed chunk-intervals JSON (from ``--write-chunk-intervals``).
+    :return: First 16 hex chars of the SHA-256 of the canonical serialization.
+    """
+    payload = {k: v for k, v in data.items() if k != "intervals_hash"}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
+def _chunk_path(cov_and_an_ht_path: str, idx: int, intervals_hash: str) -> str:
+    """
+    Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/<hash>/``.
 
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
     :param idx: Chunk index (zero-based).
-    :return: ``<cov_and_an_path>_chunks/<idx:08d>.chunk.ht``.
+    :param intervals_hash: Content hash of the chunk-intervals layout that produced
+        this chunk (see :func:`_chunk_intervals_hash`); namespaces the output so
+        chunks from a different layout can never be mixed at merge time.
+    :return: ``<cov_and_an_path>_chunks/<hash>/<idx:08d>.chunk.ht``.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    return f"{base}_chunks/{idx:08d}.chunk.ht"
+    return f"{base}_chunks/{intervals_hash}/{idx:08d}.chunk.ht"
 
 
-def _list_present_chunk_indices(cov_and_an_ht_path: str) -> Set[int]:
+def _list_present_chunk_indices(
+    cov_and_an_ht_path: str, intervals_hash: str
+) -> Set[int]:
     """
     Return the set of chunk indices with a completed (``_SUCCESS``) output.
 
-    One ``hailtop.fs.ls`` glob of ``<…>_chunks/*/_SUCCESS`` instead of a per-chunk
-    ``file_exists`` probe (tens of thousands of serial GCS stats at prod scale).
-    Keying on ``_SUCCESS`` (not the dir) means a partially-written chunk is
-    correctly treated as absent; a missing ``_chunks/`` dir returns an empty set.
+    One ``hailtop.fs.ls`` glob of ``<…>_chunks/<hash>/*/_SUCCESS`` instead of a
+    per-chunk ``file_exists`` probe (tens of thousands of serial GCS stats at prod
+    scale). Scoping the glob to ``intervals_hash`` means only chunks from the CURRENT
+    layout are seen -- a stale chunk from a prior run (different boundaries, different
+    hash) is invisible, so it is recomputed rather than merged (see
+    :func:`_chunk_intervals_hash`). Keying on ``_SUCCESS`` (not the dir) means a
+    partially-written chunk is correctly treated as absent; a missing directory
+    returns an empty set.
 
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
-    :return: Set of completed chunk indices.
+    :param intervals_hash: Content hash of the current chunk-intervals layout.
+    :return: Set of completed chunk indices for this layout.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
     present: Set[int] = set()
-    for entry in hfs.ls(f"{base}_chunks/*/_SUCCESS"):
+    for entry in hfs.ls(f"{base}_chunks/{intervals_hash}/*/_SUCCESS"):
         m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
         if m:
             present.add(int(m.group(1)))
@@ -1736,16 +1782,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         environment, test, args.results_environment
     )
 
-    if args.chunk_output is None:
-        cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
-            project,
-            results_environment,
-            test=test,
-            suffix=args.cov_and_an_output_suffix,
-        )
-        args.chunk_output = _chunk_path(cov_and_an_ht_path, start)
-        logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
-
     group_membership_ht_path = _resolve_group_membership_ht_path(
         project,
         environment,
@@ -1762,6 +1798,10 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     # For --test-region the VDS is read via filter_intervals (which splits
     # straddling reference blocks) instead of read_intervals; this holds those.
     vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
+    # Content hash of the chunk-intervals layout this chunk belongs to; namespaces
+    # the output path so chunks from a different (non-reproducible) layout are never
+    # mixed at merge time. "test_region" for a --test-region run (no JSON).
+    intervals_hash: str
     if args.test_region:
         # Explicit region (--test-region): scope the chunk to these intervals, then
         # balance them into n_sub sub-intervals using the same probe-and-
@@ -1770,6 +1810,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         # partitions. Reading the whole region as one partition per interval pins a
         # single worker at its memory limit and gets OOM-killed on AoU's large sample
         # count (the dense per-site agg over ~245k samples does not fit one worker).
+        intervals_hash = "test_region"
         region_intervals = [_parse_region_interval(r) for r in args.test_region]
         if n_sub > 1:
             # Probe the VDS bounded to the region (filter_intervals splits straddling
@@ -1824,6 +1865,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             )
         with hfs.open(intervals_path) as f:
             data = json.load(f)
+        intervals_hash = _chunk_intervals_hash(data)
         chunk_meta = data["chunks"]
         if not 0 <= start < len(chunk_meta):
             raise ValueError(
@@ -1846,6 +1888,20 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         # undercounted at the chunk's first <=max_len sites). The sites/ref_ht read
         # keeps the un-widened sub_intervals so sites stay disjoint per chunk.
         vds_read_intervals = _expand_leading_edges(sub_intervals, max_ref_block_len)
+
+    # Deferred until the layout hash is known: a chunk output must be namespaced by
+    # its layout so a stale chunk from a prior run is never skipped-as-present or
+    # merged in (the fan-out passes --chunk-output explicitly; this covers a manual
+    # single-chunk run where it is omitted).
+    if args.chunk_output is None:
+        cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
+            project,
+            results_environment,
+            test=test,
+            suffix=args.cov_and_an_output_suffix,
+        )
+        args.chunk_output = _chunk_path(cov_and_an_ht_path, start, intervals_hash)
+        logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
 
     vds, sex_karyotype_field = _load_project_vds(
         project=project,
@@ -1875,6 +1931,10 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         reduce_min_aggs=args.reduce_min_aggs,
         experimental_densify=args.experimental_densify,
     )
+    # Stamp the layout hash into globals for provenance: the union at merge time
+    # inherits the first input's globals, so the final release HT records which
+    # chunk-intervals layout produced it.
+    cov_and_an_ht = cov_and_an_ht.annotate_globals(chunk_intervals_hash=intervals_hash)
     cov_and_an_ht.write(args.chunk_output, overwrite=True)
     logger.info("Wrote chunk [%d, %d) to %s", start, stop, args.chunk_output)
 
@@ -2144,6 +2204,7 @@ def _submit_chunk_batch(
     backend_kwargs: dict,
     chunk_indices: List[int],
     cov_and_an_ht_path: str,
+    intervals_hash: str,
     setup_cmd: str,
     common_flags_str: str,
     script: str,
@@ -2171,7 +2232,9 @@ def _submit_chunk_batch(
         ``remote_tmpdir``).
     :param chunk_indices: Pending chunk indices to submit.
     :param cov_and_an_ht_path: Resolved canonical output HT path; each
-        chunk writes to a sibling ``_chunks/<idx>.chunk.ht``.
+        chunk writes to a sibling ``_chunks/<intervals_hash>/<idx>.chunk.ht``.
+    :param intervals_hash: Content hash of the chunk-intervals layout, used to
+        namespace each chunk's output path (see :func:`_chunk_path`).
     :param setup_cmd: Shell prefix from ``_build_setup_command``.
     :param common_flags_str: Shared CLI flags from
         ``_build_relay_common_flags(args, chunk=True)``.
@@ -2194,7 +2257,7 @@ def _submit_chunk_batch(
 
     job_specs = []
     for idx in chunk_indices:
-        path = _chunk_path(cov_and_an_ht_path, idx)
+        path = _chunk_path(cov_and_an_ht_path, idx, intervals_hash)
         # Chunk identity is the chunk INDEX: the worker looks itself up in the
         # per-chunk JSON by --chunk-start (= idx), and --chunk-stop is idx+1. The
         # VDS read is interval-based (read_intervals from those sub-intervals), so the
@@ -2220,7 +2283,7 @@ def _submit_chunk_batch(
 
 def _eligible_chunk_indices(
     args: argparse.Namespace,
-) -> Tuple[List[Optional[str]], List[int]]:
+) -> Tuple[List[Optional[str]], List[int], str]:
     """
     Enumerate fan-out chunks and the subset selected by ``--chrom``.
 
@@ -2234,12 +2297,15 @@ def _eligible_chunk_indices(
 
     :param args: Parsed CLI args (reads ``test_region``, ``environment``, ``test``,
         ``chrom``).
-    :return: ``(chunk_contigs, eligible)`` -- the per-chunk contig (``None`` for the
-        single ``--test-region`` chunk) indexed by chunk index, and the list of eligible
-        chunk indices after the ``--chrom`` filter.
+    :return: ``(chunk_contigs, eligible, intervals_hash)`` -- the per-chunk contig
+        (``None`` for the single ``--test-region`` chunk) indexed by chunk index, the
+        list of eligible chunk indices after the ``--chrom`` filter, and the content
+        hash of the chunk-intervals layout (``"test_region"`` for a ``--test-region``
+        run, which has no JSON) used to namespace chunk outputs.
     """
     if args.test_region:
         chunk_contigs: List[Optional[str]] = [None]
+        intervals_hash = "test_region"
     else:
         intervals_path = _chunk_intervals_path(args.environment, args.test)
         if not file_exists(intervals_path):
@@ -2249,7 +2315,9 @@ def _eligible_chunk_indices(
                 " enumerate chunks by contig from it)."
             )
         with hfs.open(intervals_path) as f:
-            chunk_contigs = [c["contig"] for c in json.load(f)["chunks"]]
+            data = json.load(f)
+        chunk_contigs = [c["contig"] for c in data["chunks"]]
+        intervals_hash = _chunk_intervals_hash(data)
     n_chunks = len(chunk_contigs)
     if args.chrom:
         chrom_set = set(args.chrom)
@@ -2261,7 +2329,7 @@ def _eligible_chunk_indices(
             )
     else:
         eligible = list(range(n_chunks))
-    return chunk_contigs, eligible
+    return chunk_contigs, eligible, intervals_hash
 
 
 def _orchestrate_coverage_batch(
@@ -2314,8 +2382,8 @@ def _orchestrate_coverage_batch(
         ``total_partitions``/``partitions_per_chunk``).
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path
         (resolved by ``main``). Each chunk writes to
-        ``<cov_and_an_path>_chunks/<idx>.chunk.ht``; the final HT at
-        ``cov_and_an_ht_path`` is produced by ``--merge-cov-chunks``.
+        ``<cov_and_an_path>_chunks/<intervals_hash>/<idx>.chunk.ht``; the final HT
+        at ``cov_and_an_ht_path`` is produced by ``--merge-cov-chunks``.
     :return: None.
     """
     project = args.project_name
@@ -2331,8 +2399,10 @@ def _orchestrate_coverage_batch(
         )
 
     # Enumerate chunks (and the --chrom subset) via the shared helper, so the
-    # orchestrator and the merge always agree on which chunks exist.
-    chunk_contigs, eligible = _eligible_chunk_indices(args)
+    # orchestrator and the merge always agree on which chunks exist. intervals_hash
+    # namespaces every chunk output by its layout so a stale chunk from a prior
+    # --write-chunk-intervals run can never be skipped-as-present or merged in.
+    chunk_contigs, eligible, intervals_hash = _eligible_chunk_indices(args)
     n_chunks = len(chunk_contigs)
 
     # Pre-compute pending chunk indices so the summary log is accurate
@@ -2341,7 +2411,7 @@ def _orchestrate_coverage_batch(
         pending_indices = list(eligible)
     else:
         # One directory listing instead of per-chunk serial existence probes.
-        present = _list_present_chunk_indices(cov_and_an_ht_path)
+        present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         pending_indices = [idx for idx in eligible if idx not in present]
     logger.info(
         "Coverage fan-out: %d chunks total, %d eligible%s, %d pending, %d skipped"
@@ -2405,6 +2475,7 @@ def _orchestrate_coverage_batch(
             backend_kwargs=backend_kwargs,
             chunk_indices=wave_indices,
             cov_and_an_ht_path=cov_and_an_ht_path,
+            intervals_hash=intervals_hash,
             setup_cmd=setup_cmd,
             common_flags_str=common_flags_str,
             script=script,
@@ -2413,7 +2484,7 @@ def _orchestrate_coverage_batch(
         # batch.run() does not raise on per-job failure, so re-check this wave's
         # chunk outputs (one listing) and surface any that did not land (rather
         # than only discovering them at --merge-cov-chunks time).
-        present = _list_present_chunk_indices(cov_and_an_ht_path)
+        present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         failed = [idx for idx in wave_indices if idx not in present]
         if failed:
             logger.warning(
@@ -2561,14 +2632,14 @@ def _orchestrate_coverage_merge(
     # Enumerate chunks (and the --chrom subset) with the same helper the orchestrator
     # uses, so the merge expects exactly the chunks the fan-out produced. A --chrom run
     # merges only that contig's chunks into cov_and_an_ht_path.
-    chunk_contigs, eligible = _eligible_chunk_indices(args)
+    chunk_contigs, eligible, intervals_hash = _eligible_chunk_indices(args)
     n_chunks = len(chunk_contigs)
     logger.info(
         "Verifying %d expected chunk HTs exist (of %d total)...",
         len(eligible),
         n_chunks,
     )
-    present = _list_present_chunk_indices(cov_and_an_ht_path)
+    present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
     missing = [i for i in eligible if i not in present]
     if missing:
         raise FileNotFoundError(
@@ -2610,7 +2681,7 @@ def _orchestrate_coverage_merge(
     # Intermediate levels: each emits a level-tagged group HT per output.
     # Iterates while #inputs > gs; stops when one final merge can union
     # everything remaining.
-    inputs = [_chunk_path(cov_and_an_ht_path, i) for i in eligible]
+    inputs = [_chunk_path(cov_and_an_ht_path, i, intervals_hash) for i in eligible]
     level = 1
     while len(inputs) > gs:
         n_in = len(inputs)
@@ -2862,7 +2933,7 @@ def main(args):
                 # the test sites cover the same loci as the compute.
                 intervals_path = _chunk_intervals_path(environment, test)
                 if file_exists(intervals_path):
-                    _, eligible = _eligible_chunk_indices(args)
+                    _, eligible, _ = _eligible_chunk_indices(args)
                     with hfs.open(intervals_path) as f:
                         cm = json.load(f)
                     rg_name = cm["reference_genome"]
@@ -3079,7 +3150,7 @@ def main(args):
             # --chrom scopes to whole contigs.
             intervals_path = _chunk_intervals_path(environment, test)
             if args.test_n_partitions and file_exists(intervals_path):
-                _, eligible = _eligible_chunk_indices(args)
+                _, eligible, _ = _eligible_chunk_indices(args)
                 with hfs.open(intervals_path) as f:
                     cm = json.load(f)
                 rg = cm["reference_genome"]
