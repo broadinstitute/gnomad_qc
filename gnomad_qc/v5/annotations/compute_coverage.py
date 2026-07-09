@@ -182,6 +182,10 @@ PINNED_LEAF_GROUPS = [{"group": "adj"}, {"group": "raw"}]
 # spot-capacity reason to spread across regions.
 BATCH_REGIONS = ["us-central1"]
 
+# gnomAD sample counts
+GNOMAD_SAMPLE_COUNT = 71702
+GNOMAD_CONSENT_DROP_SAMPLE_COUNT = 849
+
 
 def get_downsampling_ht(ht: hl.Table) -> hl.Table:
     """
@@ -901,8 +905,8 @@ def merge_gnomad_coverage_hts(
     gnomad_ht: hl.Table,
     gnomad_release_ht: hl.Table,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
-    v4_count: int = 76215,
-    consent_drop_count: int = 866,
+    gnomad_sample_count: int = GNOMAD_SAMPLE_COUNT,
+    consent_drop_count: int = GNOMAD_CONSENT_DROP_SAMPLE_COUNT,
 ) -> hl.Table:
     """
     Subtract consent drop samples from gnomAD v4 genomes release HT to create gnomAD v5 genomes coverage HT.
@@ -911,8 +915,8 @@ def merge_gnomad_coverage_hts(
     :param gnomad_release_ht: gnomAD v4 genomes coverage release HT.
     :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
         Default is :data:`COVERAGE_OVER_X_BINS`.
-    :param v4_count: Number of release gnomAD v4 genome samples. Default is 76215.
-    :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is 866.
+    :param gnomad_sample_count: Number of release gnomAD v4 genome samples. Default is `GNOMAD_SAMPLE_COUNT`.
+    :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is `GNOMAD_CONSENT_DROP_SAMPLE_COUNT``.
     :return: gnomAD v5 genomes coverage HT.
     """
     logger.info(
@@ -922,9 +926,9 @@ def merge_gnomad_coverage_hts(
         gnomad_ht, "gnomad", consent_drop_count, coverage_over_x_bins
     )
     gnomad_release_ht = _rename_cov_annotations(
-        gnomad_release_ht, "gnomad_release", v4_count, coverage_over_x_bins
+        gnomad_release_ht, "gnomad_release", gnomad_sample_count, coverage_over_x_bins
     )
-    gnomad_v5_count = v4_count - consent_drop_count
+    gnomad_v5_count = gnomad_sample_count - consent_drop_count
     logger.info("Total number of gnomAD v5 release genomes: %s", gnomad_v5_count)
 
     gnomad_ht = gnomad_ht.join(gnomad_release_ht, "right")
@@ -954,7 +958,7 @@ def join_aou_and_gnomad_coverage_ht(
     aou_ht: hl.Table,
     gnomad_ht: hl.Table,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
-    gnomad_v5_count: int = 76215 - 866,
+    gnomad_v5_count: int = GNOMAD_SAMPLE_COUNT - GNOMAD_CONSENT_DROP_SAMPLE_COUNT,
 ) -> hl.Table:
     """
     Join AoU and gnomAD coverage HTs for release.
