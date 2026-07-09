@@ -916,7 +916,7 @@ def merge_gnomad_coverage_hts(
     :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
         Default is :data:`COVERAGE_OVER_X_BINS`.
     :param gnomad_sample_count: Number of release gnomAD v4 genome samples. Default is `GNOMAD_SAMPLE_COUNT`.
-    :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is `GNOMAD_CONSENT_DROP_SAMPLE_COUNT``.
+    :param consent_drop_count: Number of consent drop gnomAD v4 genome samples. Default is `GNOMAD_CONSENT_DROP_SAMPLE_COUNT`.
     :return: gnomAD v5 genomes coverage HT.
     """
     logger.info(
@@ -967,7 +967,7 @@ def join_aou_and_gnomad_coverage_ht(
     :param gnomad_ht: gnomAD v5 genomes coverage HT.
     :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
         Default is :data:`COVERAGE_OVER_X_BINS`.
-    :param gnomad_v5_count: Number of release gnomAD v5 genome samples. Default is 76215 - 866.
+    :param gnomad_v5_count: Number of release gnomAD v5 genome samples. Default is `GNOMAD_SAMPLE_COUNT - GNOMAD_CONSENT_DROP_SAMPLE_COUNT`.
     :return: Joined HT.
     """
     aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
