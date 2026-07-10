@@ -429,21 +429,34 @@ def _resolve_cov_and_an_ht_path(
     environment: str,
     test: bool,
     suffix: Optional[str],
+    chrom: Optional[str] = None,
 ) -> str:
     """
-    Return the cov_and_an HT path, applying ``suffix`` when set.
+    Return the cov_and_an HT path, applying ``suffix`` and ``chrom`` when set.
+
+    A ``--chrom`` run appends the contig to the suffix so every derived path
+    (per-chunk, merge-group, final HT, and the validate read) is contig-scoped and a
+    per-contig run can go all the way through fan-out -> merge -> validate without
+    colliding with or clobbering another contig's outputs. Folded here (not by
+    mutating ``args``) so the orchestrator and the relay workers it spawns -- which
+    each re-resolve from the same ``suffix`` + ``chrom`` -- always agree, with no
+    risk of double-folding. Assemble the per-contig HTs with
+    ``--assemble-chrom-coverage``.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
     :param test: Whether to route to the test path.
     :param suffix: Optional suffix appended before the ``.ht`` extension
         (for A/B comparison runs).
+    :param chrom: Optional single contig (``--chrom``); appended to ``suffix`` so the
+        path is contig-scoped.
     :return: Fully resolved cov_and_an HT path.
     """
     path = coverage_and_an_path(
         test=test, data_set=project, environment=environment
     ).path
-    return _apply_path_suffix(path, suffix)
+    full_suffix = f"{suffix}_{chrom}" if suffix and chrom else (suffix or chrom)
+    return _apply_path_suffix(path, full_suffix)
 
 
 def _resolve_group_membership_ht_path(
@@ -578,7 +591,7 @@ def _derive_chunk_locus_intervals(
 
 
 def _derive_ref_partition_intervals(
-    n_partitions: int, chrom: Optional[List[str]] = None
+    n_partitions: int, chrom: Optional[str] = None
 ) -> List[hl.utils.Interval]:
     """
     Derive balanced locus intervals from the vep_context sites table.
@@ -592,15 +605,13 @@ def _derive_ref_partition_intervals(
     :param n_partitions: Number of balanced partitions to derive when positive; a
         falsy value (0) uses ``repartition_for_join``'s default
         1.1x-of-native-partitions multiplier (no number to guess for the full run).
-    :param chrom: Optional list of contigs to restrict vep_context to before
+    :param chrom: Optional single contig to restrict vep_context to before
         deriving partitions, so the intervals match a ``--chrom``-filtered run.
     :return: List of bare-``Locus`` ``hl.Interval`` objects.
     """
     ref_ht = vep_context.versions["105"].ht().key_by("locus")
     if chrom:
-        ref_ht = hl.filter_intervals(
-            ref_ht, [hl.parse_locus_interval(c) for c in chrom]
-        )
+        ref_ht = hl.filter_intervals(ref_ht, [hl.parse_locus_interval(chrom)])
     return repartition_for_join(
         ref_ht,
         locus_intervals=True,
@@ -653,11 +664,10 @@ def compute_all_release_stats_per_ref_site(
         ``compute_stats_per_ref_site`` so AN goes through the
         leaf-reduction path. Requires ``group_membership_ht`` to have
         been built with ``reduce_to_minimal_groups=True``.
-    :param experimental_densify: If True (T3, ``--experimental-densify``),
-        merge the VDS into one sparse MT (``to_merged_sparse_mt``) and unify the
-        genotype into ``LGT`` so ``compute_stats_per_ref_site`` takes the
-        ``hl.experimental.densify`` path instead of ``to_dense_mt``; outputs
-        match. Default is False.
+    :param experimental_densify: If True, merge the VDS into one sparse MT
+        (``to_merged_sparse_mt``) and unify the genotype into ``LGT`` so
+        ``compute_stats_per_ref_site`` takes the  ``hl.experimental.densify`` path
+        instead of ``to_dense_mt``. Default is False.
     :return: HT keyed by locus with per-stratum ``AN``, flat
         ``mean``/``over_X``/``median_approx``/``total_DP`` coverage
         fields (from the global adj-filtered group), and
@@ -731,15 +741,14 @@ def compute_all_release_stats_per_ref_site(
         rmt = rmt.annotate_entries(LEN=rmt.END - rmt.locus.position + 1)
     vds = hl.vds.VariantDataset(rmt, vmt)
 
-    # T3 (experimental, --experimental-densify): merge the VDS into one sparse MT so
-    # compute_stats_per_ref_site takes the lean ``hl.experimental.densify`` scan
-    # (the is_vds=False branch) instead of ``to_dense_mt``'s variant+reference
-    # outer-join + per-cell ``coalesce_join``. The genotype is unified per cell (ref
-    # blocks carry GT, variant sites LGT); AN sums ploidy, which is local/global- and
-    # multiallelic-invariant, and coalesce mirrors what ``to_dense_mt`` does
-    # internally, so outputs match. Passing a missing ref allele makes
-    # ``to_merged_sparse_mt`` skip its ``has_sequence``/``sequence_context`` branch,
-    # so no reference-genome FASTA sequence is needed.
+    # Merge the VDS into one sparse MT so compute_stats_per_ref_site takes the lean
+    # ``hl.experimental.densify`` scan (the is_vds=False branch) instead of
+    # ``to_dense_mt``'s variant+reference outer-join + per-cell ``coalesce_join``. The
+    # genotype is unified per cell (ref blocks carry GT, variant sites LGT); AN sums
+    # ploidy, which is local/global- and multiallelic-invariant, and coalesce mirrors
+    # what ``to_dense_mt`` does internally, so outputs match. Passing a missing ref
+    # allele makes ``to_merged_sparse_mt`` skip its ``has_sequence``/``sequence_context``
+    # branch, so no reference-genome FASTA sequence is needed.
     mtds = vds
     if experimental_densify:
         mtds = hl.vds.to_merged_sparse_mt(
@@ -1241,7 +1250,7 @@ def _load_project_vds(
     partition_range: Optional[List[int]] = None,
     sub_intervals: Optional[List[hl.utils.Interval]] = None,
     filter_intervals: Optional[List[hl.utils.Interval]] = None,
-    chrom: Optional[List[str]] = None,
+    chrom: Optional[str] = None,
     test: bool = False,
     test_sample_subset: bool = False,
 ) -> Tuple[hl.vds.VariantDataset, str]:
@@ -1273,7 +1282,7 @@ def _load_project_vds(
         these intervals and SPLITS reference blocks straddling the edges, so the
         in-region piece keeps its coverage with a bounded read (no backing the read
         up by ``ref_block_max_length``). Used by ``--test-region``.
-    :param chrom: Optional list of contigs to filter to.
+    :param chrom: Optional single contig to filter to.
     :param test: Whether this is a test run (gates ``test_sample_subset``).
     :param test_sample_subset: If True (AoU only, and ``test``), subsample
         ~0.1% of the AoU sample set for cheap tiny-cohort runs.
@@ -1332,7 +1341,7 @@ def _probe_vds(
     project: str,
     environment: str,
     partition_range: Optional[List[int]],
-    chrom: Optional[List[str]],
+    chrom: Optional[str],
     filter_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.vds.VariantDataset:
     """
@@ -1349,7 +1358,7 @@ def _probe_vds(
     :param environment: Compute environment.
     :param partition_range: VDS partition indices to probe (e.g.
         ``list(range(2))``) or ``None`` for the full VDS.
-    :param chrom: Optional list of contigs to filter to.
+    :param chrom: Optional single contig to filter to.
     :param filter_intervals: Optional locus intervals to bound the probe to (via
         ``hl.vds.filter_intervals``, splitting straddling reference blocks). Used by
         the ``--test-region`` fan-out to probe just the region's reference-data loci.
@@ -1557,7 +1566,7 @@ def _build_chunk_intervals(
     total_partitions: int,
     partitions_per_chunk: int,
     n_sub: int,
-    chrom: Optional[List[str]] = None,
+    chrom: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Precompute every chunk's balanced read sub-intervals in ONE VDS open, by contig.
@@ -1586,7 +1595,7 @@ def _build_chunk_intervals(
     :param partitions_per_chunk: Sets ``n_chunks = ceil(total_partitions / this)``, the
         sub-interval-count divisor (no longer a chunk key -- chunks are contig-grouped).
     :param n_sub: Sub-intervals per chunk (``--read-subintervals-per-chunk``).
-    :param chrom: Optional list of contigs to restrict the precompute to.
+    :param chrom: Optional single contig to restrict the precompute to.
     :return: Dict with ``read_subintervals_per_chunk``, ``ref_block_max_length``,
         ``reference_genome``, and ``chunks`` (a list indexed by chunk index; each entry
         ``{"contig": str, "intervals": [serialized sub-intervals]}``).
@@ -1650,7 +1659,7 @@ def _build_chunk_intervals(
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
     partition_count: int,
-    chrom: Optional[List[str]],
+    chrom: Optional[str],
     sites_path: str,
     sub_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
@@ -1670,7 +1679,7 @@ def _build_chunk_ref_ht(
         (the loci within the chunk are derived from its ``reference_data``).
     :param partition_count: When > 0 and ``sub_intervals``/``chrom`` are None,
         filters ``ref_ht`` to the loci within the VDS chunk. 0 means "whole".
-    :param chrom: Optional list of contigs to filter to (takes precedence over
+    :param chrom: Optional single contig to filter to (takes precedence over
         the ``partition_count``-driven filter to the chunk's loci).
     :param sites_path: Path to the preprocessed vep_context sites HT.
     :param sub_intervals: Optional read-time intervals; take precedence over both
@@ -1686,9 +1695,7 @@ def _build_chunk_ref_ht(
 
     ref_ht = hl.read_table(sites_path)
     if chrom:
-        ref_ht = hl.filter_intervals(
-            ref_ht, [hl.parse_locus_interval(c) for c in chrom]
-        )
+        ref_ht = hl.filter_intervals(ref_ht, [hl.parse_locus_interval(chrom)])
     elif partition_count > 0:
         chunk_intervals = _derive_chunk_locus_intervals(vds_filtered)
         ref_ht = hl.filter_intervals(ref_ht, chunk_intervals)
@@ -1903,6 +1910,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
             results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
+            chrom=args.chrom,
         )
         args.chunk_output = _chunk_path(cov_and_an_ht_path, start, intervals_hash)
         logger.info("Auto-derived --chunk-output: %s", args.chunk_output)
@@ -2123,7 +2131,7 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
-            flags.append(f"--chrom {' '.join(args.chrom)}")
+            flags.append(f"--chrom {args.chrom}")
         if args.test_region:
             flags.append(f"--test-region {' '.join(args.test_region)}")
         # args.test is the canonical test flag (normalized at parse time to include
@@ -2324,8 +2332,7 @@ def _eligible_chunk_indices(
         intervals_hash = _chunk_intervals_hash(data)
     n_chunks = len(chunk_contigs)
     if args.chrom:
-        chrom_set = set(args.chrom)
-        eligible = [i for i in range(n_chunks) if chunk_contigs[i] in chrom_set]
+        eligible = [i for i in range(n_chunks) if chunk_contigs[i] == args.chrom]
         if not eligible:
             raise ValueError(
                 f"No chunks match --chrom {args.chrom}; contigs in the precompute:"
@@ -2821,6 +2828,7 @@ def main(args):
             results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
+            chrom=args.chrom,
         )
         _orchestrate_coverage_batch(args, cov_and_an_ht_path)
         return
@@ -2831,6 +2839,7 @@ def main(args):
             results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
+            chrom=args.chrom,
         )
         _orchestrate_coverage_merge(args, cov_and_an_ht_path)
         return
@@ -2887,7 +2896,22 @@ def main(args):
             results_environment,
             test=test,
             suffix=args.cov_and_an_output_suffix,
+            chrom=args.chrom,
         )
+
+        # Union the per-contig HTs (each ..._<contig>.ht, written by a --chrom
+        # merge) into the canonical HT. Contigs come from the precompute JSON;
+        # each per-contig path is the canonical path with the contig appended.
+        # Validate afterward with --validate-cov-and-an (no --chrom).
+        if args.assemble_chrom_coverage:
+            with hfs.open(_chunk_intervals_path(environment, test)) as f:
+                contigs = sorted({c["contig"] for c in json.load(f)["chunks"]})
+            inputs = [_apply_path_suffix(cov_and_an_ht_path, c) for c in contigs]
+            _run_coverage_merge(
+                inputs, cov_and_an_ht_path, coalesce_to=args.n_partitions
+            )
+            return
+
         group_membership_ht_path = _resolve_group_membership_ht_path(
             project,
             environment,
@@ -3168,7 +3192,7 @@ def main(args):
                 )
             elif args.chrom:
                 sites_ht = hl.filter_intervals(
-                    sites_ht, [hl.parse_locus_interval(c) for c in args.chrom]
+                    sites_ht, [hl.parse_locus_interval(args.chrom)]
                 )
             merged_ht = hl.read_table(cov_and_an_ht_path)
             missing_ht = sites_ht.anti_join(merged_ht).checkpoint(
@@ -3531,10 +3555,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--experimental-densify",
         action="store_true",
         help=(
-            "T3 (experimental): compute coverage/AN via ``hl.experimental.densify``"
-            " on a merged sparse MT instead of ``hl.vds.to_dense_mt``, skipping the"
-            " variant+reference per-cell coalesce. Output is equivalent; lets us"
-            " A/B the densify cost. Chunk / --use-batch-fanout path only."
+            "compute coverage/AN via ``hl.experimental.densify`` on a merged sparse MT"
+            " instead of ``hl.vds.to_dense_mt``, skipping the variant+reference per-cell"
+            " coalesce. Output is equivalent; lets us  A/B the densify cost. Chunk /"
+            " --use-batch-fanout path only."
         ),
     )
     parser.add_argument(
@@ -3594,12 +3618,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     test_group.add_argument(
         "--chrom",
-        nargs="+",
         default=None,
         help=(
-            "Filter input data to these contigs (e.g."
-            " ``--chrom chr22 chrX chrY``). Default: no chrom filter."
-            " Independent of --test."
+            "Filter input data to a single contig (e.g. ``--chrom chr22``). The"
+            " contig is appended to the output path suffix, so a --chrom run goes"
+            " all the way through fan-out -> merge -> validate without clobbering"
+            " another contig; assemble the per-contig HTs with"
+            " --assemble-chrom-coverage. Default: no chrom filter. Independent of"
+            " --test."
         ),
     )
     test_group.add_argument(
@@ -3763,6 +3789,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " <cov_and_an_path>. Chunk discovery reads the chunk-intervals JSON"
             " (same as --use-batch-fanout); missing chunks fail loudly. Requires"
             " --environment=batch."
+        ),
+    )
+    fanout_group.add_argument(
+        "--assemble-chrom-coverage",
+        action="store_true",
+        help=(
+            "Union the per-contig cov_and_an HTs (each ..._<contig>.ht, produced"
+            " by running --merge-cov-chunks --chrom <contig> per contig) into the"
+            " canonical HT. Contigs are enumerated from the chunk-intervals JSON."
+            " Runs in-process (no --chrom). Validate the result with"
+            " --validate-cov-and-an (no --chrom)."
         ),
     )
     fanout_group.add_argument(
@@ -4149,34 +4186,47 @@ if __name__ == "__main__":
     if args.merge_qual_hists and args.project_name != "aou":
         raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
 
-    # --use-batch-fanout / --merge-cov-chunks / --run-chunk / --run-merge
-    # are mutually exclusive entry-points. The orchestrators set
-    # --run-chunk / --run-merge inside their relay containers; users
-    # should not pass the worker flags from the command line alongside
-    # the orchestrator flags.
-    fanout_modes = sum(
-        bool(x)
-        for x in (
-            args.use_batch_fanout,
-            args.merge_cov_chunks,
-            args.run_chunk,
-            args.run_merge,
-        )
-    )
-    if fanout_modes > 1:
+    # Single-action entry points: each dispatches exactly one unit in main() and
+    # returns, so pairing one with another entry point or with an in-process step
+    # flag would silently skip the other. --run-chunk / --run-merge are set by the
+    # orchestrators inside relay containers; users shouldn't pass them from the CLI.
+    entry_points = {
+        "--use-batch-fanout": args.use_batch_fanout,
+        "--merge-cov-chunks": args.merge_cov_chunks,
+        "--assemble-chrom-coverage": args.assemble_chrom_coverage,
+        "--run-chunk": args.run_chunk,
+        "--run-merge": args.run_merge,
+    }
+    # In-process steps that run sequentially in main()'s ROLE 3 block; these may be
+    # combined with each other (e.g. compute + validate), but not with an entry point.
+    step_flags = {
+        "--write-aou-downsampling-ht": args.write_aou_downsampling_ht,
+        "--write-group-membership-ht": args.write_group_membership_ht,
+        "--write-vep-context-sites": args.write_vep_context_sites,
+        "--write-chunk-intervals": args.write_chunk_intervals,
+        "--compute-all-cov-release-stats-ht": args.compute_all_cov_release_stats_ht,
+        "--validate-cov-and-an": args.validate_cov_and_an,
+        "--merge-gnomad-coverage": args.merge_gnomad_coverage,
+        "--merge-gnomad-an": args.merge_gnomad_an,
+        "--export-coverage-release-files": args.export_coverage_release_files,
+        "--export-an-release-files": args.export_an_release_files,
+        "--merge-qual-hists": args.merge_qual_hists,
+    }
+    active_entry = [f for f, v in entry_points.items() if v]
+    if len(active_entry) > 1:
+        parser.error(f"{', '.join(active_entry)} are mutually exclusive entry points.")
+    if active_entry:
+        active_steps = [f for f, v in step_flags.items() if v]
+        if active_steps:
+            parser.error(
+                f"{active_entry[0]} runs on its own and returns before the"
+                f" in-process steps; {', '.join(active_steps)} would be silently"
+                " skipped. Run them in a separate invocation."
+            )
+    if args.assemble_chrom_coverage and args.chrom:
         parser.error(
-            "--use-batch-fanout, --merge-cov-chunks, --run-chunk, and"
-            " --run-merge are mutually exclusive."
-        )
-    if args.use_batch_fanout and args.compute_all_cov_release_stats_ht:
-        parser.error(
-            "--use-batch-fanout is an alternative to"
-            " --compute-all-cov-release-stats-ht; do not pass both."
-        )
-    if args.merge_cov_chunks and args.compute_all_cov_release_stats_ht:
-        parser.error(
-            "--merge-cov-chunks is a separate step from"
-            " --compute-all-cov-release-stats-ht; do not pass both."
+            "--assemble-chrom-coverage unions every per-contig HT into the"
+            " canonical (contig-unscoped) path; do not pass --chrom."
         )
     if args.test_region and args.test_n_partitions is not None:
         parser.error(
