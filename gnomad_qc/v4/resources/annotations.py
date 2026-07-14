@@ -544,3 +544,86 @@ def get_split_vds(
     return VariantDatasetResource(
         f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split_multi.vds"
     )
+
+
+# Gridmax per-pixel frequency resources (joint analysis, v4.1.1).
+
+gridmax_sample_key = TableResource(
+    f"{_annotations_root(CURRENT_VERSION, data_type='joint')}/gnomad.joint.v{CURRENT_VERSION}.gridmax_sample_key.ht"
+)
+
+
+def get_gridmax_bin_summary(test: bool = False) -> str:
+    """
+    Get the GCS path for the gridmax bin summary TSV.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: GCS path string for the bin summary TSV.
+    """
+    return (
+        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='joint')}"
+        f"/gnomad.joint.v{CURRENT_VERSION}.gridmax_bin_summary.tsv"
+    )
+
+
+def get_gridmax_training_samples(test: bool = False) -> TableResource:
+    """
+    Get the gridmax training samples TableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: TableResource for the gridmax training samples HT.
+    """
+    return TableResource(
+        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='joint')}"
+        f"/gnomad.joint.v{CURRENT_VERSION}.gridmax_training_samples.ht"
+    )
+
+
+def get_gridmax_split_vds(
+    test: bool = False,
+    chrom: Optional[str] = None,
+    test_gene: bool = False,
+) -> VariantDatasetResource:
+    """
+    Get the gridmax split VDS VariantDatasetResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :param chrom: Optional chromosome suffix (e.g. 'chr20').
+    :param test_gene: Whether to use the test-gene (DRD2) suffix.
+    :return: VariantDatasetResource for the gridmax split VDS.
+    """
+    suffix = (".test_gene" if test_gene else "") + (f".{chrom}" if chrom else "")
+    return VariantDatasetResource(
+        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='joint')}"
+        f"/temp/gnomad.joint.v{CURRENT_VERSION}.gridmax.split_vds{suffix}.vds"
+    )
+
+
+def get_gridmax_freq(
+    step: str = "freq",
+    test: bool = False,
+    chrom: Optional[str] = None,
+    test_gene: bool = False,
+) -> TableResource:
+    """
+    Get a gridmax frequency TableResource for the specified pipeline step.
+
+    :param step: Pipeline step name: 'freq', 'corrected', or 'final'.
+    :param test: Whether to use a tmp path for testing.
+    :param chrom: Optional chromosome suffix (e.g. 'chr20').
+    :param test_gene: Whether to use the test-gene (DRD2) suffix.
+    :return: TableResource for the requested gridmax frequency HT.
+    """
+    step_names = {
+        "freq": "gridmax.freq",
+        "corrected": "gridmax.freq.corrected",
+        "final": "gridmax.freq.final",
+    }
+    suffix = (".test_gene" if test_gene else "") + (f".{chrom}" if chrom else "")
+    root = _annotations_root(CURRENT_VERSION, test=test, data_type="joint")
+    ht_name = step_names[step]
+    if step == "final":
+        path = f"{root}/gnomad.joint.v{CURRENT_VERSION}.{ht_name}{suffix}.ht"
+    else:
+        path = f"{root}/temp/gnomad.joint.v{CURRENT_VERSION}.{ht_name}{suffix}.ht"
+    return TableResource(path)
