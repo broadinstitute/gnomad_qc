@@ -426,6 +426,7 @@ def merge_iforest_result(
     run_prefix: str,
     out_vcf_name: str,
     model_id: str,
+    scatter_count: int,
     n_partitions: int,
     header_path: Optional[str],
     array_elements_required: bool,
@@ -436,16 +437,28 @@ def merge_iforest_result(
     The SNP-pass VCF contributes SNP alleles and the INDEL-pass VCF contributes all
     non-SNP alleles, so the union covers every scored allele exactly once.
 
+    Only the current run's ``scatter_count`` shards are read (by explicit index), so a
+    rerun with a smaller scatter count does not pick up stale shards from a prior run.
+
     :param run_prefix: GCS prefix for this run's GATK outputs.
     :param out_vcf_name: Base name used for scored VCF shards.
     :param model_id: Isolation forest model ID (starts with ``if_``).
+    :param scatter_count: Number of score shards per mode (must match the scoring run).
     :param n_partitions: Number of partitions for the imported HTs.
     :param header_path: Optional VCF header file for import.
     :param array_elements_required: Value passed to hl.import_vcf.
     :return: Merged variant QC result HT.
     """
+    snp_vcfs = [
+        f"{run_prefix}/score/snp/{out_vcf_name}{idx}.vcf.gz"
+        for idx in range(scatter_count)
+    ]
+    indel_vcfs = [
+        f"{run_prefix}/score/indel/{out_vcf_name}{idx}.vcf.gz"
+        for idx in range(scatter_count)
+    ]
     snp_ht = import_variant_qc_vcf(
-        f"{run_prefix}/score/snp/{out_vcf_name}*.vcf.gz",
+        snp_vcfs,
         model_id,
         n_partitions,
         header_path,
@@ -453,7 +466,7 @@ def merge_iforest_result(
         deduplicate_check=True,
     )[0]
     indel_ht = import_variant_qc_vcf(
-        f"{run_prefix}/score/indel/{out_vcf_name}*.vcf.gz",
+        indel_vcfs,
         model_id,
         n_partitions,
         header_path,
@@ -554,6 +567,7 @@ def main(args):
             run_prefix=run_prefix,
             out_vcf_name=args.out_vcf_name,
             model_id=model_id,
+            scatter_count=scatter_count,
             n_partitions=args.n_partitions,
             header_path=args.header_path,
             array_elements_required=args.array_elements_required,

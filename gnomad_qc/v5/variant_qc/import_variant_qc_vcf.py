@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.utils.sparse_mt import split_info_annotation
@@ -20,7 +20,7 @@ logger.setLevel(logging.INFO)
 
 
 def import_variant_qc_vcf(
-    vcf_path: str,
+    vcf_path: Union[str, List[str]],
     model_id: str,
     num_partitions: int = 5000,
     import_header_path: Optional[str] = None,
@@ -31,7 +31,8 @@ def import_variant_qc_vcf(
     """
     Import variant QC result sites VCF into a HT.
 
-    :param vcf_path: Path to variant QC result sites VCF. Can be Hadoop glob patterns.
+    :param vcf_path: Path(s) to variant QC result sites VCF(s). Can be a Hadoop glob
+        pattern or a list of paths.
     :param model_id: Model ID. Must start with ``rf_``, ``vqsr_``, or ``if_``.
     :param num_partitions: Number of partitions for the output HT.
     :param import_header_path: Optional header file to use for import.
