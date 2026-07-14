@@ -5,3 +5,13 @@ hail-*.log
 *.pyc
 *.pyo
 __pycache__/
+
+# Local scratch / untracked work
+_scratch/
+
+# Generated artifacts
+.idea/
+.ipynb_checkpoints/
+*.egg-info/
+build/
+.code_review/
