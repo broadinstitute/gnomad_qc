@@ -46,10 +46,12 @@ python generate_frequency.py --merge-datasets --environment batch --app-name "me
 import argparse
 import copy
 import logging
-from typing import List, Optional
+import re
+from typing import List, Optional, Set
 
 import hail as hl
 import hailtop.batch as hb
+import hailtop.fs as hfs
 from gnomad.resources.grch38.gnomad import GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
@@ -107,6 +109,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
+
+
+def _combine_freq_suffix(suffix: Optional[str], chrom: Optional[str]) -> Optional[str]:
+    """
+    Fold an optional ``--chrom`` contig into the freq HT suffix.
+
+    A ``--chrom`` run appends the contig to the suffix so every per-contig output
+    (AoU freq HT, chunk/group HTs) is stored at its own path -- a per-contig run can
+    go all the way through fan-out -> merge without colliding with or clobbering
+    another contig's outputs, and a late failure only loses that contig. Assemble the
+    per-contig HTs with ``--assemble-chrom-freq``. Folded in one place (not by mutating
+    ``args``) so the orchestrator and the relay workers it spawns -- which each
+    re-resolve from the same ``suffix`` + ``chrom`` -- always agree, with no risk of
+    double-folding.
+
+    :param suffix: Optional base suffix (e.g. ``--aou-freq-ht-suffix``).
+    :param chrom: Optional single contig (``--chrom``).
+    :return: ``"{suffix}_{chrom}"`` when both set, else whichever is set, else None.
+    """
+    if suffix and chrom:
+        return f"{suffix}_{chrom}"
+    return suffix or chrom
 
 
 def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
@@ -232,7 +256,10 @@ def _prepare_aou_vds(
 
 
 def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
-    aou_variant_mt: hl.MatrixTable, test: bool = False, environment: str = "batch"
+    aou_variant_mt: hl.MatrixTable,
+    test: bool = False,
+    environment: str = "batch",
+    chrom: Optional[str] = None,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using all sites ANs.
@@ -241,10 +268,17 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     :param test: Whether to use test resources.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param chrom: Optional single contig; when set, the all-sites-AN HT is
+        interval-filtered to it so only that contig's AN is read (the variant MT is
+        already contig-scoped by the VDS load, so this is a read-pruning optimization).
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
     all_sites_an_ht = coverage_and_an_path(test=test, environment=environment).ht()
+    if chrom:
+        all_sites_an_ht = hl.filter_intervals(
+            all_sites_an_ht, [hl.parse_locus_interval(chrom)]
+        )
     aou_variant_mt = aou_variant_mt.annotate_rows(
         hist_fields=mt_hist_fields(aou_variant_mt)
     )
@@ -416,6 +450,7 @@ def process_aou_dataset(
     environment: str = "batch",
     reduce_to_minimal_groups: bool = False,
     overwrite_split_aou_vds: bool = False,
+    chrom: Optional[str] = None,
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -440,6 +475,8 @@ def process_aou_dataset(
         This is independent of the general ``--overwrite`` flag that controls
         the final freq HT so you can rebuild the freq HT from an existing
         split VDS without paying to recompute it. Default is False.
+    :param chrom: Optional single contig to scope the AoU VDS load (and the
+        all-sites-AN read) to. Default is None (whole genome).
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     test = test_vds or test_partitions is not None
@@ -451,7 +488,11 @@ def process_aou_dataset(
     # few days, which is too short for a full AoU freq run).
     split_vds_resource = None
     use_cached_split_vds = False
-    if not use_all_sites_ans:
+    # The persistent split-VDS checkpoint is a whole-genome artifact, so it must not
+    # be read or written on a --chrom run (that would clobber it across contigs / read
+    # the wrong contig). A --chrom densify run recomputes the (contig-scoped) split VDS
+    # in-line instead.
+    if not use_all_sites_ans and chrom is None:
         split_vds_resource = get_split_aou_vds(test=test, environment=environment)
         if (
             _file_exists_for_env(split_vds_resource.path, environment)
@@ -476,6 +517,7 @@ def process_aou_dataset(
                 list(range(test_partitions)) if test_partitions else None
             ),
             repartition_after_filter=repartition_after_filter,
+            chrom=chrom,
             environment=environment,
         )
         aou_vds = _prepare_aou_vds(
@@ -490,7 +532,7 @@ def process_aou_dataset(
     if use_all_sites_ans:
         logger.info("Using all sites ANs for frequency calculations...")
         aou_freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
-            aou_vds.variant_data, test=test, environment=environment
+            aou_vds.variant_data, test=test, environment=environment, chrom=chrom
         )
     else:
         # Persist the prepared split VDS to a durable (non-tmp) resource so
@@ -499,8 +541,10 @@ def process_aou_dataset(
         # downstream scan of the dense MT (hists + freq) would re-run
         # split_multi from the raw VDS. This is a sparse-VDS write (not a
         # dense MT), so the cost is bounded by the raw VDS size and is
-        # one-time. Skipped when we already loaded the cached VDS above.
-        if not use_cached_split_vds:
+        # one-time. Skipped when we already loaded the cached VDS above, and skipped
+        # entirely on a --chrom run (split_vds_resource is None there -- the
+        # whole-genome checkpoint must not be clobbered by a single contig).
+        if not use_cached_split_vds and split_vds_resource is not None:
             logger.info(
                 "Checkpointing prepared split AoU VDS to persistent resource "
                 "at %s (one-time write; re-used on rerun unless "
@@ -524,6 +568,36 @@ def process_aou_dataset(
 # ---------------------------------------------------------------------------
 
 
+def _list_present_freq_chunk_indices(sample_chunk_path: str) -> Set[int]:
+    """
+    Return the set of chunk indices with a completed (``_SUCCESS``) output.
+
+    One ``hailtop.fs.ls`` glob of ``<freq_chunks_dir>/*.freq.chunk_*.ht/_SUCCESS``
+    instead of a per-chunk ``file_exists`` probe (tens of thousands of serial GCS
+    stats at prod scale). Keying on ``_SUCCESS`` (not the directory) means a
+    partially-written chunk is correctly treated as absent; a missing directory
+    returns an empty set. Only ``chunk_`` outputs are matched, so per-group merge
+    HTs in the same directory are ignored.
+
+    :param sample_chunk_path: Any per-chunk HT path (e.g. from
+        ``get_aou_freq_chunk_path(0, kind="chunk", ...)``); its parent directory
+        is the freq_chunks directory that is globbed.
+    :return: Set of completed chunk indices.
+    """
+    chunk_dir = sample_chunk_path.rstrip("/").rsplit("/", 1)[0]
+    present: Set[int] = set()
+    try:
+        entries = hfs.ls(f"{chunk_dir}/*.freq.chunk_*.ht/_SUCCESS")
+    except (FileNotFoundError, OSError):
+        # Directory does not exist yet (no chunks written) -> nothing present.
+        return present
+    for entry in entries:
+        m = re.search(r"\.freq\.chunk_(\d+)\.ht/_SUCCESS$", entry.path)
+        if m:
+            present.add(int(m.group(1)))
+    return present
+
+
 def _run_aou_freq_chunk(
     start: int,
     stop: int,
@@ -536,6 +610,7 @@ def _run_aou_freq_chunk(
     n_partitions_on_read: Optional[int] = None,
     driver_memory: str = "10g",
     local_cores: int = 2,
+    chrom: Optional[str] = None,
 ) -> None:
     """
     Compute the AoU frequency HT for a single partition slice.
@@ -559,6 +634,8 @@ def _run_aou_freq_chunk(
         partitions before ``filter_partitions`` selects this chunk's slice.
     :param driver_memory: JVM heap size for the local Spark driver.
     :param local_cores: Number of local Spark threads. Default ``2``.
+    :param chrom: Optional single contig to scope this chunk's VDS load to
+        (forwarded from the orchestrator's ``--chrom``). Default None.
     """
     _init_hail_local_spark(
         f"v5_freq_aou_chunk_{start:06d}_{stop:06d}",
@@ -573,6 +650,7 @@ def _run_aou_freq_chunk(
         repartition_after_filter=repartition_after_filter,
         annotate_meta=True,
         release_only=True,
+        chrom=chrom,
         environment=environment,
     )
 
@@ -611,6 +689,7 @@ def run_aou_freq_sequential(
     reduce_to_minimal_groups: bool = False,
     suffix: Optional[str] = None,
     overwrite: bool = False,
+    chrom: Optional[str] = None,
 ) -> None:
     """
     Compute AoU frequencies by looping through partition chunks sequentially.
@@ -631,12 +710,22 @@ def run_aou_freq_sequential(
     :param reduce_to_minimal_groups: Forwarded to chunk compute.
     :param suffix: Optional suffix for intermediate chunk paths.
     :param overwrite: If True, recompute all chunks even if they exist.
+    :param chrom: Optional single contig to scope each chunk's VDS load to.
     """
-    from gnomad.utils.file_utils import file_exists
-
     chunk_paths = []
     total_chunks = (n_partitions + partitions_per_job - 1) // partitions_per_job
     skipped = 0
+
+    # One directory listing of completed chunks instead of a per-chunk GCS stat.
+    present = (
+        set()
+        if overwrite
+        else _list_present_freq_chunk_indices(
+            get_aou_freq_chunk_path(
+                0, kind="chunk", test=test, environment=environment, suffix=suffix
+            )
+        )
+    )
 
     for chunk_idx, start in enumerate(range(0, n_partitions, partitions_per_job)):
         stop = min(start + partitions_per_job, n_partitions)
@@ -645,7 +734,7 @@ def run_aou_freq_sequential(
         )
         chunk_paths.append(chunk_path)
 
-        if not overwrite and _file_exists_for_env(chunk_path, environment):
+        if chunk_idx in present:
             logger.info(
                 "Chunk %s/%s (partitions [%s, %s)) already exists, skipping.",
                 chunk_idx + 1,
@@ -669,6 +758,7 @@ def run_aou_freq_sequential(
             repartition_after_filter=repartition_after_filter,
             annotate_meta=True,
             release_only=True,
+            chrom=chrom,
             environment=environment,
         )
         vds = _prepare_aou_vds(vds, test=test, environment=environment)
@@ -713,35 +803,69 @@ def run_aou_freq_sequential(
     logger.info("Final merged freq HT written to %s.", final_output_path)
 
 
-def _build_setup_command(commit: str, methods_branch: str = "main") -> str:
+def _build_setup_command(
+    commit: str,
+    gcp_billing_project: str = "broad-mpg-gnomad",
+    methods_branch: str = "main",
+) -> str:
     """
-    Build shell commands to download gnomad_qc and gnomad_methods.
+    Build shell commands to download gnomad_qc and gnomad_methods and configure Hail.
 
     Both repos are actively developed, so we pull them at runtime rather
     than relying on what's baked into the Docker image. The image provides
     ``hail`` and system dependencies (g++, curl).
 
+    Mirrors the hardened setup used by ``compute_coverage.py`` (adopted for
+    parity):
+
+    - Writes the Hail ``config.ini`` to BOTH the canonical XDG path
+      (``~/.config/hail/config.ini``, what ``hailtop.config.get_user_config_path``
+      returns) AND the legacy ``~/.hail/config.ini``, so ``hl.init`` finds the
+      Batch billing project, ``remote_tmpdir``, and GCS requester-pays project on
+      any Hail version.
+    - Patches ``/gsa-key/key.json`` with a ``quota_project_id`` field so
+      requester-pays reads (the AoU VDS) have a billing-project fallback for the
+      container's Java GCS client (works on a laptop via gcloud config, but not in
+      a bare container without this).
+    - Pins ``hail==0.2.137`` (the version the v5 pipeline is validated against;
+      0.2.138 regressed requester-pays propagation for VDS metadata reads).
+
     :param commit: Git commit hash to pin gnomad_qc to.
+    :param gcp_billing_project: GCP project for requester-pays reads; patched into
+        the GSA key as ``quota_project_id`` and written as the requester-pays
+        project. Default ``"broad-mpg-gnomad"``.
     :param methods_branch: Branch/commit of gnomad_methods to pull.
         Default is ``"main"``.
     :return: Shell command string.
     """
     qc_tarball = f"https://github.com/broadinstitute/gnomad_qc/archive/{commit}.tar.gz"
     methods_tarball = f"https://github.com/broadinstitute/gnomad_methods/archive/{methods_branch}.tar.gz"
-    return (
-        "set -euxo pipefail\n"
-        # Write hailctl config so nested QoB driver jobs can read
-        # requester-pays and remote_tmpdir settings.
-        "mkdir -p ~/.hail\n"
-        "cat > ~/.hail/config.ini <<'HAILCFG'\n"
+    methods_dir_suffix = methods_branch.replace("/", "-")
+    config_body = (
         "[batch]\n"
         "billing_project = gnomad-production\n"
         "remote_tmpdir = gs://fc-11093c2b-590e-424a-91ac-0cc040d562fc/batch-tmp\n"
         "[gcs_requester_pays]\n"
-        "project = broad-mpg-gnomad\n"
+        f"project = {gcp_billing_project}\n"
+    )
+    return (
+        "set -euxo pipefail\n"
+        "mkdir -p ~/.config/hail ~/.hail\n"
+        "cat > ~/.config/hail/config.ini <<'HAILCFG'\n"
+        f"{config_body}"
         "HAILCFG\n"
+        "cp ~/.config/hail/config.ini ~/.hail/config.ini\n"
+        # TODO: Remove this GSA-key patch once Hail's requester-pays propagation
+        # to the container's Java GCS client is fixed (likely 0.2.139+).
+        f"python3 -c \"import json, os; p='/gsa-key/key.json';"
+        f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
+        f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
+        # TODO: Remove this Hail pin once 0.2.139+ fixes the requester-pays
+        # propagation regression that 0.2.138 introduced for VDS metadata reads.
+        "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
+        " --no-deps hail==0.2.137\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
-        f"mv /tmp/gnomad_methods-{methods_branch.replace('/', '-')} /tmp/gnomad_methods\n"
+        f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_qc-{commit} /tmp/gnomad_qc\n"
         "export PYTHONPATH=/tmp/gnomad_qc:/tmp/gnomad_methods:${PYTHONPATH:-}\n"
@@ -773,6 +897,8 @@ def run_aou_freq_as_batch(
     methods_branch: str = "main",
     suffix: Optional[str] = None,
     dry_run: bool = False,
+    chrom: Optional[str] = None,
+    overwrite: bool = False,
 ) -> None:
     """
     Submit a Hail Batch that computes the AoU frequency HT via fan-out.
@@ -780,6 +906,10 @@ def run_aou_freq_as_batch(
     Each chunk job clones ``gnomad_qc`` at the current commit, installs
     dependencies, then runs ``generate_frequency.py --run-chunk``. Chunks
     are merged hierarchically via ``--run-merge`` jobs.
+
+    Idempotent: chunks whose ``_SUCCESS`` already exists are skipped (one
+    ``hailtop.fs.ls`` glob), so a failed/partial run is resumed by simply
+    rerunning this step. Pass ``overwrite`` to recompute every chunk.
 
     :param final_output_path: GCS path for the final merged AoU freq HT.
     :param n_partitions: Total number of VDS partitions to process.
@@ -806,6 +936,10 @@ def run_aou_freq_as_batch(
     :param remote_tmpdir: ``gs://`` scratch path for the ServiceBackend.
     :param image: Docker image for BashJobs.
     :param dry_run: If True, validate the DAG without submitting.
+    :param chrom: Optional single contig forwarded to each chunk worker as
+        ``--chrom`` so the fan-out is scoped to that contig.
+    :param overwrite: If True, submit every chunk even if its ``_SUCCESS``
+        already exists (default False: skip completed chunks).
     """
     import subprocess
 
@@ -850,6 +984,8 @@ def run_aou_freq_as_batch(
         chunk_base_flags += f" --repartition-after-filter {repartition_after_filter}"
     if n_partitions_on_read:
         chunk_base_flags += f" --n-partitions-on-read {n_partitions_on_read}"
+    if chrom:
+        chunk_base_flags += f" --chrom {chrom}"
 
     logger.info(
         "Processing %s partitions; submitting %s-partition chunks (~%s jobs), "
@@ -882,14 +1018,32 @@ def run_aou_freq_as_batch(
         j.n_max_attempts(5)
         return j
 
+    # Idempotent skip: one directory listing of completed chunks (``_SUCCESS``)
+    # instead of a per-chunk stat, so a rerun only resubmits missing chunks.
+    present = (
+        set()
+        if overwrite
+        else _list_present_freq_chunk_indices(
+            get_aou_freq_chunk_path(
+                0, kind="chunk", test=test, environment=environment, suffix=suffix
+            )
+        )
+    )
+
     # --- Chunk jobs ---
-    chunk_jobs = []
+    # Every chunk contributes its output path to the merge, but only PENDING
+    # chunks get a job; present chunks' outputs already exist on GCS. Track
+    # chunk_idx -> job so each group-merge depends on just the jobs in its range.
     chunk_paths = []
+    chunk_jobs_by_idx = {}
     for chunk_idx, start in enumerate(range(0, n_partitions, partitions_per_job)):
         stop = min(start + partitions_per_job, n_partitions)
         chunk_path = get_aou_freq_chunk_path(
             chunk_idx, kind="chunk", test=test, environment=environment, suffix=suffix
         )
+        chunk_paths.append(chunk_path)
+        if chunk_idx in present:
+            continue
         j = batch.new_job(name=f"aou_freq_chunk_{chunk_idx:06d}")
         _configure(j, chunk_cpu, chunk_memory, chunk_storage)
         j.command(
@@ -899,8 +1053,15 @@ def run_aou_freq_as_batch(
             f" --chunk-output {chunk_path}"
             f" {chunk_base_flags}"
         )
-        chunk_jobs.append(j)
-        chunk_paths.append(chunk_path)
+        chunk_jobs_by_idx[chunk_idx] = j
+
+    n_pending = len(chunk_jobs_by_idx)
+    n_skipped = len(chunk_paths) - n_pending
+    logger.info(
+        "%s chunk(s) already complete and skipped; %s pending.",
+        n_skipped,
+        n_pending,
+    )
 
     # --- Group-merge jobs (hierarchical to avoid blowing up Spark plans) ---
     group_jobs = []
@@ -915,7 +1076,15 @@ def run_aou_freq_as_batch(
         )
         j = batch.new_job(name=f"aou_freq_group_{group_idx:04d}")
         _configure(j, merge_cpu, merge_memory, merge_storage)
-        j.depends_on(*chunk_jobs[group_start:group_end])
+        # Depend only on the pending chunk jobs in this group's range; present
+        # chunks have no job (their output is already on GCS).
+        group_deps = [
+            chunk_jobs_by_idx[i]
+            for i in range(group_start, group_end)
+            if i in chunk_jobs_by_idx
+        ]
+        if group_deps:
+            j.depends_on(*group_deps)
         paths_arg = " ".join(group_inputs)
         j.command(
             f"{setup_cmd}"
@@ -939,9 +1108,9 @@ def run_aou_freq_as_batch(
     )
 
     logger.info(
-        "Submitting Hail Batch: %s chunk jobs, %s group-merge jobs, "
+        "Submitting Hail Batch: %s pending chunk jobs, %s group-merge jobs, "
         "1 final merge (dry_run=%s)...",
-        len(chunk_jobs),
+        len(chunk_jobs_by_idx),
         len(group_jobs),
         dry_run,
     )
@@ -952,13 +1121,16 @@ def _prepare_consent_vds(
     v4_ht: hl.Table,
     test_vds: bool = False,
     test_partitions: int = 2,
+    chrom: Optional[str] = None,
 ) -> hl.vds.VariantDataset:
     """
     Load and prepare VDS for consent withdrawal sample processing.
 
     :param v4_ht: v4 release table for AF annotation.
-    :param test: Whether running in test mode.
+    :param test_vds: Whether running in test mode.
     :param test_partitions: Number of partitions to use in test mode. Default is 2.
+    :param chrom: Optional single contig to scope the consent VDS load to. Default
+        is None (whole genome).
     :return: Prepared VDS with consent samples, split multiallelics, and annotations.
     """
     logger.info("Loading and preparing VDS for consent withdrawal samples...")
@@ -968,7 +1140,14 @@ def _prepare_consent_vds(
         test=test_vds,
         consent_drop_only=True,
         annotate_meta=True,
-        filter_partitions=list(range(test_partitions)),
+        # Partition-slice only for a test run with no --chrom; a --chrom run scopes via
+        # the contig filter instead, and a full prod run reads all partitions.
+        filter_partitions=(
+            list(range(test_partitions))
+            if (test_partitions is not None and chrom is None)
+            else None
+        ),
+        chrom=chrom,
     )
 
     logger.info(
@@ -1308,6 +1487,7 @@ def process_gnomad_dataset(
     test_vds: bool = False,
     test_partitions: int = 2,
     environment: str = "batch",
+    chrom: Optional[str] = None,
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -1324,15 +1504,23 @@ def process_gnomad_dataset(
     :param test_partitions: Number of partitions to filter to in test mode. Default is 2.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param chrom: Optional single contig to scope the consent VDS and the v4 release
+        HT to, so the output freq HT covers only that contig. Default is None.
     :return: Updated frequency HT with updated frequencies and age histograms for gnomAD dataset.
     """
     test_run = test_vds or test_partitions is not None
     v4_ht = release_sites(data_type="genomes").ht()
+    # Scope the v4 release HT to --chrom so the per-contig output contains ONLY that
+    # contig (else the whole-genome v4 freq would pass through unsubtracted for
+    # off-contig sites and --assemble-chrom-freq would double-count).
+    if chrom:
+        v4_ht = hl.filter_intervals(v4_ht, [hl.parse_locus_interval(chrom)])
 
     vds = _prepare_consent_vds(
         v4_ht,
-        test=test_vds,
+        test_vds=test_vds,
         test_partitions=test_partitions,
+        chrom=chrom,
     )
 
     logger.info("Calculating frequencies and age histograms for consent samples...")
@@ -1671,6 +1859,7 @@ def main(args):
             n_partitions_on_read=args.n_partitions_on_read,
             driver_memory=args.jvm_heap,
             local_cores=args.local_cores,
+            chrom=args.chrom,
         )
         return
 
@@ -1689,6 +1878,11 @@ def main(args):
     overwrite = args.overwrite
     overwrite_split_aou_vds = args.overwrite_split_aou_vds
     aou_freq_suffix = args.aou_freq_ht_suffix
+    chrom = args.chrom
+    # A --chrom run writes to a contig-scoped output path so per-contig runs don't
+    # collide; assemble them later with --assemble-chrom-freq. The merge-datasets step
+    # reads the assembled (contig-unscoped) AoU HT, so it keeps ``aou_freq_suffix``.
+    aou_freq_suffix_chrom = _combine_freq_suffix(aou_freq_suffix, chrom)
     tmp_dir_days = args.tmp_dir_days
     test_run = test_vds or test_partitions is not None
 
@@ -1696,6 +1890,47 @@ def main(args):
 
     try:
         logger.info("Running generate_frequency.py...")
+
+        if args.assemble_chrom_freq:
+            # Union the per-contig freq HTs (each written by a separate
+            # --process-{aou,gnomad} --chrom <contig> run) into the canonical
+            # (contig-unscoped) freq HT. Globals are identical across contigs (same
+            # group_membership HT), so the union inherits them from the first input.
+            data_set = args.assemble_data_set
+            base_suffix = aou_freq_suffix if data_set == "aou" else None
+            canonical_freq = get_freq(
+                test=test_run,
+                data_type="genomes",
+                data_set=data_set,
+                environment=environment,
+                suffix=base_suffix,
+            )
+            per_contig_paths = [
+                get_freq(
+                    test=test_run,
+                    data_type="genomes",
+                    data_set=data_set,
+                    environment=environment,
+                    suffix=_combine_freq_suffix(base_suffix, c),
+                )
+                for c in args.contigs
+            ]
+            check_resource_existence(
+                input_step_resources={"per-contig-freq": per_contig_paths},
+                output_step_resources={"assemble-chrom-freq": [canonical_freq]},
+                overwrite=overwrite,
+            )
+            logger.info(
+                "Assembling %d per-contig %s freq HTs into %s...",
+                len(per_contig_paths),
+                data_set,
+                canonical_freq.path,
+            )
+            hts = [p.ht() for p in per_contig_paths]
+            assembled_ht = hl.Table.union(*hts) if len(hts) > 1 else hts[0]
+            if args.n_partitions is not None:
+                assembled_ht = assembled_ht.naive_coalesce(args.n_partitions)
+            assembled_ht.write(canonical_freq.path, overwrite=overwrite)
 
         if args.process_gnomad:
             logger.info("Processing gnomAD dataset...")
@@ -1705,6 +1940,7 @@ def main(args):
                 data_type="genomes",
                 data_set="gnomad",
                 environment=environment,
+                suffix=_combine_freq_suffix(None, chrom),
             )
 
             check_resource_existence(
@@ -1713,9 +1949,10 @@ def main(args):
             )
 
             gnomad_freq_ht = process_gnomad_dataset(
-                test=test_vds,
+                test_vds=test_vds,
                 test_partitions=test_partitions,
                 environment=environment,
+                chrom=chrom,
             )
 
             logger.info(
@@ -1731,7 +1968,7 @@ def main(args):
                 data_type="genomes",
                 data_set="aou",
                 environment=environment,
-                suffix=aou_freq_suffix,
+                suffix=aou_freq_suffix_chrom,
             )
 
             check_resource_existence(
@@ -1749,6 +1986,7 @@ def main(args):
                     environment=environment,
                     reduce_to_minimal_groups=args.reduce_to_minimal_groups,
                     overwrite_split_aou_vds=overwrite_split_aou_vds,
+                    chrom=chrom,
                 )
                 logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
                 aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
@@ -1796,8 +2034,10 @@ def main(args):
                         final_merge_storage=args.final_merge_storage,
                         billing_project=args.billing_project,
                         methods_branch=args.methods_branch,
-                        suffix=aou_freq_suffix,
+                        suffix=aou_freq_suffix_chrom,
                         dry_run=args.batch_dry_run,
+                        chrom=chrom,
+                        overwrite=overwrite,
                         **batch_kwargs,
                     )
                 else:
@@ -1820,8 +2060,9 @@ def main(args):
                         partitions_per_job=args.partitions_per_job,
                         repartition_after_filter=args.repartition_after_filter,
                         reduce_to_minimal_groups=args.reduce_to_minimal_groups,
-                        suffix=aou_freq_suffix,
+                        suffix=aou_freq_suffix_chrom,
                         overwrite=overwrite,
+                        chrom=chrom,
                     )
 
         if args.merge_datasets:
@@ -1958,6 +2199,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " for parallelism on preemptible VMs."
         ),
     )
+    test_group.add_argument(
+        "--chrom",
+        default=None,
+        help=(
+            "Filter input data to a single contig (e.g. --chrom chr22) and append it"
+            " to the output freq HT suffix, so a per-contig run goes all the way"
+            " through processing (and, for the densify path, fan-out -> merge) without"
+            " clobbering another contig -- a late failure only loses that contig,"
+            " reducing the chance of a catastrophic whole-genome loss. Applies to both"
+            " the AoU (all-sites-AN) and gnomAD (densify) paths. Assemble the per-contig"
+            " AoU HTs with --assemble-chrom-freq. Independent of --test-*."
+        ),
+    )
 
     # Processing step arguments.
     processing_group = parser.add_argument_group("processing steps")
@@ -1994,6 +2248,35 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--merge-datasets",
         help="Merge frequency data from both gnomAD and AoU datasets.",
         action="store_true",
+    )
+    processing_group.add_argument(
+        "--assemble-chrom-freq",
+        help=(
+            "Union the per-contig freq HTs (each written by a separate"
+            " --process-{aou,gnomad} --chrom <contig> run) into the canonical freq HT"
+            " for --assemble-data-set. Provide the contigs to union with --contigs."
+            " Runs in-process (do not pass --chrom)."
+        ),
+        action="store_true",
+    )
+    processing_group.add_argument(
+        "--assemble-data-set",
+        choices=["aou", "gnomad"],
+        default="aou",
+        help=(
+            "Data set whose per-contig freq HTs --assemble-chrom-freq unions. Default"
+            " 'aou'."
+        ),
+    )
+    processing_group.add_argument(
+        "--contigs",
+        nargs="+",
+        default=None,
+        help=(
+            "Contigs to union for --assemble-chrom-freq (e.g. --contigs chr1 chr2 ...)."
+            " Each must have a completed per-contig freq HT. Required with"
+            " --assemble-chrom-freq."
+        ),
     )
 
     # Batch worker subcommands (invoked by Hail Batch jobs, not by users).
@@ -2256,5 +2539,17 @@ if __name__ == "__main__":
             f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
             f"require --environment=batch"
         )
+
+    # --assemble-chrom-freq unions the per-contig HTs into the canonical
+    # (contig-unscoped) path, so it needs the contig list and must not itself be
+    # contig-scoped.
+    if args.assemble_chrom_freq:
+        if not args.contigs:
+            parser.error("--assemble-chrom-freq requires --contigs.")
+        if args.chrom:
+            parser.error(
+                "--assemble-chrom-freq unions every per-contig HT into the canonical"
+                " (contig-unscoped) path; do not pass --chrom."
+            )
 
     main(args)
