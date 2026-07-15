@@ -546,7 +546,10 @@ def get_split_vds(
     )
 
 
-# Gridmax per-pixel frequency resources (joint analysis, v4.1.1).
+# Gridmax per-pixel frequency resources (v4.1.1).
+# gridmax_sample_key is a joint resource (contains both exome and genome samples).
+# All pipeline outputs are under the exomes annotations root (frequencies
+# are exome-only).
 
 gridmax_sample_key = TableResource(
     f"{_annotations_root(CURRENT_VERSION, data_type='joint')}/gnomad.joint.v{CURRENT_VERSION}.gridmax_sample_key.ht"
@@ -561,8 +564,8 @@ def get_gridmax_bin_summary(test: bool = False) -> str:
     :return: GCS path string for the bin summary TSV.
     """
     return (
-        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='joint')}"
-        f"/gnomad.joint.v{CURRENT_VERSION}.gridmax_bin_summary.tsv"
+        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='exomes')}"
+        f"/gnomad.exomes.v{CURRENT_VERSION}.gridmax_bin_summary.tsv"
     )
 
 
@@ -574,8 +577,8 @@ def get_gridmax_training_samples(test: bool = False) -> TableResource:
     :return: TableResource for the gridmax training samples HT.
     """
     return TableResource(
-        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='joint')}"
-        f"/gnomad.joint.v{CURRENT_VERSION}.gridmax_training_samples.ht"
+        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='exomes')}"
+        f"/gnomad.exomes.v{CURRENT_VERSION}.gridmax_training_samples.ht"
     )
 
 
@@ -594,8 +597,8 @@ def get_gridmax_split_vds(
     """
     suffix = (".test_gene" if test_gene else "") + (f".{chrom}" if chrom else "")
     return VariantDatasetResource(
-        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='joint')}"
-        f"/temp/gnomad.joint.v{CURRENT_VERSION}.gridmax.split_vds{suffix}.vds"
+        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='exomes')}"
+        f"/temp/gnomad.exomes.v{CURRENT_VERSION}.gridmax.split_vds{suffix}.vds"
     )
 
 
@@ -620,10 +623,10 @@ def get_gridmax_freq(
         "final": "gridmax.freq.final",
     }
     suffix = (".test_gene" if test_gene else "") + (f".{chrom}" if chrom else "")
-    root = _annotations_root(CURRENT_VERSION, test=test, data_type="joint")
+    root = _annotations_root(CURRENT_VERSION, test=test, data_type="exomes")
     ht_name = step_names[step]
     if step == "final":
-        path = f"{root}/gnomad.joint.v{CURRENT_VERSION}.{ht_name}{suffix}.ht"
+        path = f"{root}/gnomad.exomes.v{CURRENT_VERSION}.{ht_name}{suffix}.ht"
     else:
-        path = f"{root}/temp/gnomad.joint.v{CURRENT_VERSION}.{ht_name}{suffix}.ht"
+        path = f"{root}/temp/gnomad.exomes.v{CURRENT_VERSION}.{ht_name}{suffix}.ht"
     return TableResource(path)
