@@ -18,7 +18,7 @@ from gnomad.variant_qc.pipeline import INFO_FEATURES
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
-from gnomad_qc.v5.resources.basics import _init_hail
+from gnomad_qc.v5.resources.basics import _get_batch_resource_kwargs, _init_hail
 from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
 from gnomad_qc.v5.resources.variant_qc import (
     IF_FEATURES,
@@ -530,7 +530,7 @@ def merge_iforest_result(
 def main(args):
     """Run the isolation forest variant QC workflow."""
     environment = args.environment
-    _init_hail("isolation_forest", environment)
+    _init_hail("isolation_forest", environment, **_get_batch_resource_kwargs(args))
 
     test = args.test
     model_id = args.model_id
@@ -714,6 +714,36 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--batch-suffix",
         help="String to append to the Batch name.",
         default="",
+        type=str,
+    )
+    parser.add_argument(
+        "--app-name",
+        help="Job name for the batch/QoB backend.",
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
+        "--driver-cores",
+        help="Number of driver cores (Batch only).",
+        default=None,
+        type=int,
+    )
+    parser.add_argument(
+        "--driver-memory",
+        help="Driver memory (Batch only).",
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
+        "--worker-cores",
+        help="Number of worker cores (Batch only).",
+        default=None,
+        type=int,
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Worker memory (Batch only).",
+        default=None,
         type=str,
     )
     parser.add_argument(
