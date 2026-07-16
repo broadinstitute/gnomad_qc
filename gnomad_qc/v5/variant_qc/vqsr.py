@@ -1027,6 +1027,7 @@ def main(args):
     """Run VQSR variant qc workflow."""
     hl.init(
         backend="batch",
+        app_name=args.app_name,
         tmp_dir="gs://gnomad-tmp-4day",
         gcs_requester_pays_configuration=args.gcp_billing_project,
         default_reference="GRCh38",
@@ -1069,7 +1070,7 @@ def main(args):
         indel_hard_filter = 90.0
 
     b = hb.Batch(
-        f"VQSR pipeline {args.batch_suffix}",
+        args.app_name or f"VQSR pipeline {args.batch_suffix}",
         backend=backend,
     )
 
@@ -1319,6 +1320,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overlap-skip",
         help="Skip code to address overlaps, output sharded VCF.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="App/job name for the QoB driver and Batch, to make it easy to find.",
     )
     parser.add_argument(
         "--batch-suffix",
