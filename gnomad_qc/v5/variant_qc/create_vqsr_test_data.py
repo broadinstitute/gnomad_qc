@@ -49,6 +49,12 @@ FLOAT64_FEATURES = [
     "AS_MQ",
 ]
 
+# The VQSR '-an' feature annotations. GATK's --use-allele-specific-annotations
+# decodes these as per-allele lists (indexed by allele), so they must be emitted
+# as arrays with Number=A. Scalars (Number=1) crash VariantRecalibrator with an
+# IndexOutOfBoundsException in VariantDataManager.decodeAnnotation.
+AS_FEATURES = ["AS_QD"] + FLOAT64_FEATURES
+
 
 def build_info_vcf(region: str, out_path: str) -> None:
     """
@@ -66,14 +72,17 @@ def build_info_vcf(region: str, out_path: str) -> None:
         ht, [hl.parse_locus_interval(region, reference_genome="GRCh38")]
     )
 
-    # Remap the v4 'AS_info' struct onto the v5 info VCF INFO schema.
+    # Remap the v4 'AS_info' struct onto the v5 info VCF INFO schema. The '-an'
+    # feature annotations are wrapped in a length-1 array (one value per ALT on
+    # this biallelic Table) so export_vcf + Number=A metadata emit them as
+    # per-allele lists that GATK's AS VQSR can decode.
     ht = ht.select(
         info=hl.struct(
-            AS_QD=hl.float32(ht.AS_info.AS_QD),
+            AS_QD=hl.array([hl.float32(ht.AS_info.AS_QD)]),
             AS_QUALapprox=hl.int64(ht.AS_info.AS_QUALapprox),
             AS_VarDP=hl.int32(ht.AS_info.AS_VarDP),
             AS_SB_TABLE=ht.AS_info.AS_SB_TABLE,
-            **{f: ht.AS_info[f] for f in FLOAT64_FEATURES},
+            **{f: hl.array([ht.AS_info[f]]) for f in FLOAT64_FEATURES},
         )
     ).select_globals()
 
@@ -87,8 +96,12 @@ def build_info_vcf(region: str, out_path: str) -> None:
 
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
+    # Declare the per-allele feature annotations as Number=A so GATK reads them
+    # as allele-indexed lists.
+    info_meta = {f: {"Number": "A"} for f in AS_FEATURES}
+
     logger.info("Exporting info VCF to %s", out_path)
-    hl.export_vcf(ht, out_path, tabix=True)
+    hl.export_vcf(ht, out_path, tabix=True, metadata={"info": info_meta})
 
 
 def build_true_positive_vcf(region: str) -> None:
