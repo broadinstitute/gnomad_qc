@@ -133,6 +133,33 @@ def _combine_freq_suffix(suffix: Optional[str], chrom: Optional[str]) -> Optiona
     return suffix or chrom
 
 
+def _parse_region_interval(
+    s: str, reference_genome: str = "GRCh38"
+) -> hl.utils.Interval:
+    """
+    Parse a ``contig:start-end`` string into a half-open Python locus interval.
+
+    Mirrors ``compute_coverage.py``'s ``_parse_region_interval`` so a ``--test-region``
+    freq run scopes to exactly the same loci an all-sites-AN test HT was generated over.
+    Returns a concrete ``hl.utils.Interval`` (not an ``hl.parse_locus_interval``
+    expression) with half-open ``[start, end)`` bounds, so adjacent regions (e.g. two
+    consecutive 50 kb intervals) stay disjoint -- no locus is double-counted at the
+    shared boundary.
+
+    :param s: Interval string, e.g. ``chr1:55058666-55108666`` (commas allowed).
+    :param reference_genome: Reference-genome name. Default "GRCh38".
+    :return: ``[start, end)`` locus interval.
+    """
+    contig, span = s.split(":")
+    start_pos, end_pos = (int(p.replace(",", "")) for p in span.split("-"))
+    return hl.Interval(
+        hl.Locus(contig, start_pos, reference_genome=reference_genome),
+        hl.Locus(contig, end_pos, reference_genome=reference_genome),
+        includes_start=True,
+        includes_end=False,
+    )
+
+
 def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     """
     Annotate allele balance quality metrics histograms and age histograms onto MatrixTable.
@@ -260,6 +287,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     test: bool = False,
     environment: str = "batch",
     chrom: Optional[str] = None,
+    region_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using all sites ANs.
@@ -271,11 +299,18 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     :param chrom: Optional single contig; when set, the all-sites-AN HT is
         interval-filtered to it so only that contig's AN is read (the variant MT is
         already contig-scoped by the VDS load, so this is a read-pruning optimization).
+    :param region_intervals: TESTING ONLY: optional list of half-open ``hl.Interval``
+        objects (from ``--test-region``); when set, the all-sites-AN HT is filtered to
+        exactly these intervals (the same ones used to scope the variant MT read), so
+        the AN join matches an all-sites-AN test HT generated for the same region.
+        Takes precedence over ``chrom`` for the AN-HT filter.
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
     all_sites_an_ht = coverage_and_an_path(test=test, environment=environment).ht()
-    if chrom:
+    if region_intervals:
+        all_sites_an_ht = hl.filter_intervals(all_sites_an_ht, region_intervals)
+    elif chrom:
         all_sites_an_ht = hl.filter_intervals(
             all_sites_an_ht, [hl.parse_locus_interval(chrom)]
         )
@@ -451,6 +486,7 @@ def process_aou_dataset(
     reduce_to_minimal_groups: bool = False,
     overwrite_split_aou_vds: bool = False,
     chrom: Optional[str] = None,
+    test_region: Optional[List[str]] = None,
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -477,9 +513,19 @@ def process_aou_dataset(
         split VDS without paying to recompute it. Default is False.
     :param chrom: Optional single contig to scope the AoU VDS load (and the
         all-sites-AN read) to. Default is None (whole genome).
+    :param test_region: TESTING ONLY: optional list of ``contig:start-end`` strings
+        (half-open) to scope the AoU VDS load (and the all-sites-AN read) to, so the
+        output can be matched against an all-sites-AN test HT for the same region.
+        Auto-enables test mode. Default None.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
-    test = test_vds or test_partitions is not None
+    # --test-region is a testing-only scope, so it enables test mode (test paths).
+    test = test_vds or test_partitions is not None or test_region is not None
+    # Parse the region strings once into half-open intervals reused for both the VDS
+    # load and the all-sites-AN HT filter (same semantics as the AN test HT).
+    region_intervals = (
+        [_parse_region_interval(r) for r in test_region] if test_region else None
+    )
 
     # On the densify path, check whether the persistent prepared/split AoU VDS
     # checkpoint already exists. If so, skip the raw load + _prepare_aou_vds
@@ -489,10 +535,10 @@ def process_aou_dataset(
     split_vds_resource = None
     use_cached_split_vds = False
     # The persistent split-VDS checkpoint is a whole-genome artifact, so it must not
-    # be read or written on a --chrom run (that would clobber it across contigs / read
-    # the wrong contig). A --chrom densify run recomputes the (contig-scoped) split VDS
+    # be read or written on a --chrom or --test-region run (that would clobber it /
+    # read the wrong region). A scoped densify run recomputes the (scoped) split VDS
     # in-line instead.
-    if not use_all_sites_ans and chrom is None:
+    if not use_all_sites_ans and chrom is None and not region_intervals:
         split_vds_resource = get_split_aou_vds(test=test, environment=environment)
         if (
             _file_exists_for_env(split_vds_resource.path, environment)
@@ -513,11 +559,15 @@ def process_aou_dataset(
             annotate_meta=True,
             release_only=True,
             test=test_vds,
+            # --test-region scopes via filter_intervals instead of a partition slice.
             filter_partitions=(
-                list(range(test_partitions)) if test_partitions else None
+                list(range(test_partitions))
+                if (test_partitions and not region_intervals)
+                else None
             ),
             repartition_after_filter=repartition_after_filter,
             chrom=chrom,
+            filter_intervals=region_intervals,
             environment=environment,
         )
         aou_vds = _prepare_aou_vds(
@@ -532,7 +582,11 @@ def process_aou_dataset(
     if use_all_sites_ans:
         logger.info("Using all sites ANs for frequency calculations...")
         aou_freq_ht = _calculate_aou_frequencies_and_hists_using_all_sites_ans(
-            aou_vds.variant_data, test=test, environment=environment, chrom=chrom
+            aou_vds.variant_data,
+            test=test,
+            environment=environment,
+            chrom=chrom,
+            region_intervals=region_intervals,
         )
     else:
         # Persist the prepared split VDS to a durable (non-tmp) resource so
@@ -1884,7 +1938,8 @@ def main(args):
     # reads the assembled (contig-unscoped) AoU HT, so it keeps ``aou_freq_suffix``.
     aou_freq_suffix_chrom = _combine_freq_suffix(aou_freq_suffix, chrom)
     tmp_dir_days = args.tmp_dir_days
-    test_run = test_vds or test_partitions is not None
+    # --test-region is a testing-only scope, so it auto-enables test mode (test paths).
+    test_run = test_vds or test_partitions is not None or args.test_region is not None
 
     _initialize_hail(args)
 
@@ -1987,6 +2042,7 @@ def main(args):
                     reduce_to_minimal_groups=args.reduce_to_minimal_groups,
                     overwrite_split_aou_vds=overwrite_split_aou_vds,
                     chrom=chrom,
+                    test_region=args.test_region,
                 )
                 logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
                 aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
@@ -2210,6 +2266,23 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " reducing the chance of a catastrophic whole-genome loss. Applies to both"
             " the AoU (all-sites-AN) and gnomAD (densify) paths. Assemble the per-contig"
             " AoU HTs with --assemble-chrom-freq. Independent of --test-*."
+        ),
+    )
+    test_group.add_argument(
+        "--test-region",
+        nargs="+",
+        default=None,
+        help=(
+            "TESTING ONLY: scope the AoU read to these explicit locus interval(s), e.g."
+            " --test-region chr1:55058666-55108666 chr1:55108666-55158666. Parsed as"
+            " half-open [start, end) intervals (same as compute_coverage.py's"
+            " --test-region), so the frequency output can be matched against an"
+            " all-sites-AN test HT generated over the same region in QoB testing; the"
+            " AoU VDS and the all-sites-AN HT are both filtered to these intervals."
+            " Auto-enables test mode (reads the test all-sites-AN HT and writes test"
+            " output paths) while still using the real AoU VDS scoped to the region."
+            " The all-sites-AN QoB test region was chr1:55058666-55158666. Mutually"
+            " exclusive with --test-partitions."
         ),
     )
 
@@ -2539,6 +2612,11 @@ if __name__ == "__main__":
             f"Batch configuration arguments ({', '.join('--' + a.replace('_', '-') for a in provided_batch_args)}) "
             f"require --environment=batch"
         )
+
+    # --test-region and --test-partitions are two different test-scoping mechanisms
+    # (explicit intervals vs a partition slice); combining them is contradictory.
+    if args.test_region is not None and args.test_partitions is not None:
+        parser.error("--test-region and --test-partitions are mutually exclusive.")
 
     # --assemble-chrom-freq unions the per-contig HTs into the canonical
     # (contig-unscoped) path, so it needs the contig list and must not itself be
