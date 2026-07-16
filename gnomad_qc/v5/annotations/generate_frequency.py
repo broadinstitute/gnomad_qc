@@ -653,7 +653,10 @@ def process_aou_dataset(
             annotate_meta=True,
             release_only=True,
             test=test_vds,
-            # --test-region scopes via filter_intervals instead of a partition slice.
+            # --test-region scopes via read-time interval pruning (read_intervals), NOT
+            # a post-read filter_intervals: the latter leaves the variant_data read
+            # fanned across thousands of (empty) partitions for a small region, blowing
+            # up cost. read_intervals prunes the read to the region's partitions.
             filter_partitions=(
                 list(range(test_partitions))
                 if (test_partitions and not region_intervals)
@@ -661,7 +664,7 @@ def process_aou_dataset(
             ),
             repartition_after_filter=repartition_after_filter,
             chrom=chrom,
-            filter_intervals=region_intervals,
+            read_intervals=region_intervals,
             environment=environment,
         )
         aou_vds = _prepare_aou_vds(

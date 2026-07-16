@@ -73,15 +73,39 @@ def get_gnomad_v3_vds(
     :param filter_samples_ht: Optional Table of samples to filter the VDS to.
     :return: gnomAD v3 dataset with chosen annotations and filters.
     """
+    if isinstance(chrom, str):
+        chrom = [chrom]
+
+    # Prune the read to explicit --chrom contigs at READ time (whole-contig intervals)
+    # so only those partitions are scanned. filter_chromosomes below is applied POST
+    # read and does NOT prune the read, so without this a --chrom read scans the whole
+    # genome and fans across thousands of (empty) partitions -- each a tiny QoB task
+    # whose startup overhead dominates cost. Keeps exactly the same rows as
+    # filter_chromosomes. autosomes_only/sex_chr_only still resolve + filter post-read
+    # (they derive contigs from the read's reference genome).
+    chrom_read_intervals = None
+    if chrom is not None and not (autosomes_only or sex_chr_only):
+        _rg = hl.get_reference("GRCh38")
+        chrom_read_intervals = [
+            hl.Interval(
+                hl.Locus(c, 1, reference_genome="GRCh38"),
+                hl.Locus(c, _rg.lengths[c], reference_genome="GRCh38"),
+                includes_start=True,
+                includes_end=True,
+            )
+            for c in chrom
+        ]
+
     if test:
         vds = gnomad_v3_testset_vds.vds()
     elif n_partitions:
         vds = hl.vds.read_vds(gnomad_v3_genotypes_vds.path, n_partitions=n_partitions)
     else:
-        vds = gnomad_v3_genotypes_vds.vds()
-
-    if isinstance(chrom, str):
-        chrom = [chrom]
+        vds = gnomad_v3_genotypes_vds.vds(
+            read_args=(
+                {"intervals": chrom_read_intervals} if chrom_read_intervals else None
+            )
+        )
 
     if autosomes_only and sex_chr_only:
         raise ValueError(

@@ -329,6 +329,7 @@ def get_aou_vds(
     sex_chr_only: bool = False,
     filter_variant_ht: Optional[hl.Table] = None,
     filter_intervals: Optional[List[Union[str, hl.tinterval]]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     split_reference_blocks: bool = True,
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
@@ -364,7 +365,8 @@ def get_aou_vds(
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
-    :param filter_intervals: Optional argument to filter the VDS to specific intervals.
+    :param filter_intervals: Optional argument to filter the VDS to specific intervals (applied AFTER the read; does not prune the read).
+    :param read_intervals: Optional list of locus intervals to prune the VDS to at READ time (``hl.vds.read_vds(intervals=...)``), so only overlapping partitions are scanned. Prefer this over `filter_intervals` for a small locus scope -- a post-read filter otherwise leaves the read fanned across thousands of (empty) partitions. Default is None.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by `filter_intervals`. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata. Default is False.
@@ -390,11 +392,44 @@ def get_aou_vds(
             "filtering, which may result in many empty partitions."
         )
 
-    vds = aou_v8_resource.vds(
-        read_args=(
-            {"n_partitions": n_partitions_on_read} if n_partitions_on_read else None
-        )
-    )
+    # Contig scoping (--chrom / autosomes_only / sex_chr_only) prunes the read the SAME
+    # way as an explicit locus scope: build whole-contig intervals and read with
+    # read-time pruning. The post-read ``filter_chromosomes`` below does NOT prune the
+    # read, so without this a --chrom run scans the whole genome and fans across
+    # thousands of (empty) partitions. An explicit ``read_intervals`` (finer scope, e.g.
+    # --test-region) takes precedence.
+    if read_intervals is None:
+        _keep_contigs = None
+        if sex_chr_only:
+            _keep_contigs = ["chrX", "chrY"]
+        elif autosomes_only:
+            _keep_contigs = [f"chr{i}" for i in range(1, 23)]
+        elif chrom:
+            _keep_contigs = [chrom] if isinstance(chrom, str) else list(chrom)
+        if _keep_contigs:
+            _rg = hl.get_reference("GRCh38")
+            read_intervals = [
+                hl.Interval(
+                    hl.Locus(c, 1, reference_genome="GRCh38"),
+                    hl.Locus(c, _rg.lengths[c], reference_genome="GRCh38"),
+                    includes_start=True,
+                    includes_end=True,
+                )
+                for c in _keep_contigs
+            ]
+
+    # ``read_intervals`` prunes the read to the given locus intervals at READ time
+    # (``hl.vds.read_vds(intervals=...)``), so only the overlapping partitions are
+    # scanned. This is much cheaper than the post-read ``filter_intervals`` below for a
+    # small region: a post-read interval filter does not reliably push partition pruning
+    # back through the earlier transforms, so the read otherwise fans across thousands of
+    # (empty) partitions -- each a tiny QoB task whose startup overhead dominates cost.
+    read_args = {}
+    if n_partitions_on_read:
+        read_args["n_partitions"] = n_partitions_on_read
+    if read_intervals:
+        read_args["intervals"] = read_intervals
+    vds = aou_v8_resource.vds(read_args=read_args or None)
 
     if autosomes_only and sex_chr_only:
         raise ValueError(
