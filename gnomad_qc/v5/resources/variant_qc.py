@@ -98,6 +98,7 @@ def _variant_qc_root(
 def get_variant_qc_result(
     model_id: str,
     test: bool = False,
+    split: bool = True,
 ) -> VersionedTableResource:
     r"""
     Get the results of variant QC filtering for a given run.
@@ -105,6 +106,8 @@ def get_variant_qc_result(
     :param model_id: Model ID of variant QC run to load. Must start with 'rf\_',
         'vqsr\_', or 'if\_'.
     :param test: Whether to use a tmp path for variant QC tests.
+    :param split: Whether to return the split (biallelic) result. Set to False for the
+        multi-allelic result. Default is True.
     :return: VersionedTableResource for variant QC results.
     """
     model_type = model_id.split("_")[0]
@@ -116,7 +119,7 @@ def get_variant_qc_result(
         CURRENT_VARIANT_QC_RESULT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/aou.genomes.v{version}.{model_type}_result.ht"
+                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/aou.genomes.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
             )
             for version in VARIANT_QC_RESULT_VERSIONS
         },

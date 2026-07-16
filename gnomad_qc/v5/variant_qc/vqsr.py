@@ -777,6 +777,8 @@ def make_vqsr_jobs(
     scatter_count: int = 1000,
     singleton_vcf_path: Optional[str] = None,
     overlap_skip: bool = False,
+    snp_max_gaussians: int = 6,
+    indel_max_gaussians: int = 4,
 ) -> None:
     """
     Add jobs to Batch that perform the allele-specific VQSR variant QC.
@@ -802,6 +804,10 @@ def make_vqsr_jobs(
     :param scatter_count: Number of intervals to scatter over.
     :param singleton_vcf_path: Full path to transmitted and/or sibling singletons VCF
         file and its index.
+    :param snp_max_gaussians: Maximum number of Gaussians for the SNP model. Lower this
+        for small test callsets that lack enough clusters. Default is 6.
+    :param indel_max_gaussians: Maximum number of Gaussians for the indel model. Lower
+        this for small test callsets that lack enough clusters. Default is 4.
     :return: None.
     """
     # Scale resources for jobs as appropriate.
@@ -818,9 +824,6 @@ def make_vqsr_jobs(
         huge_disk = 500
     else:
         huge_disk = 2000
-
-    snp_max_gaussians = 6
-    indel_max_gaussians = 4
 
     # If it is a large callset, run in scatter mode.
     if is_large_callset:
@@ -1091,6 +1094,7 @@ def main(args):
         singleton_vcf_path = get_true_positive_vcf_path(
             adj=args.adj,
             true_positive_type=true_positive_type,
+            test=test,
         )
     else:
         singleton_vcf_path = None
@@ -1098,7 +1102,7 @@ def main(args):
     # Configure all VQSR jobs.
     make_vqsr_jobs(
         b=b,
-        sites_only_vcf=get_info_vcf_path(),
+        sites_only_vcf=get_info_vcf_path(test=test),
         is_small_callset=args.run_mode == "small",
         is_large_callset=args.run_mode == "large",
         output_vcf_name=args.out_vcf_name,
@@ -1115,6 +1119,8 @@ def main(args):
         indel_hard_filter=indel_hard_filter,
         singleton_vcf_path=singleton_vcf_path,
         overlap_skip=overlap_skip,
+        snp_max_gaussians=args.snp_max_gaussians,
+        indel_max_gaussians=args.indel_max_gaussians,
     )
     # Run all jobs, as loaded into the Batch b.
     b.run()
@@ -1145,7 +1151,7 @@ def main(args):
             snp_features=args.snp_features,
         )
         ht.write(
-            get_variant_qc_result(args.model_id).path,
+            get_variant_qc_result(args.model_id, test=test).path,
             overwrite=args.overwrite,
         )
 
@@ -1243,13 +1249,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-billing-project",
         type=str,
-        required=True,
+        default="gnomad-production",
         help="Hail Batch billing project.",
     )
     parser.add_argument(
         "--gcp-billing-project",
         type=str,
-        required=True,
+        default="broad-mpg-gnomad",
         help="Google Cloud billing project for reading requester pays buckets.",
     )
     parser.add_argument(
@@ -1276,6 +1282,24 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--sibling-singletons",
         help="Include sibling singletons in training.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--snp-max-gaussians",
+        help=(
+            "Maximum number of Gaussians for the SNP model. Lower for small test "
+            "callsets that lack enough clusters."
+        ),
+        default=6,
+        type=int,
+    )
+    parser.add_argument(
+        "--indel-max-gaussians",
+        help=(
+            "Maximum number of Gaussians for the indel model. Lower for small test "
+            "callsets that lack enough clusters."
+        ),
+        default=4,
+        type=int,
     )
     parser.add_argument(
         "--snp-features",
