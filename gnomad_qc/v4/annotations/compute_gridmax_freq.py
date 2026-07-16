@@ -581,8 +581,10 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
 
     :param freq_ht: Hierarchy freq HT with freq, freq_x2, ... and sample_counts* globals.
     :param min_bin_size: Groups with fewer than this many samples are suppressed.
-    :return: freq_ht with small groups filtered from all freq dicts and from the
-        sample_counts* globals, so suppressed group sizes are not exposed.
+    :return: freq_ht with small groups and empty (AN=0) groups filtered from all
+        freq dicts, the sample_counts* globals scrubbed to the released groups so
+        suppressed group sizes are not exposed, and globals restricted to those
+        set by this pipeline (any inherited from the source VDS are dropped).
     """
     globals_eval = hl.eval(freq_ht.index_globals())
     factors = sorted(
@@ -608,10 +610,14 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
     large_eval = large_set(globals_eval.sample_counts_eval)
     result = freq_ht.annotate(
         freq=hl.dict(
-            freq_ht.freq.items().filter(lambda kv: large_train.contains(kv[0]))
+            freq_ht.freq.items().filter(
+                lambda kv: large_train.contains(kv[0]) & (kv[1].AN > 0)
+            )
         ),
         freq_eval=hl.dict(
-            freq_ht.freq_eval.items().filter(lambda kv: large_eval.contains(kv[0]))
+            freq_ht.freq_eval.items().filter(
+                lambda kv: large_eval.contains(kv[0]) & (kv[1].AN > 0)
+            )
         ),
     )
 
@@ -630,12 +636,12 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
                 f"freq_x{factor}": hl.dict(
                     getattr(result, f"freq_x{factor}")
                     .items()
-                    .filter(lambda kv: large.contains(kv[0]))
+                    .filter(lambda kv: large.contains(kv[0]) & (kv[1].AN > 0))
                 ),
                 f"freq_eval_x{factor}": hl.dict(
                     getattr(result, f"freq_eval_x{factor}")
                     .items()
-                    .filter(lambda kv: large_ev.contains(kv[0]))
+                    .filter(lambda kv: large_ev.contains(kv[0]) & (kv[1].AN > 0))
                 ),
             }
         )
@@ -652,7 +658,12 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
             hl.eval(hl.len(large_ev)),
             min_bin_size,
         )
-    return result.annotate_globals(min_bin_size=min_bin_size, **scrubbed_globals)
+    result = result.annotate_globals(min_bin_size=min_bin_size, **scrubbed_globals)
+    # Keep only the globals this pipeline sets; drop anything inherited from the
+    # source VDS (e.g. age_distribution) so the release carries nothing unintended.
+    return result.select_globals(
+        "af_threshold_for_correction", "min_bin_size", *scrubbed_globals
+    )
 
 
 def main(args):
