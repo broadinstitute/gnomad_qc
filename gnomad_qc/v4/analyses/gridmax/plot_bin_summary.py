@@ -153,7 +153,14 @@ def _hierarchy_factors(df: pd.DataFrame) -> list:
     return sorted(factors)
 
 
-def _plot_level(df: pd.DataFrame, col: str, min_bin_size: int, top_n: int, output_dir: str, label: str) -> int:
+def _plot_level(
+    df: pd.DataFrame,
+    col: str,
+    min_bin_size: int,
+    top_n: int,
+    output_dir: str,
+    label: str,
+) -> int:
     """
     Plot ancestry and data_type composition for one hierarchy level.
 
@@ -274,7 +281,9 @@ def main(args):
     for factor in _hierarchy_factors(df):
         col = _coarse_col(factor)
         label = f"x{factor}"
-        n_passing = _plot_level(df, col, args.min_bin_size, args.top_n, args.output_dir, label)
+        n_passing = _plot_level(
+            df, col, args.min_bin_size, args.top_n, args.output_dir, label
+        )
         hierarchy_counts[f"/{factor}"] = n_passing
 
     # --- Print quick summary ---

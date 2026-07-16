@@ -30,6 +30,7 @@ import re
 from typing import Optional
 
 import hail as hl
+
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
@@ -57,7 +58,6 @@ logger.setLevel(logging.INFO)
 DEFAULT_MIN_BIN_SIZE = 50
 DEFAULT_AB_CUTOFF = 0.9
 DEFAULT_AF_THRESHOLD = 0.01
-
 
 
 def get_gridmax_pipeline_resources(
@@ -177,9 +177,7 @@ def load_bin_assignments(bin_tsv_path: str) -> hl.Table:
     )
 
     max_abs = bin_ht.aggregate(
-        hl.agg.max(
-            hl.max(bin_ht.bin_id.split("_").map(lambda s: hl.abs(hl.int32(s))))
-        )
+        hl.agg.max(hl.max(bin_ht.bin_id.split("_").map(lambda s: hl.abs(hl.int32(s)))))
     )
     factors = _dyadic_factors(max_abs)
     logger.info(
@@ -191,15 +189,15 @@ def load_bin_assignments(bin_tsv_path: str) -> hl.Table:
         bin_id=bin_row.bin_id,
         bin_size=bin_row.bin_size,
         eval_fold=bin_row.eval_fold,
-        **{
-            f'bin_id_x{f}': _coarsen_bin_id_hl(bin_row.bin_id, f)
-            for f in factors
-        },
+        **{f"bin_id_x{f}": _coarsen_bin_id_hl(bin_row.bin_id, f) for f in factors},
     )
     return sample_key_ht.key_by("s").select(
         "bin_id",
-        *[f'bin_id_x{f}' for f in factors],
-        "bin_size", "eval_fold", "pop", "data_type",
+        *[f"bin_id_x{f}" for f in factors],
+        "bin_size",
+        "eval_fold",
+        "pop",
+        "data_type",
     )
 
 
@@ -216,12 +214,16 @@ def export_bin_summary(ht: hl.Table, output_path: str) -> None:
     :param output_path: Full GCS path for the output TSV.
     """
     coarse_cols = sorted(
-        [c for c in ht.row if re.match(r'bin_id_x\d+$', c)],
-        key=lambda c: int(c[len('bin_id_x'):]),
+        [c for c in ht.row if re.match(r"bin_id_x\d+$", c)],
+        key=lambda c: int(c[len("bin_id_x") :]),
     )
     ht = ht.filter(hl.is_defined(ht.bin_id))
     ht = ht.group_by(
-        "bin_id", *coarse_cols, "pop", "data_type", "eval_fold",
+        "bin_id",
+        *coarse_cols,
+        "pop",
+        "data_type",
+        "eval_fold",
     ).aggregate(n=hl.agg.count())
     logger.info("Exporting bin summary to %s...", output_path)
     ht.export(output_path)
@@ -326,15 +328,17 @@ def _flatten_call_stats(freq_expr: hl.DictExpression) -> hl.DictExpression:
     """Reduce a bin_id -> array-form call_stats dict to alt-only scalar structs."""
     return hl.dict(
         freq_expr.items().map(
-            lambda kv: hl.tuple([
-                kv[0],
-                hl.struct(
-                    AC=kv[1].AC[1],
-                    AF=kv[1].AF[1],
-                    AN=kv[1].AN,
-                    homozygote_count=kv[1].homozygote_count[1],
-                ),
-            ])
+            lambda kv: hl.tuple(
+                [
+                    kv[0],
+                    hl.struct(
+                        AC=kv[1].AC[1],
+                        AF=kv[1].AF[1],
+                        AN=kv[1].AN,
+                        homozygote_count=kv[1].homozygote_count[1],
+                    ),
+                ]
+            )
         )
     )
 
@@ -368,17 +372,22 @@ def correct_high_ab_hets(
     :param af_threshold: Per-bin AF above which to apply correction.
     :return: Table with corrected freq dict; high_ab_hets dropped.
     """
+
     def _correct_dict(freq_expr, hets_expr):
         return hl.dict(
             freq_expr.items().map(
-                lambda kv: hl.tuple([
-                    kv[0],
-                    hl.bind(
-                        lambda stats, n: _apply_high_ab_het_correction(stats, n, af_threshold),
-                        kv[1],
-                        hets_expr[kv[0]],
-                    ),
-                ])
+                lambda kv: hl.tuple(
+                    [
+                        kv[0],
+                        hl.bind(
+                            lambda stats, n: _apply_high_ab_het_correction(
+                                stats, n, af_threshold
+                            ),
+                            kv[1],
+                            hets_expr[kv[0]],
+                        ),
+                    ]
+                )
             )
         )
 
@@ -410,7 +419,9 @@ def _dyadic_factors(max_abs: int) -> list:
     return factors
 
 
-def _coarsen_bin_id_hl(bin_id_expr: hl.StringExpression, factor: int) -> hl.StringExpression:
+def _coarsen_bin_id_hl(
+    bin_id_expr: hl.StringExpression, factor: int
+) -> hl.StringExpression:
     """
     Coarsen a bin ID by dividing each coordinate by factor, truncating toward zero.
 
@@ -420,10 +431,10 @@ def _coarsen_bin_id_hl(bin_id_expr: hl.StringExpression, factor: int) -> hl.Stri
     return hl.if_else(
         hl.is_defined(bin_id_expr),
         hl.delimit(
-            bin_id_expr.split('_').map(
+            bin_id_expr.split("_").map(
                 lambda s: hl.str(hl.int32(hl.int32(s) / factor))
             ),
-            '_',
+            "_",
         ),
         hl.missing(hl.tstr),
     )
@@ -458,17 +469,19 @@ def _aggregate_to_coarser_level(
     )
     return hl.dict(
         children_map.items().map(
-            lambda kv: hl.tuple([
-                kv[0],
-                _recompute_af(
-                    kv[1].fold(
-                        lambda acc, child_id: _sum_call_stats(
-                            acc, hl.coalesce(freq_expr.get(child_id), zero)
-                        ),
-                        zero,
-                    )
-                ),
-            ])
+            lambda kv: hl.tuple(
+                [
+                    kv[0],
+                    _recompute_af(
+                        kv[1].fold(
+                            lambda acc, child_id: _sum_call_stats(
+                                acc, hl.coalesce(freq_expr.get(child_id), zero)
+                            ),
+                            zero,
+                        )
+                    ),
+                ]
+            )
         )
     )
 
@@ -500,11 +513,11 @@ def aggregate_hierarchy(
     factors = sorted(
         int(m.group(1))
         for c in training_ht.row
-        for m in [re.match(r'bin_id_x(\d+)$', c)]
+        for m in [re.match(r"bin_id_x(\d+)$", c)]
         if m
     )
     logger.info("Hierarchy factors discovered from training HT: %s", factors)
-    coarse_cols = [f'bin_id_x{f}' for f in factors]
+    coarse_cols = [f"bin_id_x{f}" for f in factors]
 
     # Group by bin_id and its precomputed parent IDs (constant within a bin_id).
     # The bin_id_x{f} column values ARE the parent assignments, so the hierarchy
@@ -517,7 +530,7 @@ def aggregate_hierarchy(
         hl.is_defined(training_ht.bin_id) & (training_ht.data_type == "exome")
     )
     counts_rows = (
-        filt_ht.group_by('bin_id', *coarse_cols)
+        filt_ht.group_by("bin_id", *coarse_cols)
         .aggregate(
             n_train=hl.agg.filter(filt_ht.eval_fold == 0, hl.agg.count()),
             n_eval=hl.agg.filter(filt_ht.eval_fold == 1, hl.agg.count()),
@@ -528,10 +541,10 @@ def aggregate_hierarchy(
     l0_eval = {row.bin_id: row.n_eval for row in counts_rows}
 
     level_fields = {}
-    global_fields = {'sample_counts': l0_train, 'sample_counts_eval': l0_eval}
+    global_fields = {"sample_counts": l0_train, "sample_counts_eval": l0_eval}
 
     for factor in factors:
-        col = f'bin_id_x{factor}'
+        col = f"bin_id_x{factor}"
         children_map = {}
         coarse_train = {}
         coarse_eval = {}
@@ -542,15 +555,17 @@ def aggregate_hierarchy(
             coarse_eval[parent] = coarse_eval.get(parent, 0) + row.n_eval
 
         logger.info("Factor /%d: %d coarser groups", factor, len(children_map))
-        children_map_lit = hl.literal(children_map, hl.tdict(hl.tstr, hl.tarray(hl.tstr)))
-        level_fields[f'freq_x{factor}'] = _aggregate_to_coarser_level(
+        children_map_lit = hl.literal(
+            children_map, hl.tdict(hl.tstr, hl.tarray(hl.tstr))
+        )
+        level_fields[f"freq_x{factor}"] = _aggregate_to_coarser_level(
             freq_ht.freq, children_map_lit
         )
-        level_fields[f'freq_eval_x{factor}'] = _aggregate_to_coarser_level(
+        level_fields[f"freq_eval_x{factor}"] = _aggregate_to_coarser_level(
             freq_ht.freq_eval, children_map_lit
         )
-        global_fields[f'sample_counts_x{factor}'] = coarse_train
-        global_fields[f'sample_counts_eval_x{factor}'] = coarse_eval
+        global_fields[f"sample_counts_x{factor}"] = coarse_train
+        global_fields[f"sample_counts_eval_x{factor}"] = coarse_eval
 
     freq_ht = freq_ht.annotate(**level_fields)
     return freq_ht.annotate_globals(
@@ -573,7 +588,7 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
     factors = sorted(
         int(m.group(1))
         for k in globals_eval
-        for m in [re.match(r'sample_counts_x(\d+)$', k)]
+        for m in [re.match(r"sample_counts_x(\d+)$", k)]
         if m
     )
 
@@ -592,45 +607,50 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
     large_train = large_set(globals_eval.sample_counts)
     large_eval = large_set(globals_eval.sample_counts_eval)
     result = freq_ht.annotate(
-        freq=hl.dict(freq_ht.freq.items().filter(
-            lambda kv: large_train.contains(kv[0])
-        )),
-        freq_eval=hl.dict(freq_ht.freq_eval.items().filter(
-            lambda kv: large_eval.contains(kv[0])
-        )),
+        freq=hl.dict(
+            freq_ht.freq.items().filter(lambda kv: large_train.contains(kv[0]))
+        ),
+        freq_eval=hl.dict(
+            freq_ht.freq_eval.items().filter(lambda kv: large_eval.contains(kv[0]))
+        ),
     )
 
     # Scrub the sample-count globals to match the row-level suppression: keep counts
     # only for released (large) groups, so the exact sizes of suppressed small groups
     # do not leak via the "privacy-filtered" HT's globals.
     scrubbed_globals = {
-        'sample_counts': scrub(globals_eval.sample_counts),
-        'sample_counts_eval': scrub(globals_eval.sample_counts_eval),
+        "sample_counts": scrub(globals_eval.sample_counts),
+        "sample_counts_eval": scrub(globals_eval.sample_counts_eval),
     }
     for factor in factors:
-        large = large_set(getattr(globals_eval, f'sample_counts_x{factor}'))
-        large_ev = large_set(getattr(globals_eval, f'sample_counts_eval_x{factor}'))
-        result = result.annotate(**{
-            f'freq_x{factor}': hl.dict(
-                getattr(result, f'freq_x{factor}').items().filter(
-                    lambda kv: large.contains(kv[0])
-                )
-            ),
-            f'freq_eval_x{factor}': hl.dict(
-                getattr(result, f'freq_eval_x{factor}').items().filter(
-                    lambda kv: large_ev.contains(kv[0])
-                )
-            ),
-        })
-        scrubbed_globals[f'sample_counts_x{factor}'] = scrub(
-            getattr(globals_eval, f'sample_counts_x{factor}')
+        large = large_set(getattr(globals_eval, f"sample_counts_x{factor}"))
+        large_ev = large_set(getattr(globals_eval, f"sample_counts_eval_x{factor}"))
+        result = result.annotate(
+            **{
+                f"freq_x{factor}": hl.dict(
+                    getattr(result, f"freq_x{factor}")
+                    .items()
+                    .filter(lambda kv: large.contains(kv[0]))
+                ),
+                f"freq_eval_x{factor}": hl.dict(
+                    getattr(result, f"freq_eval_x{factor}")
+                    .items()
+                    .filter(lambda kv: large_ev.contains(kv[0]))
+                ),
+            }
         )
-        scrubbed_globals[f'sample_counts_eval_x{factor}'] = scrub(
-            getattr(globals_eval, f'sample_counts_eval_x{factor}')
+        scrubbed_globals[f"sample_counts_x{factor}"] = scrub(
+            getattr(globals_eval, f"sample_counts_x{factor}")
+        )
+        scrubbed_globals[f"sample_counts_eval_x{factor}"] = scrub(
+            getattr(globals_eval, f"sample_counts_eval_x{factor}")
         )
         logger.info(
             "factor /%d: %d train / %d eval groups pass min_bin_size=%d",
-            factor, hl.eval(hl.len(large)), hl.eval(hl.len(large_ev)), min_bin_size,
+            factor,
+            hl.eval(hl.len(large)),
+            hl.eval(hl.len(large_ev)),
+            min_bin_size,
         )
     return result.annotate_globals(min_bin_size=min_bin_size, **scrubbed_globals)
 
@@ -667,17 +687,14 @@ def main(args):
         res.check_resource_existence()
         logger.info("Step 1: Load bin assignments and map to gnomAD sample IDs...")
         ht = load_bin_assignments(args.bin_assignments)
-        ht.checkpoint(
-            res.ht.path, 
-            overwrite=overwrite
-        )
+        ht.checkpoint(res.ht.path, overwrite=overwrite)
         logger.info("Samples in key HT: %d", res.ht.ht().count())
 
     if run_all or args.export_bin_summary:
         res = resources.export_bin_summary
         res.check_resource_existence()
         export_bin_summary(
-            res.ht.ht(), 
+            res.ht.ht(),
             res.bin_summary,
         )
 
@@ -686,8 +703,8 @@ def main(args):
         res.check_resource_existence()
         logger.info("Step 2: Prep and split VDS...")
         vds = prep_vds_for_gridmax(
-            res.ht.ht(), 
-            chrom=chrom, 
+            res.ht.ht(),
+            chrom=chrom,
             test_gene=test_gene,
         )
         vds.checkpoint(res.split_vds.path, overwrite=overwrite)
@@ -713,10 +730,7 @@ def main(args):
         res = resources.aggregate_hierarchy
         res.check_resource_existence()
         logger.info("Step 5: Aggregate call stats across hierarchy levels...")
-        freq_ht = aggregate_hierarchy(
-            res.corrected_freq_ht.ht(),
-            res.ht.ht()
-        )
+        freq_ht = aggregate_hierarchy(res.corrected_freq_ht.ht(), res.ht.ht())
         freq_ht.checkpoint(res.hierarchy_freq_ht.path, overwrite=overwrite)
 
     if run_all or args.finalize:
