@@ -133,6 +133,25 @@ def _combine_freq_suffix(suffix: Optional[str], chrom: Optional[str]) -> Optiona
     return suffix or chrom
 
 
+def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
+    """
+    Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix.
+
+    Mirrors ``compute_coverage.py``'s ``_apply_path_suffix`` (underscore convention), so
+    a suffixed all-sites-AN HT written by ``compute_coverage.py``
+    (``--cov-and-an-output-suffix``, e.g. ``coverage_and_an_chunkhash_test.ht``) can be
+    targeted by the frequency all-sites-AN read.
+
+    :param path: HT path ending in ``.ht``.
+    :param suffix: Optional suffix string (no leading underscore). If falsy, ``path`` is
+        returned unchanged.
+    :return: Suffix-applied path.
+    """
+    if not suffix:
+        return path
+    return path.rstrip("/").removesuffix(".ht") + f"_{suffix}.ht"
+
+
 def _parse_region_interval(
     s: str, reference_genome: str = "GRCh38"
 ) -> hl.utils.Interval:
@@ -288,6 +307,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     environment: str = "batch",
     chrom: Optional[str] = None,
     region_intervals: Optional[List[hl.utils.Interval]] = None,
+    all_sites_an_suffix: Optional[str] = None,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using all sites ANs.
@@ -304,10 +324,20 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         exactly these intervals (the same ones used to scope the variant MT read), so
         the AN join matches an all-sites-AN test HT generated for the same region.
         Takes precedence over ``chrom`` for the AN-HT filter.
+    :param all_sites_an_suffix: Optional suffix (no leading underscore) inserted before
+        the ``.ht`` extension of the all-sites-AN HT path, to read a suffixed AN HT
+        written by ``compute_coverage.py --cov-and-an-output-suffix`` (e.g.
+        ``chunkhash_test`` -> ``...coverage_and_an_chunkhash_test.ht``). Default None
+        (the base ``coverage_and_an.ht``).
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
-    all_sites_an_ht = coverage_and_an_path(test=test, environment=environment).ht()
+    all_sites_an_path = _apply_path_suffix(
+        coverage_and_an_path(test=test, environment=environment).path,
+        all_sites_an_suffix,
+    )
+    logger.info("Reading all sites AN HT from %s...", all_sites_an_path)
+    all_sites_an_ht = hl.read_table(all_sites_an_path)
     if region_intervals:
         all_sites_an_ht = hl.filter_intervals(all_sites_an_ht, region_intervals)
     elif chrom:
@@ -487,6 +517,7 @@ def process_aou_dataset(
     overwrite_split_aou_vds: bool = False,
     chrom: Optional[str] = None,
     test_region: Optional[List[str]] = None,
+    all_sites_an_suffix: Optional[str] = None,
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -517,6 +548,9 @@ def process_aou_dataset(
         (half-open) to scope the AoU VDS load (and the all-sites-AN read) to, so the
         output can be matched against an all-sites-AN test HT for the same region.
         Auto-enables test mode. Default None.
+    :param all_sites_an_suffix: Optional suffix for the all-sites-AN HT path (to read a
+        suffixed AN HT from ``compute_coverage.py --cov-and-an-output-suffix``). Only
+        used on the all-sites-AN path. Default None.
     :return: Table with freq and age_hists annotations for AoU dataset.
     """
     # --test-region is a testing-only scope, so it enables test mode (test paths).
@@ -587,6 +621,7 @@ def process_aou_dataset(
             environment=environment,
             chrom=chrom,
             region_intervals=region_intervals,
+            all_sites_an_suffix=all_sites_an_suffix,
         )
     else:
         # Persist the prepared split VDS to a durable (non-tmp) resource so
@@ -2043,6 +2078,7 @@ def main(args):
                     overwrite_split_aou_vds=overwrite_split_aou_vds,
                     chrom=chrom,
                     test_region=args.test_region,
+                    all_sites_an_suffix=args.all_sites_an_suffix,
                 )
                 logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
                 aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
@@ -2225,6 +2261,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "path. Applied to both --process-aou and --merge-datasets reads "
             "of the AoU freq HT so the merge picks up the same file. Default "
             "is None (no suffix)."
+        ),
+    )
+    parser.add_argument(
+        "--all-sites-an-suffix",
+        type=str,
+        default=None,
+        help=(
+            "Optional suffix (no leading underscore) inserted before the '.ht' "
+            "extension of the all-sites-AN HT read on the --use-all-sites-ans path, "
+            "to target a suffixed AN HT written by 'compute_coverage.py "
+            "--cov-and-an-output-suffix' (e.g. 'chunkhash_test' -> "
+            "'...coverage_and_an_chunkhash_test.ht'). Uses the same underscore "
+            "convention as compute_coverage. Default is None (base coverage_and_an.ht)."
         ),
     )
 
