@@ -83,8 +83,15 @@ def get_gnomad_v3_vds(
     # whose startup overhead dominates cost. Keeps exactly the same rows as
     # filter_chromosomes. autosomes_only/sex_chr_only still resolve + filter post-read
     # (they derive contigs from the read's reference genome).
+    # NOT applied when ``filter_partitions`` is set: partition-index chunking assumes the
+    # FULL-VDS partition layout, and read-time pruning would renumber partitions and
+    # misalign those indices.
     chrom_read_intervals = None
-    if chrom is not None and not (autosomes_only or sex_chr_only):
+    if (
+        chrom is not None
+        and not (autosomes_only or sex_chr_only)
+        and not filter_partitions
+    ):
         _rg = hl.get_reference("GRCh38")
         chrom_read_intervals = [
             hl.Interval(

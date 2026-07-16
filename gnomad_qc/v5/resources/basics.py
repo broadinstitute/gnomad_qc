@@ -398,7 +398,12 @@ def get_aou_vds(
     # read, so without this a --chrom run scans the whole genome and fans across
     # thousands of (empty) partitions. An explicit ``read_intervals`` (finer scope, e.g.
     # --test-region) takes precedence.
-    if read_intervals is None:
+    # NOT applied when ``filter_partitions`` is set: partition-index chunking assumes the
+    # FULL-VDS partition layout, but read-time pruning renumbers partitions relative to
+    # the pruned read -- so the indices would misalign. There, ``filter_partitions``
+    # prunes the read by index and the post-read ``filter_chromosomes`` scopes
+    # the contig.
+    if read_intervals is None and not filter_partitions:
         _keep_contigs = None
         if sex_chr_only:
             _keep_contigs = ["chrX", "chrY"]
