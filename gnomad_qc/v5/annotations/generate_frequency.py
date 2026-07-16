@@ -1972,6 +1972,14 @@ def main(args):
     # collide; assemble them later with --assemble-chrom-freq. The merge-datasets step
     # reads the assembled (contig-unscoped) AoU HT, so it keeps ``aou_freq_suffix``.
     aou_freq_suffix_chrom = _combine_freq_suffix(aou_freq_suffix, chrom)
+    # Output-only tag appended to whichever freq HT this run writes (process-aou /
+    # process-gnomad / merge-datasets). Not applied to any input read, so a tagged test
+    # output never feeds --merge-datasets.
+    freq_output_suffix = args.freq_output_suffix
+    aou_out_suffix = _combine_freq_suffix(aou_freq_suffix_chrom, freq_output_suffix)
+    gnomad_out_suffix = _combine_freq_suffix(
+        _combine_freq_suffix(None, chrom), freq_output_suffix
+    )
     tmp_dir_days = args.tmp_dir_days
     # --test-region is a testing-only scope, so it auto-enables test mode (test paths).
     test_run = test_vds or test_partitions is not None or args.test_region is not None
@@ -2030,7 +2038,7 @@ def main(args):
                 data_type="genomes",
                 data_set="gnomad",
                 environment=environment,
-                suffix=_combine_freq_suffix(None, chrom),
+                suffix=gnomad_out_suffix,
             )
 
             check_resource_existence(
@@ -2058,7 +2066,7 @@ def main(args):
                 data_type="genomes",
                 data_set="aou",
                 environment=environment,
-                suffix=aou_freq_suffix_chrom,
+                suffix=aou_out_suffix,
             )
 
             check_resource_existence(
@@ -2167,6 +2175,7 @@ def main(args):
                 data_type="genomes",
                 data_set="merged",
                 environment=environment,
+                suffix=freq_output_suffix,
             )
 
             check_resource_existence(
@@ -2274,6 +2283,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "--cov-and-an-output-suffix' (e.g. 'chunkhash_test' -> "
             "'...coverage_and_an_chunkhash_test.ht'). Uses the same underscore "
             "convention as compute_coverage. Default is None (base coverage_and_an.ht)."
+        ),
+    )
+    parser.add_argument(
+        "--freq-output-suffix",
+        type=str,
+        default=None,
+        help=(
+            "Optional suffix appended to the WRITTEN freq HT for whichever step runs "
+            "(--process-aou / --process-gnomad / --merge-datasets), e.g. "
+            "'...frequencies.chunkhash_test.ht'. Output-only: unlike "
+            "--aou-freq-ht-suffix it does NOT change any input read, so a tagged test "
+            "output is a dead-end artifact and never feeds --merge-datasets. Combines "
+            "with --aou-freq-ht-suffix and --chrom on the output path. Default is None."
         ),
     )
 
