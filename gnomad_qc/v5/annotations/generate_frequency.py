@@ -308,6 +308,7 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     chrom: Optional[str] = None,
     region_intervals: Optional[List[hl.utils.Interval]] = None,
     all_sites_an_suffix: Optional[str] = None,
+    reduce_to_minimal_groups: bool = False,
 ) -> hl.Table:
     """
     Calculate frequencies and age histograms for AoU variant data using all sites ANs.
@@ -329,6 +330,12 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         written by ``compute_coverage.py --cov-and-an-output-suffix`` (e.g.
         ``chunkhash_test`` -> ``...coverage_and_an_chunkhash_test.ht``). Default None
         (the base ``coverage_and_an.ht``).
+    :param reduce_to_minimal_groups: When True, aggregate ``AC`` / ``homozygote_count``
+        for only the minimal "leaf" strata and reconstruct every non-leaf group by
+        element-wise summation. Both aggregations are summable (``AC`` = sum,
+        ``homozygote_count`` = count), so the reconstruction is exact -- the same
+        summability that lets ``compute_coverage.py`` mark ``AN`` reducible. Shrinks the
+        per-variant aggregation width and the group_membership broadcast. Default False.
     :return: Table with freq and age_hists annotations.
     """
     logger.info("Annotating quality metrics histograms and age histograms...")
@@ -349,9 +356,33 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     )
 
     logger.info("Annotating frequencies with all sites ANs...")
-    group_membership_ht = group_membership(
-        test=test, data_set="aou", environment=environment
-    ).ht()
+    # Read the SAME group membership the all-sites-AN HT was built with, so the AC /
+    # homozygote_count strata line up with the AN array on the join below.
+    # compute_coverage.py writes a leaf-reduced variant at the "_reduce" path when it
+    # builds AN with --reduce-min-aggs; pull that in when --reduce-to-minimal-groups is
+    # set and it exists (else fall back to the full group membership). Both are read
+    # here rather than reduced in-memory so freq always uses exactly the AN's strata
+    # layout -- the reduced HT (see generate_freq_group_membership_array) carries
+    # freq_meta_full / freq_leaf_indices / freq_group_decomposition globals to expand
+    # the leaf-only arrays back to full below.
+    gm_path = group_membership(test=test, data_set="aou", environment=environment).path
+    reduced = False
+    if reduce_to_minimal_groups:
+        reduce_path = _apply_path_suffix(gm_path, "reduce")
+        if _file_exists_for_env(reduce_path, environment):
+            logger.info(
+                "Using reduced (leaf-only) group membership HT: %s", reduce_path
+            )
+            gm_path = reduce_path
+            reduced = True
+        else:
+            logger.warning(
+                "--reduce-to-minimal-groups set but the reduced group membership HT was"
+                " not found at %s; falling back to the full group membership.",
+                reduce_path,
+            )
+    group_membership_ht = hl.read_table(gm_path)
+
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
             "GT",
@@ -366,6 +397,35 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         group_membership_ht=group_membership_ht,
         select_fields=["hist_fields"],
     )
+
+    # With the reduced group membership, AC / homozygote_count come back over leaf
+    # strata only; expand each back to full by summation (both are summable) using the
+    # decomposition the reduced HT carries, and restore the full freq_meta so the arrays
+    # line up with the full-strata all-sites AN joined below.
+    if reduced:
+        gg = group_membership_ht.index_globals()
+        leaf_indices = hl.eval(gg.freq_leaf_indices)
+        decomposition = {
+            i: d for i, d in enumerate(hl.eval(gg.freq_group_decomposition)) if d
+        }
+        freq_meta_full = hl.eval(gg.freq_meta_full)
+        freq_meta_sample_count_full = hl.eval(gg.freq_meta_sample_count_full)
+        n_full = len(freq_meta_full)
+        aou_variant_freq_ht = aou_variant_freq_ht.annotate(
+            AC=expand_strata_array_from_leaves(
+                aou_variant_freq_ht.AC, leaf_indices, decomposition, n_full
+            ),
+            homozygote_count=expand_strata_array_from_leaves(
+                aou_variant_freq_ht.homozygote_count,
+                leaf_indices,
+                decomposition,
+                n_full,
+            ),
+        )
+        aou_variant_freq_ht = aou_variant_freq_ht.annotate_globals(
+            freq_meta=freq_meta_full,
+            freq_meta_sample_count=freq_meta_sample_count_full,
+        )
 
     # Load AN values from all sites ANs table (calculated by another script but used
     # same group membership HT so same strata order).
@@ -622,6 +682,7 @@ def process_aou_dataset(
             chrom=chrom,
             region_intervals=region_intervals,
             all_sites_an_suffix=all_sites_an_suffix,
+            reduce_to_minimal_groups=reduce_to_minimal_groups,
         )
     else:
         # Persist the prepared split VDS to a durable (non-tmp) resource so
@@ -2383,8 +2444,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Only compute call stats for the minimal 'leaf' stratification "
             "groups and reconstruct the rest by summation. Reduces the cost "
-            "of per-variant aggregation. Only applies to the densify path "
-            "(--process-aou without --use-all-sites-ans)."
+            "of per-variant aggregation. Applies to both AoU --process-aou paths: "
+            "the densify path (freq struct) and the all-sites-AN path (AC and "
+            "homozygote_count, both summable)."
         ),
         action="store_true",
     )
