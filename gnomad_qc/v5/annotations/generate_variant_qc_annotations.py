@@ -634,7 +634,18 @@ def main(args):
             info_ht = adjust_vcf_incompatible_types(
                 info_ht, pipe_delimited_annotations=[]
             )
-            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
+            # GATK's isolation forest infers allele-specific mode from Number=A in the
+            # header (the explicit --use-allele-specific-annotations flag was replaced
+            # by this header check in GATK 4.5.0.0); Hail exports arrays as Number=. so
+            # declare the AS features Number=A. VQSR (VariantRecalibrator) is flag-driven
+            # and works with either.
+            vcf_metadata = {
+                "info": {
+                    f: {"Number": "A", "Type": "Float", "Description": ""}
+                    for f in INFO_FEATURES
+                }
+            }
+            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True, metadata=vcf_metadata)
 
         if args.generate_trio_stats:
             chrom = args.chrom
