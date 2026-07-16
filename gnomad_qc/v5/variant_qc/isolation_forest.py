@@ -14,6 +14,7 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
+from gnomad.variant_qc.pipeline import INFO_FEATURES
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
@@ -74,7 +75,15 @@ def _resource_args(mode: str, singletons_vcf: Optional[str]) -> str:
 
 
 def _annotation_args(features: List[str]) -> str:
-    """Build the GATK ``-A`` annotation args from a feature list."""
+    """
+    Build the GATK ``-A`` annotation args from a feature list.
+
+    .. note::
+
+        AS annotations must have ``Number=A`` in the VCF header; GATK infers
+        allele-specific mode from that (the ``--use-allele-specific-annotations`` flag
+        was replaced by this header check in GATK 4.5.0.0).
+    """
     return " ".join(f"-A {f}" for f in features)
 
 
@@ -84,6 +93,7 @@ def extract_variant_annotations_job(
     sites_only_vcf: str,
     features: List[str],
     resource_args: str,
+    calling_intervals_arg: str,
     out_root: str,
     gatk_image: str,
     gcp_billing_project: str,
@@ -96,6 +106,7 @@ def extract_variant_annotations_job(
     :param sites_only_vcf: AS-annotated sites-only input VCF.
     :param features: Features to extract for this mode.
     :param resource_args: GATK ``--resource`` args for the labeled sets.
+    :param calling_intervals_arg: GATK ``-L`` args restricting the extracted sites.
     :param out_root: Output prefix (files written as ``{out_root}.*``).
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
@@ -120,7 +131,7 @@ def extract_variant_annotations_job(
             -O {j.extract} \\
             --mode {mode} \\
             {_annotation_args(features)} \\
-            --use-allele-specific-annotations \\
+            {calling_intervals_arg} \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
         """
@@ -281,7 +292,6 @@ def score_variant_annotations_job(
             --resource:extracted,extracted=true {extracted_vcf} \\
             --model-prefix {model} \\
             --model-backend PYTHON_IFOREST \\
-            --use-allele-specific-annotations \\
             -L {interval} \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
@@ -358,6 +368,7 @@ def isolation_forest_workflow(
                 sites_only_vcf=sites_only_vcf,
                 features=features,
                 resource_args=resource_args,
+                calling_intervals_arg=calling_intervals_arg,
                 out_root=extract_root,
                 gatk_image=gatk_image,
                 gcp_billing_project=gcp_billing_project,
@@ -420,6 +431,38 @@ def export_exclusion_intervals() -> str:
     path = hl.utils.new_temp_file("telomeres_centromeres", "intervals")
     ht.export(path, header=False)
     return path
+
+
+def reheader_v4_sites_to_chr22(raw_vcf: str, out_path: str) -> str:
+    """
+    Write a chr22 copy of a v4 sites VCF with AS features declared ``Number=A``.
+
+    The published v4 info VCF declares AS annotations ``Number=.``; GATK's isolation
+    forest needs ``Number=A`` to enter allele-specific mode. The data is already one
+    value per ALT allele, so only the header changes. Filtering to chr22 keeps this
+    test-only re-export cheap.
+
+    :param raw_vcf: Path to the v4 sites VCF.
+    :param out_path: Output path for the reheadered chr22 VCF.
+    :return: ``out_path``.
+    """
+    ht = hl.import_vcf(
+        raw_vcf,
+        force_bgz=True,
+        reference_genome="GRCh38",
+        array_elements_required=False,
+    ).rows()
+    ht = hl.filter_intervals(
+        ht, [hl.parse_locus_interval("chr22", reference_genome="GRCh38")]
+    )
+    metadata = {
+        "info": {
+            f: {"Number": "A", "Type": "Float", "Description": ""}
+            for f in INFO_FEATURES
+        }
+    }
+    hl.export_vcf(ht, out_path, tabix=True, metadata=metadata)
+    return out_path
 
 
 def merge_iforest_result(
@@ -491,8 +534,9 @@ def main(args):
 
     test = args.test
     model_id = args.model_id
-    scatter_count = 10 if test else args.scatter_count
-    contigs = ["chr22"] if test else CALLING_CONTIGS
+    chr22_only = test or args.test_on_v4
+    scatter_count = 10 if chr22_only else args.scatter_count
+    contigs = ["chr22"] if chr22_only else CALLING_CONTIGS
     calling_intervals_arg = " ".join(f"-L {c}" for c in contigs)
 
     true_positive_type = None
@@ -510,7 +554,8 @@ def main(args):
         )
         from gnomad_qc.v4.resources.annotations import info_vcf_path as v4_info_vcf_path
 
-        sites_only_vcf = v4_info_vcf_path(info_method="quasi")
+        run_prefix = f"gs://{BATCH_TMP_BUCKET}/if_v4_test/{model_id}"
+        result_ht_path = f"{run_prefix}/gnomad.exomes.v4.0.{model_id}.result.ht"
         singletons_vcf = (
             v4_get_true_positive_vcf_path(
                 adj=args.adj, true_positive_type=true_positive_type
@@ -518,8 +563,16 @@ def main(args):
             if true_positive_type
             else None
         )
-        run_prefix = f"gs://{BATCH_TMP_BUCKET}/if_v4_test/{model_id}"
-        result_ht_path = f"{run_prefix}/gnomad.exomes.v4.0.{model_id}.result.ht"
+        # The published v4 info VCF declares AS fields Number=.; reheader a chr22 copy
+        # to Number=A so GATK enters allele-specific mode.
+        sites_only_vcf = (
+            reheader_v4_sites_to_chr22(
+                v4_info_vcf_path(info_method="quasi"),
+                f"{run_prefix}/reheader/{model_id}.chr22.sites.vcf.bgz",
+            )
+            if not args.load_only
+            else None
+        )
     else:
         sites_only_vcf = info_vcf_path(test=test, environment=environment)
         singletons_vcf = (
