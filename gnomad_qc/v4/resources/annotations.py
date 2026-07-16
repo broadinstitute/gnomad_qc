@@ -556,28 +556,30 @@ gridmax_sample_key = TableResource(
 )
 
 
-def get_gridmax_bin_summary(test: bool = False) -> str:
+def get_gridmax_bin_summary() -> str:
     """
     Get the GCS path for the gridmax bin summary TSV.
 
-    :param test: Whether to use a tmp path for testing.
+    Per-sample and gene-independent, so it has no test/chrom scope.
+
     :return: GCS path string for the bin summary TSV.
     """
     return (
-        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='exomes')}"
+        f"{_annotations_root(CURRENT_VERSION, data_type='exomes')}"
         f"/gnomad.exomes.v{CURRENT_VERSION}.gridmax_bin_summary.tsv"
     )
 
 
-def get_gridmax_training_samples(test: bool = False) -> TableResource:
+def get_gridmax_training_samples() -> TableResource:
     """
     Get the gridmax training samples TableResource.
 
-    :param test: Whether to use a tmp path for testing.
+    Per-sample and gene-independent, so it has no test/chrom scope.
+
     :return: TableResource for the gridmax training samples HT.
     """
     return TableResource(
-        f"{_annotations_root(CURRENT_VERSION, test=test, data_type='exomes')}"
+        f"{_annotations_root(CURRENT_VERSION, data_type='exomes')}"
         f"/gnomad.exomes.v{CURRENT_VERSION}.gridmax_training_samples.ht"
     )
 
@@ -611,7 +613,7 @@ def get_gridmax_freq(
     """
     Get a gridmax frequency TableResource for the specified pipeline step.
 
-    :param step: Pipeline step name: 'freq', 'corrected', or 'final'.
+    :param step: Pipeline step name: 'freq', 'corrected', 'hierarchy', or 'final'.
     :param test: Whether to use a tmp path for testing.
     :param chrom: Optional chromosome suffix (e.g. 'chr20').
     :param test_gene: Whether to use the test-gene (DRD2) suffix.
@@ -620,6 +622,7 @@ def get_gridmax_freq(
     step_names = {
         "freq": "gridmax.freq",
         "corrected": "gridmax.freq.corrected",
+        "hierarchy": "gridmax.freq.hierarchy",
         "final": "gridmax.freq.final",
     }
     suffix = (".test_gene" if test_gene else "") + (f".{chrom}" if chrom else "")
