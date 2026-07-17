@@ -438,36 +438,53 @@ def export_exclusion_intervals() -> str:
     return path
 
 
-def reheader_v4_sites_to_chr22(raw_vcf: str, out_path: str) -> str:
+def reheader_v4_sites_job(
+    b: hb.Batch,
+    raw_vcf: str,
+    out_root: str,
+    contigs: List[str],
+    image: str,
+    gcp_billing_project: str,
+) -> Job:
     """
-    Write a chr22 copy of a v4 sites VCF with AS features declared ``Number=A``.
+    Header-only reheader of a v4 sites VCF, declaring the AS float features ``Number=A``.
 
-    The published v4 info VCF declares AS annotations ``Number=.``; GATK's isolation
-    forest needs ``Number=A`` to enter allele-specific mode. The data is already one
-    value per ALT allele, so only the header changes. Filtering to chr22 keeps this
-    test-only re-export cheap.
+    The published v4 info VCF declares the AS annotations ``Number=.``; GATK's isolation
+    forest needs ``Number=A`` to enter allele-specific mode. This streams the VCF and
+    rewrites only the matching ``##INFO`` header lines, keeping records on ``contigs``
+    and passing them through unchanged, so special fields (e.g. AS_SB_TABLE) keep their
+    original encoding (no Hail round-trip / field re-typing). The contig filter keeps the
+    test chr22-only (so the reheader output and the reconcile import stay small).
 
-    :param raw_vcf: Path to the v4 sites VCF.
-    :param out_path: Output path for the reheadered chr22 VCF.
-    :return: ``out_path``.
+    :param b: Batch to add the job to.
+    :param raw_vcf: gs:// path to the v4 sites VCF (requester-pays).
+    :param out_root: Output prefix; writes ``{out_root}.vcf.gz`` and ``.vcf.gz.tbi``.
+    :param contigs: Contigs to keep (records on other contigs are dropped).
+    :param image: Image providing gsutil, bgzip, and tabix.
+    :param gcp_billing_project: GCP project for requester-pays reads.
+    :return: Job with output ResourceGroup ``out``.
     """
-    ht = hl.import_vcf(
-        raw_vcf,
-        force_bgz=True,
-        reference_genome="GRCh38",
-        array_elements_required=False,
-    ).rows()
-    ht = hl.filter_intervals(
-        ht, [hl.parse_locus_interval("chr22", reference_genome="GRCh38")]
+    j = b.new_job("Reheader v4 sites (Number=A)")
+    j.image(image)
+    j.cpu(2)
+    j.memory("standard")
+    j.storage("50G")
+    j.declare_resource_group(
+        out={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"}
     )
-    metadata = {
-        "info": {
-            f: {"Number": "A", "Type": "Float", "Description": ""}
-            for f in INFO_FEATURES
-        }
-    }
-    hl.export_vcf(ht, out_path, tabix=True, metadata=metadata)
-    return out_path
+    as_fields = "|".join(INFO_FEATURES)
+    keep_contig = " || ".join(f'$1=="{c}"' for c in contigs)
+    j.command(
+        f"""set -euo pipefail
+        gsutil -u {gcp_billing_project} cat {raw_vcf} | zcat \\
+          | sed -E 's/(##INFO=<ID=({as_fields}),Number=)\\./\\1A/' \\
+          | awk -F'\\t' '/^#/ || {keep_contig}' \\
+          | bgzip > {j.out['vcf.gz']}
+        tabix -p vcf {j.out['vcf.gz']}
+        """
+    )
+    b.write_output(j.out, out_root)
+    return j
 
 
 def merge_iforest_result(
@@ -615,14 +632,13 @@ def main(args):
             if true_positive_type
             else None
         )
-        sites_only_vcf = f"{run_prefix}/reheader/{model_id}.chr22.sites.vcf.bgz"
-        # The published v4 info VCF declares AS fields Number=.; reheader a chr22 copy
-        # to Number=A so GATK enters allele-specific mode.
-        if not args.load_only:
-            reheader_v4_sites_to_chr22(
-                v4_info_vcf_path(info_method="quasi"), sites_only_vcf
-            )
+        # The published v4 info VCF declares AS fields Number=.; a header-only reheader
+        # (run below) sets them to Number=A so GATK enters allele-specific mode.
+        raw_sites_vcf = v4_info_vcf_path(info_method="quasi")
+        reheader_root = f"{run_prefix}/reheader/{model_id}.sites"
+        sites_only_vcf = f"{reheader_root}.vcf.gz"
     else:
+        raw_sites_vcf = None
         sites_only_vcf = info_vcf_path(test=test, environment=environment)
         singletons_vcf = (
             get_true_positive_vcf_path(
@@ -642,11 +658,25 @@ def main(args):
         ).path
 
     if not args.load_only:
-        exclude_intervals = export_exclusion_intervals()
         backend = hb.ServiceBackend(
             billing_project=args.batch_billing_project,
             remote_tmpdir=f"gs://{BATCH_TMP_BUCKET}/",
         )
+        # Reheader the v4 input to Number=A first, to completion, so the GATK jobs read
+        # the finished VCF from the bucket.
+        if args.test_on_v4:
+            rb = hb.Batch(f"reheader {model_id}{args.batch_suffix}", backend=backend)
+            reheader_v4_sites_job(
+                b=rb,
+                raw_vcf=raw_sites_vcf,
+                out_root=reheader_root,
+                contigs=contigs,
+                image=args.reheader_image or args.gatk_image,
+                gcp_billing_project=args.gcp_billing_project,
+            )
+            rb.run()
+
+        exclude_intervals = export_exclusion_intervals()
         b = hb.Batch(f"isolation forest {model_id}{args.batch_suffix}", backend=backend)
         isolation_forest_workflow(
             b=b,
@@ -737,6 +767,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--gatk-image",
         help="GATK docker image.",
         default=DEFAULT_GATK_IMAGE,
+        type=str,
+    )
+    parser.add_argument(
+        "--reheader-image",
+        help=(
+            "Image for the --test-on-v4 reheader job; must provide gsutil, bgzip, and "
+            "tabix. Defaults to --gatk-image."
+        ),
+        default=None,
         type=str,
     )
     parser.add_argument(
