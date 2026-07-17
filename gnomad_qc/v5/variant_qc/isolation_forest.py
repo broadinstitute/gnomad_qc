@@ -200,6 +200,7 @@ def split_intervals_job(
     calling_intervals_arg: str,
     exclude_intervals: str,
     scatter_count: int,
+    out_root: str,
     gatk_image: str,
     gcp_billing_project: str,
 ) -> Job:
@@ -210,6 +211,7 @@ def split_intervals_job(
     :param calling_intervals_arg: GATK ``-L`` args covering the calling contigs.
     :param exclude_intervals: Path to an intervals file to exclude (``-XL``).
     :param scatter_count: Number of interval shards to produce.
+    :param out_root: Bucket prefix to persist the interval files to (for reconciliation).
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :return: Job with output ResourceGroup ``intervals``.
@@ -237,6 +239,7 @@ def split_intervals_job(
             --gcs-project-for-requester-pays {gcp_billing_project}
         """
     )
+    b.write_output(j.intervals, out_root)
     return j
 
 
@@ -274,12 +277,13 @@ def score_variant_annotations_job(
     j.cpu(4)
     j.memory("standard")
     j.storage("100G")
+    # Only the scored VCF is used downstream. GATK writes .annot.hdf5/.scores.hdf5 only
+    # when the interval has variants, so requiring them fails empty shards (e.g. chr22
+    # p-arm). Silent under-scoring is caught by reconcile_scored_sites in the load step.
     j.declare_resource_group(
         output_score={
             "vcf.gz": "{root}.vcf.gz",
             "vcf.gz.tbi": "{root}.vcf.gz.tbi",
-            "annot.hdf5": "{root}.annot.hdf5",
-            "scores.hdf5": "{root}.scores.hdf5",
         }
     )
     j.command(
@@ -339,6 +343,7 @@ def isolation_forest_workflow(
         calling_intervals_arg=calling_intervals_arg,
         exclude_intervals=exclude_intervals,
         scatter_count=scatter_count,
+        out_root=f"{run_prefix}/intervals",
         gatk_image=gatk_image,
         gcp_billing_project=gcp_billing_project,
     ).intervals
@@ -527,6 +532,53 @@ def merge_iforest_result(
     )
 
 
+def reconcile_scored_sites(
+    sites_only_vcf: str,
+    intervals_path: str,
+    scored_ht: hl.Table,
+    array_elements_required: bool = False,
+) -> None:
+    """
+    Raise if any input locus in the scored region is missing from the scored output.
+
+    GATK ScoreVariantAnnotations emits every input variant within its interval, so every
+    input locus inside the SplitIntervals regions must appear in the merged output. Any
+    that do not were silently dropped (e.g. a shard that under-emitted), which this
+    catches even for a small contiguous chunk. Reconciliation is at the locus level
+    since a dropped region removes whole loci.
+
+    :param sites_only_vcf: Input sites VCF that was scored.
+    :param intervals_path: Glob of the SplitIntervals ``.interval_list`` files defining
+        the scored region.
+    :param scored_ht: Merged scored result HT.
+    :param array_elements_required: Value passed to hl.import_vcf for the input.
+    :return: None.
+    """
+    intervals_ht = hl.import_locus_intervals(intervals_path, reference_genome="GRCh38")
+    input_ht = hl.import_vcf(
+        sites_only_vcf,
+        force_bgz=True,
+        reference_genome="GRCh38",
+        array_elements_required=array_elements_required,
+    ).rows()
+    input_loci = (
+        input_ht.filter(hl.is_defined(intervals_ht[input_ht.locus]))
+        .key_by("locus")
+        .select()
+        .distinct()
+    )
+    missing = input_loci.anti_join(scored_ht.key_by("locus").select().distinct())
+    n_missing = missing.count()
+    if n_missing > 0:
+        raise ValueError(
+            f"{n_missing} input loci in the scored region are missing from the scored "
+            f"output (silently dropped). Examples: {[m.locus for m in missing.take(5)]}"
+        )
+    logger.info(
+        "Reconciliation passed: all input loci in the scored region are present."
+    )
+
+
 def main(args):
     """Run the isolation forest variant QC workflow."""
     environment = args.environment
@@ -563,16 +615,13 @@ def main(args):
             if true_positive_type
             else None
         )
+        sites_only_vcf = f"{run_prefix}/reheader/{model_id}.chr22.sites.vcf.bgz"
         # The published v4 info VCF declares AS fields Number=.; reheader a chr22 copy
         # to Number=A so GATK enters allele-specific mode.
-        sites_only_vcf = (
+        if not args.load_only:
             reheader_v4_sites_to_chr22(
-                v4_info_vcf_path(info_method="quasi"),
-                f"{run_prefix}/reheader/{model_id}.chr22.sites.vcf.bgz",
+                v4_info_vcf_path(info_method="quasi"), sites_only_vcf
             )
-            if not args.load_only
-            else None
-        )
     else:
         sites_only_vcf = info_vcf_path(test=test, environment=environment)
         singletons_vcf = (
@@ -623,6 +672,12 @@ def main(args):
             scatter_count=scatter_count,
             n_partitions=args.n_partitions,
             header_path=args.header_path,
+            array_elements_required=args.array_elements_required,
+        )
+        reconcile_scored_sites(
+            sites_only_vcf=sites_only_vcf,
+            intervals_path=f"{run_prefix}/intervals/*.interval_list",
+            scored_ht=ht,
             array_elements_required=args.array_elements_required,
         )
         ht.write(result_ht_path, overwrite=args.overwrite)
