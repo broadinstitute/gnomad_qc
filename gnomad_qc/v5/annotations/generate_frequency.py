@@ -203,11 +203,29 @@ def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     )
 
 
+def _aou_age_distribution(environment: str = "batch"):
+    """
+    Compute the AoU release age-distribution histogram from the sample meta table.
+
+    A single scan of the (sample-keyed) meta table, decoupled from the variant MT.
+    Returned as a concrete value so a caller can compute it ONCE and pass it into
+    ``_prepare_aou_vds`` -- otherwise the sequential fan-out loop recomputes this
+    identical, chunk-independent eager aggregate (one QoB job) per chunk.
+
+    :param environment: Environment to use. Default is "batch".
+    :return: Age histogram struct over ``project == 'aou' & release`` samples.
+    """
+    meta_ht = meta(data_type="genomes", environment=environment).ht()
+    meta_ht = meta_ht.filter((meta_ht.project_meta.project == "aou") & meta_ht.release)
+    return meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
+
+
 def _prepare_aou_vds(
     aou_vds: hl.vds.VariantDataset,
     use_all_sites_ans: bool = False,
     test: bool = False,
     environment: str = "batch",
+    age_distribution=None,
 ) -> hl.vds.VariantDataset:
     """
     Prepare AoU VDS for frequency calculations.
@@ -217,6 +235,10 @@ def _prepare_aou_vds(
     :param test: Whether running in test mode.
     :param environment: Environment being used. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param age_distribution: Precomputed AoU age-distribution histogram to set as the
+        global. When None, computed here via ``_aou_age_distribution``. Callers that run
+        this per chunk (the sequential fan-out loop) should compute it once and pass it
+        in to avoid resubmitting the identical eager aggregate per chunk.
     :return: Prepared AoU VariantDataset.
     """
     aou_vmt = aou_vds.variant_data
@@ -285,20 +307,14 @@ def _prepare_aou_vds(
         )
 
     logger.info("Annotating globals...")
-    # Compute the age-distribution global from the sample metadata table, NOT via
-    # aggregate_cols on the prepared variant MT. aggregate_cols would force a full pass
-    # over the variant MT (read + split_multi + all the column ops) just to build one
-    # histogram, and every downstream eager action then repeats that pass -- the main
-    # driver of this path's cost. A single scan of the (sample-keyed) meta table
-    # decouples it entirely; this mirrors _fix_v4_global_age_distribution on the gnomAD
-    # path. Set as a literal global, so it survives agg_by_strata exactly as before.
-    aou_meta_ht = meta(data_type="genomes", environment=environment).ht()
-    aou_meta_ht = aou_meta_ht.filter(
-        (aou_meta_ht.project_meta.project == "aou") & aou_meta_ht.release
-    )
-    age_distribution = aou_meta_ht.aggregate(
-        hl.agg.hist(aou_meta_ht.project_meta.age, 30, 80, 10)
-    )
+    # Age-distribution global comes from the sample metadata table (one scan of the
+    # sample-keyed meta table), NOT aggregate_cols on the prepared variant MT -- the
+    # latter would force a full variant-MT pass per downstream eager action. Compute it
+    # only if the caller didn't already pass one in (the sequential fan-out loop passes
+    # a precomputed value so this identical eager aggregate isn't resubmitted per chunk).
+    # Set as a literal global, so it survives agg_by_strata exactly as before.
+    if age_distribution is None:
+        age_distribution = _aou_age_distribution(environment)
     group_membership_globals = group_membership_ht.index_globals()
     aou_vmt = aou_vmt.select_globals(
         freq_meta=group_membership_globals.freq_meta,
@@ -377,6 +393,17 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         )
     aou_variant_mt = aou_variant_mt.annotate_rows(
         hist_fields=mt_hist_fields(aou_variant_mt)
+    )
+    # Drop raw_qual_hists HERE -- before agg_by_strata and the checkpoint below -- so
+    # Hail prunes its 5 histogram aggregators from the aggregation. Dropping it only in
+    # the final select (after the checkpoint) does NOT help: the checkpoint is a
+    # materialization barrier, so the raw aggregators would still be computed over
+    # ~245k samples per variant and written to the checkpoint, then discarded. Only the
+    # adj qual_hists is kept in v5 (raw_qual_hists was approved for removal).
+    aou_variant_mt = aou_variant_mt.annotate_rows(
+        hist_fields=aou_variant_mt.hist_fields.annotate(
+            qual_hists=aou_variant_mt.hist_fields.qual_hists.drop("raw_qual_hists")
+        )
     )
 
     logger.info("Annotating frequencies with all sites ANs...")
@@ -487,9 +514,8 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     ).drop("all_sites_an")
 
     # Nest histograms to match gnomAD structure. Only the adj-filtered ``qual_hists``
-    # is kept: ``raw_qual_hists`` was approved for removal from v5 (not loaded into the
-    # browser), matching compute_coverage.py. Leaving ``raw_qual_hists`` unreferenced
-    # lets Hail prune its aggregators, ~halving the per-variant quality-hist cost.
+    # is kept; ``raw_qual_hists`` was already dropped before the checkpoint above (so its
+    # aggregators are pruned, ~halving the per-variant quality-hist cost).
     aou_variant_freq_ht = aou_variant_freq_ht.select(
         freq=aou_variant_freq_ht.freq,
         histograms=hl.struct(
@@ -908,6 +934,11 @@ def run_aou_freq_sequential(
     total_chunks = (n_partitions + partitions_per_job - 1) // partitions_per_job
     skipped = 0
 
+    # Compute the AoU age-distribution histogram ONCE and reuse it for every chunk: it
+    # is chunk-independent (same meta table + filter), and computing it inside
+    # _prepare_aou_vds would resubmit the identical eager QoB aggregate per chunk.
+    age_distribution = _aou_age_distribution(environment)
+
     # One directory listing of completed chunks instead of a per-chunk GCS stat.
     present = (
         set()
@@ -953,7 +984,12 @@ def run_aou_freq_sequential(
             chrom=chrom,
             environment=environment,
         )
-        vds = _prepare_aou_vds(vds, test=test, environment=environment)
+        vds = _prepare_aou_vds(
+            vds,
+            test=test,
+            environment=environment,
+            age_distribution=age_distribution,
+        )
         freq_ht = _calculate_aou_frequencies_and_hists_using_densify(
             vds, reduce_to_minimal_groups=reduce_to_minimal_groups
         )
