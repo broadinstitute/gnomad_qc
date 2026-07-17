@@ -229,12 +229,22 @@ def _prepare_aou_vds(
     ).ht()
 
     logger.info("Selecting cols for frequency stratification...")
-    aou_vmt = aou_vmt.select_cols(
-        sex_karyotype=aou_vmt.meta.sex_karyotype,
-        gen_anc=aou_vmt.meta.genetic_ancestry_inference.gen_anc,
-        age=aou_vmt.meta.project_meta.age,
-        group_membership=group_membership_ht[aou_vmt.col_key].group_membership,
-    )
+    # sex_karyotype (sex-ploidy adjustment) and age (age_hists) are needed on both
+    # paths. group_membership is annotated onto the columns ONLY for the densify path:
+    # compute_freq_by_strata reads it off the columns, whereas the all-sites-AN path
+    # passes the group_membership HT to agg_by_strata, which re-annotates it -- so the
+    # wide per-sample join here would be computed and immediately thrown away. gen_anc
+    # was previously annotated but never read (strata are encoded in group_membership),
+    # so it is dropped.
+    col_exprs = {
+        "sex_karyotype": aou_vmt.meta.sex_karyotype,
+        "age": aou_vmt.meta.project_meta.age,
+    }
+    if not use_all_sites_ans:
+        col_exprs["group_membership"] = group_membership_ht[
+            aou_vmt.col_key
+        ].group_membership
+    aou_vmt = aou_vmt.select_cols(**col_exprs)
     # NOTE: At the time of writing this code, it was not yet decided if we would use
     # the all sites AN for the frequency calculcation, a cost-savings approach to
     # avoid a densify, or if we would densify within the frequency script to get
@@ -463,14 +473,14 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         ),
     ).drop("all_sites_an")
 
-    # Nest histograms to match gnomAD structure.
-    # Note: hists_fields.qual_hists already contains raw_qual_hists and qual_hists
-    # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
+    # Nest histograms to match gnomAD structure. Only the adj-filtered ``qual_hists``
+    # is kept: ``raw_qual_hists`` was approved for removal from v5 (not loaded into the
+    # browser), matching compute_coverage.py. Leaving ``raw_qual_hists`` unreferenced
+    # lets Hail prune its aggregators, ~halving the per-variant quality-hist cost.
     aou_variant_freq_ht = aou_variant_freq_ht.select(
         freq=aou_variant_freq_ht.freq,
         histograms=hl.struct(
             qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.qual_hists,
-            raw_qual_hists=aou_variant_freq_ht.hist_fields.qual_hists.raw_qual_hists,
             age_hists=aou_variant_freq_ht.hist_fields.age_hists,
         ),
     )
@@ -567,13 +577,12 @@ def _calculate_aou_frequencies_and_hists_using_densify(
             freq_meta_sample_count=freq_meta_sample_count_full,
         )
 
-    # Nest histograms to match gnomAD structure.
-    # Note: hist_fields.qual_hists already contains raw_qual_hists and qual_hists
-    # as nested fields due to split_adj_and_raw=True in qual_hist_expr.
+    # Nest histograms to match gnomAD structure. Only the adj-filtered ``qual_hists``
+    # is kept; ``raw_qual_hists`` was approved for removal from v5 (see the all-sites-AN
+    # path above), so it is left unreferenced and pruned.
     aou_freq_ht = aou_freq_ht.transmute(
         histograms=hl.struct(
             qual_hists=aou_freq_ht.hist_fields.qual_hists.qual_hists,
-            raw_qual_hists=aou_freq_ht.hist_fields.qual_hists.raw_qual_hists,
             age_hists=aou_freq_ht.hist_fields.age_hists,
         )
     )
@@ -1752,7 +1761,10 @@ def _merge_updated_frequency_fields(
 
     # Update freq and age_hists in a single annotate to avoid source mismatch:
     # - freq: use updated if present, otherwise keep original
-    # - histograms.age_hists: update only age_hists, preserving qual_hists and raw_qual_hists
+    # - histograms.age_hists: update only age_hists, preserving qual_hists
+    # Drop v4's raw_qual_hists: it was approved for removal from v5 (matching the AoU
+    # compute and compute_coverage.py), so the merged output carries only adj
+    # qual_hists.
     final_freq_ht = v4_release_ht.annotate(
         freq=hl.coalesce(updated_row.freq, v4_release_ht.freq),
         histograms=v4_release_ht.histograms.annotate(
@@ -1760,7 +1772,7 @@ def _merge_updated_frequency_fields(
                 updated_row.histograms.age_hists,
                 v4_release_ht.histograms.age_hists,
             )
-        ),
+        ).drop("raw_qual_hists"),
     )
 
     # Update globals from updated table.
@@ -1852,14 +1864,12 @@ def merge_gnomad_and_aou_frequencies(
             }
         )
 
+    # raw_qual_hists was dropped from v5 (both the AoU compute and the gnomAD v4-reuse
+    # side), so only adj qual_hists and age_hists are merged.
     merged_histograms = hl.struct(
         qual_hists=_merge_hist_struct(
             joined_freq_ht.histograms.qual_hists,
             joined_freq_ht.aou_histograms.qual_hists,
-        ),
-        raw_qual_hists=_merge_hist_struct(
-            joined_freq_ht.histograms.raw_qual_hists,
-            joined_freq_ht.aou_histograms.raw_qual_hists,
         ),
         age_hists=_merge_hist_struct(
             joined_freq_ht.histograms.age_hists,
