@@ -362,18 +362,6 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
         per-variant aggregation width and the group_membership broadcast. Default False.
     :return: Table with freq and age_hists annotations.
     """
-    # Checkpoint the prepared/split variant MT before the histogram + strata
-    # aggregation and AN join. Running the whole pipeline (split_multi -> qual/age
-    # hists -> agg_by_strata -> AN left-join -> write) as ONE fused query compiles to a
-    # ~3,500-node IR and a huge volume of generated JVM bytecode on the DRIVER, which
-    # OOMs a standard (~8GB) driver at write time even though the data itself is tiny
-    # (~130MB RegionPool). Materializing here splits it into two smaller queries --
-    # split_multi/prep on one side, hists+agg+join+write on the other -- each with far
-    # less generated code, so a standard driver suffices (mirrors the densify path,
-    # which checkpoints its split VDS).
-    aou_variant_mt = aou_variant_mt.checkpoint(
-        new_temp_file("aou_allsites_prepared", "mt")
-    )
     logger.info("Annotating quality metrics histograms and age histograms...")
     all_sites_an_path = _apply_path_suffix(
         coverage_and_an_path(test=test, environment=environment).path,
@@ -462,6 +450,19 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
             freq_meta=freq_meta_full,
             freq_meta_sample_count=freq_meta_sample_count_full,
         )
+
+    # Checkpoint the per-variant aggregated freq HT (AC/homozygote_count arrays +
+    # hist_fields) before the AN join, freq-struct build, and write. Running the whole
+    # pipeline (split_multi -> qual/age hists -> agg_by_strata -> AN left-join -> write)
+    # as ONE fused query compiles to a ~3,500-node IR and a huge volume of generated JVM
+    # bytecode on the DRIVER, OOMing a standard (~8GB) driver at write time even though
+    # the data itself is tiny (~130MB RegionPool). Materializing this compact
+    # (rows-only, no sample columns) aggregated HT splits the query in two -- the heavy
+    # hist+strata aggregation on one side, the AN join + finalize + write on the other
+    # -- so each compiles far less code and a standard driver suffices.
+    aou_variant_freq_ht = aou_variant_freq_ht.checkpoint(
+        new_temp_file("aou_allsites_freq_agg", "ht")
+    )
 
     # Load AN values from all sites ANs table (calculated by another script but used
     # same group membership HT so same strata order).
