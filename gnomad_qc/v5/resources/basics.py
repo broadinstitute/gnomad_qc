@@ -337,6 +337,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
+    log_sample_counts: bool = True,
     environment: str = "batch",
 ) -> hl.vds.VariantDataset:
     """
@@ -374,6 +375,7 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
+    :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude. When False, skips the ``count_cols`` calls used for logging (each is a full column-table aggregation). Default is True.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :return: AoU v8 VDS.
     """
@@ -507,7 +509,8 @@ def get_aou_vds(
     # --- Sample filtering, now on the row-narrowed VDS. ---
 
     # Count initial number of samples.
-    n_samples_before = vds.variant_data.count_cols()
+    if log_sample_counts:
+        n_samples_before = vds.variant_data.count_cols()
 
     # Remove samples that should have been excluded from the AoU v8 release
     # and samples with non-XX/XY ploidies.
@@ -529,8 +532,9 @@ def get_aou_vds(
     )
 
     # Report final sample exclusion count.
-    n_samples_after = vds.variant_data.count_cols()
-    logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
+    if log_sample_counts:
+        n_samples_after = vds.variant_data.count_cols()
+        logger.info("Removed %d samples from VDS.", n_samples_before - n_samples_after)
 
     vmt = vds.variant_data
     rmt = vds.reference_data

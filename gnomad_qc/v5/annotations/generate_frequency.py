@@ -275,11 +275,25 @@ def _prepare_aou_vds(
         )
 
     logger.info("Annotating globals...")
+    # Compute the age-distribution global from the sample metadata table, NOT via
+    # aggregate_cols on the prepared variant MT. aggregate_cols would force a full pass
+    # over the variant MT (read + split_multi + all the column ops) just to build one
+    # histogram, and every downstream eager action then repeats that pass -- the main
+    # driver of this path's cost. A single scan of the (sample-keyed) meta table
+    # decouples it entirely; this mirrors _fix_v4_global_age_distribution on the gnomAD
+    # path. Set as a literal global, so it survives agg_by_strata exactly as before.
+    aou_meta_ht = meta(data_type="genomes", environment=environment).ht()
+    aou_meta_ht = aou_meta_ht.filter(
+        (aou_meta_ht.project_meta.project == "aou") & aou_meta_ht.release
+    )
+    age_distribution = aou_meta_ht.aggregate(
+        hl.agg.hist(aou_meta_ht.project_meta.age, 30, 80, 10)
+    )
     group_membership_globals = group_membership_ht.index_globals()
     aou_vmt = aou_vmt.select_globals(
         freq_meta=group_membership_globals.freq_meta,
         freq_meta_sample_count=group_membership_globals.freq_meta_sample_count,
-        age_distribution=aou_vmt.aggregate_cols(hl.agg.hist(aou_vmt.age, 30, 80, 10)),
+        age_distribution=age_distribution,
         downsamplings=group_membership_globals.downsamplings,
     )
 
@@ -665,6 +679,9 @@ def process_aou_dataset(
             repartition_after_filter=repartition_after_filter,
             chrom=chrom,
             read_intervals=region_intervals,
+            # Skip the two count_cols() logging aggregations -- each is a full
+            # column-table pass over ~245k samples, region-independent overhead.
+            log_sample_counts=False,
             environment=environment,
         )
         aou_vds = _prepare_aou_vds(
