@@ -88,22 +88,24 @@ def import_variant_qc_vcf(
             as_vqslod_expr = {"AS_VQSLOD": ht.info.AS_VQSLOD.map(lambda x: hl.float(x))}
         else:
             as_vqslod_expr = {}
-        # TODO: Confirm AS_QUALapprox/AS_VarDP/AS_SB_TABLE are present and pipe-delimited
-        # in the v5 info VCF (this reformatting is carried over from v4).
-        ht = ht.annotate(
-            info=ht.info.annotate(
-                **as_vqslod_expr,
-                AS_QUALapprox=ht.info.AS_QUALapprox.split("\|")[1:].map(
-                    lambda x: hl.int(x)
-                ),
-                AS_VarDP=ht.info.AS_VarDP.split("\|")[1:].map(lambda x: hl.int(x)),
-                AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\|").map(
-                    lambda x: hl.or_missing(
-                        x != "", x.split(",").map(lambda y: hl.int(y))
-                    )
-                ),
+        # Reformat the pipe/comma-delimited AS fields when present. They may be absent
+        # (e.g. stripped by the isolation forest v4-test reheader, whose v4 encoding
+        # breaks import_vcf) and are not required for the variant QC result.
+        # TODO: Confirm these are present and pipe-delimited in the v5 info VCF.
+        reformat_expr = {}
+        if "AS_QUALapprox" in ht.info:
+            reformat_expr["AS_QUALapprox"] = ht.info.AS_QUALapprox.split("\|")[1:].map(
+                lambda x: hl.int(x)
             )
-        )
+        if "AS_VarDP" in ht.info:
+            reformat_expr["AS_VarDP"] = ht.info.AS_VarDP.split("\|")[1:].map(
+                lambda x: hl.int(x)
+            )
+        if "AS_SB_TABLE" in ht.info:
+            reformat_expr["AS_SB_TABLE"] = ht.info.AS_SB_TABLE.split("\|").map(
+                lambda x: hl.or_missing(x != "", x.split(",").map(lambda y: hl.int(y)))
+            )
+        ht = ht.annotate(info=ht.info.annotate(**as_vqslod_expr, **reformat_expr))
 
         unsplit_ht = ht.checkpoint(hl.utils.new_temp_file("unsplit_vcq_result", "ht"))
         unsplit_count = unsplit_ht.count()

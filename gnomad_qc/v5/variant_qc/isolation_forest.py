@@ -447,20 +447,24 @@ def reheader_v4_sites_job(
     gcp_billing_project: str,
 ) -> Job:
     """
-    Header-only reheader of a v4 sites VCF, declaring the AS float features ``Number=A``.
+    Reheader a v4 sites VCF for the isolation forest and strip fields Hail can't import.
 
-    The published v4 info VCF declares the AS annotations ``Number=.``; GATK's isolation
-    forest needs ``Number=A`` to enter allele-specific mode. This streams the VCF and
-    rewrites only the matching ``##INFO`` header lines, keeping records on ``contigs``
-    and passing them through unchanged, so special fields (e.g. AS_SB_TABLE) keep their
-    original encoding (no Hail round-trip / field re-typing). The contig filter keeps the
-    test chr22-only (so the reheader output and the reconcile import stay small).
+    Streams the VCF: rewrites the AS-float ``##INFO`` header lines to ``Number=A`` (GATK
+    needs this to enter allele-specific mode), keeps records on ``contigs``, and passes
+    kept fields through untouched (no re-typing).
+
+    .. note::
+
+        AS_SB_TABLE / AS_QUALapprox / AS_VarDP are stripped: their v4 encoding breaks
+        Hail's ``import_vcf`` in the load step and they are not needed for the iforest
+        result. Stopgap for the v4 test; revisit if a real run needs them (see the
+        reformatting TODO in ``import_variant_qc_vcf``).
 
     :param b: Batch to add the job to.
     :param raw_vcf: gs:// path to the v4 sites VCF (requester-pays).
     :param out_root: Output prefix; writes ``{out_root}.vcf.gz`` and ``.vcf.gz.tbi``.
-    :param contigs: Contigs to keep (records on other contigs are dropped).
-    :param image: Image providing gsutil, bgzip, and tabix.
+    :param contigs: Contigs to keep.
+    :param image: Image providing gsutil, bcftools, and tabix.
     :param gcp_billing_project: GCP project for requester-pays reads.
     :return: Job with output ResourceGroup ``out``.
     """
@@ -474,12 +478,13 @@ def reheader_v4_sites_job(
     )
     as_fields = "|".join(INFO_FEATURES)
     keep_contig = " || ".join(f'$1=="{c}"' for c in contigs)
+    strip_fields = "INFO/AS_SB_TABLE,INFO/AS_QUALapprox,INFO/AS_VarDP"
     j.command(
         f"""set -euo pipefail
         gsutil -u {gcp_billing_project} cat {raw_vcf} | zcat \\
           | sed -E 's/(##INFO=<ID=({as_fields}),Number=)\\./\\1A/' \\
           | awk -F'\\t' '/^#/ || {keep_contig}' \\
-          | bgzip > {j.out['vcf.gz']}
+          | bcftools annotate -x {strip_fields} -Oz -o {j.out['vcf.gz']} -
         tabix -p vcf {j.out['vcf.gz']}
         """
     )
