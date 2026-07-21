@@ -455,10 +455,11 @@ def reheader_v4_sites_job(
 
     .. note::
 
-        AS_SB_TABLE / AS_QUALapprox / AS_VarDP are stripped: their v4 encoding breaks
-        Hail's ``import_vcf`` in the load step and they are not needed for the iforest
-        result. Stopgap for the v4 test; revisit if a real run needs them (see the
-        reformatting TODO in ``import_variant_qc_vcf``).
+        AS_SB_TABLE / SB / AS_QUALapprox / AS_VarDP are stripped: these strand-bias /
+        count-table and pipe-delimited fields have a v4 encoding (comma values under a
+        scalar Number) that breaks Hail's ``import_vcf`` in the load step, and they are
+        not needed for the iforest result. Stopgap for the v4 test; revisit if a real
+        run needs them (see the reformatting TODO in ``import_variant_qc_vcf``).
 
     :param b: Batch to add the job to.
     :param raw_vcf: gs:// path to the v4 sites VCF (requester-pays).
@@ -478,7 +479,7 @@ def reheader_v4_sites_job(
     )
     as_fields = "|".join(INFO_FEATURES)
     keep_contig = " || ".join(f'$1=="{c}"' for c in contigs)
-    strip_fields = "INFO/AS_SB_TABLE,INFO/AS_QUALapprox,INFO/AS_VarDP"
+    strip_fields = "INFO/AS_SB_TABLE,INFO/SB,INFO/AS_QUALapprox,INFO/AS_VarDP"
     j.command(
         f"""set -euo pipefail
         gsutil -u {gcp_billing_project} cat {raw_vcf} | zcat \\
