@@ -200,7 +200,6 @@ def split_intervals_job(
     calling_intervals_arg: str,
     exclude_intervals: str,
     scatter_count: int,
-    out_root: str,
     gatk_image: str,
     gcp_billing_project: str,
 ) -> Job:
@@ -211,7 +210,6 @@ def split_intervals_job(
     :param calling_intervals_arg: GATK ``-L`` args covering the calling contigs.
     :param exclude_intervals: Path to an intervals file to exclude (``-XL``).
     :param scatter_count: Number of interval shards to produce.
-    :param out_root: Bucket prefix to persist the interval files to (for reconciliation).
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :return: Job with output ResourceGroup ``intervals``.
@@ -239,7 +237,6 @@ def split_intervals_job(
             --gcs-project-for-requester-pays {gcp_billing_project}
         """
     )
-    b.write_output(j.intervals, out_root)
     return j
 
 
@@ -343,7 +340,6 @@ def isolation_forest_workflow(
         calling_intervals_arg=calling_intervals_arg,
         exclude_intervals=exclude_intervals,
         scatter_count=scatter_count,
-        out_root=f"{run_prefix}/intervals",
         gatk_image=gatk_image,
         gcp_billing_project=gcp_billing_project,
     ).intervals
@@ -418,11 +414,15 @@ def isolation_forest_workflow(
             )
 
 
-def export_exclusion_intervals() -> str:
+def export_exclusion_intervals(out_path: str) -> str:
     """
-    Export telomere/centromere intervals to a GATK-readable intervals file.
+    Export telomere/centromere intervals to a GATK-readable ``chr:start-end`` file.
 
-    :return: Path to the exported ``chr:start-end`` intervals file.
+    Written to a stable path (not a temp file) so the same file used by GATK ``-XL``
+    can be read back during reconciliation to define the excluded region exactly.
+
+    :param out_path: Destination path for the intervals file.
+    :return: ``out_path``.
     """
     ht = telomeres_and_centromeres.ht()
     interval = ht.interval
@@ -433,9 +433,8 @@ def export_exclusion_intervals() -> str:
         + "-"
         + hl.str(interval.end.position)
     ).select()
-    path = hl.utils.new_temp_file("telomeres_centromeres", "intervals")
-    ht.export(path, header=False)
-    return path
+    ht.export(out_path, header=False)
+    return out_path
 
 
 def reheader_v4_sites_job(
@@ -557,48 +556,89 @@ def merge_iforest_result(
 
 def reconcile_scored_sites(
     sites_only_vcf: str,
-    intervals_path: str,
+    contigs: List[str],
+    exclude_intervals_path: str,
     scored_ht: hl.Table,
     array_elements_required: bool = False,
+    max_consecutive_missing: int = 100,
 ) -> None:
     """
-    Raise if any input locus in the scored region is missing from the scored output.
+    Warn on input loci in the scored region absent from the output; fail on a contiguous run.
 
-    GATK ScoreVariantAnnotations emits every input variant within its interval, so every
-    input locus inside the SplitIntervals regions must appear in the merged output. Any
-    that do not were silently dropped (e.g. a shard that under-emitted), which this
-    catches even for a small contiguous chunk. Reconciliation is at the locus level
-    since a dropped region removes whole loci.
+    The scored region is reconstructed from the same ``-L`` contigs and ``-XL`` exclusion
+    file GATK used. GATK skips sites it cannot score (all-missing annotations, mixed/MNP/
+    spanning-deletion types), so scattered absences are expected and only warned about.
+    A run of ``max_consecutive_missing`` input loci that are all absent with no scored
+    locus between them indicates a silently dropped region (e.g. a shard that
+    under-emitted) and raises.
 
     :param sites_only_vcf: Input sites VCF that was scored.
-    :param intervals_path: Glob of the SplitIntervals ``.interval_list`` files defining
-        the scored region.
+    :param contigs: Calling contigs passed to GATK (``-L``).
+    :param exclude_intervals_path: Telomere/centromere exclusion file passed to GATK
+        (``-XL``).
     :param scored_ht: Merged scored result HT.
     :param array_elements_required: Value passed to hl.import_vcf for the input.
+    :param max_consecutive_missing: Fail if this many consecutive input loci are absent.
     :return: None.
     """
-    intervals_ht = hl.import_locus_intervals(intervals_path, reference_genome="GRCh38")
+    exclude_ht = hl.import_locus_intervals(
+        exclude_intervals_path, reference_genome="GRCh38"
+    )
     input_ht = hl.import_vcf(
         sites_only_vcf,
         force_bgz=True,
         reference_genome="GRCh38",
         array_elements_required=array_elements_required,
     ).rows()
+    scored_loci = scored_ht.key_by("locus").select().distinct()
+    contig_set = hl.literal(set(contigs))
     input_loci = (
-        input_ht.filter(hl.is_defined(intervals_ht[input_ht.locus]))
+        input_ht.filter(
+            contig_set.contains(input_ht.locus.contig)
+            & hl.is_missing(exclude_ht[input_ht.locus])
+        )
         .key_by("locus")
         .select()
         .distinct()
     )
-    missing = input_loci.anti_join(scored_ht.key_by("locus").select().distinct())
-    n_missing = missing.count()
-    if n_missing > 0:
+    input_loci = input_loci.annotate(
+        scored=hl.is_defined(scored_loci[input_loci.locus])
+    )
+    input_loci = input_loci.checkpoint(hl.utils.new_temp_file("reconcile", "ht"))
+
+    n_missing = input_loci.aggregate(hl.agg.count_where(~input_loci.scored))
+    if n_missing == 0:
+        logger.info(
+            "Reconciliation passed: all input loci in the scored region are present."
+        )
+        return
+
+    examples = [r.locus for r in input_loci.filter(~input_loci.scored).take(5)]
+    logger.warning(
+        "%s input loci in the scored region are absent from the scored output; GATK "
+        "skips unscoreable sites, so scattered absences are expected. Examples: %s",
+        n_missing,
+        examples,
+    )
+
+    # Consecutive absent loci sharing a scored-prefix count form one dropped run; a long
+    # run (vs isolated scattered drops) signals a silently dropped region.
+    input_loci = input_loci.annotate(run_id=hl.scan.sum(hl.int(input_loci.scored)))
+    missing_ht = input_loci.filter(~input_loci.scored)
+    runs = missing_ht.group_by(missing_ht.locus.contig, missing_ht.run_id).aggregate(
+        run_len=hl.agg.count()
+    )
+    longest = runs.aggregate(hl.agg.max(runs.run_len))
+    if longest is not None and longest >= max_consecutive_missing:
         raise ValueError(
-            f"{n_missing} input loci in the scored region are missing from the scored "
-            f"output (silently dropped). Examples: {[m.locus for m in missing.take(5)]}"
+            f"Longest run of consecutive missing loci is {longest} "
+            f"(>= {max_consecutive_missing}); a contiguous region was likely dropped."
         )
     logger.info(
-        "Reconciliation passed: all input loci in the scored region are present."
+        "Missing loci are scattered (longest consecutive run %s < %s); treating as "
+        "expected GATK drops.",
+        longest,
+        max_consecutive_missing,
     )
 
 
@@ -663,6 +703,9 @@ def main(args):
             model_id, test=test, split=True, environment=environment
         ).path
 
+    # Stable path so the same file used by GATK -XL is read back during reconciliation.
+    exclude_intervals = f"{run_prefix}/exclude.intervals"
+
     if not args.load_only:
         backend = hb.ServiceBackend(
             billing_project=args.batch_billing_project,
@@ -682,7 +725,7 @@ def main(args):
             )
             rb.run()
 
-        exclude_intervals = export_exclusion_intervals()
+        export_exclusion_intervals(exclude_intervals)
         b = hb.Batch(f"isolation forest {model_id}{args.batch_suffix}", backend=backend)
         isolation_forest_workflow(
             b=b,
@@ -712,7 +755,8 @@ def main(args):
         )
         reconcile_scored_sites(
             sites_only_vcf=sites_only_vcf,
-            intervals_path=f"{run_prefix}/intervals/*.interval_list",
+            contigs=contigs,
+            exclude_intervals_path=exclude_intervals,
             scored_ht=ht,
             array_elements_required=args.array_elements_required,
         )
