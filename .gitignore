@@ -5,3 +5,7 @@ hail-*.log
 *.pyc
 *.pyo
 __pycache__/
+
+# Claude local files
+CLAUDE.local.md
+.claude/settings.local.json
