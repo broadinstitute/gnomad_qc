@@ -625,9 +625,9 @@ def reconcile_scored_sites(
     # run (vs isolated scattered drops) signals a silently dropped region.
     input_loci = input_loci.annotate(run_id=hl.scan.sum(hl.int(input_loci.scored)))
     missing_ht = input_loci.filter(~input_loci.scored)
-    runs = missing_ht.group_by(missing_ht.locus.contig, missing_ht.run_id).aggregate(
-        run_len=hl.agg.count()
-    )
+    runs = missing_ht.group_by(
+        contig=missing_ht.locus.contig, run_id=missing_ht.run_id
+    ).aggregate(run_len=hl.agg.count())
     longest = runs.aggregate(hl.agg.max(runs.run_len))
     if longest is not None and longest >= max_consecutive_missing:
         raise ValueError(
@@ -822,8 +822,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reheader-image",
         help=(
-            "Image for the --test-on-v4 reheader job; must provide gsutil, bgzip, and "
-            "tabix. Defaults to --gatk-image."
+            "Image for the --test-on-v4 reheader job; must provide gsutil, bcftools, "
+            "and tabix. Defaults to --gatk-image, which provides all three."
         ),
         default=None,
         type=str,
