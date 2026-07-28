@@ -1,7 +1,7 @@
 """
 Compute per-pixel (grid-bin) allele frequencies for gnomAD v4.
 
-Input: a bin assignment TSV with columns idx, bin_id, eval_fold, bin_size.
+Input: a bin assignment TSV with columns idx, bin_id, eval_fold, bin_occupancy.
   - idx maps to gnomAD sample IDs via the gridmax_sample_key resource HT.
   - bin_id is an A_20 lattice cell (21 '_'-separated integers summing to 0).
   - eval_fold: 0 = training fold (used for AF and privacy filtering), 1 = held-out.
@@ -10,7 +10,7 @@ Input: a bin assignment TSV with columns idx, bin_id, eval_fold, bin_size.
 Output: adj call stats per (bin, fold), keyed by bin_id in the `freq` (training)
 and `freq_eval` (held-out) dicts. --aggregate-hierarchy adds coarser dyadic levels
 (freq_x{factor} / freq_eval_x{factor}); --finalize suppresses groups with fewer
-than --min-bin-size samples at every level, filtering each dict by its own fold's
+than --min-bin-occupancy samples at every level, filtering each dict by its own fold's
 sample count (training-fold count for freq/freq_x{factor}, eval-fold count for
 freq_eval/freq_eval_x{factor}).
 
@@ -55,7 +55,7 @@ logging.basicConfig(
 logger = logging.getLogger("gridmax_freq")
 logger.setLevel(logging.INFO)
 
-DEFAULT_MIN_BIN_SIZE = 50
+DEFAULT_MIN_BIN_OCCUPANCY = 50
 DEFAULT_AB_CUTOFF = 0.9
 DEFAULT_AF_THRESHOLD = 0.01
 
@@ -157,13 +157,13 @@ def load_bin_assignments(bin_tsv_path: str) -> hl.Table:
     Load bin assignments and return the sample key HT with bin columns added.
 
     Starts from the full gridmax sample key HT (all samples keyed by idx) and
-    annotates each sample with bin_id, bin_size, eval_fold, and one bin_id_x{f}
+    annotates each sample with bin_id, bin_occupancy, eval_fold, and one bin_id_x{f}
     column per dyadic coarsening level (parent IDs at each hierarchy level). The
     set of levels is derived from the data: powers of 2 from /2 up to and
     including the factor that collapses every bin to the single root cell.
 
     :param bin_tsv_path: GCS path to bin assignments TSV.
-    :return: Table keyed by 's' with fields bin_id, bin_id_x{f}, bin_size, eval_fold, pop, data_type.
+    :return: Table keyed by 's' with fields bin_id, bin_id_x{f}, bin_occupancy, eval_fold, pop, data_type.
     """
     logger.info("Reading sample key from %s...", gridmax_sample_key.path)
     sample_key_ht = gridmax_sample_key.ht()
@@ -172,7 +172,7 @@ def load_bin_assignments(bin_tsv_path: str) -> hl.Table:
     bin_ht = hl.import_table(
         bin_tsv_path,
         delimiter="\t",
-        types={"idx": hl.tint64, "eval_fold": hl.tint32, "bin_size": hl.tint32},
+        types={"idx": hl.tint64, "eval_fold": hl.tint32, "bin_occupancy": hl.tint32},
         key="idx",
     )
 
@@ -187,14 +187,14 @@ def load_bin_assignments(bin_tsv_path: str) -> hl.Table:
     bin_row = bin_ht[sample_key_ht.key]
     sample_key_ht = sample_key_ht.annotate(
         bin_id=bin_row.bin_id,
-        bin_size=bin_row.bin_size,
+        bin_occupancy=bin_row.bin_occupancy,
         eval_fold=bin_row.eval_fold,
         **{f"bin_id_x{f}": _coarsen_bin_id_hl(bin_row.bin_id, f) for f in factors},
     )
     return sample_key_ht.key_by("s").select(
         "bin_id",
         *[f"bin_id_x{f}" for f in factors],
-        "bin_size",
+        "bin_occupancy",
         "eval_fold",
         "pop",
         "data_type",
@@ -573,14 +573,14 @@ def aggregate_hierarchy(
     )
 
 
-def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
+def finalize_freq_ht(freq_ht: hl.Table, min_bin_occupancy: int) -> hl.Table:
     """
-    Write a privacy-filtered freq HT, suppressing groups below min_bin_size at all levels.
+    Write a privacy-filtered freq HT, suppressing groups below min_bin_occupancy at all levels.
 
     Sample counts at each level are taken from globals added by --aggregate-hierarchy.
 
     :param freq_ht: Hierarchy freq HT with freq, freq_x2, ... and sample_counts* globals.
-    :param min_bin_size: Groups with fewer than this many samples are suppressed.
+    :param min_bin_occupancy: Groups with fewer than this many samples are suppressed.
     :return: freq_ht with small groups and empty (AN=0) groups filtered from all
         freq dicts, the sample_counts* globals scrubbed to the released groups so
         suppressed group sizes are not exposed, and globals restricted to those
@@ -596,13 +596,13 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
 
     def large_set(counts_dict):
         return hl.literal(
-            {k for k, v in counts_dict.items() if v >= min_bin_size},
+            {k for k, v in counts_dict.items() if v >= min_bin_occupancy},
             hl.tset(hl.tstr),
         )
 
     def scrub(counts_dict):
         return hl.literal(
-            {k: v for k, v in counts_dict.items() if v >= min_bin_size},
+            {k: v for k, v in counts_dict.items() if v >= min_bin_occupancy},
             hl.tdict(hl.tstr, hl.tint64),
         )
 
@@ -652,17 +652,19 @@ def finalize_freq_ht(freq_ht: hl.Table, min_bin_size: int) -> hl.Table:
             getattr(globals_eval, f"sample_counts_eval_x{factor}")
         )
         logger.info(
-            "factor /%d: %d train / %d eval groups pass min_bin_size=%d",
+            "factor /%d: %d train / %d eval groups pass min_bin_occupancy=%d",
             factor,
             hl.eval(hl.len(large)),
             hl.eval(hl.len(large_ev)),
-            min_bin_size,
+            min_bin_occupancy,
         )
-    result = result.annotate_globals(min_bin_size=min_bin_size, **scrubbed_globals)
+    result = result.annotate_globals(
+        min_bin_occupancy=min_bin_occupancy, **scrubbed_globals
+    )
     # Keep only the globals this pipeline sets; drop anything inherited from the
     # source VDS (e.g. age_distribution) so the release carries nothing unintended.
     return result.select_globals(
-        "af_threshold_for_correction", "min_bin_size", *scrubbed_globals
+        "af_threshold_for_correction", "min_bin_occupancy", *scrubbed_globals
     )
 
 
@@ -748,7 +750,7 @@ def main(args):
         res = resources.finalize
         res.check_resource_existence()
         logger.info("Step 6: Write privacy-filtered final HT...")
-        freq_ht = finalize_freq_ht(res.hierarchy_freq_ht.ht(), args.min_bin_size)
+        freq_ht = finalize_freq_ht(res.hierarchy_freq_ht.ht(), args.min_bin_occupancy)
         freq_ht.checkpoint(res.final_freq_ht.path, overwrite=overwrite)
         freq_ht.describe()
         logger.info("Done. Final output: %s", res.final_freq_ht.path)
@@ -811,7 +813,7 @@ if __name__ == "__main__":
         "--finalize",
         action="store_true",
         help=(
-            "Step 6: Suppress groups below --min-bin-size at all hierarchy levels "
+            "Step 6: Suppress groups below --min-bin-occupancy at all hierarchy levels "
             "and write freq.final.ht."
         ),
     )
@@ -820,7 +822,7 @@ if __name__ == "__main__":
         "--bin-assignments",
         help=(
             "GCS path to bin assignments TSV "
-            "(columns: idx, bin_id, eval_fold, bin_size). "
+            "(columns: idx, bin_id, eval_fold, bin_occupancy). "
             "Required for --load-bin-assignments."
         ),
     )
@@ -848,11 +850,11 @@ if __name__ == "__main__":
 
     finalize_group = parser.add_argument_group("--finalize (step 6) parameters")
     finalize_group.add_argument(
-        "--min-bin-size",
+        "--min-bin-occupancy",
         type=int,
-        default=DEFAULT_MIN_BIN_SIZE,
+        default=DEFAULT_MIN_BIN_OCCUPANCY,
         help=(
-            f"Privacy threshold for group size (default: {DEFAULT_MIN_BIN_SIZE}). "
+            f"Privacy threshold for group size (default: {DEFAULT_MIN_BIN_OCCUPANCY}). "
             "In --finalize, groups with fewer than this many samples are removed at "
             "every hierarchy level, filtering each dict by its own fold's sample "
             "count (training-fold count for freq/freq_x{factor}, eval-fold count for "

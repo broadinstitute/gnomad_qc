@@ -3,7 +3,7 @@ Plot per-bin sample composition from the bin summary TSV produced by compute_gri
 
 Usage:
     python plot_bin_summary.py \
-        --summary gs://gnomad-tmp-4day/julia/gridmax/ub5.bin_summary.tsv \
+        --summary gs://gnomad-tmp-4day/julia/gridmax/rb5.bin_summary.tsv \
         --output-dir /path/to/output \
         [--top-n 50]
 
@@ -125,11 +125,13 @@ def plot_totals_bar(series: pd.Series, colors: dict, title: str, out_path: str) 
     print(f"Saved: {out_path}")
 
 
-def plot_bin_size_hist(total_per_bin: pd.Series, title: str, out_path: str) -> None:
-    """Plot a log-scale histogram of bin sizes and save to out_path."""
+def plot_bin_occupancy_hist(
+    total_per_bin: pd.Series, title: str, out_path: str
+) -> None:
+    """Plot a log-scale histogram of bin occupancies and save to out_path."""
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.hist(total_per_bin, bins=40, color="#4C72B0", edgecolor="white", linewidth=0.5)
-    ax.set_xlabel("Bin size (total training samples)")
+    ax.set_xlabel("Bin occupancy (total training samples)")
     ax.set_ylabel("Number of bins")
     ax.set_title(title, fontsize=13)
     ax.set_yscale("log")
@@ -156,7 +158,7 @@ def _hierarchy_factors(df: pd.DataFrame) -> list:
 def _plot_level(
     df: pd.DataFrame,
     col: str,
-    min_bin_size: int,
+    min_bin_occupancy: int,
     top_n: int,
     output_dir: str,
     label: str,
@@ -164,13 +166,13 @@ def _plot_level(
     """
     Plot ancestry and data_type composition for one hierarchy level.
 
-    A group passes when its EXOME training-fold count >= min_bin_size (matching the
+    A group passes when its EXOME training-fold count >= min_bin_occupancy (matching the
     pipeline); composition plots still show all data types within passing groups.
     Returns the number of passing groups.
     """
     exome = df[df["data_type"] == "exome"] if "data_type" in df.columns else df
     totals = exome.groupby(col)["n"].sum()
-    passing_ids = totals[totals >= min_bin_size].index
+    passing_ids = totals[totals >= min_bin_occupancy].index
     sub = df[df[col].isin(passing_ids)]
     if sub.empty:
         return 0
@@ -180,7 +182,7 @@ def _plot_level(
     plot_stacked_bar(
         pop_pivot,
         GNOMAD_POP_COLORS,
-        f"{label}: ancestry (top {top_n} groups by size, n≥{min_bin_size})",
+        f"{label}: ancestry (top {top_n} groups by size, n≥{min_bin_occupancy})",
         "Training samples",
         os.path.join(output_dir, f"{label}_by_pop.png"),
         top_n=top_n,
@@ -191,15 +193,15 @@ def _plot_level(
     plot_stacked_bar(
         dt_pivot,
         DATA_TYPE_COLORS,
-        f"{label}: data type (top {top_n} groups by size, n≥{min_bin_size})",
+        f"{label}: data type (top {top_n} groups by size, n≥{min_bin_occupancy})",
         "Training samples",
         os.path.join(output_dir, f"{label}_by_data_type.png"),
         top_n=top_n,
     )
 
-    plot_bin_size_hist(
+    plot_bin_occupancy_hist(
         totals,
-        f"{label}: group size distribution",
+        f"{label}: group occupancy distribution",
         os.path.join(output_dir, f"{label}_size_hist.png"),
     )
 
@@ -220,13 +222,13 @@ def main(args):
     df = df[df["bin_id"].notna()]
 
     # Passing bins match the pipeline: a bin passes when its EXOME training-fold
-    # count >= min_bin_size. Genomes are in the joint sample key but do not feed
+    # count >= min_bin_occupancy. Genomes are in the joint sample key but do not feed
     # the (exome-only) AF or the pipeline's suppression, so they are excluded from
     # the passing/size determination. Composition plots below still show all data
     # types within the passing bins.
     exome = df[df["data_type"] == "exome"] if "data_type" in df.columns else df
     bin_totals = exome.groupby("bin_id")["n"].sum()
-    passing_bins = bin_totals[bin_totals >= args.min_bin_size].index
+    passing_bins = bin_totals[bin_totals >= args.min_bin_occupancy].index
     passing = df[df["bin_id"].isin(passing_bins)]
 
     # --- 1. Stacked bar: pop composition per bin (passing only) ---
@@ -235,7 +237,7 @@ def main(args):
     plot_stacked_bar(
         pop_pivot,
         GNOMAD_POP_COLORS,
-        f"L0 (exact): ancestry (top {args.top_n} bins by size, n≥{args.min_bin_size})",
+        f"L0 (exact): ancestry (top {args.top_n} bins by size, n≥{args.min_bin_occupancy})",
         "Training samples",
         os.path.join(args.output_dir, "bin_by_pop.png"),
         top_n=args.top_n,
@@ -247,7 +249,7 @@ def main(args):
     plot_stacked_bar(
         dt_pivot,
         DATA_TYPE_COLORS,
-        f"L0 (exact): data type (top {args.top_n} bins by size, n≥{args.min_bin_size})",
+        f"L0 (exact): data type (top {args.top_n} bins by size, n≥{args.min_bin_occupancy})",
         "Training samples",
         os.path.join(args.output_dir, "bin_by_data_type.png"),
         top_n=args.top_n,
@@ -269,11 +271,11 @@ def main(args):
         os.path.join(args.output_dir, "data_type_composition.png"),
     )
 
-    # --- 5. Histogram of passing bin sizes ---
-    plot_bin_size_hist(
-        bin_totals[bin_totals >= args.min_bin_size],
-        "L0 (exact): passing bin size distribution",
-        os.path.join(args.output_dir, "bin_size_hist.png"),
+    # --- 5. Histogram of passing bin occupancies ---
+    plot_bin_occupancy_hist(
+        bin_totals[bin_totals >= args.min_bin_occupancy],
+        "L0 (exact): passing bin occupancy distribution",
+        os.path.join(args.output_dir, "bin_occupancy_hist.png"),
     )
 
     # --- 6. Hierarchy levels ---
@@ -282,7 +284,7 @@ def main(args):
         col = _coarse_col(factor)
         label = f"x{factor}"
         n_passing = _plot_level(
-            df, col, args.min_bin_size, args.top_n, args.output_dir, label
+            df, col, args.min_bin_occupancy, args.top_n, args.output_dir, label
         )
         hierarchy_counts[f"/{factor}"] = n_passing
 
@@ -294,7 +296,7 @@ def main(args):
     print(
         f"\nTraining samples: {int(df['n'].sum()):,} total, "
         f"{int(passing['n'].sum()):,} in passing bins "
-        f"({len(passing_bins):,} bins ≥ {args.min_bin_size})."
+        f"({len(passing_bins):,} bins ≥ {args.min_bin_occupancy})."
     )
 
     print("\nGroups passing privacy filter by hierarchy level:")
@@ -321,7 +323,7 @@ if __name__ == "__main__":
         help="Show only the top N bins by total size in bar charts (default: 50).",
     )
     parser.add_argument(
-        "--min-bin-size",
+        "--min-bin-occupancy",
         type=int,
         default=50,
         help="Minimum sample count for a group to appear in hierarchy plots (default: 50).",
