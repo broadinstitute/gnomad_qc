@@ -70,8 +70,8 @@ def import_variant_qc_vcf(
         dup_ht = dup_ht.filter(dup_ht.n > 1)
         n_dup = dup_ht.count()
         if n_dup > 0:
-            # NOTE: distinct() only drops fully-identical rows; duplicate keys with
-            # differing fields will survive and break split_multi_hts downstream.
+            # NOTE: distinct() keeps one arbitrary row per key, so if shards disagree
+            # on INFO values the surviving row is non-deterministic.
             logger.warning(
                 "Found %s variants with duplicate keys; keeping distinct rows. "
                 "Examples: %s",
@@ -145,6 +145,22 @@ def main(args):
         **_get_batch_resource_kwargs(args),
     )
 
+    # An already-split input yields only the split HT; otherwise split and unsplit.
+    splits = (True,) if args.is_split else (True, False)
+    resources = [
+        get_variant_qc_result(
+            args.model_id, test=args.test, split=split, environment=environment
+        )
+        for split in splits
+    ]
+    # Check up front so a rerun fails before the import instead of after it, and
+    # never after the split HT has already been written.
+    _check_resource_existence(
+        environment=environment,
+        output_step_resources={"variant_qc_result": resources},
+        overwrite=args.overwrite,
+    )
+
     hts = import_variant_qc_vcf(
         args.vcf_path,
         args.model_id,
@@ -156,19 +172,8 @@ def main(args):
     )
     if not isinstance(hts, tuple):
         hts = (hts,)
-        splits = (True,)
-    else:
-        splits = (True, False)
 
-    for ht, split in zip(hts, splits):
-        res = get_variant_qc_result(
-            args.model_id, test=args.test, split=split, environment=environment
-        )
-        _check_resource_existence(
-            environment=environment,
-            output_step_resources={"variant_qc_result": [res]},
-            overwrite=args.overwrite,
-        )
+    for ht, res in zip(hts, resources):
         ht = ht.annotate_globals(
             model_id=args.model_id,
             snp_features=args.snp_features,
@@ -195,6 +200,36 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default="batch",
         type=str,
         choices=["rwb", "batch", "dataproc"],
+    )
+    parser.add_argument(
+        "--app-name",
+        help="Job name for the batch/QoB backend.",
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
+        "--driver-cores",
+        help="Number of driver cores (Batch only).",
+        default=None,
+        type=int,
+    )
+    parser.add_argument(
+        "--driver-memory",
+        help="Driver memory (Batch only).",
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
+        "--worker-cores",
+        help="Number of worker cores (Batch only).",
+        default=None,
+        type=int,
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Worker memory (Batch only).",
+        default=None,
+        type=str,
     )
     parser.add_argument(
         "--vcf-path",
