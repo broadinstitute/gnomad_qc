@@ -18,10 +18,15 @@ from gnomad.variant_qc.pipeline import INFO_FEATURES
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
-from gnomad_qc.v5.resources.basics import _get_batch_resource_kwargs, _init_hail
+from gnomad_qc.v5.resources.basics import (
+    _check_resource_existence,
+    _get_batch_resource_kwargs,
+    _init_hail,
+)
 from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
 from gnomad_qc.v5.resources.variant_qc import (
     IF_FEATURES,
+    _validate_model_id,
     get_iforest_run_prefix,
     get_variant_qc_result,
 )
@@ -58,15 +63,27 @@ def _resource_args(mode: str, singletons_vcf: Optional[str]) -> str:
     :param singletons_vcf: Optional true-positive (transmitted/sibling singletons) VCF.
     :return: Space-joined GATK resource argument string.
     """
+    # Labels mirror v4 VQSR, not the v4 iforest.
     if mode == "SNP":
-        resources = ["hapmap", "omni", "one_thousand_genomes", "dbsnp"]
+        training_calibration = ["hapmap", "omni"]
+        training_only = ["one_thousand_genomes"]
     else:
-        resources = ["mills", "axiom_poly", "dbsnp"]
+        training_calibration = ["mills"]
+        training_only = ["axiom_poly"]
 
     args = [
         f"--resource:{r},training=true,calibration=true {REFERENCE_RESOURCES[r]}"
-        for r in resources
+        for r in training_calibration
     ]
+    args += [
+        f"--resource:{r},training=true,calibration=false {REFERENCE_RESOURCES[r]}"
+        for r in training_only
+    ]
+    # VETS ignores `known`; it only flags known vs novel in the scored VCF INFO.
+    args.append(
+        "--resource:dbsnp,known=true,training=false,calibration=false"
+        f" {REFERENCE_RESOURCES['dbsnp']}"
+    )
     if singletons_vcf:
         args.append(
             f"--resource:singletons,training=true,calibration=true {singletons_vcf}"
@@ -94,6 +111,7 @@ def extract_variant_annotations_job(
     features: List[str],
     resource_args: str,
     calling_intervals_arg: str,
+    exclude_intervals: str,
     out_root: str,
     gatk_image: str,
     gcp_billing_project: str,
@@ -107,6 +125,8 @@ def extract_variant_annotations_job(
     :param features: Features to extract for this mode.
     :param resource_args: GATK ``--resource`` args for the labeled sets.
     :param calling_intervals_arg: GATK ``-L`` args restricting the extracted sites.
+    :param exclude_intervals: Telomere/centromere intervals excluded from the
+        training/calibration set (``-XL``); these sites are not scored either.
     :param out_root: Output prefix (files written as ``{out_root}.*``).
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
@@ -132,6 +152,7 @@ def extract_variant_annotations_job(
             --mode {mode} \\
             {_annotation_args(features)} \\
             {calling_intervals_arg} \\
+            -XL {exclude_intervals} \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
         """
@@ -370,6 +391,7 @@ def isolation_forest_workflow(
                 features=features,
                 resource_args=resource_args,
                 calling_intervals_arg=calling_intervals_arg,
+                exclude_intervals=exclude_intervals,
                 out_root=extract_root,
                 gatk_image=gatk_image,
                 gcp_billing_project=gcp_billing_project,
@@ -649,6 +671,10 @@ def main(args):
 
     test = args.test
     model_id = args.model_id
+    # Validate up front so a bad model_id fails before Batch runs. The non-test-on-v4
+    # branch gets this via get_iforest_run_prefix; test-on-v4 builds its own prefix.
+    if _validate_model_id(model_id) != "if":
+        raise ValueError(f"model_id must start with 'if_', but got {model_id}")
     chr22_only = test or args.test_on_v4
     scatter_count = 10 if chr22_only else args.scatter_count
     contigs = ["chr22"] if chr22_only else CALLING_CONTIGS
@@ -706,14 +732,23 @@ def main(args):
     # Stable path so the same file used by GATK -XL is read back during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
 
+    # Fail fast before the Batch if the result HT already exists and we'd load it.
+    if args.load_iforest or args.load_only:
+        _check_resource_existence(
+            environment=environment,
+            output_step_resources={"variant_qc_result": [result_ht_path]},
+            overwrite=args.overwrite,
+        )
+
     if not args.load_only:
         backend = hb.ServiceBackend(
             billing_project=args.batch_billing_project,
             remote_tmpdir=f"gs://{BATCH_TMP_BUCKET}/",
         )
         # Reheader the v4 input to Number=A first, to completion, so the GATK jobs read
-        # the finished VCF from the bucket.
-        if args.test_on_v4:
+        # the finished VCF from the bucket. Reuse an existing reheadered VCF unless
+        # overwriting, since re-streaming the full v4 sites VCF is expensive.
+        if args.test_on_v4 and (args.overwrite or not file_exists(sites_only_vcf)):
             rb = hb.Batch(f"reheader {model_id}{args.batch_suffix}", backend=backend)
             reheader_v4_sites_job(
                 b=rb,
@@ -743,7 +778,7 @@ def main(args):
         )
         b.run()
 
-    if args.load_iforest:
+    if args.load_iforest or args.load_only:
         ht = merge_iforest_result(
             run_prefix=run_prefix,
             out_vcf_name=args.out_vcf_name,
@@ -787,7 +822,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Compute environment.",
         default="batch",
         type=str,
-        choices=["rwb", "batch", "dataproc"],
+        choices=["rwb", "batch"],
     )
     parser.add_argument(
         "--model-id",
