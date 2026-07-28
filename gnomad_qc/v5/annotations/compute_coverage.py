@@ -629,6 +629,7 @@ def compute_all_release_stats_per_ref_site(
     group_membership_ht: Optional[hl.Table] = None,
     reduce_min_aggs: bool = False,
     experimental_densify: bool = False,
+    skip_coverage_stats: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -668,6 +669,13 @@ def compute_all_release_stats_per_ref_site(
         (``to_merged_sparse_mt``) and unify the genotype into ``LGT`` so
         ``compute_stats_per_ref_site`` takes the  ``hl.experimental.densify`` path
         instead of ``to_dense_mt``. Default is False.
+    :param skip_coverage_stats: If True, omit ``coverage_stats`` from the
+        aggregation entirely, so the output HT carries no
+        ``mean``/``median_approx``/``total_DP``/``over_X`` fields. AoU only:
+        its reference blocks carry no DP, so those fields aggregate to ~0
+        everywhere except loci where a sample carries a variant (measured on
+        chr1:55.06-55.16Mb: mean 0.048x, ``over_1`` 432 of 365,318 samples).
+        Default is False.
     :return: HT keyed by locus with per-stratum ``AN``, flat
         ``mean``/``over_X``/``median_approx``/``total_DP`` coverage
         fields (from the global adj-filtered group), and
@@ -698,10 +706,11 @@ def compute_all_release_stats_per_ref_site(
     max_cov_bin = cov_bins[-1]
     cov_bins = hl.array(cov_bins)
 
-    entry_agg_funcs = {
-        "AN": get_allele_number_agg_func("LGT"),
-        "coverage_stats": get_coverage_agg_func(dp_field="DP", max_cov_bin=max_cov_bin),
-    }
+    entry_agg_funcs = {"AN": get_allele_number_agg_func("LGT")}
+    if not skip_coverage_stats:
+        entry_agg_funcs["coverage_stats"] = get_coverage_agg_func(
+            dp_field="DP", max_cov_bin=max_cov_bin
+        )
     # Restrict ``coverage_stats`` to the global adj-filtered group only —
     # downstream code uses ``coverage_stats[0]`` exclusively (the global adj
     # group; transmuted into flat mean/sum/over_X fields), so per-strata
@@ -712,9 +721,13 @@ def compute_all_release_stats_per_ref_site(
     # ``freq_meta[0]`` is ``{"group": "adj"}`` and we need to match it.
     # AN is intentionally omitted so it still fans out across all strata,
     # which is what downstream consumers need.
-    entry_agg_group_membership = {
-        "coverage_stats": [{"group": "adj"}],
-    }
+    # NOTE: under ``--skip-coverage-stats`` nothing needs ``{"group": "adj"}`` to be
+    # a directly-computed leaf anymore, but that is fixed in the group_membership HT
+    # (``PINNED_LEAF_GROUPS``) at write time, so unpinning it is a separate change
+    # requiring a group_membership regen -- an additional saving not measured here.
+    entry_agg_group_membership = {}
+    if not skip_coverage_stats:
+        entry_agg_group_membership["coverage_stats"] = [{"group": "adj"}]
     # Only compute qual hists for AoU.
     if project == "aou":
         entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
@@ -803,13 +816,15 @@ def compute_all_release_stats_per_ref_site(
         bin_expr = {f"over_{x}": bin_expr[i] for i, x in enumerate(rev_cov_bins)}
         return cov_stat.annotate(**bin_expr).drop("coverage_counter")
 
-    # Keep coverage stats from global adj grouping (index 0) only.
+    # Keep coverage stats from global adj grouping (index 0) only. The sample-count
+    # global is annotated either way -- it is just ``strata_sample_count[0]`` (the
+    # full cohort) and downstream readers expect it.
     ht = ht.annotate_globals(
         coverage_stats_meta_sample_count=ht.strata_sample_count[0],
     )
-    cov_stats_expr = _cov_stats(ht.coverage_stats[0])
-
-    ht = ht.transmute(**cov_stats_expr)
+    if not skip_coverage_stats:
+        cov_stats_expr = _cov_stats(ht.coverage_stats[0])
+        ht = ht.transmute(**cov_stats_expr)
 
     if project == "aou":
         # ``qual_hists`` as returned by ``compute_stats_per_ref_site`` is an array of length 1 so we drop the array here.
@@ -1942,6 +1957,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
         experimental_densify=args.experimental_densify,
+        skip_coverage_stats=args.skip_coverage_stats,
     )
     # Stamp the layout hash into globals for provenance: the union at merge time
     # inherits the first input's globals, so the final release HT records which
@@ -2128,6 +2144,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
             flags.append("--reduce-min-aggs")
         if args.experimental_densify:
             flags.append("--experimental-densify")
+        if args.skip_coverage_stats:
+            flags.append("--skip-coverage-stats")
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
@@ -3155,6 +3173,7 @@ def main(args):
                 project=project,
                 group_membership_ht=hl.read_table(group_membership_ht_path),
                 reduce_min_aggs=reduce_min_aggs,
+                skip_coverage_stats=args.skip_coverage_stats,
             )
             if args.n_partitions is not None:
                 # Checkpoint to temp only to stabilize before the coalesce; when
@@ -3572,6 +3591,25 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " and --compute-all-cov-release-stats-ht runs (the gmh's"
             " ``freq_reduced`` global determines whether reduction takes effect"
             " at compute time)."
+        ),
+    )
+    parser.add_argument(
+        "--skip-coverage-stats",
+        action="store_true",
+        help=(
+            "Drop the ``coverage_stats`` aggregation, so the output HT has no"
+            " mean/median_approx/total_DP/over_X fields (AN and, for AoU, qual_hists"
+            " are unaffected). --project-name aou only: AoU reference blocks carry"
+            " GQ/END/GT/LEN and no DP, so DP is defined only where a sample carries a"
+            " variant and these fields aggregate to ~0 genome-wide (measured on"
+            " chr1:55.06-55.16Mb: mean 0.048x, median_approx 0 at 99.9%% of loci,"
+            " over_1 432 of 365,318 samples). Removes a 101-bin ``hl.agg.counter``"
+            " plus an ``hl.agg.approx_median`` sketch over the full cohort at every"
+            " reference site. The resulting HT is NOT usable for"
+            " --export-coverage-release-files; use --cov-and-an-output-suffix to keep"
+            " it separate. Note the additional saving from unpinning"
+            " ``{'group': 'adj'}`` from PINNED_LEAF_GROUPS requires a"
+            " --write-group-membership-ht regen and is not covered by this flag."
         ),
     )
     test_group = parser.add_argument_group(
@@ -4185,6 +4223,11 @@ if __name__ == "__main__":
 
     if args.merge_qual_hists and args.project_name != "aou":
         raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
+
+    # gnomAD's VDS has real per-base DP, and the consent-drop subtraction that
+    # produces the v5 coverage HT needs coverage_stats, so this is AoU-only.
+    if args.skip_coverage_stats and args.project_name != "aou":
+        parser.error("--skip-coverage-stats requires --project-name to be 'aou'.")
 
     # Single-action entry points: each dispatches exactly one unit in main() and
     # returns, so pairing one with another entry point or with an in-process step
