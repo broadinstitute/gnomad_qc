@@ -514,6 +514,24 @@ def reheader_v4_sites_job(
     return j
 
 
+def run_batch(b: hb.Batch, description: str) -> None:
+    """
+    Run a Batch to completion and raise if it did not succeed.
+
+    ``Batch.run`` waits but only prints the final state, so a failed batch would
+    otherwise fall through to the next step (e.g. submitting the GATK jobs against a
+    reheadered VCF that was never written).
+
+    :param b: Batch to run.
+    :param description: Batch description used in the error message.
+    :return: None.
+    """
+    batch = b.run()
+    state = None if batch is None else batch.status()["state"]
+    if state != "success":
+        raise RuntimeError(f"{description} batch did not succeed (state: {state}).")
+
+
 def merge_iforest_result(
     run_prefix: str,
     out_vcf_name: str,
@@ -522,6 +540,7 @@ def merge_iforest_result(
     n_partitions: int,
     header_path: Optional[str],
     array_elements_required: bool,
+    is_split: bool = True,
 ) -> hl.Table:
     """
     Merge the per-mode scored VCFs into a single variant QC result HT.
@@ -539,6 +558,8 @@ def merge_iforest_result(
     :param n_partitions: Number of partitions for the imported HTs.
     :param header_path: Optional VCF header file for import.
     :param array_elements_required: Value passed to hl.import_vcf.
+    :param is_split: Whether the scored VCFs are already split. True for v5 (the info HT
+        is split by `annotate_allele_info`); False for the unsplit v4 test input.
     :return: Merged variant QC result HT.
     """
     snp_vcfs = [
@@ -549,22 +570,35 @@ def merge_iforest_result(
         f"{run_prefix}/score/indel/{out_vcf_name}{idx}.vcf.gz"
         for idx in range(scatter_count)
     ]
-    snp_ht = import_variant_qc_vcf(
-        snp_vcfs,
-        model_id,
-        n_partitions,
-        header_path,
-        array_elements_required,
-        deduplicate_check=True,
-    )[0]
-    indel_ht = import_variant_qc_vcf(
-        indel_vcfs,
-        model_id,
-        n_partitions,
-        header_path,
-        array_elements_required,
-        deduplicate_check=True,
-    )[0]
+
+    def _import(vcfs: List[str]) -> hl.Table:
+        hts = import_variant_qc_vcf(
+            vcfs,
+            model_id,
+            n_partitions,
+            header_path,
+            array_elements_required,
+            is_split=is_split,
+            deduplicate_check=True,
+        )
+        # Only the split HT is used; the unsplit HT is returned when is_split is False.
+        ht = hts[0] if isinstance(hts, tuple) else hts
+        if is_split:
+            # Number=A fields import as length-1 arrays on split input; index to scalars
+            # (split_info_annotation does this via a_index on the unsplit path).
+            ht = ht.annotate(
+                info=ht.info.annotate(
+                    **{
+                        f: ht.info[f][0]
+                        for f, t in ht.info.dtype.items()
+                        if f.startswith("AS_") and isinstance(t, hl.tarray)
+                    }
+                )
+            )
+        return ht
+
+    snp_ht = _import(snp_vcfs)
+    indel_ht = _import(indel_vcfs)
 
     snp_ht = snp_ht.filter(hl.is_snp(snp_ht.alleles[0], snp_ht.alleles[1]))
     indel_ht = indel_ht.filter(~hl.is_snp(indel_ht.alleles[0], indel_ht.alleles[1]))
@@ -675,9 +709,11 @@ def main(args):
     # branch gets this via get_iforest_run_prefix; test-on-v4 builds its own prefix.
     if _validate_model_id(model_id) != "if":
         raise ValueError(f"model_id must start with 'if_', but got {model_id}")
-    chr22_only = test or args.test_on_v4
-    scatter_count = 10 if chr22_only else args.scatter_count
-    contigs = ["chr22"] if chr22_only else CALLING_CONTIGS
+    # Tests score only --test-chrom; must match the contigs in the test info VCF (see
+    # --test-chrom in generate_variant_qc_annotations).
+    test_mode = test or args.test_on_v4
+    scatter_count = 10 if test_mode else args.scatter_count
+    contigs = args.test_chrom if test_mode else CALLING_CONTIGS
     calling_intervals_arg = " ".join(f"-L {c}" for c in contigs)
 
     true_positive_type = None
@@ -758,7 +794,7 @@ def main(args):
                 image=args.reheader_image or args.gatk_image,
                 gcp_billing_project=args.gcp_billing_project,
             )
-            rb.run()
+            run_batch(rb, "Reheader")
 
         export_exclusion_intervals(exclude_intervals)
         b = hb.Batch(f"isolation forest {model_id}{args.batch_suffix}", backend=backend)
@@ -776,7 +812,7 @@ def main(args):
             hyperparameters_json=args.hyperparameters_json,
             overwrite=args.overwrite,
         )
-        b.run()
+        run_batch(b, "Isolation forest")
 
     if args.load_iforest or args.load_only:
         ht = merge_iforest_result(
@@ -787,6 +823,7 @@ def main(args):
             n_partitions=args.n_partitions,
             header_path=args.header_path,
             array_elements_required=args.array_elements_required,
+            is_split=not args.test_on_v4,
         )
         reconcile_scored_sites(
             sites_only_vcf=sites_only_vcf,
@@ -809,8 +846,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--test",
-        help="Filter to chr22 and use a small scatter count for testing.",
+        help="Filter to --test-chrom and use a small scatter count for testing.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--test-chrom",
+        help=(
+            "Contig(s) to score under --test/--test-on-v4. Must match the contigs in "
+            "the test info VCF."
+        ),
+        type=str,
+        nargs="+",
+        default=["chr22"],
     )
     parser.add_argument(
         "--test-on-v4",
