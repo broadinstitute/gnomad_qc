@@ -291,6 +291,15 @@ def score_variant_annotations_job(
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
     :return: Job with output ResourceGroup ``output_score``.
+
+    .. note::
+
+        GATK traversal returns every record *overlapping* the shard interval, and the
+        default output mode (ANYWHERE) writes all of them, so a deletion straddling a
+        shard boundary is emitted by both neighbors. ``--variant-output-filtering
+        STARTS_IN`` writes a record only if its start is in the interval, making
+        emission exactly-once across shards. It also makes ``-XL`` start-based, which
+        is the definition `reconcile_scored_sites` uses.
     """
     j = b.new_job(f"GATK: ScoreVariantAnnotations {mode}")
     j.image(gatk_image)
@@ -317,6 +326,7 @@ def score_variant_annotations_job(
             --model-prefix {model} \\
             --model-backend PYTHON_IFOREST \\
             -L {interval} \\
+            --variant-output-filtering STARTS_IN \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
         """
@@ -454,6 +464,10 @@ def export_exclusion_intervals(out_path: str) -> str:
     Written to a stable path (not a temp file) so the same file used by GATK ``-XL``
     can be read back during reconciliation to define the excluded region exactly.
 
+    `telomeres_and_centromeres` is a BED import, so its intervals are half-open
+    ``[start, end)``, while GATK reads ``chr:start-end`` as 1-based inclusive on both
+    ends. Emit ``end - 1`` so the file covers exactly the interval.
+
     :param out_path: Destination path for the intervals file.
     :return: ``out_path``.
     """
@@ -464,7 +478,7 @@ def export_exclusion_intervals(out_path: str) -> str:
         + ":"
         + hl.str(interval.start.position)
         + "-"
-        + hl.str(interval.end.position)
+        + hl.str(interval.end.position - 1)
     ).select()
     ht.export(out_path, header=False)
     return out_path
@@ -571,7 +585,8 @@ def merge_iforest_result(
             header_path,
             array_elements_required,
             is_split=True,
-            # Disjoint shards make duplicate keys impossible; the check costs a shuffle.
+            # Scoring runs with --variant-output-filtering STARTS_IN, so each record is
+            # emitted by exactly one shard; the check costs a shuffle.
             deduplicate_check=False,
         )
 
@@ -614,6 +629,18 @@ def reconcile_scored_sites(
     """
     exclude_ht = hl.import_locus_intervals(
         exclude_intervals_path, reference_genome="GRCh38"
+    )
+    # GATK reads chr:start-end as 1-based inclusive; hl.import_locus_intervals is
+    # end-exclusive. Re-key as inclusive so we exclude exactly what GATK excluded.
+    # `includes_start` must be carried over: Hail canonicalizes a single-base
+    # 'chr:p-p' to the open-open (p-1, p), which is only correct if it stays open.
+    exclude_ht = exclude_ht.key_by(
+        interval=hl.interval(
+            exclude_ht.interval.start,
+            exclude_ht.interval.end,
+            includes_start=exclude_ht.interval.includes_start,
+            includes_end=True,
+        )
     )
     input_ht = hl.import_vcf(
         sites_only_vcf,
