@@ -16,9 +16,12 @@ logger = logging.getLogger("hom_depletion_check")
 logger.setLevel(logging.INFO)
 
 
+SV_SITES_VCF_PATH = (
+    "gs://gcp-public-data--gnomad/release/4.1/genome_sv/gnomad.v4.1.sv.sites.vcf.gz"
+)
 OMIM_PATH = "gs://gnomad-kristen/hom_depletion/omim_2023.tsv"
-IMPC_PATH="gs://gnomad-kristen/hom_depletion/viability.csv.gz" 	#2026-03-16 13:49
-MGI_PATH= "gs://gnomad-kristen/hom_depletion/HOM_AllOrganism.txt"  # accessed 07/07/2026 https://www.informatics.jax.org/homology.shtml	
+IMPC_PATH = "gs://gnomad-kristen/hom_depletion/viability.csv.gz"  # 2026-03-16 13:49
+MGI_PATH = "gs://gnomad-kristen/hom_depletion/HOM_AllOrganism.txt"  # accessed 07/07/2026 https://www.informatics.jax.org/homology.shtml
 
 
 def get_field_name(group: str) -> str:
@@ -280,9 +283,7 @@ def get_mouse_to_human_ortholog_ht(mgi_path: str) -> hl.Table:
     return ortholog_ht.key_by("mouse_symbol").select("human_symbols", "ortholog_type")
 
 
-def annotate_impc_viability(
-    ht: hl.Table, impc_path: str, mgi_path: str
-) -> hl.Table:
+def annotate_impc_viability(ht: hl.Table, impc_path: str, mgi_path: str) -> hl.Table:
     """
     Annotate mouse-knockout homozygous viability (IMPC) on `most_severe_gene`.
 
@@ -309,9 +310,9 @@ def annotate_impc_viability(
 
     # Keep genes with a human ortholog, then explode to one row per human symbol.
     impc_ht = impc_ht.filter(hl.is_defined(impc_ht.human_symbols))
-    impc_ht = impc_ht.annotate(
-        human_symbol=hl.array(impc_ht.human_symbols)
-    ).explode("human_symbol")
+    impc_ht = impc_ht.annotate(human_symbol=hl.array(impc_ht.human_symbols)).explode(
+        "human_symbol"
+    )
 
     impc_ht = impc_ht.group_by(human_gene=impc_ht.human_symbol).aggregate(
         viability=hl.agg.collect_as_set(impc_ht.viability_call),
@@ -328,6 +329,167 @@ def annotate_impc_viability(
             ),
         )
     )
+
+
+def import_sv_sites_ht(sv_vcf_path: str = SV_SITES_VCF_PATH) -> hl.Table:
+    """
+    Import the gnomAD SV sites VCF as a rows-only Hail Table.
+
+    :param sv_vcf_path: Path to the gnomAD SV sites VCF (bgzipped).
+    :return: Hail Table of SV sites (one row per SV), for use with `annotate_sv_cnv_overlap`.
+    """
+    mt = hl.import_vcf(
+        sv_vcf_path,
+        reference_genome="GRCh38",
+        force_bgz=True,
+    )
+    return mt.rows()
+
+
+def annotate_sv_cnv_overlap(
+    ht: hl.Table,
+    sv_ht: hl.Table,
+    use_grpmax: bool = True,  # DUP frequency: prefer max-over-ancestries AF
+    require_pass_sv: bool = False,  # if True, only consider PASS SVs
+) -> hl.Table:
+    """
+    Annotate `ht.sv_cnv` with raw per-variant SV/CNV overlap evidence (no cutoffs).
+
+    For each SNV, aggregates over every overlapping copy-number-gain-capable SV
+    (biallelic DUP or multiallelic CNV) and records the raw signals needed to judge
+    whether an apparent homozygote deficit is a copy-number artifact rather than
+    biology. A DUP/CNV inflates local copy number, so true homozygotes are rarely
+    observed -- a fake hom deficit. DEL is excluded on purpose (hemizygous loss is a
+    different mechanism).
+
+    No thresholds are applied and no rows are removed: this is annotation only. The
+    fields are maxima/minima over the overlapping SVs, so a downstream caller can
+    reproduce any per-SV `any(...)` test exactly -- `max_x >= t` equals
+    `any(x >= t)` and `min_x < t` equals `any(x < t)`. Fallbacks for no-overlap
+    variants are chosen to fail every such test (max -> 0, min -> 1).
+
+    `sv_cnv` struct fields:
+      - n_overlaps            number of overlapping DUP/CNV SVs
+      - sv_ids, svtypes       their ids and SVTYPEs
+      - max_dup_af            biallelic DUP: max GRPMAX_AF (fallback AF[0]) over hits
+      - max_mcnv_gain_freq    mCNV: max frequency of gain states (CN>2)
+      - max_mcnv_modal_cn     mCNV: max modal copy number
+      - min_mcnv_cn2_freq     mCNV: min diploid (CN=2) frequency
+      - any_lowconf_dup       any hit flagged LOW_CONFIDENCE_REPETITIVE_LARGE_DUP
+      - any_gt_overdispersed  any hit flagged PESR_GT_OVERDISPERSION (informational)
+
+    :param ht: Hail Table keyed by locus (the SNVs to annotate).
+    :param sv_ht: SV sites Table, e.g. from `import_sv_sites_ht`.
+    :param use_grpmax: DUP frequency uses GRPMAX_AF (fallback AF[0]) if True, else AF[0].
+    :param require_pass_sv: if True, restrict to PASS SVs before computing overlaps.
+    :return: `ht` with an added `sv_cnv` struct of raw overlap evidence.
+    """
+    rg = ht.locus.dtype.reference_genome
+
+    # gain-carrying + multiallelic classes; drop cross-chrom / undefined spans (BND/CTX)
+    i0 = sv_ht.info
+    sv = sv_ht.filter((i0.SVTYPE == "DUP") | (i0.SVTYPE == "CNV") | i0.MULTIALLELIC)
+    sv = sv.filter(hl.is_defined(sv.info.END) & (sv.info.END > sv.locus.position))
+    if require_pass_sv:
+        sv = sv.filter(hl.len(sv.filters) == 0)
+    info = sv.info
+    is_mcnv = info.MULTIALLELIC
+
+    # --- biallelic DUP frequency (grpmax, falling back to AF[0]); safe on empty AF ---
+    af0 = hl.if_else(hl.len(info.AF) > 0, info.AF[0], hl.missing(hl.tfloat64))
+    dup_af_raw = hl.or_else(info.GRPMAX_AF, af0) if use_grpmax else af0
+    dup_af = hl.if_else(~is_mcnv, dup_af_raw, hl.missing(hl.tfloat64))
+
+    # --- mCNV: CN_STATUS holds the CN value at each index, CN_FREQ its frequency ---
+    cn_pairs = hl.zip(info.CN_STATUS, info.CN_FREQ).filter(
+        lambda p: hl.is_defined(p[0]) & hl.is_defined(p[1])
+    )
+    gain_freq = hl.if_else(
+        is_mcnv,
+        hl.sum(cn_pairs.filter(lambda p: p[0] > 2).map(lambda p: p[1])),
+        hl.missing(hl.tfloat64),
+    )
+    cn2_freq = hl.if_else(
+        is_mcnv,
+        hl.sum(cn_pairs.filter(lambda p: p[0] == 2).map(lambda p: p[1])),
+        hl.missing(hl.tfloat64),
+    )
+    modal_cn = hl.if_else(
+        is_mcnv & (hl.len(cn_pairs) > 0),
+        hl.sorted(cn_pairs, key=lambda p: -p[1])[0][0],
+        hl.missing(hl.tint32),
+    )
+
+    sv = sv.annotate(
+        _is_mcnv=is_mcnv,
+        _dup_af=dup_af,
+        _gain_freq=gain_freq,
+        _cn2_freq=cn2_freq,
+        _modal_cn=modal_cn,
+        _lowconf_dup=hl.or_else(info.LOW_CONFIDENCE_REPETITIVE_LARGE_DUP, False),
+        _gt_overdisp=hl.or_else(info.PESR_GT_OVERDISPERSION, False),
+        _sv_id=sv.rsid,
+        _svtype=info.SVTYPE,
+    )
+
+    # --- interval-key for one-to-many overlap, then annotate every SNV ---
+    sv = sv.annotate(
+        _interval=hl.locus_interval(
+            sv.locus.contig,
+            sv.locus.position,
+            sv.info.END,
+            includes_start=True,
+            includes_end=True,
+            reference_genome=rg,
+        )
+    )
+    sv = sv.key_by("_interval").select(
+        "_is_mcnv",
+        "_dup_af",
+        "_gain_freq",
+        "_cn2_freq",
+        "_modal_cn",
+        "_lowconf_dup",
+        "_gt_overdisp",
+        "_sv_id",
+        "_svtype",
+    )
+
+    # Materialize the slim interval table to native Hail format before the join:
+    # the VCF-derived rows are decoded once here rather than re-decoded inside the
+    # interval join (which was throwing a decode NullPointerException).
+    sv = sv.checkpoint(new_temp_file("sv_cnv_intervals", "ht"))
+
+    ht = ht.annotate(_hits=sv.index(ht.locus, all_matches=True))
+    hits = ht._hits
+    is_mcnv_s = lambda s: hl.or_else(s._is_mcnv, False)
+    dup_hits = hits.filter(lambda s: ~is_mcnv_s(s))  # biallelic DUP hits
+    mcnv_hits = hits.filter(is_mcnv_s)  # multiallelic CNV hits
+
+    # Raw aggregates only -- all thresholding is left to the caller. Fallbacks make
+    # a no-overlap variant fail every downstream cutoff (max -> 0, min -> 1); e.g.
+    # `max_dup_af >= t` reproduces the old `any(dup_af >= t)` exactly.
+    ht = ht.annotate(
+        sv_cnv=hl.struct(
+            n_overlaps=hl.len(hits),
+            sv_ids=hits.map(lambda s: s._sv_id),
+            svtypes=hits.map(lambda s: s._svtype),
+            max_dup_af=hl.or_else(hl.max(dup_hits.map(lambda s: s._dup_af)), 0.0),
+            max_mcnv_gain_freq=hl.or_else(
+                hl.max(mcnv_hits.map(lambda s: s._gain_freq)), 0.0
+            ),
+            max_mcnv_modal_cn=hl.or_else(
+                hl.max(mcnv_hits.map(lambda s: s._modal_cn)), 0
+            ),
+            min_mcnv_cn2_freq=hl.or_else(
+                hl.min(mcnv_hits.map(lambda s: s._cn2_freq)), 1.0
+            ),
+            any_lowconf_dup=hl.or_else(hits.any(lambda s: s._lowconf_dup), False),
+            any_gt_overdispersed=hl.or_else(hits.any(lambda s: s._gt_overdisp), False),
+        )
+    ).drop("_hits")
+
+    return ht
 
 
 def select_group_output_fields(ht, groups):
@@ -387,6 +549,7 @@ def select_group_output_fields(ht, groups):
             "constraint": ht.constraint,
             "clinvar": ht.clinvar,
             "impc": ht.impc,
+            "sv_cnv": ht.sv_cnv,
         }
     )
 
@@ -469,6 +632,17 @@ def main(args):
         logger.info("Annotating IMPC mouse-knockout viability...")
         ht = annotate_impc_viability(ht, IMPC_PATH, MGI_PATH)
 
+        # Break lineage before the SV interval join. Only a select sits between SV
+        # and the final write, so checkpointing here isolates the long upstream
+        # annotation DAG (freq + OMIM/GERP/constraint/ClinVar/IMPC joins) from the
+        # SV shuffle that was failing under shuffle-fetch loss.
+        logger.info("Checkpointing annotations before SV/CNV overlap join...")
+        ht = ht.checkpoint(new_temp_file("hom_depletion_pre_sv", "ht"))
+
+        logger.info("Annotating raw SV/CNV overlap evidence...")
+        sv_ht = import_sv_sites_ht()
+        ht = annotate_sv_cnv_overlap(ht, sv_ht)
+
         logger.info("Select and flatten output fields...")
         ht = select_group_output_fields(ht, groups)
 
@@ -477,7 +651,7 @@ def main(args):
 
         logger.info("Writing hom depletion check results...")
         ht = ht.naive_coalesce(50)
-        ht.write("gs://gnomad-kristen/hom_depletion_af_check_all_1.ht", overwrite=True)
+        ht.write("gs://gnomad-kristen/hom_depletion_af_check_all_2.ht", overwrite=True)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
