@@ -549,6 +549,9 @@ def merge_iforest_result(
     n_partitions: int,
     header_path: Optional[str],
     array_elements_required: bool,
+    transmitted_singletons: bool,
+    sibling_singletons: bool,
+    adj: bool,
 ) -> hl.Table:
     """
     Merge the per-mode scored VCFs into a single variant QC result HT.
@@ -566,6 +569,9 @@ def merge_iforest_result(
     :param n_partitions: Number of partitions for the imported HTs.
     :param header_path: Optional VCF header file for import.
     :param array_elements_required: Value passed to hl.import_vcf.
+    :param transmitted_singletons: Whether transmitted singletons were a training set.
+    :param sibling_singletons: Whether sibling singletons were a training set.
+    :param adj: Whether the singletons VCF used adj genotypes.
     :return: Merged variant QC result HT.
     """
     snp_vcfs = [
@@ -600,6 +606,11 @@ def merge_iforest_result(
         model_id=model_id,
         snp_features=VARIANT_QC_FEATURES["snv"],
         indel_features=VARIANT_QC_FEATURES["indel"],
+        filtering_model_specific_info=hl.struct(
+            transmitted_singletons=transmitted_singletons,
+            sibling_singletons=sibling_singletons,
+            adj=adj,
+        ),
     )
 
 
@@ -675,15 +686,18 @@ def reconcile_scored_sites(
 
 def main(args):
     """Run the isolation forest variant QC workflow."""
+    model_id = args.model_id
+    if _validate_model_id(model_id) != "if":
+        raise ValueError(f"model_id must start with 'if_', but got {model_id}")
+    if args.export_v4_test_vcf and not args.test_on_v4:
+        raise ValueError("--export-v4-test-vcf requires --test-on-v4.")
+    if args.export_only and not args.export_v4_test_vcf:
+        raise ValueError("--export-only requires --export-v4-test-vcf.")
+
     environment = args.environment
     _init_hail("isolation_forest", environment, **_get_batch_resource_kwargs(args))
 
     test = args.test
-    model_id = args.model_id
-    # Validate up front so a bad model_id fails before Batch runs. The non-test-on-v4
-    # branch gets this via get_iforest_run_prefix; test-on-v4 builds its own prefix.
-    if _validate_model_id(model_id) != "if":
-        raise ValueError(f"model_id must start with 'if_', but got {model_id}")
     # Tests score only --test-chrom; must match the contigs in the test info VCF (see
     # --test-chrom in generate_variant_qc_annotations).
     test_mode = test or args.test_on_v4
@@ -738,9 +752,6 @@ def main(args):
 
     # Stable path so the same file used by GATK -XL is read back during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
-
-    if args.export_v4_test_vcf and not args.test_on_v4:
-        raise ValueError("--export-v4-test-vcf requires --test-on-v4.")
 
     # Fail fast before the Batch if an input is missing. sites_only_vcf is checked
     # unconditionally because reconcile_scored_sites reads it on --load-only runs too,
@@ -807,6 +818,9 @@ def main(args):
             n_partitions=args.n_partitions,
             header_path=args.header_path,
             array_elements_required=args.array_elements_required,
+            transmitted_singletons=args.transmitted_singletons,
+            sibling_singletons=args.sibling_singletons,
+            adj=args.adj,
         )
         # Write first, then reconcile the materialized HT so the merge is computed once.
         ht.write(result_ht_path, overwrite=args.overwrite)
