@@ -14,6 +14,7 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
@@ -92,13 +93,15 @@ def _resource_args(mode: str, singletons_vcf: Optional[str]) -> str:
 
 def _annotation_args(features: List[str]) -> str:
     """
-    Build the GATK ``-A`` annotation args from a feature list.
+    Build the GATK ``-A`` (``--annotation``) args from a feature list.
 
     .. note::
 
-        AS annotations must have ``Number=A`` in the VCF header; GATK infers
-        allele-specific mode from that (the ``--use-allele-specific-annotations`` flag
-        was replaced by this header check in GATK 4.5.0.0).
+        GATK infers allele-specific mode from ``Number=A`` on any requested annotation's
+        header line (``LabeledVariantAnnotationsWalker.isAlleleSpecificAnnotationRequested``);
+        the ``--use-allele-specific-annotations`` flag was dropped in GATK 4.5.0.0. AS
+        mode also forces ``START_POSITION_AND_MINIMAL_REPRESENTATION`` resource matching,
+        so the header matters even on split input.
     """
     return " ".join(f"-A {f}" for f in features)
 
@@ -467,6 +470,46 @@ def export_exclusion_intervals(out_path: str) -> str:
     return out_path
 
 
+def export_v4_test_sites_vcf(contigs: List[str], out_path: str) -> None:
+    """
+    Export the v4 split info HT, filtered to ``contigs``, as a GATK-readable sites VCF.
+
+    v4's ``--export-split-info-vcf`` output is misnamed: it is exported from the unsplit
+    info HT, so it cannot stand in for the split v5 info VCF. Read the split info HT
+    directly instead.
+
+    :param contigs: Contigs to keep.
+    :param out_path: Destination VCF path.
+    :return: None.
+    """
+    from gnomad_qc.v4.annotations.generate_variant_qc_annotations import (
+        get_reformatted_info_fields,
+    )
+    from gnomad_qc.v4.resources.annotations import get_info as get_v4_info
+
+    ht = get_v4_info(split=True).ht()
+    ht = hl.filter_intervals(
+        ht, [hl.parse_locus_interval(c, reference_genome="GRCh38") for c in contigs]
+    )
+    ht = get_reformatted_info_fields(ht, info_method="quasi")
+    ht = ht.select(info=ht.site_info.annotate(**ht.quasi_info))
+    # split_info_annotation leaves the AS_ fields as scalars and AS_SB_TABLE as a flat
+    # array, both of which break adjust_vcf_incompatible_types' pipe-delimiting.
+    # AS_SB_TABLE is not an iforest feature, so drop it and skip pipe-delimiting.
+    if "AS_SB_TABLE" in ht.info:
+        ht = ht.annotate(info=ht.info.drop("AS_SB_TABLE"))
+    ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
+    # Declare the features Number=A so GATK runs in allele-specific mode; Hail would
+    # write Number=1 for these split scalars. See `_annotation_args`.
+    metadata = {
+        "info": {
+            f: {"Number": "A", "Type": "Float", "Description": ""}
+            for f in VARIANT_QC_FEATURES["snv"]
+        }
+    }
+    hl.export_vcf(ht, out_path, tabix=True, metadata=metadata)
+
+
 def run_batch(b: hb.Batch, description: str) -> None:
     """
     Run a Batch to completion and raise if it did not succeed.
@@ -634,7 +677,6 @@ def main(args):
         from gnomad_qc.v4.resources.annotations import (
             get_true_positive_vcf_path as v4_get_true_positive_vcf_path,
         )
-        from gnomad_qc.v4.resources.annotations import info_vcf_path as v4_info_vcf_path
 
         run_prefix = f"gs://{BATCH_TMP_BUCKET}/if_v4_test/{model_id}"
         result_ht_path = f"{run_prefix}/gnomad.exomes.v4.0.{model_id}.result.ht"
@@ -645,8 +687,9 @@ def main(args):
             if true_positive_type
             else None
         )
-        # Use the split v4 info VCF for consistency with the v5 info VCF.
-        sites_only_vcf = v4_info_vcf_path(info_method="quasi", split=True)
+        # v4's info_vcf_path(split=True) is misnamed (exported from the unsplit info
+        # HT), so export our own split sites VCF via --export-v4-test-vcf.
+        sites_only_vcf = f"{run_prefix}/v4_test_sites.vcf.bgz"
     else:
         sites_only_vcf = info_vcf_path(test=test, environment=environment)
         singletons_vcf = (
@@ -668,6 +711,16 @@ def main(args):
 
     # Stable path so the same file used by GATK -XL is read back during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
+
+    if args.export_v4_test_vcf:
+        if not args.test_on_v4:
+            raise ValueError("--export-v4-test-vcf requires --test-on-v4.")
+        _check_resource_existence(
+            environment=environment,
+            output_step_resources={"v4_test_sites_vcf": [sites_only_vcf]},
+            overwrite=args.overwrite,
+        )
+        export_v4_test_sites_vcf(contigs, sites_only_vcf)
 
     # Fail fast before the Batch if an input is missing. sites_only_vcf is checked
     # unconditionally because reconcile_scored_sites reads it on --load-only runs too.
@@ -757,6 +810,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-on-v4",
         help="Use gnomAD v4 sites/true-positive VCFs as inputs (v5 data unavailable).",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-v4-test-vcf",
+        help=(
+            "Export the v4 split info HT filtered to --test-chrom as the --test-on-v4 "
+            "sites VCF. Requires --test-on-v4."
+        ),
         action="store_true",
     )
     parser.add_argument(

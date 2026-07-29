@@ -652,9 +652,10 @@ def main(args):
             )
             # GATK's isolation forest infers allele-specific mode from Number=A in the
             # header (the explicit --use-allele-specific-annotations flag was replaced
-            # by this header check in GATK 4.5.0.0); Hail exports arrays as Number=. so
-            # declare the AS features Number=A. VQSR (VariantRecalibrator) is flag-driven
-            # and works with either.
+            # by this header check in GATK 4.5.0.0); these features are scalars here, so
+            # Hail would write Number=1. AS mode also forces
+            # START_POSITION_AND_MINIMAL_REPRESENTATION resource matching, so the header
+            # matters even though the input is split.
             vcf_metadata = {
                 "info": {
                     f: {"Number": "A", "Type": "Float", "Description": ""}
