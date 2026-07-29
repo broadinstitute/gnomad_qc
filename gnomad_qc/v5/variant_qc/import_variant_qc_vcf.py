@@ -119,7 +119,9 @@ def import_variant_qc_vcf(
         unsplit_ht = None
         split_ht = ht
 
-    split_ht = split_ht.checkpoint(hl.utils.new_temp_file("split_vcq_result", "ht"))
+    # `ht` is already materialized at `tmp_path`; only checkpoint if it was changed.
+    if not is_split or deduplicate_check:
+        split_ht = split_ht.checkpoint(hl.utils.new_temp_file("split_vcq_result", "ht"))
     split_count = split_ht.count()
     if unsplit_count is None:
         logger.info("Found %s split variants in the VCF.", split_count)

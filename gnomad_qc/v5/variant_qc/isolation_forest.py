@@ -14,7 +14,6 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
-from gnomad.variant_qc.pipeline import INFO_FEATURES
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
@@ -459,68 +458,12 @@ def export_exclusion_intervals(out_path: str) -> str:
     return out_path
 
 
-def reheader_v4_sites_job(
-    b: hb.Batch,
-    raw_vcf: str,
-    out_root: str,
-    contigs: List[str],
-    image: str,
-    gcp_billing_project: str,
-) -> Job:
-    """
-    Reheader a v4 sites VCF for the isolation forest and strip fields Hail can't import.
-
-    Streams the VCF: rewrites the AS-float ``##INFO`` header lines to ``Number=A`` (GATK
-    needs this to enter allele-specific mode), keeps records on ``contigs``, and passes
-    kept fields through untouched (no re-typing).
-
-    .. note::
-
-        AS_SB_TABLE / SB / AS_QUALapprox / AS_VarDP are stripped: these strand-bias /
-        count-table and pipe-delimited fields have a v4 encoding (comma values under a
-        scalar Number) that breaks Hail's ``import_vcf`` in the load step, and they are
-        not needed for the iforest result. Stopgap for the v4 test; revisit if a real
-        run needs them (see the reformatting TODO in ``import_variant_qc_vcf``).
-
-    :param b: Batch to add the job to.
-    :param raw_vcf: gs:// path to the v4 sites VCF (requester-pays).
-    :param out_root: Output prefix; writes ``{out_root}.vcf.gz`` and ``.vcf.gz.tbi``.
-    :param contigs: Contigs to keep.
-    :param image: Image providing gsutil, bcftools, and tabix.
-    :param gcp_billing_project: GCP project for requester-pays reads.
-    :return: Job with output ResourceGroup ``out``.
-    """
-    j = b.new_job("Reheader v4 sites (Number=A)")
-    j.image(image)
-    j.cpu(2)
-    j.memory("standard")
-    j.storage("50G")
-    j.declare_resource_group(
-        out={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"}
-    )
-    as_fields = "|".join(INFO_FEATURES)
-    keep_contig = " || ".join(f'$1=="{c}"' for c in contigs)
-    strip_fields = "INFO/AS_SB_TABLE,INFO/SB,INFO/AS_QUALapprox,INFO/AS_VarDP"
-    j.command(
-        f"""set -euo pipefail
-        gsutil -u {gcp_billing_project} cat {raw_vcf} | zcat \\
-          | sed -E 's/(##INFO=<ID=({as_fields}),Number=)\\./\\1A/' \\
-          | awk -F'\\t' '/^#/ || {keep_contig}' \\
-          | bcftools annotate -x {strip_fields} -Oz -o {j.out['vcf.gz']} -
-        tabix -p vcf {j.out['vcf.gz']}
-        """
-    )
-    b.write_output(j.out, out_root)
-    return j
-
-
 def run_batch(b: hb.Batch, description: str) -> None:
     """
     Run a Batch to completion and raise if it did not succeed.
 
     ``Batch.run`` waits but only prints the final state, so a failed batch would
-    otherwise fall through to the next step (e.g. submitting the GATK jobs against a
-    reheadered VCF that was never written).
+    otherwise fall through to the next step.
 
     :param b: Batch to run.
     :param description: Batch description used in the error message.
@@ -579,7 +522,8 @@ def merge_iforest_result(
             header_path,
             array_elements_required,
             is_split=is_split,
-            deduplicate_check=True,
+            # Disjoint shards make duplicate keys impossible; the check costs a shuffle.
+            deduplicate_check=False,
         )
         # Only the split HT is used; the unsplit HT is returned when is_split is False.
         ht = hts[0] if isinstance(hts, tuple) else hts
@@ -616,17 +560,15 @@ def reconcile_scored_sites(
     exclude_intervals_path: str,
     scored_ht: hl.Table,
     array_elements_required: bool = False,
-    max_consecutive_missing: int = 100,
 ) -> None:
     """
-    Warn on input loci in the scored region absent from the output; fail on a contiguous run.
+    Raise if any input variant in the scored region is missing from the output or unscored.
 
-    The scored region is reconstructed from the same ``-L`` contigs and ``-XL`` exclusion
-    file GATK used. GATK skips sites it cannot score (all-missing annotations, mixed/MNP/
-    spanning-deletion types), so scattered absences are expected and only warned about.
-    A run of ``max_consecutive_missing`` input loci that are all absent with no scored
-    locus between them indicates a silently dropped region (e.g. a shard that
-    under-emitted) and raises.
+    GATK writes every input record within its interval to the scored VCF, so any variant
+    absent from the merged output was dropped (e.g. a truncated shard). GATK classifies
+    every allele as either SNP or INDEL, so every variant should also carry a SCORE.
+
+    Input and output are both split, so variants are compared on the full key.
 
     :param sites_only_vcf: Input sites VCF that was scored.
     :param contigs: Calling contigs passed to GATK (``-L``).
@@ -634,7 +576,6 @@ def reconcile_scored_sites(
         (``-XL``).
     :param scored_ht: Merged scored result HT.
     :param array_elements_required: Value passed to hl.import_vcf for the input.
-    :param max_consecutive_missing: Fail if this many consecutive input loci are absent.
     :return: None.
     """
     exclude_ht = hl.import_locus_intervals(
@@ -646,56 +587,29 @@ def reconcile_scored_sites(
         reference_genome="GRCh38",
         array_elements_required=array_elements_required,
     ).rows()
-    scored_loci = scored_ht.key_by("locus").select().distinct()
     contig_set = hl.literal(set(contigs))
-    input_loci = (
-        input_ht.filter(
-            contig_set.contains(input_ht.locus.contig)
-            & hl.is_missing(exclude_ht[input_ht.locus])
-        )
-        .key_by("locus")
-        .select()
-        .distinct()
-    )
-    input_loci = input_loci.annotate(
-        scored=hl.is_defined(scored_loci[input_loci.locus])
-    )
-    input_loci = input_loci.checkpoint(hl.utils.new_temp_file("reconcile", "ht"))
+    input_ht = input_ht.filter(
+        contig_set.contains(input_ht.locus.contig)
+        & hl.is_missing(exclude_ht[input_ht.locus])
+    ).select()
 
-    n_missing = input_loci.aggregate(hl.agg.count_where(~input_loci.scored))
-    if n_missing == 0:
-        logger.info(
-            "Reconciliation passed: all input loci in the scored region are present."
-        )
-        return
-
-    examples = [r.locus for r in input_loci.filter(~input_loci.scored).take(5)]
-    logger.warning(
-        "%s input loci in the scored region are absent from the scored output; GATK "
-        "skips unscoreable sites, so scattered absences are expected. Examples: %s",
-        n_missing,
-        examples,
-    )
-
-    # Consecutive absent loci sharing a scored-prefix count form one dropped run; a long
-    # run (vs isolated scattered drops) signals a silently dropped region.
-    input_loci = input_loci.annotate(run_id=hl.scan.sum(hl.int(input_loci.scored)))
-    missing_ht = input_loci.filter(~input_loci.scored)
-    runs = missing_ht.group_by(
-        contig=missing_ht.locus.contig, run_id=missing_ht.run_id
-    ).aggregate(run_len=hl.agg.count())
-    longest = runs.aggregate(hl.agg.max(runs.run_len))
-    if longest is not None and longest >= max_consecutive_missing:
+    missing = input_ht.anti_join(scored_ht.select())
+    n_missing = missing.count()
+    if n_missing > 0:
         raise ValueError(
-            f"Longest run of consecutive missing loci is {longest} "
-            f"(>= {max_consecutive_missing}); a contiguous region was likely dropped."
+            f"{n_missing} input variants in the scored region are missing from the "
+            f"scored output. Examples: {[(m.locus, m.alleles) for m in missing.take(5)]}"
         )
-    logger.info(
-        "Missing loci are scattered (longest consecutive run %s < %s); treating as "
-        "expected GATK drops.",
-        longest,
-        max_consecutive_missing,
-    )
+
+    unscored = hl.is_missing(scored_ht.info.SCORE)
+    n_unscored = scored_ht.aggregate(hl.agg.count_where(unscored))
+    if n_unscored > 0:
+        examples = scored_ht.filter(unscored).take(5)
+        raise ValueError(
+            f"{n_unscored} variants have no SCORE. Examples: "
+            f"{[(e.locus, e.alleles) for e in examples]}"
+        )
+    logger.info("Reconciliation passed: all input variants are present and scored.")
 
 
 def main(args):
@@ -740,13 +654,9 @@ def main(args):
             if true_positive_type
             else None
         )
-        # The published v4 info VCF declares AS fields Number=.; a header-only reheader
-        # (run below) sets them to Number=A so GATK enters allele-specific mode.
-        raw_sites_vcf = v4_info_vcf_path(info_method="quasi")
-        reheader_root = f"{run_prefix}/reheader/{model_id}.sites"
-        sites_only_vcf = f"{reheader_root}.vcf.gz"
+        # Use the split v4 info VCF for consistency with the v5 info VCF.
+        sites_only_vcf = v4_info_vcf_path(info_method="quasi", split=True)
     else:
-        raw_sites_vcf = None
         sites_only_vcf = info_vcf_path(test=test, environment=environment)
         singletons_vcf = (
             get_true_positive_vcf_path(
@@ -781,21 +691,6 @@ def main(args):
             billing_project=args.batch_billing_project,
             remote_tmpdir=f"gs://{BATCH_TMP_BUCKET}/",
         )
-        # Reheader the v4 input to Number=A first, to completion, so the GATK jobs read
-        # the finished VCF from the bucket. Reuse an existing reheadered VCF unless
-        # overwriting, since re-streaming the full v4 sites VCF is expensive.
-        if args.test_on_v4 and (args.overwrite or not file_exists(sites_only_vcf)):
-            rb = hb.Batch(f"reheader {model_id}{args.batch_suffix}", backend=backend)
-            reheader_v4_sites_job(
-                b=rb,
-                raw_vcf=raw_sites_vcf,
-                out_root=reheader_root,
-                contigs=contigs,
-                image=args.reheader_image or args.gatk_image,
-                gcp_billing_project=args.gcp_billing_project,
-            )
-            run_batch(rb, "Reheader")
-
         export_exclusion_intervals(exclude_intervals)
         b = hb.Batch(f"isolation forest {model_id}{args.batch_suffix}", backend=backend)
         isolation_forest_workflow(
@@ -823,16 +718,16 @@ def main(args):
             n_partitions=args.n_partitions,
             header_path=args.header_path,
             array_elements_required=args.array_elements_required,
-            is_split=not args.test_on_v4,
         )
+        # Write first, then reconcile the materialized HT so the merge is computed once.
+        ht.write(result_ht_path, overwrite=args.overwrite)
         reconcile_scored_sites(
             sites_only_vcf=sites_only_vcf,
             contigs=contigs,
             exclude_intervals_path=exclude_intervals,
-            scored_ht=ht,
+            scored_ht=hl.read_table(result_ht_path),
             array_elements_required=args.array_elements_required,
         )
-        ht.write(result_ht_path, overwrite=args.overwrite)
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -899,15 +794,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--gatk-image",
         help="GATK docker image.",
         default=DEFAULT_GATK_IMAGE,
-        type=str,
-    )
-    parser.add_argument(
-        "--reheader-image",
-        help=(
-            "Image for the --test-on-v4 reheader job; must provide gsutil, bcftools, "
-            "and tabix. Defaults to --gatk-image, which provides all three."
-        ),
-        default=None,
         type=str,
     )
     parser.add_argument(
