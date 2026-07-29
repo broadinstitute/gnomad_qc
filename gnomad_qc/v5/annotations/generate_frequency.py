@@ -47,7 +47,6 @@ import argparse
 import copy
 import logging
 import re
-from typing import List, Optional, Set
 
 import hail as hl
 import hailtop.batch as hb
@@ -111,7 +110,7 @@ logger = logging.getLogger("v5_frequency")
 logger.setLevel(logging.INFO)
 
 
-def _combine_freq_suffix(suffix: Optional[str], chrom: Optional[str]) -> Optional[str]:
+def _combine_freq_suffix(suffix: str | None, chrom: str | None) -> str | None:
     """
     Fold an optional ``--chrom`` contig into the freq HT suffix.
 
@@ -133,7 +132,7 @@ def _combine_freq_suffix(suffix: Optional[str], chrom: Optional[str]) -> Optiona
     return suffix or chrom
 
 
-def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
+def _apply_path_suffix(path: str, suffix: str | None) -> str:
     """
     Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix.
 
@@ -177,6 +176,49 @@ def _parse_region_interval(
         includes_start=True,
         includes_end=False,
     )
+
+
+def _split_intervals_for_read(
+    intervals: list[hl.utils.Interval], n: int
+) -> list[hl.utils.Interval]:
+    """
+    Split each half-open locus interval into ``n`` roughly equal position sub-intervals.
+
+    ``hl.vds.read_vds(intervals=...)`` partitions the read BY the intervals it is given,
+    so passing N tiling sub-intervals for a region makes the variant read land in N
+    partitions instead of 1 -- giving the downstream per-variant aggregation N-way row
+    parallelism with no shuffle (each sub-interval reads its own slice). Safe for the
+    variant-only all-sites-AN aggregation (point loci; no reference-block straddle to
+    undercount). Sub-intervals stay half-open and tile the original exactly, so no locus
+    is dropped or double-counted. Position-based (not variant-density-balanced), so
+    per-partition variant counts may be uneven -- fine for parallelism, and simple.
+
+    :param intervals: Half-open locus intervals to split.
+    :param n: Number of sub-intervals per input interval (``<= 1`` returns unchanged).
+    :return: Flattened list of ``n`` sub-intervals per input interval.
+    """
+    if n <= 1:
+        return intervals
+    out = []
+    for iv in intervals:
+        contig = iv.start.contig
+        rg = iv.start.reference_genome
+        start, end = iv.start.position, iv.end.position
+        if end - start <= n:
+            out.append(iv)
+            continue
+        step = (end - start) // n
+        bounds = [start + i * step for i in range(n)] + [end]
+        out.extend(
+            hl.Interval(
+                hl.Locus(contig, bounds[i], reference_genome=rg),
+                hl.Locus(contig, bounds[i + 1], reference_genome=rg),
+                includes_start=True,
+                includes_end=False,
+            )
+            for i in range(n)
+        )
+    return out
 
 
 def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
@@ -345,9 +387,9 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     aou_variant_mt: hl.MatrixTable,
     test: bool = False,
     environment: str = "batch",
-    chrom: Optional[str] = None,
-    region_intervals: Optional[List[hl.utils.Interval]] = None,
-    all_sites_an_suffix: Optional[str] = None,
+    chrom: str | None = None,
+    region_intervals: list[hl.utils.Interval] | None = None,
+    all_sites_an_suffix: str | None = None,
     reduce_to_minimal_groups: bool = False,
 ) -> hl.Table:
     """
@@ -433,6 +475,12 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
                 reduce_path,
             )
     group_membership_ht = hl.read_table(gm_path)
+    # TEMP (perf test): the reduced group_membership is a ~365k-sample lookup written by
+    # compute_coverage at ~330 partitions, but it exists only to build the broadcast
+    # per-strata index -- far more partitions than needed, and it fans every read/collect
+    # stage to ~330 tasks. Coalesce it small for this test. Proper fix: write it coalesced
+    # in compute_coverage.get_group_membership_ht so all consumers benefit.
+    group_membership_ht = group_membership_ht.naive_coalesce(10)
 
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
@@ -455,12 +503,20 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     # line up with the full-strata all-sites AN joined below.
     if reduced:
         gg = group_membership_ht.index_globals()
-        leaf_indices = hl.eval(gg.freq_leaf_indices)
-        decomposition = {
-            i: d for i, d in enumerate(hl.eval(gg.freq_group_decomposition)) if d
-        }
-        freq_meta_full = hl.eval(gg.freq_meta_full)
-        freq_meta_sample_count_full = hl.eval(gg.freq_meta_sample_count_full)
+        # Batch the four global reads into ONE hl.eval round-trip -- each hl.eval is a
+        # separate QoB driver execution.
+        ev = hl.eval(
+            hl.struct(
+                leaf_indices=gg.freq_leaf_indices,
+                decomposition=gg.freq_group_decomposition,
+                freq_meta_full=gg.freq_meta_full,
+                freq_meta_sample_count_full=gg.freq_meta_sample_count_full,
+            )
+        )
+        leaf_indices = ev.leaf_indices
+        decomposition = {i: d for i, d in enumerate(ev.decomposition) if d}
+        freq_meta_full = ev.freq_meta_full
+        freq_meta_sample_count_full = ev.freq_meta_sample_count_full
         n_full = len(freq_meta_full)
         aou_variant_freq_ht = aou_variant_freq_ht.annotate(
             AC=expand_strata_array_from_leaves(
@@ -632,14 +688,15 @@ def _calculate_aou_frequencies_and_hists_using_densify(
 def process_aou_dataset(
     test_vds: bool = False,
     test_partitions: int = None,
-    repartition_after_filter: Optional[int] = None,
+    repartition_after_filter: int | None = None,
     use_all_sites_ans: bool = False,
     environment: str = "batch",
     reduce_to_minimal_groups: bool = False,
     overwrite_split_aou_vds: bool = False,
-    chrom: Optional[str] = None,
-    test_region: Optional[List[str]] = None,
-    all_sites_an_suffix: Optional[str] = None,
+    chrom: str | None = None,
+    test_region: list[str] | None = None,
+    all_sites_an_suffix: str | None = None,
+    read_subintervals: int | None = None,
 ) -> hl.Table:
     """
     Process All of Us dataset for frequency calculations and age histograms.
@@ -682,6 +739,17 @@ def process_aou_dataset(
     region_intervals = (
         [_parse_region_interval(r) for r in test_region] if test_region else None
     )
+    # Optionally split the region into sub-intervals so the variant read lands in
+    # ``read_subintervals`` partitions (N-way row parallelism for the aggregation)
+    # instead of the single partition a whole-region read prunes to.
+    if region_intervals and read_subintervals:
+        region_intervals = _split_intervals_for_read(
+            region_intervals, read_subintervals
+        )
+        logger.info(
+            "Split --test-region into %d read sub-interval(s) for parallelism.",
+            len(region_intervals),
+        )
 
     # On the densify path, check whether the persistent prepared/split AoU VDS
     # checkpoint already exists. If so, skip the raw load + _prepare_aou_vds
@@ -786,7 +854,7 @@ def process_aou_dataset(
 # ---------------------------------------------------------------------------
 
 
-def _list_present_freq_chunk_indices(sample_chunk_path: str) -> Set[int]:
+def _list_present_freq_chunk_indices(sample_chunk_path: str) -> set[int]:
     """
     Return the set of chunk indices with a completed (``_SUCCESS``) output.
 
@@ -803,7 +871,7 @@ def _list_present_freq_chunk_indices(sample_chunk_path: str) -> Set[int]:
     :return: Set of completed chunk indices.
     """
     chunk_dir = sample_chunk_path.rstrip("/").rsplit("/", 1)[0]
-    present: Set[int] = set()
+    present: set[int] = set()
     try:
         entries = hfs.ls(f"{chunk_dir}/*.freq.chunk_*.ht/_SUCCESS")
     except (FileNotFoundError, OSError):
@@ -824,11 +892,11 @@ def _run_aou_freq_chunk(
     test: bool,
     environment: str,
     reduce_to_minimal_groups: bool,
-    repartition_after_filter: Optional[int],
-    n_partitions_on_read: Optional[int] = None,
+    repartition_after_filter: int | None,
+    n_partitions_on_read: int | None = None,
     driver_memory: str = "10g",
     local_cores: int = 2,
-    chrom: Optional[str] = None,
+    chrom: str | None = None,
 ) -> None:
     """
     Compute the AoU frequency HT for a single partition slice.
@@ -881,7 +949,7 @@ def _run_aou_freq_chunk(
     freq_ht.write(output_path, overwrite=True)
 
 
-def _run_aou_freq_merge(input_paths: List[str], output_path: str) -> None:
+def _run_aou_freq_merge(input_paths: list[str], output_path: str) -> None:
     """
     Union a list of partial AoU frequency HTs and write the result.
 
@@ -903,11 +971,11 @@ def run_aou_freq_sequential(
     test: bool = False,
     environment: str = "batch",
     partitions_per_job: int = 2,
-    repartition_after_filter: Optional[int] = 100,
+    repartition_after_filter: int | None = 100,
     reduce_to_minimal_groups: bool = False,
-    suffix: Optional[str] = None,
+    suffix: str | None = None,
     overwrite: bool = False,
-    chrom: Optional[str] = None,
+    chrom: str | None = None,
 ) -> None:
     """
     Compute AoU frequencies by looping through partition chunks sequentially.
@@ -1107,8 +1175,8 @@ def run_aou_freq_as_batch(
     test: bool = False,
     environment: str = "batch",
     partitions_per_job: int = 2,
-    repartition_after_filter: Optional[int] = 100,
-    n_partitions_on_read: Optional[int] = None,
+    repartition_after_filter: int | None = 100,
+    n_partitions_on_read: int | None = None,
     merge_group_size: int = 500,
     reduce_to_minimal_groups: bool = False,
     chunk_cpu: int = 2,
@@ -1118,14 +1186,14 @@ def run_aou_freq_as_batch(
     merge_memory: str = "standard",
     merge_storage: str = "50Gi",
     final_merge_storage: str = "100Gi",
-    regions: Optional[List[str]] = None,
+    regions: list[str] | None = None,
     billing_project: str = "gnomad-production",
-    remote_tmpdir: Optional[str] = None,
+    remote_tmpdir: str | None = None,
     image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest",
     methods_branch: str = "main",
-    suffix: Optional[str] = None,
+    suffix: str | None = None,
     dry_run: bool = False,
-    chrom: Optional[str] = None,
+    chrom: str | None = None,
     overwrite: bool = False,
 ) -> None:
     """
@@ -1349,7 +1417,7 @@ def _prepare_consent_vds(
     v4_ht: hl.Table,
     test_vds: bool = False,
     test_partitions: int = 2,
-    chrom: Optional[str] = None,
+    chrom: str | None = None,
 ) -> hl.vds.VariantDataset:
     """
     Load and prepare VDS for consent withdrawal sample processing.
@@ -1715,7 +1783,7 @@ def process_gnomad_dataset(
     test_vds: bool = False,
     test_partitions: int = 2,
     environment: str = "batch",
-    chrom: Optional[str] = None,
+    chrom: str | None = None,
 ) -> hl.Table:
     """
     Process gnomAD dataset to update v4 frequency HT by removing consent withdrawal samples.
@@ -1849,8 +1917,15 @@ def merge_gnomad_and_aou_frequencies(
     :param aou_freq_ht: Frequency Table for AoU.
     :return: Merged frequency Table with combined frequencies and histograms.
     """
+    # Index the AoU freq HT ONCE and pull both freq and histograms off the same indexed
+    # struct so the compiled IR emits a single join (one scan of the genome-wide AoU HT)
+    # instead of two. aou_histograms doesn't depend on any field added between here and
+    # the old second annotate, and annotate preserves the key, so this is
+    # output-identical.
+    aou_indexed = aou_freq_ht[gnomad_freq_ht.key]
     joined_freq_ht = gnomad_freq_ht.annotate(
-        aou_freq=aou_freq_ht[gnomad_freq_ht.key].freq
+        aou_freq=aou_indexed.freq,
+        aou_histograms=aou_indexed.histograms,
     )
 
     joined_freq_ht = joined_freq_ht.annotate_globals(
@@ -1898,9 +1973,8 @@ def merge_gnomad_and_aou_frequencies(
     )
 
     logger.info("Merging quality histograms and age histograms from both datasets...")
-    joined_freq_ht = joined_freq_ht.annotate(
-        aou_histograms=aou_freq_ht[joined_freq_ht.key].histograms,
-    )
+    # aou_histograms was pulled off the single aou_freq_ht index at the top of this
+    # function (with aou_freq), so no second join here.
 
     def _merge_hist_struct(hist1, hist2, operation="sum"):
         """Merge all fields of two histogram structs."""
@@ -1973,14 +2047,14 @@ def calculate_faf_and_grpmax_annotations(
     non_aou_freq_meta = non_aou_freq_meta.map(
         lambda d: hl.dict(d.items().filter(lambda x: x[0] != "subset"))
     )
-    non_aou_ht = ht.annotate(freq=non_aou_array_exprs["freq"])
-    non_aou_ht = non_aou_ht.annotate_globals(freq_meta=non_aou_freq_meta)
-
+    # Use the filtered freq expression (already a per-row expr on ht) and the filtered
+    # meta directly, instead of wrapping into a table and self-joining it back -- the
+    # self-join compiled to a second scan of the merged checkpoint.
     freq_metas = {
         "gnomad": (ht.freq, ht.index_globals().freq_meta),
         "non_aou": (
-            non_aou_ht[ht.key].freq,
-            non_aou_ht.index_globals().freq_meta,
+            non_aou_array_exprs["freq"],
+            non_aou_freq_meta,
         ),
     }
 
@@ -1998,7 +2072,7 @@ def calculate_faf_and_grpmax_annotations(
 
         # Add subset back to non_aou faf meta.
         if dataset == "non_aou":
-            faf_meta = [{**x, **{"subset": "non_aou"}} for x in faf_meta]
+            faf_meta = [{**x, "subset": "non_aou"} for x in faf_meta]
 
         faf_exprs.append(faf)
         faf_meta_exprs.append(faf_meta)
@@ -2025,7 +2099,7 @@ def calculate_faf_and_grpmax_annotations(
     return ht
 
 
-def _get_default_app_name(args) -> Optional[str]:
+def _get_default_app_name(args) -> str | None:
     """
     Derive a Hail Batch app name from the processing-step args.
 
@@ -2227,6 +2301,7 @@ def main(args):
                     chrom=chrom,
                     test_region=args.test_region,
                     all_sites_an_suffix=args.all_sites_an_suffix,
+                    read_subintervals=args.read_subintervals,
                 )
                 logger.info("Writing AoU frequency HT to %s...", aou_freq.path)
                 aou_freq_ht.write(aou_freq.path, overwrite=overwrite)
@@ -2494,6 +2569,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " output paths) while still using the real AoU VDS scoped to the region."
             " The all-sites-AN QoB test region was chr1:55058666-55158666. Mutually"
             " exclusive with --test-partitions."
+        ),
+    )
+    test_group.add_argument(
+        "--read-subintervals",
+        type=int,
+        default=None,
+        help=(
+            "TESTING/PERF: split each --test-region into this many read sub-intervals so"
+            " the variant read lands in this many partitions (N-way row parallelism for"
+            " the all-sites-AN aggregation) instead of the single partition a whole-region"
+            " read prunes to. Position-based tiling; only affects the --use-all-sites-ans"
+            " path. Default None (no split)."
         ),
     )
 
