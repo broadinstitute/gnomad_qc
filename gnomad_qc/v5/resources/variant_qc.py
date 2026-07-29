@@ -18,10 +18,10 @@ from gnomad_qc.v5.resources.constants import (
     VARIANT_QC_RESULT_VERSIONS,
 )
 
-# Isolation forest features, keyed by variant type. GATK trains a separate model per
+# Variant QC model features, keyed by variant type. GATK trains a separate model per
 # --mode, so SNPs/INDELs need their own lists. AS_MQ is dropped for indels (v4 genomes
 # VQSR convention); AS_pab_max is kept for both (tree-based, unlike Gaussian VQSR).
-IF_FEATURES = {
+VARIANT_QC_FEATURES = {
     "snv": [
         "AS_QD",
         "AS_pab_max",
@@ -40,7 +40,7 @@ IF_FEATURES = {
         "AS_SOR",
     ],
 }
-"""Features used in the isolation forest model, keyed by variant type."""
+"""Features used by the v5 variant QC models, keyed by variant type."""
 
 
 def _variant_qc_root(

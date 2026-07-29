@@ -24,7 +24,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
 from gnomad_qc.v5.resources.variant_qc import (
-    IF_FEATURES,
+    VARIANT_QC_FEATURES,
     _validate_model_id,
     get_iforest_run_prefix,
     get_variant_qc_result,
@@ -364,10 +364,10 @@ def isolation_forest_workflow(
         gcp_billing_project=gcp_billing_project,
     ).intervals
 
-    # GATK requires an uppercase --mode; IF_FEATURES is keyed 'snv'/'indel'.
+    # GATK requires an uppercase --mode; VARIANT_QC_FEATURES is keyed 'snv'/'indel'.
     for mode, feature_key in [("SNP", "snv"), ("INDEL", "indel")]:
         m = mode.lower()
-        features = IF_FEATURES[feature_key]
+        features = VARIANT_QC_FEATURES[feature_key]
         resource_args = _resource_args(mode, singletons_vcf)
         extract_root = f"{run_prefix}/extract/{m}/extract"
         model_root = f"{run_prefix}/model/{m}/model"
@@ -419,7 +419,14 @@ def isolation_forest_workflow(
                 hyperparameters_json=hyperparameters_json,
             ).model
 
+        # Reuse existing score shards so a partial-failure rerun resumes instead of
+        # re-scoring and clobbering every shard.
+        n_skipped = 0
         for idx in range(scatter_count):
+            score_root = f"{run_prefix}/score/{m}/{out_vcf_name}{idx}"
+            if not overwrite and file_exists(f"{score_root}.vcf.gz"):
+                n_skipped += 1
+                continue
             score_variant_annotations_job(
                 b=b,
                 mode=mode,
@@ -429,10 +436,12 @@ def isolation_forest_workflow(
                 model=model,
                 resource_args=resource_args,
                 interval=intervals[f"interval_{idx}"],
-                out_root=f"{run_prefix}/score/{m}/{out_vcf_name}{idx}",
+                out_root=score_root,
                 gatk_image=gatk_image,
                 gcp_billing_project=gcp_billing_project,
             )
+        if n_skipped:
+            logger.info("Reusing %s existing %s score shards.", n_skipped, mode)
 
 
 def export_exclusion_intervals(out_path: str) -> str:
@@ -483,7 +492,6 @@ def merge_iforest_result(
     n_partitions: int,
     header_path: Optional[str],
     array_elements_required: bool,
-    is_split: bool = True,
 ) -> hl.Table:
     """
     Merge the per-mode scored VCFs into a single variant QC result HT.
@@ -501,8 +509,6 @@ def merge_iforest_result(
     :param n_partitions: Number of partitions for the imported HTs.
     :param header_path: Optional VCF header file for import.
     :param array_elements_required: Value passed to hl.import_vcf.
-    :param is_split: Whether the scored VCFs are already split. True for v5 (the info HT
-        is split by `annotate_allele_info`); False for the unsplit v4 test input.
     :return: Merged variant QC result HT.
     """
     snp_vcfs = [
@@ -515,31 +521,16 @@ def merge_iforest_result(
     ]
 
     def _import(vcfs: List[str]) -> hl.Table:
-        hts = import_variant_qc_vcf(
+        return import_variant_qc_vcf(
             vcfs,
             model_id,
             n_partitions,
             header_path,
             array_elements_required,
-            is_split=is_split,
+            is_split=True,
             # Disjoint shards make duplicate keys impossible; the check costs a shuffle.
             deduplicate_check=False,
         )
-        # Only the split HT is used; the unsplit HT is returned when is_split is False.
-        ht = hts[0] if isinstance(hts, tuple) else hts
-        if is_split:
-            # Number=A fields import as length-1 arrays on split input; index to scalars
-            # (split_info_annotation does this via a_index on the unsplit path).
-            ht = ht.annotate(
-                info=ht.info.annotate(
-                    **{
-                        f: ht.info[f][0]
-                        for f, t in ht.info.dtype.items()
-                        if f.startswith("AS_") and isinstance(t, hl.tarray)
-                    }
-                )
-            )
-        return ht
 
     snp_ht = _import(snp_vcfs)
     indel_ht = _import(indel_vcfs)
@@ -549,8 +540,8 @@ def merge_iforest_result(
     ht = snp_ht.union(indel_ht)
     return ht.annotate_globals(
         model_id=model_id,
-        snp_features=IF_FEATURES["snv"],
-        indel_features=IF_FEATURES["indel"],
+        snp_features=VARIANT_QC_FEATURES["snv"],
+        indel_features=VARIANT_QC_FEATURES["indel"],
     )
 
 
@@ -677,6 +668,15 @@ def main(args):
 
     # Stable path so the same file used by GATK -XL is read back during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
+
+    # Fail fast before the Batch if an input is missing. sites_only_vcf is checked
+    # unconditionally because reconcile_scored_sites reads it on --load-only runs too.
+    input_step_resources = {"sites_only_vcf": [sites_only_vcf]}
+    if singletons_vcf and not args.load_only:
+        input_step_resources["singletons_vcf"] = [singletons_vcf]
+    _check_resource_existence(
+        environment=environment, input_step_resources=input_step_resources
+    )
 
     # Fail fast before the Batch if the result HT already exists and we'd load it.
     if args.load_iforest or args.load_only:

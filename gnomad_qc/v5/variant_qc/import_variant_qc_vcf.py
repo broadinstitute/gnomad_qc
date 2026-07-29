@@ -12,7 +12,7 @@ from gnomad_qc.v5.resources.basics import (
     _get_batch_resource_kwargs,
     _init_hail,
 )
-from gnomad_qc.v5.resources.variant_qc import IF_FEATURES, get_variant_qc_result
+from gnomad_qc.v5.resources.variant_qc import VARIANT_QC_FEATURES, get_variant_qc_result
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
@@ -88,10 +88,9 @@ def import_variant_qc_vcf(
             as_vqslod_expr = {"AS_VQSLOD": ht.info.AS_VQSLOD.map(lambda x: hl.float(x))}
         else:
             as_vqslod_expr = {}
-        # Reformat the pipe/comma-delimited AS fields when present. They may be absent
-        # (e.g. stripped by the isolation forest v4-test reheader, whose v4 encoding
-        # breaks import_vcf) and are not required for the variant QC result.
-        # TODO: Confirm these are present and pipe-delimited in the v5 info VCF.
+        # Reformat the pipe-delimited AS fields. This branch is v4-only: v4 exports them
+        # pipe-delimited (adjust_vcf_incompatible_types default) while v5 passes
+        # pipe_delimited_annotations=[]. Guards allow for fields absent from the input.
         reformat_expr = {}
         if "AS_QUALapprox" in ht.info:
             reformat_expr["AS_QUALapprox"] = ht.info.AS_QUALapprox.split("\|")[1:].map(
@@ -117,9 +116,20 @@ def import_variant_qc_vcf(
         )
     else:
         unsplit_ht = None
-        split_ht = ht
+        # Number=A fields import as length-1 arrays on split input; index to scalars
+        # (split_info_annotation does this via a_index on the unsplit path).
+        split_ht = ht.annotate(
+            info=ht.info.annotate(
+                **{
+                    f: ht.info[f][0]
+                    for f, t in ht.info.dtype.items()
+                    if f.startswith("AS_") and isinstance(t, hl.tarray)
+                }
+            )
+        )
 
-    # `ht` is already materialized at `tmp_path`; only checkpoint if it was changed.
+    # `ht` is already materialized at `tmp_path`; only checkpoint if it was changed
+    # (the split-path scalar indexing is cheap enough to recompute).
     if not is_split or deduplicate_check:
         split_ht = split_ht.checkpoint(hl.utils.new_temp_file("split_vcq_result", "ht"))
     split_count = split_ht.count()
@@ -264,14 +274,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--snp-features",
         help="SNP model features (stored as a global).",
-        default=IF_FEATURES["snv"],
+        default=VARIANT_QC_FEATURES["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
         help="Indel model features (stored as a global).",
-        default=IF_FEATURES["indel"],
+        default=VARIANT_QC_FEATURES["indel"],
         type=str,
         nargs="+",
     )
