@@ -712,32 +712,41 @@ def main(args):
     # Stable path so the same file used by GATK -XL is read back during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
 
+    if args.export_v4_test_vcf and not args.test_on_v4:
+        raise ValueError("--export-v4-test-vcf requires --test-on-v4.")
+
+    # Fail fast before the Batch if an input is missing. sites_only_vcf is checked
+    # unconditionally because reconcile_scored_sites reads it on --load-only runs too,
+    # unless this run exports it.
+    input_step_resources = {}
+    if not args.export_v4_test_vcf:
+        input_step_resources["sites_only_vcf"] = [sites_only_vcf]
+    if singletons_vcf and not args.load_only:
+        input_step_resources["singletons_vcf"] = [singletons_vcf]
+    if input_step_resources:
+        _check_resource_existence(
+            environment=environment, input_step_resources=input_step_resources
+        )
+
+    # Fail fast before the Batch if an output we'd write already exists.
     if args.export_v4_test_vcf:
-        if not args.test_on_v4:
-            raise ValueError("--export-v4-test-vcf requires --test-on-v4.")
         _check_resource_existence(
             environment=environment,
             output_step_resources={"v4_test_sites_vcf": [sites_only_vcf]},
             overwrite=args.overwrite,
         )
-        export_v4_test_sites_vcf(contigs, sites_only_vcf)
-
-    # Fail fast before the Batch if an input is missing. sites_only_vcf is checked
-    # unconditionally because reconcile_scored_sites reads it on --load-only runs too.
-    input_step_resources = {"sites_only_vcf": [sites_only_vcf]}
-    if singletons_vcf and not args.load_only:
-        input_step_resources["singletons_vcf"] = [singletons_vcf]
-    _check_resource_existence(
-        environment=environment, input_step_resources=input_step_resources
-    )
-
-    # Fail fast before the Batch if the result HT already exists and we'd load it.
     if args.load_iforest or args.load_only:
         _check_resource_existence(
             environment=environment,
             output_step_resources={"variant_qc_result": [result_ht_path]},
             overwrite=args.overwrite,
         )
+
+    if args.export_v4_test_vcf:
+        export_v4_test_sites_vcf(contigs, sites_only_vcf)
+        if args.export_only:
+            logger.info("Exported %s; stopping.", sites_only_vcf)
+            return
 
     if not args.load_only:
         backend = hb.ServiceBackend(
@@ -818,6 +827,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Export the v4 split info HT filtered to --test-chrom as the --test-on-v4 "
             "sites VCF. Requires --test-on-v4."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-only",
+        help="Stop after --export-v4-test-vcf instead of continuing to the Batch.",
         action="store_true",
     )
     parser.add_argument(
