@@ -507,11 +507,13 @@ def export_v4_test_sites_vcf(contigs: List[str], out_path: str) -> None:
     )
     ht = get_reformatted_info_fields(ht, info_method="quasi")
     ht = ht.select(info=ht.site_info.annotate(**ht.quasi_info))
-    # split_info_annotation leaves the AS_ fields as scalars and AS_SB_TABLE as a flat
-    # array, both of which break adjust_vcf_incompatible_types' pipe-delimiting.
-    # AS_SB_TABLE is not an iforest feature, so drop it and skip pipe-delimiting.
-    if "AS_SB_TABLE" in ht.info:
-        ht = ht.annotate(info=ht.info.drop("AS_SB_TABLE"))
+    # Drop the strand-bias tables: neither is an iforest feature. AS_SB_TABLE breaks
+    # adjust_vcf_incompatible_types' pipe-delimiting on split input, and GATK rewrites
+    # SB's header to its reserved Number=1,Type=Float while still emitting the
+    # 4-element array, which then fails to import from the scored VCF.
+    drop_fields = [f for f in ("AS_SB_TABLE", "SB") if f in ht.info]
+    if drop_fields:
+        ht = ht.annotate(info=ht.info.drop(*drop_fields))
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
     # Declare the features Number=A so GATK runs in allele-specific mode; Hail would
     # write Number=1 for these split scalars. See `_annotation_args`.
