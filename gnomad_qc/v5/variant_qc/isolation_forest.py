@@ -272,6 +272,7 @@ def score_variant_annotations_job(
     model: hb.ResourceGroup,
     resource_args: str,
     interval: hb.ResourceFile,
+    idx: int,
     out_root: str,
     gatk_image: str,
     gcp_billing_project: str,
@@ -287,6 +288,7 @@ def score_variant_annotations_job(
     :param model: Trained model ResourceGroup (its root is the ``--model-prefix``).
     :param resource_args: GATK ``--resource`` args for the labeled sets.
     :param interval: Interval file to restrict scoring to.
+    :param idx: Shard index, used to identify the job in the Batch.
     :param out_root: Output prefix (files written as ``{out_root}.*``).
     :param gatk_image: GATK docker image.
     :param gcp_billing_project: GCP billing project for requester-pays buckets.
@@ -301,7 +303,7 @@ def score_variant_annotations_job(
         emission exactly-once across shards. It also makes ``-XL`` start-based, which
         is the definition `reconcile_scored_sites` uses.
     """
-    j = b.new_job(f"GATK: ScoreVariantAnnotations {mode}")
+    j = b.new_job(f"GATK: ScoreVariantAnnotations {mode} {idx}")
     j.image(gatk_image)
     j.cpu(4)
     j.memory("standard")
@@ -449,6 +451,7 @@ def isolation_forest_workflow(
                 model=model,
                 resource_args=resource_args,
                 interval=intervals[f"interval_{idx}"],
+                idx=idx,
                 out_root=score_root,
                 gatk_image=gatk_image,
                 gcp_billing_project=gcp_billing_project,
