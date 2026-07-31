@@ -889,7 +889,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model-id",
-        help="Model ID for the isolation forest run. Must start with 'if_'.",
+        help="Model ID for the isolation forest run. Must start with 'if' (e.g. if_test1).",
         type=str,
         required=True,
     )
