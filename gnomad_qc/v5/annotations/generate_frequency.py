@@ -1123,8 +1123,11 @@ def _build_setup_command(
       requester-pays reads (the AoU VDS) have a billing-project fallback for the
       container's Java GCS client (works on a laptop via gcloud config, but not in
       a bare container without this).
-    - Pins ``hail==0.2.137`` (the version the v5 pipeline is validated against;
-      0.2.138 regressed requester-pays propagation for VDS metadata reads).
+    - Relies on the batch image (``--batch-image``, default the
+      ``v5_freq_batch:0.2.128`` image) to supply the validated Hail version --
+      0.2.128 baked in -- instead of a per-job runtime pip reinstall. (0.2.128
+      predates the 0.2.138 requester-pays-propagation regression for VDS metadata
+      reads; pass a different ``--batch-image`` to change the Hail version.)
 
     :param commit: Git commit hash to pin gnomad_qc to.
     :param gcp_billing_project: GCP project for requester-pays reads; patched into
@@ -1156,10 +1159,9 @@ def _build_setup_command(
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
         f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
         f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
-        # TODO: Remove this Hail pin once 0.2.139+ fixes the requester-pays
-        # propagation regression that 0.2.138 introduced for VDS metadata reads.
-        "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
-        " --no-deps hail==0.2.137\n"
+        # Hail version comes from the batch image (default v5_freq_batch:0.2.128),
+        # not a runtime reinstall -- keeps container startup fast and the version
+        # reproducible. Pass a different --batch-image to change it.
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
@@ -1189,7 +1191,7 @@ def run_aou_freq_as_batch(
     regions: list[str] | None = None,
     billing_project: str = "gnomad-production",
     remote_tmpdir: str | None = None,
-    image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:latest",
+    image: str = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.128",
     methods_branch: str = "main",
     suffix: str | None = None,
     dry_run: bool = False,
@@ -2574,13 +2576,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     test_group.add_argument(
         "--read-subintervals",
         type=int,
-        default=None,
+        default=48,
         help=(
-            "TESTING/PERF: split each --test-region into this many read sub-intervals so"
-            " the variant read lands in this many partitions (N-way row parallelism for"
-            " the all-sites-AN aggregation) instead of the single partition a whole-region"
-            " read prunes to. Position-based tiling; only affects the --use-all-sites-ans"
-            " path. Default None (no split)."
+            "PERF: split each --test-region into this many read sub-intervals so the"
+            " variant read lands in this many partitions (N-way row parallelism for the"
+            " all-sites-AN aggregation) instead of the single partition a whole-region read"
+            " prunes to. A single partition serializes the ~245k-sample aggregation into"
+            " one task -- slow, and it OOMs a standard driver -- so this is on by default."
+            " Position-based tiling; only affects the --use-all-sites-ans path when a"
+            " --test-region is set (whole-genome / --chrom runs already parallelize via the"
+            " VDS's native partitions). ~48 was the measured cost/runtime knee for a"
+            " ~70k-variant region and the exact count barely matters past it. Pass 1 to"
+            " disable. Default 48."
         ),
     )
 
@@ -2864,8 +2871,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=(
-            "Docker image for chunk and merge jobs. Defaults to"
-            " hailgenetics/hail matching the current Hail version."
+            "Docker image for chunk and merge jobs. Defaults to the"
+            " v5_freq_batch:0.2.128 image (Hail 0.2.128 + gnomad_methods deps baked"
+            " in). Pass another image to change the Hail version -- the version comes"
+            " from the image, not a runtime reinstall."
         ),
     )
     fanout_group.add_argument(
