@@ -1689,7 +1689,7 @@ def select_final_dataset_fields(ht: hl.Table, dataset: str = "gnomad") -> hl.Tab
             )
         )
     else:
-        sort_order = copy.deepcopy(SORT_ORDER) + ["aou-downsampling"]
+        sort_order = copy.deepcopy(SORT_ORDER)
 
         ht = ht.annotate_globals(
             freq_index_dict=make_freq_index_dict_from_meta(
@@ -1743,51 +1743,6 @@ def _fix_v4_global_age_distribution(
     )
     freq_ht = freq_ht.annotate_globals(
         age_distribution=meta_ht.index_globals().age_distribution
-    )
-
-    return freq_ht
-
-
-def _add_non_aou_subset_entries(freq_ht: hl.Table) -> hl.Table:
-    """
-    Add non-AoU subset fields to the frequency table.
-
-    Duplicates gnomAD freq array fields (adj, raw, gen_anc, sex, gen_anc-sex) and adds
-    "subset": "non_aou" to freq_meta for downstream non-AoU subset frequency reporting.
-
-    :param freq_ht: Frequency table to add non-AoU subset fields to.
-    :return: Frequency table with non-AoU subset fields added.
-    """
-    logger.info(
-        "Filtering to non-AoU subset strata (adj, raw, gen_anc, sex, gen_anc-sex)..."
-    )
-    # Filter to only adj, raw, gen_anc, sex, and gen_anc-sex strata by excluding
-    # entries with downsampling or subset keys.
-    non_aou_freq_meta, non_aou_array_exprs = filter_arrays_by_meta(
-        freq_ht.freq_meta,
-        {
-            "freq": freq_ht.freq,
-            "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
-        },
-        items_to_filter=["downsampling", "subset"],
-        keep=False,
-        combine_operator="or",
-    )
-
-    logger.info("Adding non-aou subset data to freq and freq_meta...")
-    non_aou_freq_meta = non_aou_freq_meta.map(
-        lambda d: hl.dict(d.items().append(("subset", "non_aou")))
-    )
-
-    # Can extend freq and freq_meta_sample_count because there are no overlap of strata.
-    freq_ht = freq_ht.annotate(
-        freq=freq_ht.freq.extend(non_aou_array_exprs["freq"]),
-    )
-    freq_ht = freq_ht.annotate_globals(
-        freq_meta=freq_ht.freq_meta.extend(non_aou_freq_meta),
-        freq_meta_sample_count=freq_ht.freq_meta_sample_count.extend(
-            non_aou_array_exprs["freq_meta_sample_count"]
-        ),
     )
 
     return freq_ht
@@ -1855,11 +1810,7 @@ def process_gnomad_dataset(
     logger.info("Reannotating gnomAD's age distribution global annotation...")
     freq_ht = _fix_v4_global_age_distribution(freq_ht, environment=environment)
 
-    logger.info(
-        "Duplicating gnomAD adj, raw, gen_anc, sex, and gen_anc-sex array entries with"
-        " 'subset': 'non_aou' in freq_meta..."
-    )
-    freq_ht = _add_non_aou_subset_entries(freq_ht)
+    # The "aou" subset is built at the AoU+gnomAD merge.
 
     # Select only the fields that were updated as FAF/grpmax/inbreeding_coeff annotations
     # will be calculated on the final merged dataset.
@@ -1964,26 +1915,28 @@ def merge_gnomad_and_aou_frequencies(
         },
     )
 
-    joined_freq_ht = joined_freq_ht.annotate(freq=merged_freq).annotate_globals(
-        freq_meta=merged_meta,
-        freq_meta_sample_count=sample_counts["counts"],
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(merged_meta)),
+    # AoU-only downsampling is dropped from global; it's exposed only in the
+    # "aou" subset.
+    merged_meta_list = hl.eval(merged_meta)
+    global_idx = [i for i, d in enumerate(merged_meta_list) if "downsampling" not in d]
+    global_meta = [merged_meta_list[i] for i in global_idx]
+    global_freq = hl.array([merged_freq[i] for i in global_idx])
+    global_counts = hl.array([sample_counts["counts"][i] for i in global_idx])
+
+    # AoU is defined at every site, so the parallel arrays extend without fill.
+    aou_subset_meta = joined_freq_ht.index_globals().aou_freq_meta.map(
+        lambda d: hl.dict(d.items().append(("subset", "aou")))
+    )
+    freq = global_freq.extend(joined_freq_ht.aou_freq)
+    freq_meta = hl.literal(global_meta).extend(aou_subset_meta)
+    freq_meta_sample_count = global_counts.extend(
+        joined_freq_ht.index_globals().aou_freq_meta_sample_count
     )
 
-    # Rename the 'downsampling' group in freq meta list to 'aou_downsampling' as aou
-    # is the source dataset for downsampling group. gnomAD downsamplings can
-    # be retrieved from v3.
-    logger.info(
-        "Renaming 'downsampling' group in freq meta list to 'aou_downsampling'..."
-    )
-    renamed_freq_meta = hl.literal(
-        [
-            {("aou-downsampling" if k == "downsampling" else k): m[k] for k in m}
-            for m in hl.eval(merged_meta)
-        ]
-    )
-    joined_freq_ht = joined_freq_ht.annotate_globals(
-        freq_meta=renamed_freq_meta,
+    joined_freq_ht = joined_freq_ht.annotate(freq=freq).annotate_globals(
+        freq_meta=freq_meta,
+        freq_meta_sample_count=freq_meta_sample_count,
+        freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
     )
 
     logger.info("Merging quality histograms and age histograms from both datasets...")
@@ -2039,26 +1992,25 @@ def calculate_faf_and_grpmax_annotations(
     Calculate FAF, grpmax, gen_anc_faf_max, and inbreeding coefficient annotations.
 
     Computes filtering allele frequencies and grpmax for both the full dataset
-    (gnomad) and the non-AoU subset, similar to v4's non-UKB subset handling.
+    (gnomad) and the AoU-only "aou" subset.
 
     :param ht: Merged frequency table for AoU and gnomAD data containing 'freq' and
         'freq_meta' annotations.
     :return: Table with 'faf', 'grpmax', 'gen_anc_faf_max', and 'inbreeding_coeff'.
     """
     logger.info(
-        "Filtering frequencies to just 'non_aou' subset entries for 'faf' "
-        "calculations..."
+        "Filtering frequencies to just 'aou' subset entries for 'faf' calculations..."
     )
-    # Filter to non_aou subset and remove the "subset" key from freq_meta so faf_expr
+    # Filter to the aou subset and remove the "subset" key from freq_meta so faf_expr
     # pulls the correct indices.
-    non_aou_freq_meta, non_aou_array_exprs = filter_arrays_by_meta(
+    aou_freq_meta, aou_array_exprs = filter_arrays_by_meta(
         ht.freq_meta,
         {"freq": ht.freq},
-        items_to_filter={"subset": ["non_aou"]},
+        items_to_filter={"subset": ["aou"]},
         keep=True,
         combine_operator="or",
     )
-    non_aou_freq_meta = non_aou_freq_meta.map(
+    aou_freq_meta = aou_freq_meta.map(
         lambda d: hl.dict(d.items().filter(lambda x: x[0] != "subset"))
     )
     # Use the filtered freq expression (already a per-row expr on ht) and the filtered
@@ -2066,9 +2018,9 @@ def calculate_faf_and_grpmax_annotations(
     # self-join compiled to a second scan of the merged checkpoint.
     freq_metas = {
         "gnomad": (ht.freq, ht.index_globals().freq_meta),
-        "non_aou": (
-            non_aou_array_exprs["freq"],
-            non_aou_freq_meta,
+        "aou": (
+            aou_array_exprs["freq"],
+            aou_freq_meta,
         ),
     }
 
@@ -2084,9 +2036,9 @@ def calculate_faf_and_grpmax_annotations(
         grpmax = grpmax_expr(freq, meta, GEN_ANC_GROUPS_TO_REMOVE_FOR_GRPMAX["v5"])
         gen_anc_faf_max = gen_anc_faf_max_expr(faf, faf_meta)
 
-        # Add subset back to non_aou faf meta.
-        if dataset == "non_aou":
-            faf_meta = [{**x, "subset": "non_aou"} for x in faf_meta]
+        # Add subset back to aou faf meta.
+        if dataset == "aou":
+            faf_meta = [{**x, "subset": "aou"} for x in faf_meta]
 
         faf_exprs.append(faf)
         faf_meta_exprs.append(faf_meta)
