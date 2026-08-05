@@ -3148,9 +3148,16 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
     # (hailtop.fs, no QoB job) so we skip a full VDS re-open.
     if args.test_region:
         intervals_hash = "test_region"
-        sub_intervals = [_parse_region_interval(r) for r in args.test_region]
+        # Split into read_subintervals so the read lands in that many partitions,
+        # matching the fanned-out chunks -- a single-partition read collects the whole
+        # region's aggregation on the driver and OOMs it.
+        sub_intervals = _split_intervals_for_read(
+            [_parse_region_interval(r) for r in args.test_region],
+            args.read_subintervals,
+        )
         logger.info(
-            "Using %d --test-region interval(s) as chunk %d (no precompute JSON).",
+            "Split --test-region into %d read sub-intervals for chunk %d (no precompute"
+            " JSON).",
             len(sub_intervals),
             start,
         )
