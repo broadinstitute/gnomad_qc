@@ -257,24 +257,46 @@ def mt_hist_fields(mt: hl.MatrixTable) -> hl.StructExpression:
     )
 
 
-def _aou_age_distribution(environment: str = "batch"):
+def _aou_age_distribution_path(environment: str, test: bool = False) -> str:
     """
-    Compute the AoU release age-distribution histogram from the sample meta table.
+    Return the path to the precomputed AoU age-distribution histogram JSON (30-day).
 
-    A single scan of the (sample-keyed) meta table, decoupled from the variant MT.
-    Returned as a concrete value so a caller can compute it ONCE and pass it into
-    ``_prepare_aou_vds`` -- otherwise the sequential fan-out loop recomputes this
-    identical, chunk-independent eager aggregate (one QoB job) per chunk.
+    :param environment: Compute environment.
+    :param test: If True, return the test-scoped path.
+    :return: GCS path to the age-distribution JSON.
+    """
+    name = "aou_age_distribution_test.json" if test else "aou_age_distribution.json"
+    return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
+
+
+def _aou_age_distribution(environment: str = "batch", test: bool = False):
+    """
+    Return the AoU release age-distribution histogram (over ``project=='aou' & release``).
+
+    Precomputed once by ``--write-age-distribution`` and read here, so the fan-out worker
+    never re-aggregates the ~330-partition meta per chunk.
 
     :param environment: Environment to use. Default is "batch".
+    :param test: Whether to read the test-scoped precomputed path.
     :return: Age histogram struct over ``project == 'aou' & release`` samples.
     """
+    # Chunk-independent: read the value precomputed by --write-age-distribution so the
+    # fan-out worker never re-aggregates the ~330-partition meta per chunk. Rebuild with
+    # hl.agg.hist's types (float64 edges, int64 counts) so it still merges with gnomAD's
+    # age_distribution. Fall back to computing it directly if the JSON is absent.
+    path = _aou_age_distribution_path(environment, test)
+    if file_exists(path):
+        with hfs.open(path) as f:
+            d = json.load(f)
+        return hl.struct(
+            bin_edges=hl.literal(d["bin_edges"], "array<float64>"),
+            bin_freq=hl.literal(d["bin_freq"], "array<int64>"),
+            n_smaller=hl.int64(d["n_smaller"]),
+            n_larger=hl.int64(d["n_larger"]),
+        )
     meta_ht = meta(data_type="genomes", environment=environment).ht()
     meta_ht = meta_ht.filter((meta_ht.project_meta.project == "aou") & meta_ht.release)
-    # The meta is ~330 partitions (365k samples); this scan otherwise fans to ~330 tasks.
-    # Only age is needed here, so narrow and coalesce before aggregating.
-    meta_ht = meta_ht.select(age=meta_ht.project_meta.age).naive_coalesce(10)
-    return meta_ht.aggregate(hl.agg.hist(meta_ht.age, 30, 80, 10))
+    return meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
 
 
 def _prepare_aou_vds(
@@ -381,7 +403,7 @@ def _prepare_aou_vds(
     # a precomputed value so this identical eager aggregate isn't resubmitted per chunk).
     # Set as a literal global, so it survives agg_by_strata exactly as before.
     if age_distribution is None:
-        age_distribution = _aou_age_distribution(environment)
+        age_distribution = _aou_age_distribution(environment, test)
     group_membership_globals = group_membership_ht.index_globals()
     aou_vmt = aou_vmt.select_globals(
         freq_meta=group_membership_globals.freq_meta,
@@ -1034,7 +1056,7 @@ def run_aou_freq_sequential(
     # Compute the AoU age-distribution histogram ONCE and reuse it for every chunk: it
     # is chunk-independent (same meta table + filter), and computing it inside
     # _prepare_aou_vds would resubmit the identical eager QoB aggregate per chunk.
-    age_distribution = _aou_age_distribution(environment)
+    age_distribution = _aou_age_distribution(environment, test)
 
     # One directory listing of completed chunks instead of a per-chunk GCS stat.
     present = (
@@ -3572,6 +3594,27 @@ def main(args):
         logger.info("Wrote freq chunk-intervals JSON: %s", intervals_path)
         return
 
+    # --write-age-distribution: aggregate the chunk-independent AoU age distribution once
+    # so chunk workers read it instead of re-aggregating the meta per chunk
+    # (needs Hail).
+    if args.write_age_distribution:
+        args.test = (
+            args.test_vds
+            or args.test_partitions is not None
+            or args.test_region is not None
+        )
+        _initialize_hail(args)
+        meta_ht = meta(data_type="genomes", environment=args.environment).ht()
+        meta_ht = meta_ht.filter(
+            (meta_ht.project_meta.project == "aou") & meta_ht.release
+        )
+        dist = meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
+        path = _aou_age_distribution_path(args.environment, args.test)
+        with hfs.open(path, "w") as f:
+            json.dump({k: dist[k] for k in dist}, f)
+        logger.info("Wrote AoU age distribution JSON: %s", path)
+        return
+
     # --- Normal orchestrator flow ---
     environment = args.environment
     use_all_sites_ans = args.use_all_sites_ans
@@ -4213,6 +4256,15 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " sub-intervals in ONE in-perimeter VDS open, written to a JSON the fan-out"
             " and merge read by index. Required before --use-all-sites-ans"
             " --use-batch-fanout."
+        ),
+    )
+    fanout_group.add_argument(
+        "--write-age-distribution",
+        action="store_true",
+        help=(
+            "All-sites-AN relay fan-out: aggregate the AoU release age distribution ONCE"
+            " and write it to a small JSON the chunk workers read (instead of each chunk"
+            " re-aggregating the ~330-partition meta). Run before the fan-out."
         ),
     )
     fanout_group.add_argument(
