@@ -312,9 +312,19 @@ def _prepare_aou_vds(
     # wide per-sample join here would be computed and immediately thrown away. gen_anc
     # was previously annotated but never read (strata are encoded in group_membership),
     # so it is dropped.
+    # The full sample meta is ~330 partitions (365k samples); joining it onto the columns
+    # fans every downstream collect to ~330 tasks. Only sex_karyotype and age are read, so
+    # pull them into a small coalesced HT and join that instead.
+    meta_ht = meta(data_type="genomes", environment=environment).ht()
+    meta_small = (
+        meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age)
+        .naive_coalesce(10)
+        .checkpoint(new_temp_file("aou_meta_small", "ht"))
+    )
+    meta_indexed = meta_small[aou_vmt.col_key]
     col_exprs = {
-        "sex_karyotype": aou_vmt.meta.sex_karyotype,
-        "age": aou_vmt.meta.project_meta.age,
+        "sex_karyotype": meta_indexed.sex_karyotype,
+        "age": meta_indexed.age,
     }
     if not use_all_sites_ans:
         col_exprs["group_membership"] = group_membership_ht[
@@ -3162,7 +3172,7 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
     # all-sites-AN is variant-only; see assumption 2). Skip the count_cols
     # logging scans.
     vds = get_aou_vds(
-        annotate_meta=True,
+        annotate_meta=False,
         release_only=True,
         test=args.test_vds,
         read_intervals=sub_intervals,
