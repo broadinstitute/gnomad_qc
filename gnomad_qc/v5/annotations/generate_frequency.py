@@ -490,9 +490,13 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
     # TEMP (perf test): the reduced group_membership is a ~365k-sample lookup written by
     # compute_coverage at ~330 partitions, but it exists only to build the broadcast
     # per-strata index -- far more partitions than needed, and it fans every read/collect
-    # stage to ~330 tasks. Coalesce it small for this test. Proper fix: write it coalesced
-    # in compute_coverage.get_group_membership_ht so all consumers benefit.
-    group_membership_ht = group_membership_ht.naive_coalesce(10)
+    # stage to ~330 tasks. Checkpoint the coalesced version so the per-sample column join
+    # reads it at 10 partitions (a lazy naive_coalesce does not propagate through that
+    # key-indexed join). Proper fix: write it coalesced in
+    # compute_coverage.get_group_membership_ht so all consumers benefit.
+    group_membership_ht = group_membership_ht.naive_coalesce(10).checkpoint(
+        new_temp_file("group_membership_coalesced", "ht")
+    )
 
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
