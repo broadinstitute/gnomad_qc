@@ -271,7 +271,10 @@ def _aou_age_distribution(environment: str = "batch"):
     """
     meta_ht = meta(data_type="genomes", environment=environment).ht()
     meta_ht = meta_ht.filter((meta_ht.project_meta.project == "aou") & meta_ht.release)
-    return meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
+    # The meta is ~330 partitions (365k samples); this scan otherwise fans to ~330 tasks.
+    # Only age is needed here, so narrow and coalesce before aggregating.
+    meta_ht = meta_ht.select(age=meta_ht.project_meta.age).naive_coalesce(10)
+    return meta_ht.aggregate(hl.agg.hist(meta_ht.age, 30, 80, 10))
 
 
 def _prepare_aou_vds(
