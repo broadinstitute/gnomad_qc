@@ -2570,11 +2570,14 @@ def _build_freq_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> 
     ]
     if args.app_name:
         flags.append(f"--app-name {args.app_name}")
-    # Nested-QoB driver sizing (decoupled from the orchestrator's own --driver-*).
+    # Nested-QoB driver/worker sizing (decoupled from the orchestrator's own
+    # --driver-*/--worker-*).
     if args.chunk_driver_cores is not None:
         flags.append(f"--driver-cores {args.chunk_driver_cores}")
     if args.chunk_driver_memory:
         flags.append(f"--driver-memory {args.chunk_driver_memory}")
+    if args.chunk_worker_memory:
+        flags.append(f"--worker-memory {args.chunk_worker_memory}")
     if chunk:
         flags.append(f"--read-subintervals {args.read_subintervals}")
         if args.test_region:
@@ -4297,6 +4300,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     fanout_group.add_argument(
+        "--chunk-worker-memory",
+        type=str,
+        default=None,
+        help=(
+            "All-sites-AN relay: nested-QoB worker memory class per chunk"
+            " ('lowmem'/'standard'/'highmem'). Chunk workers peak well under 1 GB, so"
+            " 'lowmem' is a cost-reduction candidate. Default None (Hail's default,"
+            " 'standard')."
+        ),
+    )
+    fanout_group.add_argument(
         "--list-failed-chunks",
         action="store_true",
         help=(
@@ -4377,9 +4391,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     fanout_group.add_argument(
         "--chunk-cpu",
-        type=int,
+        type=float,
         default=2,
-        help="CPU request per chunk job. Default 2.",
+        help=(
+            "CPU request per chunk job; fractional values (e.g. 0.5) are allowed --"
+            " the relay coordinator is a QoB client that mostly waits on the nested"
+            " batch. Default 2."
+        ),
     )
     fanout_group.add_argument(
         "--chunk-memory",
