@@ -99,7 +99,7 @@ from gnomad_qc.v5.resources.basics import (
     get_logging_path,
     qc_temp_prefix,
 )
-from gnomad_qc.v5.resources.meta import meta
+from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
 
 # Use force=True so that our root handler wins over any handler that
 # Hail / hailtop / absl / other deps installed during their imports above.
@@ -299,6 +299,42 @@ def _aou_age_distribution(environment: str = "batch", test: bool = False):
     return meta_ht.aggregate(hl.agg.hist(meta_ht.project_meta.age, 30, 80, 10))
 
 
+def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -> str:
+    """
+    Return the path to a chunk-invariant sample-level artifact (30-day storage).
+
+    These are written once per run by ``--write-sample-artifacts`` so chunk workers
+    read a small file instead of each rescanning the ~330-partition sample tables:
+    ``collisions.json`` (colliding sample IDs), ``release_samples.json`` (AoU release
+    sample IDs), ``meta_small.ht`` (10-partition sex_karyotype/age), and
+    ``gm_coalesced[_reduce].ht`` (10-partition group membership). Chunk workers fall
+    back to computing each one when its file is absent.
+
+    :param name: Artifact file name (with extension).
+    :param environment: Compute environment.
+    :param test: If True, return the test-scoped path.
+    :return: GCS path to the artifact.
+    """
+    scope = "test" if test else "full"
+    return f"{qc_temp_prefix(environment=environment, days=30)}aou_sample_artifacts_{scope}/{name}"
+
+
+def _read_sample_artifact_json(name: str, environment: str, test: bool = False):
+    """
+    Return the parsed JSON sample artifact, or None when it has not been precomputed.
+
+    :param name: Artifact file name (with extension).
+    :param environment: Compute environment.
+    :param test: If True, read the test-scoped path.
+    :return: Parsed JSON value, or None if the file is absent.
+    """
+    path = _aou_sample_artifact_path(name, environment, test)
+    if not file_exists(path):
+        return None
+    with hfs.open(path) as f:
+        return json.load(f)
+
+
 def _prepare_aou_vds(
     aou_vds: hl.vds.VariantDataset,
     use_all_sites_ans: bool = False,
@@ -340,12 +376,16 @@ def _prepare_aou_vds(
     # The full sample meta is ~330 partitions (365k samples); joining it onto the columns
     # fans every downstream collect to ~330 tasks. Only sex_karyotype and age are read, so
     # pull them into a small coalesced HT and join that instead.
-    meta_ht = meta(data_type="genomes", environment=environment).ht()
-    meta_small = (
-        meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age)
-        .naive_coalesce(10)
-        .checkpoint(new_temp_file("aou_meta_small", "ht"))
-    )
+    meta_small_path = _aou_sample_artifact_path("meta_small.ht", environment, test)
+    if file_exists(f"{meta_small_path}/_SUCCESS"):
+        meta_small = hl.read_table(meta_small_path)
+    else:
+        meta_ht = meta(data_type="genomes", environment=environment).ht()
+        meta_small = (
+            meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age)
+            .naive_coalesce(10)
+            .checkpoint(new_temp_file("aou_meta_small", "ht"))
+        )
     meta_indexed = meta_small[aou_vmt.col_key]
     col_exprs = {
         "sex_karyotype": meta_indexed.sex_karyotype,
@@ -521,17 +561,24 @@ def _calculate_aou_frequencies_and_hists_using_all_sites_ans(
                 " not found at %s; falling back to the full group membership.",
                 reduce_path,
             )
-    group_membership_ht = hl.read_table(gm_path)
-    # TEMP (perf test): the reduced group_membership is a ~365k-sample lookup written by
-    # compute_coverage at ~330 partitions, but it exists only to build the broadcast
-    # per-strata index -- far more partitions than needed, and it fans every read/collect
-    # stage to ~330 tasks. Checkpoint the coalesced version so the per-sample column join
-    # reads it at 10 partitions (a lazy naive_coalesce does not propagate through that
-    # key-indexed join). Proper fix: write it coalesced in
+    # The group_membership HT is a ~365k-sample lookup written by compute_coverage at
+    # ~330 partitions -- far more than needed, and it fans every read/collect stage to
+    # ~330 tasks. Read the 10-partition copy precomputed by --write-sample-artifacts;
+    # fall back to coalescing per chunk when it is absent (a lazy naive_coalesce does
+    # not propagate through the key-indexed join, so the coalesced copy must be
+    # materialized). Proper fix: write it coalesced in
     # compute_coverage.get_group_membership_ht so all consumers benefit.
-    group_membership_ht = group_membership_ht.naive_coalesce(10).checkpoint(
-        new_temp_file("group_membership_coalesced", "ht")
+    gm_artifact = _aou_sample_artifact_path(
+        f"gm_coalesced{'_reduce' if reduced else ''}.ht", environment, test
     )
+    if file_exists(f"{gm_artifact}/_SUCCESS"):
+        group_membership_ht = hl.read_table(gm_artifact)
+    else:
+        group_membership_ht = (
+            hl.read_table(gm_path)
+            .naive_coalesce(10)
+            .checkpoint(new_temp_file("group_membership_coalesced", "ht"))
+        )
 
     aou_variant_freq_ht = agg_by_strata(
         aou_variant_mt.select_entries(
@@ -3198,10 +3245,22 @@ def _run_aou_freq_chunk_all_sites_ans(args: argparse.Namespace) -> None:
 
     # (3) Read the AoU VDS pruned to this chunk's sub-intervals (no straddle-widening --
     # all-sites-AN is variant-only; see assumption 2). Skip the count_cols
-    # logging scans.
+    # logging scans. The collision set and release-sample list are precomputed by
+    # --write-sample-artifacts; without them, each chunk pays a full scan of the
+    # corresponding ~330-partition table inside get_aou_vds.
+    collisions = _read_sample_artifact_json("collisions.json", environment, test)
+    release_samples = _read_sample_artifact_json(
+        "release_samples.json", environment, test
+    )
     vds = get_aou_vds(
         annotate_meta=False,
-        release_only=True,
+        release_only=release_samples is None,
+        filter_samples=release_samples,
+        # The release list holds post-prefix IDs, and prefixing only runs when one of
+        # release_only/annotate_meta/add_project_prefix is set -- so it must be forced
+        # on when release_only is skipped in favor of the precomputed list.
+        add_project_prefix=release_samples is not None,
+        sample_collisions=set(collisions) if collisions is not None else None,
         test=args.test_vds,
         read_intervals=sub_intervals,
         chrom=args.chrom,
@@ -3616,6 +3675,54 @@ def main(args):
         with hfs.open(path, "w") as f:
             json.dump({k: dist[k] for k in dist}, f)
         logger.info("Wrote AoU age distribution JSON: %s", path)
+        return
+
+    # --write-sample-artifacts: materialize the chunk-invariant sample artifacts once so
+    # chunk workers read small files instead of each rescanning the ~330-partition
+    # sample tables (needs Hail).
+    if args.write_sample_artifacts:
+        args.test = (
+            args.test_vds
+            or args.test_partitions is not None
+            or args.test_region is not None
+        )
+        _initialize_hail(args)
+        env = args.environment
+
+        sc_ht = get_sample_id_collisions(environment=env).ht()
+        collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
+        path = _aou_sample_artifact_path("collisions.json", env, args.test)
+        with hfs.open(path, "w") as f:
+            json.dump(collisions, f)
+        logger.info("Wrote %d collision sample IDs: %s", len(collisions), path)
+
+        meta_ht = meta(data_type="genomes", environment=env).ht()
+        release_samples = meta_ht.filter(
+            (meta_ht.project_meta.project == "aou") & meta_ht.release
+        ).s.collect()
+        path = _aou_sample_artifact_path("release_samples.json", env, args.test)
+        with hfs.open(path, "w") as f:
+            json.dump(release_samples, f)
+        logger.info("Wrote %d release sample IDs: %s", len(release_samples), path)
+
+        meta_small_path = _aou_sample_artifact_path("meta_small.ht", env, args.test)
+        meta_ht.select("sex_karyotype", age=meta_ht.project_meta.age).naive_coalesce(
+            10
+        ).write(meta_small_path, overwrite=True)
+        logger.info("Wrote coalesced meta_small HT: %s", meta_small_path)
+
+        gm_path = group_membership(test=args.test, data_set="aou", environment=env).path
+        reduced = False
+        if args.reduce_to_minimal_groups:
+            reduce_path = _apply_path_suffix(gm_path, "reduce")
+            if _file_exists_for_env(reduce_path, env):
+                gm_path = reduce_path
+                reduced = True
+        gm_artifact = _aou_sample_artifact_path(
+            f"gm_coalesced{'_reduce' if reduced else ''}.ht", env, args.test
+        )
+        hl.read_table(gm_path).naive_coalesce(10).write(gm_artifact, overwrite=True)
+        logger.info("Wrote coalesced group-membership HT: %s", gm_artifact)
         return
 
     # --- Normal orchestrator flow ---
@@ -4268,6 +4375,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "All-sites-AN relay fan-out: aggregate the AoU release age distribution ONCE"
             " and write it to a small JSON the chunk workers read (instead of each chunk"
             " re-aggregating the ~330-partition meta). Run before the fan-out."
+        ),
+    )
+    fanout_group.add_argument(
+        "--write-sample-artifacts",
+        action="store_true",
+        help=(
+            "All-sites-AN relay fan-out: write the chunk-invariant sample artifacts ONCE"
+            " (collision-sample JSON, release-sample JSON, 10-partition meta_small HT,"
+            " 10-partition group-membership HT) so chunk workers read small files"
+            " instead of each rescanning the ~330-partition sample tables. Run before"
+            " the fan-out; honors --reduce-to-minimal-groups for the group-membership"
+            " variant."
         ),
     )
     fanout_group.add_argument(

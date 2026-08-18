@@ -338,6 +338,7 @@ def get_aou_vds(
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
     log_sample_counts: bool = True,
+    sample_collisions: Optional[Set[str]] = None,
     environment: str = "batch",
 ) -> hl.vds.VariantDataset:
     """
@@ -376,6 +377,10 @@ def get_aou_vds(
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
     :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude. When False, skips the ``count_cols`` calls used for logging (each is a full column-table aggregation). Default is True.
+    :param sample_collisions: Optional pre-collected set of sample IDs that collide with
+        gnomAD samples. When None, the set is collected from the sample-collisions
+        Table here (a full scan of it), so callers that run this per chunk should
+        collect once and pass it in. Default is None.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :return: AoU v8 VDS.
     """
@@ -548,12 +553,15 @@ def get_aou_vds(
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions_ht = get_sample_id_collisions(environment=environment).ht()
-        # Collect once: passing the Table would rescan it inside each of the two
-        # calls below.
-        sample_collisions = sample_collisions_ht.aggregate(
-            hl.agg.collect_as_set(sample_collisions_ht.s)
-        )
+        if sample_collisions is None:
+            sample_collisions_ht = get_sample_id_collisions(
+                environment=environment
+            ).ht()
+            # Collect once: passing the Table would rescan it inside each of the two
+            # calls below.
+            sample_collisions = sample_collisions_ht.aggregate(
+                hl.agg.collect_as_set(sample_collisions_ht.s)
+            )
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
