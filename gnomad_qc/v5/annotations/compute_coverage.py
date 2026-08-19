@@ -42,9 +42,16 @@ Per-project setup (--project-name {aou,gnomad})::
     2. Write the group membership HT (--write-group-membership-ht): strata =
        sex_karyotype x genetic_ancestry x (downsampling for AoU). Use
        --reduce-min-aggs to write the leaf-only variant.
+    2b. (AoU only) Write the sample artifacts (--write-sample-artifacts):
+        collisions.json + release_samples.json. Without them every chunk worker
+        rescans the ~330-partition sample-collisions HT twice and collects the
+        ~330-partition meta HT inside get_aou_vds. Optional (the chunk falls back
+        to those scans), but at fan-out scale it is paid per chunk.
     3. Write the preprocessed vep_context sites HT (--write-vep-context-sites):
-        deduped/telomere+centromere-stripped/locus-keyed sites read co-partitioned by every
-        chunk (so the dedup + strip runs once, not per chunk).
+        deduped/telomere+centromere+chrM-stripped/locus-keyed sites read co-partitioned
+        by every chunk (so the dedup + strip runs once, not per chunk). This table is
+        the definition of "every site the compute must cover" -- step 5 validates the
+        merged HT against it exactly.
     4. Compute the per-ref-site coverage/AN/qual-hists HT — the dense step.
        Strict single-job via --compute-all-cov-release-stats-ht, or the
        prod-scale fan-out: --write-chunk-intervals first (one VDS open
@@ -101,6 +108,7 @@ import json
 import logging
 import re
 import subprocess
+from datetime import datetime, timezone
 from functools import reduce
 from itertools import groupby
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
@@ -185,6 +193,21 @@ BATCH_REGIONS = ["us-central1"]
 # gnomAD sample counts
 GNOMAD_SAMPLE_COUNT = 71702
 GNOMAD_CONSENT_DROP_SAMPLE_COUNT = 849
+
+# Contigs excluded from the all-sites compute. The mitochondria are called by a
+# separate pipeline, and the v4 genomes all-sites AN release contains no chrM, so the
+# gnomAD side of the release join has nothing to merge there. ``vep_context`` v105 DOES
+# include chrM, so both the sites HT (:func:`_build_vep_context_sites_ht`) and the
+# per-chunk interval precompute (:func:`_build_chunk_intervals`) must drop these:
+# leaving chrM in the sites HT would demand coverage the fan-out never produces and
+# ``--validate-cov-and-an`` would fail at the end of the run, while leaving it in the
+# chunk set would spawn chunks whose sites read returns nothing.
+EXCLUDED_CONTIGS = ["chrM"]
+
+# Partition count for the written group_membership HT. It is one row per sample
+# (~365k for AoU) and exists only to build a broadcast per-strata index, so it needs
+# far fewer partitions than the ~330 it inherits from the meta HT it is built from.
+GROUP_MEMBERSHIP_N_PARTITIONS = 10
 
 
 def get_downsampling_ht(ht: hl.Table) -> hl.Table:
@@ -355,6 +378,93 @@ def _list_present_chunk_indices(
         if m:
             present.add(int(m.group(1)))
     return present
+
+
+def _failed_chunks_path(cov_and_an_ht_path: str, intervals_hash: str) -> str:
+    """
+    Return the path of the failed-chunk manifest for this layout.
+
+    Sibling of the chunk outputs and namespaced by ``intervals_hash`` for the same
+    reason they are: a manifest of indices only means something against the layout
+    that produced those indices.
+
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
+    :param intervals_hash: Content hash of the current chunk-intervals layout.
+    :return: ``<cov_and_an_path>_chunks/<hash>/_failed_chunks.json``.
+    """
+    base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
+    return f"{base}_chunks/{intervals_hash}/_failed_chunks.json"
+
+
+def _write_failed_chunks_manifest(
+    cov_and_an_ht_path: str,
+    intervals_hash: str,
+    failed: Sequence[int],
+    n_dispatched: int,
+    run_id: str,
+    commit: str,
+    app_name: Optional[str],
+    waves: Sequence[Dict[str, Any]],
+) -> str:
+    """
+    Record the chunk indices that did not land, for a later targeted rerun.
+
+    Relay jobs do not retry themselves (see ``--chunk-attempts``), so the set of
+    chunks still missing when the orchestrator exits is the rerun list. The
+    orchestrator's own log holds it too, but a log scrollback is not a durable
+    record -- this writes it next to the chunks so the rerun list survives the
+    orchestrator process.
+
+    Rerunning ``--use-batch-fanout`` unchanged picks these up automatically (it
+    dispatches whatever is not already present), so the manifest is informational:
+    it tells you how much is left and which indices to look at, and is rewritten
+    (not appended to) on each wave so it always reflects the latest attempt.
+
+    Because it is one fixed path per layout, successive runs overwrite each other
+    -- so every manifest is stamped with the orchestrator ``run_id``, the wall-clock
+    write time, the code commit, the ``--app-name``, and the Hail Batch id of each
+    wave. Without those, an overwritten manifest is indistinguishable from a stale
+    one left by an earlier attempt at the same region.
+
+    :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
+    :param intervals_hash: Content hash of the current chunk-intervals layout.
+    :param failed: Chunk indices dispatched in this run that have no ``_SUCCESS``.
+    :param n_dispatched: Number of chunks dispatched so far in this run.
+    :param run_id: Identifier for this orchestrator run (see ``_new_run_id``).
+    :param commit: gnomad_qc commit the relays ran.
+    :param app_name: ``--app-name`` passed to the relays (names their QoB batches).
+    :param waves: Per-wave records: ``wave``, ``batch_id``, ``n_dispatched``,
+        ``failed_chunk_indices``.
+    :return: Path the manifest was written to.
+    """
+    path = _failed_chunks_path(cov_and_an_ht_path, intervals_hash)
+    payload = {
+        "run_id": run_id,
+        "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "commit": commit,
+        "app_name": app_name,
+        "intervals_hash": intervals_hash,
+        "n_dispatched": n_dispatched,
+        "n_failed": len(failed),
+        "failed_chunk_indices": sorted(failed),
+        "waves": list(waves),
+    }
+    with hfs.open(path, "w") as f:
+        f.write(json.dumps(payload, indent=2) + "\n")
+    return path
+
+
+def _new_run_id() -> str:
+    """
+    Return a UTC-timestamp identifier for one orchestrator run.
+
+    Distinguishes the artifacts of successive attempts at the same chunk layout
+    (which share one manifest path); seconds resolution is enough because a run
+    submits at least one Hail Batch and so can never repeat within a second.
+
+    :return: ``run-YYYYmmddTHHMMSSZ``.
+    """
+    return "run-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _group_path(
@@ -629,6 +739,7 @@ def compute_all_release_stats_per_ref_site(
     group_membership_ht: Optional[hl.Table] = None,
     reduce_min_aggs: bool = False,
     experimental_densify: bool = False,
+    skip_coverage_stats: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -642,7 +753,7 @@ def compute_all_release_stats_per_ref_site(
         adj/qual hists); a ``LEN`` field is added if missing. DP is read from
         variant data only -- missing DP on reference blocks is treated as 0.
     :param ref_ht: Locus-only sites Table (typically derived from
-        ``vep_context`` and stripped of telomeres/centromeres) defining
+        ``vep_context`` and stripped of telomeres/centromeres/chrM) defining
         the reference positions at which to aggregate.
     :param sex_karyotype_field: Dotted path on the variant_data column
         struct to the sample's sex karyotype (e.g.
@@ -668,6 +779,13 @@ def compute_all_release_stats_per_ref_site(
         (``to_merged_sparse_mt``) and unify the genotype into ``LGT`` so
         ``compute_stats_per_ref_site`` takes the  ``hl.experimental.densify`` path
         instead of ``to_dense_mt``. Default is False.
+    :param skip_coverage_stats: If True, omit ``coverage_stats`` from the
+        aggregation entirely, so the output HT carries no
+        ``mean``/``median_approx``/``total_DP``/``over_X`` fields. AoU only:
+        its reference blocks carry no DP, so those fields aggregate to ~0
+        everywhere except loci where a sample carries a variant (measured on
+        chr1:55.06-55.16Mb: mean 0.048x, ``over_1`` 432 of 365,318 samples).
+        Default is False.
     :return: HT keyed by locus with per-stratum ``AN``, flat
         ``mean``/``over_X``/``median_approx``/``total_DP`` coverage
         fields (from the global adj-filtered group), and
@@ -698,10 +816,11 @@ def compute_all_release_stats_per_ref_site(
     max_cov_bin = cov_bins[-1]
     cov_bins = hl.array(cov_bins)
 
-    entry_agg_funcs = {
-        "AN": get_allele_number_agg_func("LGT"),
-        "coverage_stats": get_coverage_agg_func(dp_field="DP", max_cov_bin=max_cov_bin),
-    }
+    entry_agg_funcs = {"AN": get_allele_number_agg_func("LGT")}
+    if not skip_coverage_stats:
+        entry_agg_funcs["coverage_stats"] = get_coverage_agg_func(
+            dp_field="DP", max_cov_bin=max_cov_bin
+        )
     # Restrict ``coverage_stats`` to the global adj-filtered group only —
     # downstream code uses ``coverage_stats[0]`` exclusively (the global adj
     # group; transmuted into flat mean/sum/over_X fields), so per-strata
@@ -712,9 +831,13 @@ def compute_all_release_stats_per_ref_site(
     # ``freq_meta[0]`` is ``{"group": "adj"}`` and we need to match it.
     # AN is intentionally omitted so it still fans out across all strata,
     # which is what downstream consumers need.
-    entry_agg_group_membership = {
-        "coverage_stats": [{"group": "adj"}],
-    }
+    # NOTE: under ``--skip-coverage-stats`` nothing needs ``{"group": "adj"}`` to be
+    # a directly-computed leaf anymore, but that is fixed in the group_membership HT
+    # (``PINNED_LEAF_GROUPS``) at write time, so unpinning it is a separate change
+    # requiring a group_membership regen -- an additional saving not measured here.
+    entry_agg_group_membership = {}
+    if not skip_coverage_stats:
+        entry_agg_group_membership["coverage_stats"] = [{"group": "adj"}]
     # Only compute qual hists for AoU.
     if project == "aou":
         entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
@@ -803,13 +926,15 @@ def compute_all_release_stats_per_ref_site(
         bin_expr = {f"over_{x}": bin_expr[i] for i, x in enumerate(rev_cov_bins)}
         return cov_stat.annotate(**bin_expr).drop("coverage_counter")
 
-    # Keep coverage stats from global adj grouping (index 0) only.
+    # Keep coverage stats from global adj grouping (index 0) only. The sample-count
+    # global is annotated either way -- it is just ``strata_sample_count[0]`` (the
+    # full cohort) and downstream readers expect it.
     ht = ht.annotate_globals(
         coverage_stats_meta_sample_count=ht.strata_sample_count[0],
     )
-    cov_stats_expr = _cov_stats(ht.coverage_stats[0])
-
-    ht = ht.transmute(**cov_stats_expr)
+    if not skip_coverage_stats:
+        cov_stats_expr = _cov_stats(ht.coverage_stats[0])
+        ht = ht.transmute(**cov_stats_expr)
 
     if project == "aou":
         # ``qual_hists`` as returned by ``compute_stats_per_ref_site`` is an array of length 1 so we drop the array here.
@@ -1244,6 +1369,55 @@ def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Tabl
     return hl.filter_intervals(target_ht, intervals)
 
 
+def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -> str:
+    """
+    Return the path to a chunk-invariant AoU sample-level artifact (30-day storage).
+
+    These are small files written once per run so each chunk worker reads them
+    instead of rescanning the ~330-partition sample tables: ``collisions.json``
+    (sample IDs colliding with gnomAD) and ``release_samples.json`` (AoU release
+    sample IDs).
+
+    NOTE: this path scheme is shared with ``generate_frequency.py``, which writes
+    these files under ``--write-sample-artifacts`` (and also writes ``meta_small.ht``
+    and ``gm_coalesced[_reduce].ht``, which are frequency-specific). The two are
+    deliberately byte-identical schemes so one writer serves both pipelines; when
+    those branches merge, hoist this helper into ``basics.py`` and have both import
+    it rather than keeping two copies in sync by hand.
+
+    :param name: Artifact file name (with extension).
+    :param environment: Compute environment.
+    :param test: If True, return the test-scoped path.
+    :return: GCS path to the artifact.
+    """
+    scope = "test" if test else "full"
+    return (
+        f"{qc_temp_prefix(environment=environment, days=30)}"
+        f"aou_sample_artifacts_{scope}/{name}"
+    )
+
+
+def _read_sample_artifact_json(
+    name: str, environment: str, test: bool = False
+) -> Optional[Any]:
+    """
+    Return the parsed JSON sample artifact, or None when it has not been precomputed.
+
+    Absence is not an error: every caller falls back to computing the value itself,
+    so a run without precomputed artifacts is correct, only more expensive.
+
+    :param name: Artifact file name (with extension).
+    :param environment: Compute environment.
+    :param test: If True, read the test-scoped path.
+    :return: Parsed JSON value, or None if the file is absent.
+    """
+    path = _aou_sample_artifact_path(name, environment, test)
+    if not file_exists(path):
+        return None
+    with hfs.open(path) as f:
+        return json.load(f)
+
+
 def _load_project_vds(
     project: str,
     environment: str,
@@ -1290,8 +1464,24 @@ def _load_project_vds(
     """
     if project == "aou":
         sex_karyotype_field = "meta.sex_karyotype"
+        # Each get_aou_vds call otherwise pays two full scans of the ~329-partition
+        # sample-collisions HT (once per rekey, to fetch 27 IDs) plus a collect of the
+        # ~330-partition meta HT for release_only (365k IDs) -- per chunk process, so
+        # the fan-out pays them thousands of times over. Read the precomputed JSON
+        # instead when it exists; fall back to the scans when it doesn't.
+        collisions = _read_sample_artifact_json("collisions.json", environment, test)
+        release_samples = _read_sample_artifact_json(
+            "release_samples.json", environment, test
+        )
         vds = get_aou_vds(
-            release_only=True,
+            release_only=release_samples is None,
+            filter_samples=release_samples,
+            # The release list holds POST-prefix IDs, and prefixing only runs when one
+            # of release_only/annotate_meta/add_project_prefix is set -- annotate_meta
+            # covers it here, but set it explicitly so the filter can't silently miss
+            # the prefixed samples if annotate_meta ever goes away.
+            add_project_prefix=release_samples is not None,
+            sample_collisions=set(collisions) if collisions is not None else None,
             filter_partitions=(
                 None if (sub_intervals or filter_intervals) else partition_range
             ),
@@ -1399,7 +1589,7 @@ def _build_vep_context_sites_ht(
     intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
     """
-    Build the locus-keyed, deduped, telomere/centromere-stripped vep_context sites HT.
+    Build the locus-keyed, deduped, telomere/centromere/chrM-stripped vep_context sites HT.
 
     This is the per-ref-site set the coverage/AN compute aggregates at. Previously
     this dedup + strip ran inside every chunk (``.distinct()`` shuffle + a driver
@@ -1416,11 +1606,17 @@ def _build_vep_context_sites_ht(
     else:
         ref_ht = vep_context.versions["105"].ht()
     ref_ht = ref_ht.key_by("locus").select().distinct()
-    ref_ht = hl.filter_intervals(
-        ref_ht,
-        telomeres_and_centromeres.ht().interval.collect(),
-        keep=False,
-    )
+    # Drop telomeres/centromeres and EXCLUDED_CONTIGS (chrM) in one pass. Dropped here
+    # rather than downstream so this table stays the single definition of "every site
+    # the compute must cover" and --validate-cov-and-an remains an exact-equality
+    # check. Concrete intervals (hl.eval) so the list stays homogeneous with the
+    # collected telomere/centromere intervals.
+    drop_intervals = telomeres_and_centromeres.ht().interval.collect()
+    drop_intervals += [
+        hl.eval(hl.parse_locus_interval(c, reference_genome="GRCh38"))
+        for c in EXCLUDED_CONTIGS
+    ]
+    ref_ht = hl.filter_intervals(ref_ht, drop_intervals, keep=False)
     return ref_ht
 
 
@@ -1623,6 +1819,19 @@ def _build_chunk_intervals(
         )
     rg = all_subs[0].start.reference_genome
     contig_subs = _split_intervals_at_contigs(all_subs, rg.name)
+    # Keep the chunk set on the same contigs as the sites HT (see EXCLUDED_CONTIGS).
+    # Safe to drop after the contig split, when every interval belongs to exactly one
+    # contig. If the VDS has no reference data on these contigs this is a no-op.
+    dropped = [iv for iv in contig_subs if iv.start.contig in EXCLUDED_CONTIGS]
+    if dropped:
+        logger.info(
+            "Dropping %d sub-interval(s) on excluded contig(s) %s.",
+            len(dropped),
+            sorted({iv.start.contig for iv in dropped}),
+        )
+        contig_subs = [
+            iv for iv in contig_subs if iv.start.contig not in EXCLUDED_CONTIGS
+        ]
     chunks: List[Dict[str, Any]] = []
     for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
         contig_ivs = list(group)
@@ -1666,7 +1875,7 @@ def _build_chunk_ref_ht(
     """
     Build the per-chunk ``ref_ht`` from the preprocessed vep_context sites HT.
 
-    Reads ``sites_path`` (already locus-keyed, deduped, and telomere/centromere-
+    Reads ``sites_path`` (already locus-keyed, deduped, and telomere/centromere/chrM-
     stripped by ``--write-vep-context-sites``). When ``sub_intervals`` is provided,
     reads with ``_intervals=sub_intervals`` so the ref_ht is co-partitioned with the
     VDS read (the VDS read's leading edge may be widened for straddling reference
@@ -1942,6 +2151,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
         experimental_densify=args.experimental_densify,
+        skip_coverage_stats=args.skip_coverage_stats,
     )
     # Stamp the layout hash into globals for provenance: the union at merge time
     # inherits the first input's globals, so the final release HT records which
@@ -2057,6 +2267,15 @@ def _build_setup_command(
         # 400'd with "no user project" until we pinned back to 0.2.137).
         # The relay's Hail Python version determines the JAR the QoB
         # driver downloads, so pinning here pins the entire pipeline.
+        #
+        # WARNING: this version is a floor for every Table this pipeline READS, not
+        # just a preference. Hail's table format is not backward compatible -- an
+        # older reader hard-fails with "incompatible file format" on a table written
+        # by a newer Hail. So any HT an input step writes (the vep_context sites HT,
+        # the chunk-intervals JSON is exempt, group_membership, downsampling) must be
+        # written by an environment whose Hail version is <= the version pinned here.
+        # Lowering this pin without rewriting those inputs breaks the fan-out; JSON
+        # artifacts are immune, which is one reason the sample artifacts are JSON.
         "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
         " --no-deps hail==0.2.137\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
@@ -2128,6 +2347,8 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
             flags.append("--reduce-min-aggs")
         if args.experimental_densify:
             flags.append("--experimental-densify")
+        if args.skip_coverage_stats:
+            flags.append("--skip-coverage-stats")
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
@@ -2160,14 +2381,15 @@ def _submit_relay_batch(
     batch_name: str,
     job_specs: List[_RelayJobSpec],
     log_label: str,
-) -> None:
+) -> Optional[int]:
     """
     Build and submit one Hail Batch of relay jobs sharing the same config.
 
     Shared skeleton for ``_submit_chunk_batch`` and ``_submit_merge_batch``: each
     relay job is a non-spot coordinator container (preemption mid-wait would orphan
     its inner QoB job) pinned to ``BATCH_REGIONS``, with ``--chunk-attempts``
-    retries. Parallelism comes from Hail Batch's own scheduler running the N jobs
+    attempts (1 by default -- no auto-retry, see that flag's help). Parallelism
+    comes from Hail Batch's own scheduler running the N jobs
     concurrently. No-ops (skips ``batch.run()``) when ``job_specs`` is empty.
 
     :param args: Parsed CLI args (reads ``batch_image``, ``batch_dry_run``).
@@ -2175,13 +2397,14 @@ def _submit_relay_batch(
     :param batch_name: Hail Batch name.
     :param job_specs: Per-job config (name + QoB sizing + retry count + command).
     :param log_label: Noun for log messages ("chunk" / "merge").
-    :return: None.
+    :return: Hail Batch id of the submitted batch, or None if nothing was submitted
+        (empty ``job_specs``) or the batch was a ``--batch-dry-run``.
     """
     if not job_specs:
         logger.info(
             "  no pending %s jobs for %s; skipping batch.run()", log_label, batch_name
         )
-        return
+        return None
 
     backend = hb.ServiceBackend(**backend_kwargs)
     try:
@@ -2196,6 +2419,10 @@ def _submit_relay_batch(
             # Relay is a coordinator waiting on its inner QoB job; preemption
             # mid-wait orphans that inner job, so relays are non-spot.
             j.spot(False)
+            # Defaults to 1 attempt. Non-spot does not make an attempt unlosable
+            # (a worker can still go 'not_responding'), and a retried relay cannot
+            # cancel the orphaned inner QoB batch -- it just submits a second one
+            # racing the first. See --chunk-attempts.
             j.n_max_attempts(spec.chunk_attempts)
             j.command(spec.command)
 
@@ -2206,7 +2433,9 @@ def _submit_relay_batch(
             log_label,
             args.batch_dry_run,
         )
-        batch.run(dry_run=args.batch_dry_run)
+        submitted = batch.run(dry_run=args.batch_dry_run)
+        # None under --batch-dry-run (nothing was submitted, so there is no id).
+        return getattr(submitted, "id", None)
     finally:
         backend.close()
 
@@ -2221,7 +2450,7 @@ def _submit_chunk_batch(
     common_flags_str: str,
     script: str,
     wave_label: Optional[str] = None,
-) -> None:
+) -> Optional[int]:
     """
     Build and submit one Hail Batch containing all pending chunk jobs.
 
@@ -2254,7 +2483,8 @@ def _submit_chunk_batch(
     :param wave_label: Optional suffix appended to the Hail Batch name to
         distinguish per-wave batches (e.g. ``"w003of049"``). None for a
         single (non-waved) batch.
-    :return: None.
+    :return: Hail Batch id of the submitted wave (None under
+        ``--batch-dry-run``), for the failed-chunk manifest.
     """
     project = args.project_name
     total = args.total_partitions
@@ -2290,7 +2520,7 @@ def _submit_chunk_batch(
                 command=command,
             )
         )
-    _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "chunk")
+    return _submit_relay_batch(args, backend_kwargs, batch_name, job_specs, "chunk")
 
 
 def _eligible_chunk_indices(
@@ -2471,6 +2701,14 @@ def _orchestrate_coverage_batch(
         wave_size if wave_size > 0 else len(pending_indices),
     )
 
+    run_id = _new_run_id()
+    logger.info(
+        "Orchestrator run id: %s (stamped into the failed-chunk manifest)", run_id
+    )
+
+    all_failed: List[int] = []
+    wave_records: List[Dict[str, Any]] = []
+    n_dispatched = 0
     for wi, wave_indices in enumerate(waves, start=1):
         wave_label = f"w{wi:03d}of{n_waves:03d}" if n_waves > 1 else None
         logger.info(
@@ -2481,7 +2719,7 @@ def _orchestrate_coverage_batch(
             wave_indices[0],
             wave_indices[-1],
         )
-        _submit_chunk_batch(
+        wave_batch_id = _submit_chunk_batch(
             args=args,
             backend_kwargs=backend_kwargs,
             chunk_indices=wave_indices,
@@ -2497,6 +2735,16 @@ def _orchestrate_coverage_batch(
         # than only discovering them at --merge-cov-chunks time).
         present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         failed = [idx for idx in wave_indices if idx not in present]
+        n_dispatched += len(wave_indices)
+        all_failed.extend(failed)
+        wave_records.append(
+            {
+                "wave": wi,
+                "batch_id": wave_batch_id,
+                "n_dispatched": len(wave_indices),
+                "failed_chunk_indices": failed,
+            }
+        )
         if failed:
             logger.warning(
                 "Wave %d/%d complete but %d/%d chunk(s) MISSING after run"
@@ -2514,6 +2762,27 @@ def _orchestrate_coverage_batch(
                 wi,
                 n_waves,
                 len(wave_indices),
+            )
+        # Rewrite after every wave (not only at the end) so the rerun list is
+        # already on disk if the orchestrator itself dies mid-run.
+        manifest = _write_failed_chunks_manifest(
+            cov_and_an_ht_path=cov_and_an_ht_path,
+            intervals_hash=intervals_hash,
+            failed=all_failed,
+            n_dispatched=n_dispatched,
+            run_id=run_id,
+            commit=commit,
+            app_name=args.app_name,
+            waves=wave_records,
+        )
+        if all_failed:
+            logger.warning(
+                "%d of %d dispatched chunk(s) still missing; rerun list written to"
+                " %s (run_id=%s)",
+                len(all_failed),
+                n_dispatched,
+                manifest,
+                run_id,
             )
 
 
@@ -2930,6 +3199,38 @@ def main(args):
             else None
         )
 
+        # Materialize the chunk-invariant AoU sample artifacts once per run so each
+        # chunk worker reads two small JSON files instead of rescanning the
+        # ~330-partition sample tables (see _aou_sample_artifact_path). Cheap enough
+        # to be worth running before any fan-out; generate_frequency reads the same
+        # files, so whichever pipeline runs first serves both.
+        if args.write_sample_artifacts:
+            if project != "aou":
+                raise ValueError(
+                    "--write-sample-artifacts only applies to --project-name aou"
+                    " (gnomAD has no sample-collision or AoU release artifact)."
+                )
+            # Imported here to match basics.get_aou_vds, which imports it lazily to
+            # avoid a circular import.
+            from gnomad_qc.v5.resources.meta import get_sample_id_collisions
+
+            sc_ht = get_sample_id_collisions(environment=environment).ht()
+            collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
+            path = _aou_sample_artifact_path("collisions.json", environment, test)
+            with hfs.open(path, "w") as f:
+                json.dump(collisions, f)
+            logger.info("Wrote %d collision sample IDs: %s", len(collisions), path)
+
+            # Must match get_aou_vds's release_only filter exactly, since it replaces
+            # it: post-prefix AoU release sample IDs.
+            release_samples = meta_ht.filter(
+                (meta_ht.project_meta.project == "aou") & meta_ht.release
+            ).s.collect()
+            path = _aou_sample_artifact_path("release_samples.json", environment, test)
+            with hfs.open(path, "w") as f:
+                json.dump(release_samples, f)
+            logger.info("Wrote %d release sample IDs: %s", len(release_samples), path)
+
         # Process the context HT once so the compute (fan-out workers especially) don't
         # have to re-compute it each time.
         if args.write_vep_context_sites:
@@ -3062,7 +3363,17 @@ def main(args):
                     ds_ht=hl.read_table(downsampling_ht_path),
                     reduce_min_aggs=reduce_min_aggs,
                 )
-            group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
+            # Coalesce on write. This HT is one row per sample (~365k for AoU) but
+            # inherits the meta HT's ~330 partitions, and every consumer either joins
+            # or key-indexes it -- which fans that consumer's read/collect stages to
+            # ~330 tasks, per chunk, across the whole fan-out. Consumers cannot fix it
+            # themselves: a lazy naive_coalesce does not propagate through a
+            # key-indexed join, so the coalesced copy has to be materialized, and doing
+            # it here means every consumer benefits instead of each re-checkpointing
+            # its own copy.
+            group_membership_ht.naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS).write(
+                group_membership_ht_path, overwrite=overwrite
+            )
 
         # --- COMPUTE (strict, single job): whole-VDS per-ref-site
         # coverage/AN/qual-hists. Prod AoU does this via ROLE 1 fan-out
@@ -3155,6 +3466,7 @@ def main(args):
                 project=project,
                 group_membership_ht=hl.read_table(group_membership_ht_path),
                 reduce_min_aggs=reduce_min_aggs,
+                skip_coverage_stats=args.skip_coverage_stats,
             )
             if args.n_partitions is not None:
                 # Checkpoint to temp only to stabilize before the coalesce; when
@@ -3488,7 +3800,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--driver-memory",
         type=str,
         default=None,
-        help="Memory type for driver node (e.g., 'highmem').",
+        choices=["standard", "highmem"],
+        help=(
+            "Memory type for driver node. 'lowmem' is not offered: Hail Batch rejects"
+            " it for JVM jobs ('400: jvm jobs cannot be on lowmem machines')."
+        ),
     )
     batch_group.add_argument(
         "--jvm-heap-size",
@@ -3516,7 +3832,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--worker-memory",
         type=str,
         default=None,
-        help="Memory type for worker nodes (e.g., 'highmem').",
+        choices=["standard", "highmem"],
+        help=(
+            "Memory type for worker nodes. Default None leaves QoB's own default"
+            " ('standard'), which is already generous -- chunk workers measured a"
+            " 272 MiB peak, 7%% of a 1-core standard pod. 'lowmem' is not offered:"
+            " Hail Batch rejects it for JVM jobs ('400: jvm jobs cannot be on lowmem"
+            " machines')."
+        ),
     )
     parser.add_argument(
         "--n-partitions",
@@ -3572,6 +3895,25 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " and --compute-all-cov-release-stats-ht runs (the gmh's"
             " ``freq_reduced`` global determines whether reduction takes effect"
             " at compute time)."
+        ),
+    )
+    parser.add_argument(
+        "--skip-coverage-stats",
+        action="store_true",
+        help=(
+            "Drop the ``coverage_stats`` aggregation, so the output HT has no"
+            " mean/median_approx/total_DP/over_X fields (AN and, for AoU, qual_hists"
+            " are unaffected). --project-name aou only: AoU reference blocks carry"
+            " GQ/END/GT/LEN and no DP, so DP is defined only where a sample carries a"
+            " variant and these fields aggregate to ~0 genome-wide (measured on"
+            " chr1:55.06-55.16Mb: mean 0.048x, median_approx 0 at 99.9%% of loci,"
+            " over_1 432 of 365,318 samples). Removes a 101-bin ``hl.agg.counter``"
+            " plus an ``hl.agg.approx_median`` sketch over the full cohort at every"
+            " reference site. The resulting HT is NOT usable for"
+            " --export-coverage-release-files; use --cov-and-an-output-suffix to keep"
+            " it separate. Note the additional saving from unpinning"
+            " ``{'group': 'adj'}`` from PINNED_LEAF_GROUPS requires a"
+            " --write-group-membership-ht regen and is not covered by this flag."
         ),
     )
     test_group = parser.add_argument_group(
@@ -3660,6 +4002,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--write-sample-artifacts",
+        help=(
+            "AoU only. Write the chunk-invariant sample artifacts (collisions.json,"
+            " release_samples.json) that chunk workers read instead of each rescanning"
+            " the ~330-partition sample-collisions and meta tables. Run once per run"
+            " before the fan-out; without it every chunk pays those scans. Shares its"
+            " paths with generate_frequency's --write-sample-artifacts."
+        ),
+        action="store_true",
+    )
+
+    parser.add_argument(
         "--write-aou-downsampling-ht",
         help="Write v5 downsampling HT.",
         action="store_true",
@@ -3667,7 +4021,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-vep-context-sites",
         help=(
-            "Preprocess vep_context once into a deduped, telomere/centromere-"
+            "Preprocess vep_context once into a deduped, telomere/centromere/chrM-"
             "stripped, locus-keyed sites HT (30-day storage) that every chunk reads"
             " co-partitioned. Prerequisite for the compute; run before"
             " --use-batch-fanout / --compute-all-cov-release-stats-ht. With --test,"
@@ -3906,7 +4260,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--chunk-cpu",
         type=float,
         default=0.5,
-        help="CPU per chunk relay container. Default 0.5 (relay only).",
+        help=(
+            "CPU per chunk relay container. Default 0.5: the relay only builds IR and"
+            " waits on its inner QoB batch, so 1 core measured as pure waste"
+            " ($0.052 -> $0.028 per chunk on the freq fan-out)."
+        ),
     )
     fanout_group.add_argument(
         "--chunk-memory",
@@ -3929,18 +4287,29 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Cores for the QoB driver pod each chunk/merge relay spawns."
             " Power of two between 0.25 and 16 (as a string, e.g. '2' or"
             " '0.5'). Forwarded to the relay's --driver-cores; decoupled"
-            " from the orchestrator's own --driver-cores."
+            " from the orchestrator's own --driver-cores. Default None leaves"
+            " QoB's own default (2). The driver is billed for the whole worker"
+            " barrier while idle, so cores are near-pure waste -- but memory scales"
+            " with cores, and a coverage chunk needs the memory: '2' + highmem is the"
+            " configuration measured to work. The freq fan-out runs 1-core highmem;"
+            " do not copy that here without retesting (1-core highmem is 6.5 GB,"
+            " LESS than the 2-core standard 8 GB that already died)."
         ),
     )
     fanout_group.add_argument(
         "--chunk-driver-memory",
         type=str,
-        default=None,
+        default="highmem",
+        choices=["standard", "highmem"],
         help=(
-            "Memory profile for the QoB driver pod each chunk/merge"
-            " relay spawns, e.g. 'highmem'. Forwarded to the relay's"
-            " --driver-memory; decoupled from the orchestrator's own"
-            " --driver-memory."
+            "Memory profile for the QoB driver pod each chunk/merge relay spawns."
+            " Forwarded to the relay's --driver-memory; decoupled from the"
+            " orchestrator's own --driver-memory. Default 'highmem': the driver dies"
+            " during IR lowering of the big fused execute on 'standard' (measured on a"
+            " PCSK9 coverage chunk -- 2-core standard, 8 GB, died with"
+            " 'unexpected end of stream in jvm'; 2-core highmem completed). This is a"
+            " JVM-total limit, not a RegionPool one, so it does not show up as a Hail"
+            " out-of-memory error. 'lowmem' is rejected by Hail Batch for JVM jobs."
         ),
     )
     fanout_group.add_argument(
@@ -3958,18 +4327,31 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--chunk-worker-memory",
         type=str,
         default=None,
+        choices=["standard", "highmem"],
         help=(
             "Memory profile per QoB worker pod the chunk/merge driver"
-            " dispatches, e.g. 'lowmem'. Forwarded to the relay's"
-            " --worker-memory; decoupled from the orchestrator's own"
-            " --worker-memory."
+            " dispatches. Forwarded to the relay's --worker-memory; decoupled from"
+            " the orchestrator's own --worker-memory. Default None leaves QoB's own"
+            " default ('standard'), which is already generous -- chunk workers"
+            " measured a 272 MiB peak, 7% of a 1-core standard pod. 'lowmem' is NOT"
+            " offered: Hail Batch rejects it for JVM jobs ('400: jvm jobs cannot be"
+            " on lowmem machines')."
         ),
     )
     fanout_group.add_argument(
         "--chunk-attempts",
         type=int,
-        default=5,
-        help="Max retry attempts (n_max_attempts) per relay job (chunk and merge).",
+        default=1,
+        help=(
+            "Max attempts (n_max_attempts) per relay job (chunk and merge)."
+            " Default 1 = no auto-retry, which is deliberate: a relay is only a"
+            " coordinator for its inner QoB batch, and Batch retries an attempt it"
+            " considers lost (e.g. reason 'not_responding') without being able to"
+            " cancel that inner batch -- so a retry submits a SECOND QoB batch"
+            " racing the first for the same chunk output. Failed chunks are"
+            " recorded in _failed_chunks.json next to the chunk outputs; rerun"
+            " --use-batch-fanout to pick them up."
+        ),
     )
     fanout_group.add_argument(
         "--merge-cpu",
@@ -4186,6 +4568,19 @@ if __name__ == "__main__":
     if args.merge_qual_hists and args.project_name != "aou":
         raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
 
+    # gnomAD's VDS has real per-base DP, and the consent-drop subtraction that
+    # produces the v5 coverage HT needs coverage_stats, so this is AoU-only.
+    if args.skip_coverage_stats and args.project_name != "aou":
+        parser.error("--skip-coverage-stats requires --project-name to be 'aou'.")
+
+    if args.write_sample_artifacts and args.project_name != "aou":
+        parser.error("--write-sample-artifacts requires --project-name to be 'aou'.")
+
+    # NOTE: 'lowmem' is excluded from the choices of every driver/worker memory flag
+    # rather than checked here -- Hail Batch rejects it for JVM jobs outright ("400:
+    # jvm jobs cannot be on lowmem machines") and every QoB pod this script starts is
+    # a JVM job, so argparse refuses it before anything is submitted.
+
     # Single-action entry points: each dispatches exactly one unit in main() and
     # returns, so pairing one with another entry point or with an in-process step
     # flag would silently skip the other. --run-chunk / --run-merge are set by the
@@ -4202,6 +4597,7 @@ if __name__ == "__main__":
     step_flags = {
         "--write-aou-downsampling-ht": args.write_aou_downsampling_ht,
         "--write-group-membership-ht": args.write_group_membership_ht,
+        "--write-sample-artifacts": args.write_sample_artifacts,
         "--write-vep-context-sites": args.write_vep_context_sites,
         "--write-chunk-intervals": args.write_chunk_intervals,
         "--compute-all-cov-release-stats-ht": args.compute_all_cov_release_stats_ht,

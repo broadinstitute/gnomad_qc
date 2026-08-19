@@ -361,6 +361,7 @@ def get_aou_vds(
     checkpoint_variant_data: bool = False,
     naive_coalesce_partitions: Optional[int] = None,
     add_project_prefix: bool = False,
+    sample_collisions: Optional[Set[str]] = None,
     environment: str = "batch",
     log_sample_counts: bool = True,
 ) -> hl.vds.VariantDataset:
@@ -392,6 +393,10 @@ def get_aou_vds(
     :param checkpoint_variant_data: Whether to checkpoint the variant data MT after splitting and filtering. Default is False.
     :param naive_coalesce_partitions: Optional number of partitions to coalesce the VDS to. Default is None.
     :param add_project_prefix: Whether to prefix sample IDs (e.g., ``'aou_'``) for samples that exist in multiple projects to avoid ID collisions. Default is False.
+    :param sample_collisions: Optional pre-collected set of sample IDs that collide with
+        gnomAD samples. When None, the set is collected from the sample-collisions
+        Table here (a full scan of it), so callers that run this per chunk should
+        collect once and pass it in. Default is None.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude.
         When False, skips the ``count_cols`` calls used for logging. Default is True.
@@ -497,7 +502,15 @@ def get_aou_vds(
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions = get_sample_id_collisions(environment=environment).ht()
+        if sample_collisions is None:
+            sample_collisions_ht = get_sample_id_collisions(
+                environment=environment
+            ).ht()
+            # Collect once: passing the Table would rescan it inside each of the two
+            # calls below.
+            sample_collisions = sample_collisions_ht.aggregate(
+                hl.agg.collect_as_set(sample_collisions_ht.s)
+            )
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
@@ -840,7 +853,7 @@ def get_samples_to_exclude(
 
 def add_project_prefix_to_sample_collisions(
     t: Union[hl.Table, hl.MatrixTable],
-    sample_collisions: hl.Table,
+    sample_collisions: Union[hl.Table, Set[str]],
     project: Optional[str] = None,
     sample_id_field: str = "s",
 ) -> hl.Table:
@@ -848,7 +861,10 @@ def add_project_prefix_to_sample_collisions(
     Add project prefix to sample IDs that exist in multiple projects.
 
     :param t: Table/MatrixTable to add project prefix to sample IDs.
-    :param sample_collisions: Table of sample IDs that exist in multiple projects.
+    :param sample_collisions: Table of sample IDs that exist in multiple projects, or
+        an already-collected set of those IDs. Collecting from a Table launches a full
+        scan of it, so callers applying the same collisions to several tables should
+        collect once and pass the set.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
     :return: Table with project prefix added to sample IDs.
@@ -856,7 +872,12 @@ def add_project_prefix_to_sample_collisions(
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    if isinstance(sample_collisions, hl.Table):
+        collisions = sample_collisions.aggregate(
+            hl.agg.collect_as_set(sample_collisions.s)
+        )
+    else:
+        collisions = sample_collisions
 
     if project:
         prefix_expr = hl.literal(project)
