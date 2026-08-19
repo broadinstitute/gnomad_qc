@@ -2261,12 +2261,12 @@ def _build_setup_command(
         f"python3 -c \"import json, os; p='/gsa-key/key.json';"
         f" d=json.load(open(p)); d['quota_project_id']='{gcp_billing_project}';"
         f" json.dump(d, open(p+'.new','w')); os.replace(p+'.new', p)\"\n"
-        # TODO: Remove this Hail pin once 0.2.139+ fixes the
-        # requester-pays propagation regression that 0.2.138 introduced
-        # for ``load_references_from_dataset`` (AoU VDS metadata reads
-        # 400'd with "no user project" until we pinned back to 0.2.137).
-        # The relay's Hail Python version determines the JAR the QoB
-        # driver downloads, so pinning here pins the entire pipeline.
+        # Pin the pipeline's Hail version (the relay's Hail Python version
+        # determines the JAR the QoB driver downloads, so pinning here pins the
+        # entire pipeline). 0.2.139 is past the 0.2.138 requester-pays propagation
+        # regression that forced an earlier 0.2.137 pin, and is what the freq
+        # fan-out runs (via the v5_freq_batch:0.2.139 image); the GSA-key patch
+        # above is kept until confirmed unnecessary on 0.2.139.
         #
         # WARNING: this version is a floor for every Table this pipeline READS, not
         # just a preference. Hail's table format is not backward compatible -- an
@@ -2277,7 +2277,7 @@ def _build_setup_command(
         # Lowering this pin without rewriting those inputs breaks the fan-out; JSON
         # artifacts are immune, which is one reason the sample artifacts are JSON.
         "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
-        " --no-deps hail==0.2.137\n"
+        " --no-deps hail==0.2.139\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
