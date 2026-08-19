@@ -3127,6 +3127,20 @@ def main(args):
     # ``--experimental`` attaches the QoB driver to an existing Hail Batch
     # (batch_id auto-resolved from HAIL_BATCH_ID inside _init_hail); otherwise
     # each run creates its own Hail Batch.
+    #
+    # Hail 0.2.139 workaround: the --experimental-densify scan crashes at compile
+    # time ("scala.NotImplementedError ... SimpleSStream.settableTupleTypes")
+    # whenever the scanned table has more partitions than Hail's branching factor
+    # (default 50), because 0.2.139's tree-scan lowering zips a stream of streams
+    # (LowerTableIR "table_scan_down_pass"; 0.2.137/0.2.138 are unaffected).
+    # Raising the branching factor above the chunk's partition count keeps the
+    # scan combine single-level, which never enters the broken lowering path. The
+    # chunk reads exactly --read-subintervals-per-chunk partitions; the 2x margin
+    # only changes how many serialized scan states the driver merges at once.
+    branching_factor = None
+    if args.run_chunk and args.experimental_densify:
+        branching_factor = max(50, 2 * args.read_subintervals_per_chunk)
+
     _init_hail(
         log_name,
         environment,
@@ -3134,6 +3148,7 @@ def main(args):
         tmp_dir_days=args.tmp_dir_days,
         tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}coverage_and_an_generation",
         experimental=args.experimental,
+        branching_factor=branching_factor,
         **_get_batch_resource_kwargs(args),
     )
 
