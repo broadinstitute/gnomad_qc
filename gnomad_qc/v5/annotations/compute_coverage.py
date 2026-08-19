@@ -4333,7 +4333,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " dispatches. Forwarded to the relay's --worker-memory; decoupled from"
             " the orchestrator's own --worker-memory. Default None leaves QoB's own"
             " default ('standard'), which is already generous -- chunk workers"
-            " measured a 272 MiB peak, 7% of a 1-core standard pod. 'lowmem' is NOT"
+            " measured a 272 MiB peak, 7%% of a 1-core standard pod. 'lowmem' is NOT"
             " offered: Hail Batch rejects it for JVM jobs ('400: jvm jobs cannot be"
             " on lowmem machines')."
         ),
