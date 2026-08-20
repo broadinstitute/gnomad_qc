@@ -106,8 +106,11 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import re
+import shlex
 import subprocess
+import sys
 from datetime import datetime, timezone
 from functools import reduce
 from itertools import groupby
@@ -2197,6 +2200,24 @@ def _run_coverage_merge(
     logger.info("Wrote merged HT to %s", output_path)
 
 
+def _resolve_commit() -> str:
+    """
+    Return the gnomad_qc commit that relay containers should check out.
+
+    Prefers the ``GNOMAD_QC_COMMIT`` env var, which ``--submit-orchestrator``
+    sets in the orchestrator job: the in-job checkout comes from a GitHub
+    archive tarball, which has no ``.git`` directory for ``git rev-parse`` to
+    read. Falls back to ``git rev-parse HEAD`` when running from a real clone
+    (a laptop or worktree).
+
+    :return: Full commit hash.
+    """
+    commit = os.getenv("GNOMAD_QC_COMMIT")
+    if commit:
+        return commit
+    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+
+
 def _build_setup_command(
     commit: str,
     gcp_billing_project: str,
@@ -2440,6 +2461,83 @@ def _submit_relay_batch(
         backend.close()
 
 
+def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
+    """
+    Submit THIS orchestrator invocation as one small non-spot Hail Batch job.
+
+    Driving a full fan-out locally means keeping one process alive for the
+    whole run (waves block in ``batch.run()``), which ties the campaign to a
+    laptop staying awake. This instead re-invokes the same command line (minus
+    ``--submit-orchestrator``) inside a Hail Batch job and returns immediately
+    (``batch.run(wait=False)``). The orchestrator never initializes Hail — it
+    only uses hailtop to submit relay batches, which works from inside a Batch
+    job the same way each relay's nested QoB submission does — so the job needs
+    no JVM sizing and fits the smallest container.
+
+    The commit for relay checkouts is resolved here, where ``.git`` exists, and
+    forwarded via the ``GNOMAD_QC_COMMIT`` env var (see ``_resolve_commit``).
+
+    If the orchestrator job dies, resubmit this same command: completed chunks
+    are skipped via their ``_SUCCESS`` markers and the ``_failed_chunks.json``
+    manifest records what the dead run had dispatched.
+
+    :param args: Parsed CLI args (reads the batch/billing config; everything
+        else is forwarded verbatim to the wrapped run).
+    :return: None.
+    """
+    commit = _resolve_commit()
+    setup_cmd = _build_setup_command(
+        commit,
+        gcp_billing_project=args.gcp_billing_project,
+        methods_branch=args.methods_branch,
+    )
+    forwarded = [a for a in sys.argv[1:] if a != "--submit-orchestrator"]
+    command = (
+        f"export GNOMAD_QC_COMMIT={commit}\n"
+        "python3 /tmp/gnomad_qc/gnomad_qc/v5/annotations/compute_coverage.py "
+        + " ".join(shlex.quote(a) for a in forwarded)
+    )
+
+    backend_kwargs = {"billing_project": args.batch_billing_project}
+    if args.batch_remote_tmpdir:
+        backend_kwargs["remote_tmpdir"] = args.batch_remote_tmpdir
+    backend = hb.ServiceBackend(**backend_kwargs)
+    try:
+        batch = hb.Batch(name=f"{args.app_name}_orchestrator", backend=backend)
+        j = batch.new_job(name="orchestrator")
+        j.image(args.batch_image)
+        j.cpu(0.5)
+        j.memory("standard")
+        j.storage("10Gi")
+        j.regions(BATCH_REGIONS)
+        # Long-lived, mostly idle coordinator: the worst profile to preempt
+        # (losing it mid-campaign stops wave dispatch), and non-spot costs
+        # cents at this size.
+        j.spot(False)
+        # A second attempt would dispatch waves concurrently with any still
+        # unfinished from the first; recovery is manual resubmission against
+        # the _SUCCESS/manifest state instead.
+        j.n_max_attempts(1)
+        j.command(setup_cmd + command)
+        logger.info(
+            "Submitting orchestrator job '%s_orchestrator' (commit %s," " dry_run=%s)",
+            args.app_name,
+            commit[:12],
+            args.batch_dry_run,
+        )
+        submitted = batch.run(wait=False, dry_run=args.batch_dry_run)
+        batch_id = getattr(submitted, "id", None)
+        logger.info(
+            "Orchestrator running as Hail Batch %s. Monitor via the Batch UI;"
+            " chunk state lives in the _SUCCESS markers and"
+            " _failed_chunks.json. Resubmit this same command to resume if the"
+            " job dies.",
+            batch_id,
+        )
+    finally:
+        backend.close()
+
+
 def _submit_chunk_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
@@ -2610,7 +2708,10 @@ def _orchestrate_coverage_batch(
     a failed/partial wave is resumed by simply rerunning this step (only
     not-yet-complete chunks are re-submitted). ``batch.run()`` does not
     raise on per-job failure, so a wave with some failed chunks does not
-    abort the remaining waves; rerun to retry the failures.
+    abort the remaining waves. After the last wave, chunks still missing
+    are automatically re-dispatched for up to ``--fanout-retry-passes``
+    passes; whatever remains after that is recorded in
+    ``_failed_chunks.json`` for a manual rerun.
 
     The merge step is intentionally separate; run ``--merge-cov-chunks``
     after this finishes.
@@ -2670,7 +2771,7 @@ def _orchestrate_coverage_batch(
         logger.info("All chunks already complete; nothing to submit.")
         return
 
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+    commit = _resolve_commit()
     setup_cmd = _build_setup_command(
         commit,
         gcp_billing_project=args.gcp_billing_project,
@@ -2783,6 +2884,73 @@ def _orchestrate_coverage_batch(
                 n_dispatched,
                 manifest,
                 run_id,
+            )
+
+    # Automatic retry passes for still-missing chunks. Safe where Batch-level
+    # attempts (--chunk-attempts) are not: waves are sequential and
+    # batch.run() blocks, so by the time a pass runs, every relay from the
+    # previous dispatch has exited — a re-dispatch cannot race a live relay's
+    # inner QoB batch for the same chunk output. Each pass is one batch (a
+    # missing set large enough to need waves indicates a systematic failure
+    # that retries won't fix). Chunks missing after the last pass stay in
+    # _failed_chunks.json for follow-up.
+    for pass_no in range(1, max(args.fanout_retry_passes, 0) + 1):
+        if not all_failed:
+            break
+        retry_indices = sorted(set(all_failed))
+        logger.info(
+            "Retry pass %d/%d: re-dispatching %d missing chunk(s): %s%s",
+            pass_no,
+            args.fanout_retry_passes,
+            len(retry_indices),
+            retry_indices[:25],
+            " ..." if len(retry_indices) > 25 else "",
+        )
+        retry_batch_id = _submit_chunk_batch(
+            args=args,
+            backend_kwargs=backend_kwargs,
+            chunk_indices=retry_indices,
+            cov_and_an_ht_path=cov_and_an_ht_path,
+            intervals_hash=intervals_hash,
+            setup_cmd=setup_cmd,
+            common_flags_str=common_flags_str,
+            script=script,
+            wave_label=f"retry{pass_no}",
+        )
+        present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
+        all_failed = [idx for idx in retry_indices if idx not in present]
+        n_dispatched += len(retry_indices)
+        wave_records.append(
+            {
+                "wave": f"retry{pass_no}",
+                "batch_id": retry_batch_id,
+                "n_dispatched": len(retry_indices),
+                "failed_chunk_indices": all_failed,
+            }
+        )
+        manifest = _write_failed_chunks_manifest(
+            cov_and_an_ht_path=cov_and_an_ht_path,
+            intervals_hash=intervals_hash,
+            failed=all_failed,
+            n_dispatched=n_dispatched,
+            run_id=run_id,
+            commit=commit,
+            app_name=args.app_name,
+            waves=wave_records,
+        )
+        if all_failed:
+            logger.warning(
+                "Retry pass %d/%d complete; %d chunk(s) STILL missing (see %s).",
+                pass_no,
+                args.fanout_retry_passes,
+                len(all_failed),
+                manifest,
+            )
+        else:
+            logger.info(
+                "Retry pass %d/%d complete; all chunks present.",
+                pass_no,
+                args.fanout_retry_passes,
             )
 
 
@@ -2944,7 +3112,7 @@ def _orchestrate_coverage_merge(
         len(shape) - 1,
     )
 
-    commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+    commit = _resolve_commit()
     setup_cmd = _build_setup_command(
         commit,
         gcp_billing_project=args.gcp_billing_project,
@@ -3090,7 +3258,13 @@ def main(args):
     # orchestrator run.
     #   --use-batch-fanout : scatter the per-chunk compute.
     #   --merge-cov-chunks : tree-reduce the chunk HTs (run after fanout).
+    #   --submit-orchestrator : run either of the above inside a Batch job
+    #       instead of this process (submits and returns immediately).
     # ===================================================================
+    if args.submit_orchestrator:
+        _submit_orchestrator_batch(args)
+        return
+
     if args.use_batch_fanout:
         cov_and_an_ht_path = _resolve_cov_and_an_ht_path(
             project,
@@ -4147,6 +4321,35 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
     )
     fanout_group.add_argument(
+        "--submit-orchestrator",
+        action="store_true",
+        help=(
+            "Run the orchestrator itself inside Hail Batch instead of"
+            " locally: submit one small non-spot job that re-invokes this"
+            " command (minus this flag) and return immediately, so a full"
+            " fan-out doesn't require keeping a laptop process alive for"
+            " the whole run. Requires --use-batch-fanout or"
+            " --merge-cov-chunks. Progress lives in the Batch UI and"
+            " _failed_chunks.json; if the orchestrator job dies, resubmit"
+            " this same command to resume (completed chunks are skipped)."
+        ),
+    )
+    fanout_group.add_argument(
+        "--fanout-retry-passes",
+        type=int,
+        default=1,
+        help=(
+            "After the last wave, automatically re-dispatch still-missing"
+            " chunks up to this many extra passes (each pass is one Hail"
+            " Batch of just the missing chunks). Unlike --chunk-attempts"
+            " (Batch-level job retry), a pass only starts after every"
+            " previously dispatched relay has exited, so it cannot race an"
+            " orphaned inner QoB batch for the same chunk output. Chunks"
+            " still missing after the final pass are recorded in"
+            " _failed_chunks.json. Set 0 to disable. Default 1."
+        ),
+    )
+    fanout_group.add_argument(
         "--merge-cov-chunks",
         action="store_true",
         help=(
@@ -4516,6 +4719,8 @@ if __name__ == "__main__":
         "experimental",
         "use_batch_fanout",
         "merge_cov_chunks",
+        "submit_orchestrator",
+        "fanout_retry_passes",
         # Fan-out / merge orchestration args (only consumed by the batch
         # orchestrator + relays); passing them in a non-batch env is a mistake.
         "total_partitions",
@@ -4539,6 +4744,15 @@ if __name__ == "__main__":
             "Batch-only arguments ("
             + ", ".join("--" + a.replace("_", "-") for a in provided_batch_args)
             + ") require --environment=batch"
+        )
+
+    # --submit-orchestrator only wraps the two orchestrator roles.
+    if args.submit_orchestrator and not (
+        args.use_batch_fanout or args.merge_cov_chunks
+    ):
+        parser.error(
+            "--submit-orchestrator requires --use-batch-fanout or"
+            " --merge-cov-chunks (it wraps an orchestrator run in a Batch job)."
         )
 
     # --jvm-heap-size only applies to the in-process JVM under --experimental.
