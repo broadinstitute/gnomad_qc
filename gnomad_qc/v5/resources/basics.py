@@ -348,6 +348,7 @@ def get_aou_vds(
     filter_samples: Optional[Union[List[str], hl.Table]] = None,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    read_intervals: Optional[List[hl.utils.Interval]] = None,
     chrom: Optional[Union[str, List[str], Set[str]]] = None,
     autosomes_only: bool = False,
     sex_chr_only: bool = False,
@@ -362,6 +363,7 @@ def get_aou_vds(
     add_project_prefix: bool = False,
     environment: str = "batch",
     log_sample_counts: bool = True,
+    sample_collisions: Optional[Set[str]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -378,6 +380,8 @@ def get_aou_vds(
         `add_project_prefix` must be set to True to filter properly. Default is None.
     :param test: Whether to load the test VDS instead of the full VDS. The test VDS includes 10 samples selected from the full dataset for testing purposes. Default is False.
     :param filter_partitions: Optional argument to filter the VDS to a list of specific partitions.
+    :param read_intervals: Optional list of locus intervals passed to `hl.vds.read_vds`
+        at read time. Mutually exclusive with `filter_partitions`.
     :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param autosomes_only: Whether to include only autosomes. Default is False.
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
@@ -393,11 +397,22 @@ def get_aou_vds(
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude.
         When False, skips the ``count_cols`` calls used for logging. Default is True.
+    :param sample_collisions: Optional pre-collected set of sample IDs that collide with
+        gnomAD samples. When None, the set is collected from the sample-collisions
+        Table here (a full scan of it), so callers that run this per chunk should
+        collect once and pass it in. Default is None.
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    if filter_partitions is not None and read_intervals is not None:
+        raise ValueError(
+            "`filter_partitions` and `read_intervals` are mutually exclusive."
+        )
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
-    vds = aou_v8_resource.vds()
+    # NOTE: explicit None check -- an empty interval list must restrict the read
+    # to zero rows, not silently fall back to an unrestricted full-VDS read.
+    read_args = {"intervals": read_intervals} if read_intervals is not None else None
+    vds = aou_v8_resource.vds(read_args=read_args)
 
     if isinstance(chrom, str):
         chrom = [chrom]
@@ -490,7 +505,15 @@ def get_aou_vds(
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions = get_sample_id_collisions(environment=environment).ht()
+        if sample_collisions is None:
+            sample_collisions_ht = get_sample_id_collisions(
+                environment=environment
+            ).ht()
+            # Collect once: passing the Table would rescan it inside each of the two
+            # calls below.
+            sample_collisions = sample_collisions_ht.aggregate(
+                hl.agg.collect_as_set(sample_collisions_ht.s)
+            )
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
@@ -826,7 +849,7 @@ def get_samples_to_exclude(
 
 def add_project_prefix_to_sample_collisions(
     t: Union[hl.Table, hl.MatrixTable],
-    sample_collisions: hl.Table,
+    sample_collisions: Union[hl.Table, Set[str]],
     project: Optional[str] = None,
     sample_id_field: str = "s",
 ) -> hl.Table:
@@ -834,7 +857,10 @@ def add_project_prefix_to_sample_collisions(
     Add project prefix to sample IDs that exist in multiple projects.
 
     :param t: Table/MatrixTable to add project prefix to sample IDs.
-    :param sample_collisions: Table of sample IDs that exist in multiple projects.
+    :param sample_collisions: Table of sample IDs that exist in multiple projects, or
+        an already-collected set of those IDs. Collecting from a Table launches a full
+        scan of it, so callers applying the same collisions to several tables should
+        collect once and pass the set.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
     :return: Table with project prefix added to sample IDs.
@@ -842,7 +868,12 @@ def add_project_prefix_to_sample_collisions(
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    if isinstance(sample_collisions, hl.Table):
+        collisions = sample_collisions.aggregate(
+            hl.agg.collect_as_set(sample_collisions.s)
+        )
+    else:
+        collisions = sample_collisions
 
     if project:
         prefix_expr = hl.literal(project)

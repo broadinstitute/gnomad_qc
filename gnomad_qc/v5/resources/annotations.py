@@ -274,6 +274,107 @@ def get_info_ht(
     )
 
 
+def get_ac_info_ht_checkpoint_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    environment: str = "batch",
+    stable: bool = False,
+    test_n_partitions: int = None,
+    contig: str = None,
+    chunk_start: int = None,
+    chunk_stop: int = None,
+    min_alleles: int = None,
+    max_alleles: int = None,
+    union: bool = False,
+) -> str:
+    """
+    Get checkpoint path for the AC info table written by --generate-ac-info-ht.
+
+    Uses the 30-day temp bucket and a filename derived from the run's parameters
+    (each component included only when set), so per-stratum and per-chunk runs
+    get distinct paths without manual overrides, e.g.
+    ``ac_info_ht_test_3p_min10_max100.ht`` or ``ac_info_ht_chunk0_2000_max9.ht``.
+    This helper only returns the checkpoint path and does not imply that reruns
+    will automatically reuse existing data.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether the path should use the test suffix.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :param stable: If True, place the checkpoint under the durable annotations
+        bucket instead of the 30-day temp bucket. Use for production runs whose
+        AC info HTs should be kept. Default is False (temp bucket).
+    :param test_n_partitions: Optional number of test partitions used for the run.
+    :param contig: Optional contig the run was restricted to.
+    :param chunk_start: Optional chunk start partition index used for the run.
+    :param chunk_stop: Optional chunk stop partition index used for the run.
+    :param min_alleles: Optional minimum allele count used for the run.
+    :param max_alleles: Optional maximum allele count used for the run.
+    :param union: Whether this is the unioned (all-strata) AC info HT, i.e. the
+        --union-ac-info-hts output that --create-final-info-ht reads.
+    :return: Path to AC info checkpoint HT.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    parts = ["ac_info_ht"]
+    if test:
+        parts.append("test")
+    if test_n_partitions is not None:
+        parts.append(f"{test_n_partitions}p")
+    if contig is not None:
+        parts.append(contig)
+    if chunk_start is not None or chunk_stop is not None:
+        parts.append(f"chunk{chunk_start}_{chunk_stop}")
+    if min_alleles is not None:
+        parts.append(f"min{min_alleles}")
+    if max_alleles is not None:
+        parts.append(f"max{max_alleles}")
+    if union:
+        parts.append("union")
+    if stable:
+        prefix = (
+            f"{_annotations_root(version, test=False, environment=environment)}"
+            "/create_info_ht"
+        )
+    else:
+        prefix = (
+            f"{qc_temp_prefix(version=version, environment=environment, days=30)}"
+            "create_info_ht"
+        )
+    return f"{prefix}/{'_'.join(parts)}.ht"
+
+
+def get_vcf_ht_checkpoint_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    environment: str = "batch",
+    stable: bool = False,
+) -> str:
+    """
+    Get checkpoint path for the reformatted sites VCF HT (--create-sites-vcf-ht).
+
+    :param version: Version of annotation path to return.
+    :param test: Whether the path should use the test suffix. A test sites VCF HT
+        holds only the first two partitions of the VCF, so it is a distinct file.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :param stable: If True, place the checkpoint under the durable annotations
+        bucket instead of the 30-day temp bucket. Default is False (temp bucket).
+    :return: Path to the reformatted sites VCF HT checkpoint.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    if stable:
+        prefix = (
+            f"{_annotations_root(version, test=False, environment=environment)}"
+            "/create_info_ht"
+        )
+    else:
+        prefix = (
+            f"{qc_temp_prefix(version=version, environment=environment, days=30)}"
+            "create_info_ht"
+        )
+    return f"{prefix}/sites_vcf{'_test' if test else ''}.ht"
+
+
 def info_vcf_path(
     version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
