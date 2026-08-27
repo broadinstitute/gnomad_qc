@@ -223,6 +223,70 @@ def coverage_and_an_path(
     )
 
 
+def cram_coverage_selection_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+) -> str:
+    """
+    Fetch filepath for the CRAM-coverage selected-sample TSV.
+
+    .. note ::
+
+        person_id-keyed (person_id, cram_uri, cram_index_uri, batch); batch
+        bucket only — must not be copied out of the AoU environment.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: Path to the selected-sample TSV.
+    """
+    root = _annotations_root(version, test=test, environment="batch")
+    return f"{root}/cram_coverage/selected_samples.tsv"
+
+
+def cram_coverage_region_root(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+) -> str:
+    """
+    Fetch root path for per-region CRAM-coverage aggregate TSVs.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: Root path for region TSVs (aggregates only, no sample-level data).
+    """
+    root = _annotations_root(version, test=test, environment="batch")
+    return f"{root}/cram_coverage/regions"
+
+
+def cram_coverage_path(
+    test: bool = False,
+    environment: str = "batch",
+) -> VersionedTableResource:
+    """
+    Fetch filepath for the CRAM-based coverage Table.
+
+    Per-site coverage aggregates (mean, median, over_X fractions) computed from
+    a stratified subset of AoU CRAMs; the CRAM-measured counterpart of the
+    VDS-based coverage in `coverage_and_an_path`.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb", "batch", or "dataproc".
+    :return: CRAM-based coverage Hail Table.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}.cram_coverage.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
 def get_freq(
     version: str = CURRENT_ANNOTATION_VERSION,
     data_type: str = "genomes",
