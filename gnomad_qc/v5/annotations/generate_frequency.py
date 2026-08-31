@@ -81,7 +81,6 @@ from hail.utils import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.release import release_sites
-from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_aou_freq_chunk_path,
@@ -413,7 +412,11 @@ def _prepare_aou_vds(
             LAD=aou_vmt.LAD,
             LA=aou_vmt.LA,
         )
-        aou_vmt = annotate_adj_no_dp(aou_vmt)
+        # AoU adj: the usual gnomAD cutoffs (GQ >= 20, DP >= 10 with DP
+        # approximated as sum(LAD), AB >= 0.2 for het calls).
+        aou_vmt = aou_vmt.annotate_entries(
+            adj=get_adj_expr(aou_vmt.LGT, aou_vmt.GQ, hl.sum(aou_vmt.LAD), aou_vmt.LAD)
+        )
         aou_vds = hl.vds.VariantDataset(aou_vds.reference_data, aou_vmt)
         aou_vds = hl.vds.split_multi(aou_vds, filter_changed_loci=True)
         aou_vmt = aou_vds.variant_data
@@ -714,13 +717,20 @@ def _calculate_aou_frequencies_and_hists_using_densify(
     #     recomputing here, hom-ref calls inside ref blocks would be silently
     #     excluded from adj-filtered aggregations in `compute_freq_by_strata`
     #     (which uses `hl.agg.filter(adj[i], ...)`, and missing → False).
-    #     `get_adj_expr` short-circuits via `~is_het()` for hom-ref calls and
-    #     only gates on `gq_expr >= adj_gq`, so the missing AD on ref-block
-    #     fill-ins is not a problem.
+    #     Hom-ref calls (ref-block fill-ins) pass unconditionally: AoU never
+    #     writes GQ0, so there is no principled GQ cutoff. Variant entries use
+    #     the standard cutoffs (GQ >= 20, DP approximated as sum(AD) >= 10,
+    #     AB >= 0.2 for het calls).
     aou_mt = aou_mt.annotate_entries(
         GT=adjusted_sex_ploidy_expr(aou_mt.locus, aou_mt.GT, aou_mt.sex_karyotype)
     )
-    aou_mt = annotate_adj_no_dp(aou_mt)
+    aou_mt = aou_mt.annotate_entries(
+        adj=hl.if_else(
+            aou_mt.GT.is_non_ref(),
+            get_adj_expr(aou_mt.GT, aou_mt.GQ, hl.sum(aou_mt.AD), aou_mt.AD),
+            True,
+        )
+    )
     aou_mt = aou_mt.annotate_rows(hist_fields=mt_hist_fields(aou_mt))
 
     # Optionally reduce group_membership to only the leaf groups before the
