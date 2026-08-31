@@ -59,6 +59,14 @@ logging.basicConfig(
 logger = logging.getLogger("generate_variant_qc_annotations")
 logger.setLevel(logging.INFO)
 
+# Contig name -> genomic-order index for GRCh38 (the only reference this script
+# reads). Used to sort derived intervals into genomic order, which read_vds's
+# partitioner requires (plain sorts/dict orders are lexicographic: chr1, chr10,
+# ..., chr2, ...).
+GRCH38_CONTIG_ORDER = {
+    c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)
+}
+
 
 def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -> str:
     """
@@ -324,12 +332,15 @@ def generate_ac_info_ht(
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
 
     ac_info_expr = hl.struct()
-    # First compute ACs for each non-ref allele, grouped by adj.
+    # First build the per-allele AC aggregation (grouped by adj) and AS_pab_max
+    # expressions.
     if use_local_allele_agg:
-        logger.info("Using local-allele-space AC aggregation...")
+        logger.info("Using local-allele space for AC aggregation and AS_pab_max...")
         grp_ac_expr = _grp_ac_expr_local(mt, ac_filter_groups)
+        pab_expr = _local_pab_max_expr(mt)
     else:
         grp_ac_expr = _grp_ac_expr_original(mt, ac_filter_groups)
+        pab_expr = pab_max_expr(mt.LGT, mt.LAD, mt.LA, hl.len(mt.alleles))
 
     # Then, for each non-ref allele, compute
     # 'AC' as the adj group
@@ -347,11 +358,6 @@ def generate_ac_info_ht(
         },
     )
 
-    if use_local_allele_agg:
-        logger.info("Using local-allele-space AS_pab_max...")
-        pab_expr = _local_pab_max_expr(mt)
-    else:
-        pab_expr = pab_max_expr(mt.LGT, mt.LAD, mt.LA, hl.len(mt.alleles))
     ac_info_expr = ac_info_expr.annotate(AS_pab_max=pab_expr)
 
     ac_info_ht = mt.select_rows(AC_info=ac_info_expr).rows()
@@ -462,7 +468,7 @@ def validate_local_allele_agg(
         hl.utils.new_temp_file("validate_cand", "ht")
     )
 
-    # (2) Key-set parity in both directions; (3) empty-input guard.
+    # (1) Empty-input guard; (2) key-set parity in both directions.
     n_orig = orig.count()
     n_cand = cand.count()
     if n_orig == 0 and n_cand == 0:
@@ -475,11 +481,11 @@ def validate_local_allele_agg(
     n_cand_only = cand.anti_join(orig).count()
     keys_match = n_orig_only == 0 and n_cand_only == 0
 
-    # (4) Compare every field the local-allele path changes: the AC arrays and
+    # (3) Compare every field the local-allele path changes: the AC arrays and
     # AS_pab_max.
     compare_fields = list(orig.AC_info)
 
-    # (1) Element-wise array match that treats both-missing / both-NaN as equal
+    # (4) Element-wise array match that treats both-missing / both-NaN as equal
     # (so divergence to NA is caught, not silently skipped) and never yields a
     # missing predicate that `hl.agg.all` would skip. Unequal lengths => mismatch.
     def _elem_int(x, y):
@@ -489,7 +495,7 @@ def validate_local_allele_agg(
             x == y,
         )
 
-    def _elem_float(x, y):
+    def _elem_pab(x, y):
         return (
             hl.case()
             .when(hl.is_missing(x) | hl.is_missing(y), hl.is_missing(x) & hl.is_missing(y))
@@ -497,8 +503,8 @@ def validate_local_allele_agg(
             .default(hl.abs(x - y) <= pab_atol)
         )
 
-    def _arr_match(a, b, is_float):
-        elem = _elem_float if is_float else _elem_int
+    def _arr_match(a, b, is_pab):
+        elem = _elem_pab if is_pab else _elem_int
         return hl.if_else(
             hl.is_missing(a) | hl.is_missing(b),
             hl.is_missing(a) & hl.is_missing(b),
@@ -515,7 +521,7 @@ def validate_local_allele_agg(
                     _arr_match(
                         joined.AC_info[fld],
                         joined._cand[fld],
-                        is_float=(fld == "AS_pab_max"),
+                        is_pab=(fld == "AS_pab_max"),
                     )
                 )
                 for fld in compare_fields
@@ -1065,13 +1071,10 @@ def _derive_chunk_locus_intervals(
     spans = {contig: max(b.hi + 1 - b.lo, 1) for contig, b in bounds.items()}
     total_span = sum(spans.values())
     # Iterate contigs in genomic order: the aggregation dict comes back in
-    # lexicographic key order (chr1, chr10, ..., chr2, ...), which read_vds's
-    # partitioner rejects for multi-contig chunks.
-    contig_order = {
-        c: i for i, c in enumerate(hl.get_reference(reference_genome).contigs)
-    }
+    # lexicographic key order, which read_vds's partitioner rejects for
+    # multi-contig chunks.
     sub_intervals: List[hl.utils.Interval] = []
-    for contig in sorted(bounds, key=lambda c: contig_order[c]):
+    for contig in sorted(bounds, key=lambda c: GRCH38_CONTIG_ORDER[c]):
         b = bounds[contig]
         if total_subdivisions is not None:
             n = max(1, round(total_subdivisions * spans[contig] / total_span))
@@ -1140,7 +1143,6 @@ def group_scout_loci_into_intervals(
     target_ht: hl.Table,
     n_partitions: int = None,
     rows_per_partition: int = None,
-    reference_genome: str = "GRCh38",
 ) -> List[hl.utils.Interval]:
     """
     Group scouted target loci into a bounded set of locus intervals.
@@ -1158,8 +1160,6 @@ def group_scout_loci_into_intervals(
         set, takes precedence over `rows_per_partition`.
     :param rows_per_partition: Target number of loci per interval/partition. Used
         only when `n_partitions` is None. Defaults to 2000 if neither is set.
-    :param reference_genome: Reference genome used to order contigs so the returned
-        intervals are in genomic order (required by `read_vds`'s partitioner).
     :return: List of `hl.Interval` objects, in genomic order, each covering a
         contiguous chunk of target loci within a single contig.
     """
@@ -1171,22 +1171,19 @@ def group_scout_loci_into_intervals(
 
     if n_partitions is None:
         rows_per_partition = rows_per_partition or 2000
-        n_partitions = max(1, math.ceil(n_loci / rows_per_partition))
+        n_partitions = math.ceil(n_loci / rows_per_partition)
     n_partitions = max(1, min(n_partitions, n_loci))
     chunk = max(1, math.ceil(n_loci / n_partitions))
 
     # Group loci by contig; chunk within contig so no interval spans a contig
     # boundary. `collect()` order is not guaranteed, so contigs and positions are
     # explicitly sorted into genomic order for the read_vds partitioner.
-    contig_order = {
-        c: i for i, c in enumerate(hl.get_reference(reference_genome).contigs)
-    }
     by_contig: "OrderedDict[str, list]" = OrderedDict()
     for loc in collected:
         by_contig.setdefault(loc.contig, []).append(loc)
 
     intervals: List[hl.utils.Interval] = []
-    for contig in sorted(by_contig, key=lambda c: contig_order[c]):
+    for contig in sorted(by_contig, key=lambda c: GRCH38_CONTIG_ORDER[c]):
         locs = sorted(by_contig[contig], key=lambda loc: loc.position)
         for i in range(0, len(locs), chunk):
             group = locs[i : i + chunk]
@@ -1582,10 +1579,6 @@ def main(args):
 
     _validate_args(args, test)
 
-    # Interval derivation is only needed to read the VDS.
-    need_vds = args.generate_ac_info_ht or args.generate_sibling_stats
-    sub_intervals = _derive_read_intervals(args, need_intervals=need_vds)
-
     info_ht_path = args.info_ht_path_override or get_info_ht(
         test=test, environment=environment
     ).path
@@ -1626,8 +1619,11 @@ def main(args):
     union_input_ac_info_ht_paths, union_expected_strata = _resolve_union_inputs(
         args, test, environment
     )
-    # Load VDS only if needed; the union, sites-VCF, and final-join steps never
-    # read it.
+    # Interval derivation and the VDS load are only needed for the AC-info and
+    # sibling-stats steps; the union, sites-VCF, and final-join steps never
+    # read the VDS.
+    need_vds = args.generate_ac_info_ht or args.generate_sibling_stats
+    sub_intervals = _derive_read_intervals(args, need_intervals=need_vds)
     vds = None
     if need_vds:
         # NOTE: VDS will have 'aou_' prefix on sample IDs.

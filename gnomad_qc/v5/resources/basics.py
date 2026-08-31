@@ -410,7 +410,11 @@ def get_aou_vds(
         )
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
     # NOTE: explicit None check -- an empty interval list must restrict the read
-    # to zero rows, not silently fall back to an unrestricted full-VDS read.
+    # to zero rows, not silently fall back to an unrestricted full-VDS read. The
+    # zero-row read is intentional, not an error: the info HT pipeline
+    # passes read_intervals=[] when a
+    # chunk/scout stratum derives no target intervals, so it can still write an
+    # empty provenance-stamped stratum.
     read_args = {"intervals": read_intervals} if read_intervals is not None else None
     vds = aou_v8_resource.vds(read_args=read_args)
 
