@@ -93,6 +93,7 @@ from gnomad.utils.annotations import (
     annotate_downsamplings,
     build_freq_stratification_list,
     generate_freq_group_membership_array,
+    get_adj_expr,
     merge_array_expressions,
     merge_histograms,
     qual_hist_expr,
@@ -107,7 +108,6 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.meta import meta as v4_meta
-from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
     get_aou_downsampling,
@@ -1169,8 +1169,9 @@ def _load_project_vds(
 
     Shared by the chunk worker and the strict path: routes ``sub_intervals``
     (read-time co-partitioning) over ``partition_range``, synthesizes AoU DP
-    from LAD (the AoU v8 VDS lacks DP), and applies the optional AoU test
-    subsample.
+    from LAD (the AoU v8 VDS lacks DP), annotates AoU adj (standard cutoffs at
+    variant sites; all ref-site genotypes pass), and applies the optional AoU
+    test subsample.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
@@ -1211,13 +1212,15 @@ def _load_project_vds(
             environment=environment,
         )
         vmt = vds.variant_data
-        vmt = annotate_adj_no_dp(vmt)
+        # Variant sites: the usual gnomAD adj cutoffs (GQ >= 20, DP >= 10 with
+        # DP approximated as sum(LAD), AB >= 0.2 for het calls).
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
+        vmt = vmt.annotate_entries(adj=get_adj_expr(vmt.LGT, vmt.GQ, vmt.DP, vmt.LAD))
         rmt = vds.reference_data
-        # Ref blocks are hom-ref with no AD/LAD; gq_only computes adj from GQ
-        # alone (equal to get_adj_expr for non-het calls). Without it, ref-block
-        # samples were not marked adj, undercounting adj AN at reference sites.
-        rmt = annotate_adj_no_dp(rmt, gq_only=True)
+        # Ref sites: all genotypes pass. AoU ref blocks are GQ-banded to
+        # {20, 30, 40} and GQ0 is never written, so there is no principled GQ
+        # cutoff to apply.
+        rmt = rmt.annotate_entries(adj=True)
         vds = hl.vds.VariantDataset(rmt, vmt)
 
         if test and test_sample_subset:
