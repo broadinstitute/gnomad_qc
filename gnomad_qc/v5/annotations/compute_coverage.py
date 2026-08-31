@@ -77,7 +77,8 @@ Per-project merge (--project-name gnomad)::
 Release assembly (--project-name aou)::
 
     7. Join AoU + gnomAD v5 outputs and export release files:
-       --export-coverage-release-files (coverage HT + TSV)
+       --export-coverage-release-files (coverage HT + TSV; gnomAD-only --
+         AoU computes no coverage stats, its ref blocks carry no DP)
        --export-an-release-files (AN HT + TSV)
        --merge-qual-hists (qual hists HT; gnomAD v4 hists are reused as-is —
        they were not recomputed for v5).
@@ -177,9 +178,9 @@ logging.basicConfig(
 logger = logging.getLogger("v5_coverage_and_an")
 logger.setLevel(logging.INFO)
 
-# Overall groups that non-reducible aggregations (coverage_stats →
-# {"group": "adj"}, qual_hists → {"group": "raw"}) are pinned to via
-# ``entry_agg_group_membership``. Under ``--reduce-min-aggs`` these must be
+# Overall groups that non-reducible aggregations (qual_hists →
+# {"group": "raw"}; coverage_stats → {"group": "adj"}, gnomAD runs only)
+# are pinned to via ``entry_agg_group_membership``. Under ``--reduce-min-aggs`` these must be
 # retained as leaves in the reduced group_membership HT so they stay
 # directly computed (a cheap index lookup) instead of reconstructed
 # per-row from their leaf-children, which is what made the reduced AoU
@@ -742,7 +743,6 @@ def compute_all_release_stats_per_ref_site(
     group_membership_ht: Optional[hl.Table] = None,
     reduce_min_aggs: bool = False,
     experimental_densify: bool = False,
-    skip_coverage_stats: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -763,8 +763,8 @@ def compute_all_release_stats_per_ref_site(
         ``"meta.sex_karyotype"``). Used by ``compute_stats_per_ref_site``
         to set per-sample ploidy on sex chromosomes.
     :param project: "aou" or "gnomad". When "aou", additionally fans out
-        per-site qual histograms (``qual_hists``); "gnomad" computes only
-        coverage and AN.
+        per-site qual histograms (``qual_hists``) and computes no coverage
+        stats (see :return:); "gnomad" computes only coverage and AN.
     :param coverage_over_x_bins: DP thresholds for the ``over_X``
         cumulative-sample-count fields written into the output HT.
         Default is :data:`COVERAGE_OVER_X_BINS`.
@@ -782,17 +782,15 @@ def compute_all_release_stats_per_ref_site(
         (``to_merged_sparse_mt``) and unify the genotype into ``LGT`` so
         ``compute_stats_per_ref_site`` takes the  ``hl.experimental.densify`` path
         instead of ``to_dense_mt``. Default is False.
-    :param skip_coverage_stats: If True, omit ``coverage_stats`` from the
-        aggregation entirely, so the output HT carries no
-        ``mean``/``median_approx``/``total_DP``/``over_X`` fields. AoU only:
-        its reference blocks carry no DP, so those fields aggregate to ~0
-        everywhere except loci where a sample carries a variant (measured on
-        chr1:55.06-55.16Mb: mean 0.048x, ``over_1`` 432 of 365,318 samples).
-        Default is False.
-    :return: HT keyed by locus with per-stratum ``AN``, flat
-        ``mean``/``over_X``/``median_approx``/``total_DP`` coverage
-        fields (from the global adj-filtered group), and
-        ``qual_hists`` when ``project == "aou"``.
+    :return: HT keyed by locus with per-stratum ``AN``; for
+        ``project == "gnomad"``, flat
+        ``mean``/``over_X``/``median_approx``/``total_DP`` coverage fields
+        (from the global adj-filtered group); for ``project == "aou"``,
+        ``qual_hists`` and no coverage fields. AoU reference blocks carry
+        GQ/END/GT/LEN and no DP, so DP is defined only where a sample
+        carries a variant and coverage would aggregate to ~0 genome-wide
+        (measured on chr1:55.06-55.16Mb: mean 0.048x, ``over_1`` 432 of
+        365,318 samples), so it is never computed for AoU.
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
@@ -820,7 +818,10 @@ def compute_all_release_stats_per_ref_site(
     cov_bins = hl.array(cov_bins)
 
     entry_agg_funcs = {"AN": get_allele_number_agg_func("LGT")}
-    if not skip_coverage_stats:
+    # Coverage stats are gnomAD-only: AoU coverage would measure ~0 (no DP on
+    # reference blocks -- see the docstring), so AoU skips the 101-bin
+    # ``hl.agg.counter`` plus ``hl.agg.approx_median`` sketch per reference site.
+    if project == "gnomad":
         entry_agg_funcs["coverage_stats"] = get_coverage_agg_func(
             dp_field="DP", max_cov_bin=max_cov_bin
         )
@@ -834,12 +835,13 @@ def compute_all_release_stats_per_ref_site(
     # ``freq_meta[0]`` is ``{"group": "adj"}`` and we need to match it.
     # AN is intentionally omitted so it still fans out across all strata,
     # which is what downstream consumers need.
-    # NOTE: under ``--skip-coverage-stats`` nothing needs ``{"group": "adj"}`` to be
-    # a directly-computed leaf anymore, but that is fixed in the group_membership HT
-    # (``PINNED_LEAF_GROUPS``) at write time, so unpinning it is a separate change
-    # requiring a group_membership regen -- an additional saving not measured here.
+    # NOTE: with no AoU coverage stats, nothing on the AoU path needs
+    # ``{"group": "adj"}`` to be a directly-computed leaf anymore, but that is
+    # fixed in the group_membership HT (``PINNED_LEAF_GROUPS``) at write time, so
+    # unpinning it is a separate change requiring a group_membership regen -- an
+    # additional saving not measured here.
     entry_agg_group_membership = {}
-    if not skip_coverage_stats:
+    if project == "gnomad":
         entry_agg_group_membership["coverage_stats"] = [{"group": "adj"}]
     # Only compute qual hists for AoU.
     if project == "aou":
@@ -935,7 +937,7 @@ def compute_all_release_stats_per_ref_site(
     ht = ht.annotate_globals(
         coverage_stats_meta_sample_count=ht.strata_sample_count[0],
     )
-    if not skip_coverage_stats:
+    if project == "gnomad":
         cov_stats_expr = _cov_stats(ht.coverage_stats[0])
         ht = ht.transmute(**cov_stats_expr)
 
@@ -987,54 +989,37 @@ def _merge_coverage_fields(
     ht: hl.Table,
     project_1: str,
     project_2: str,
-    sample_count: int,
-    operation: str,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
 ) -> hl.expr.DictExpression:
     """
-    Merge coverage fields from two Tables.
+    Subtract ``project_2``'s coverage fields from ``project_1``'s.
+
+    Only the consent-drop subtraction remains as a caller: AoU computes no
+    coverage stats, so there is no AoU + gnomAD coverage sum any more.
 
     .. note::
         - Function does not merge ``median_approx`` fields.
 
     :param ht: Input HT. Must have annotations from both projects.
-    :param project_1: First project name.
-    :param project_2: Second project name.
-    :param sample_count: Total sample count.
-    :param operation: Operation to perform on the coverage fields. Must be "sum" or "diff".
+    :param project_1: Project subtracted FROM (the minuend).
+    :param project_2: Project being subtracted (the subtrahend).
     :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
         Default is :data:`COVERAGE_OVER_X_BINS`.
     :return: Merged fields.
     """
-    if operation == "diff":
-        # Make sure over_x fields are float64s.
-        merged_fields = {
-            "sum_gnomad": ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"],
-            "total_DP_gnomad": (
-                ht[f"total_DP_{project_1}"] - ht[f"total_DP_{project_2}"]
-            ),
+    # Make sure over_x fields are float64s.
+    merged_fields = {
+        "sum_gnomad": ht[f"sum_{project_1}"] - ht[f"sum_{project_2}"],
+        "total_DP_gnomad": (ht[f"total_DP_{project_1}"] - ht[f"total_DP_{project_2}"]),
+    }
+    merged_fields.update(
+        {
+            f"over_{x}_gnomad": (
+                ht[f"over_{x}_{project_1}"] - ht[f"over_{x}_{project_2}"]
+            )
+            for x in coverage_over_x_bins
         }
-        merged_fields.update(
-            {
-                f"over_{x}_gnomad": (
-                    ht[f"over_{x}_{project_1}"] - ht[f"over_{x}_{project_2}"]
-                )
-                for x in coverage_over_x_bins
-            }
-        )
-    else:
-        merged_fields = {
-            "mean": (ht[f"sum_{project_1}"] + ht[f"sum_{project_2}"]) / sample_count,
-        }
-        merged_fields.update(
-            {
-                f"over_{x}": (
-                    (ht[f"over_{x}_{project_1}"] + ht[f"over_{x}_{project_2}"])
-                    / sample_count
-                )
-                for x in coverage_over_x_bins
-            }
-        )
+    )
     return merged_fields
 
 
@@ -1073,8 +1058,6 @@ def merge_gnomad_coverage_hts(
         ht=gnomad_ht,
         project_1="gnomad_release",
         project_2="gnomad",
-        sample_count=gnomad_v5_count,
-        operation="diff",
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
 
@@ -1089,41 +1072,6 @@ def merge_gnomad_coverage_hts(
         coverage_stats_meta_sample_count=gnomad_v5_count,
     )
     return gnomad_ht
-
-
-def join_aou_and_gnomad_coverage_ht(
-    aou_ht: hl.Table,
-    gnomad_ht: hl.Table,
-    coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
-    gnomad_v5_count: int = GNOMAD_SAMPLE_COUNT - GNOMAD_CONSENT_DROP_SAMPLE_COUNT,
-) -> hl.Table:
-    """
-    Join AoU and gnomAD coverage HTs for release.
-
-    :param aou_ht: AoU coverage HT.
-    :param gnomad_ht: gnomAD v5 genomes coverage HT.
-    :param coverage_over_x_bins: Boundaries for the samples-over-X fields.
-        Default is :data:`COVERAGE_OVER_X_BINS`.
-    :param gnomad_v5_count: Number of release gnomAD v5 genome samples. Default is `GNOMAD_SAMPLE_COUNT - GNOMAD_CONSENT_DROP_SAMPLE_COUNT`.
-    :return: Joined HT.
-    """
-    aou_count = hl.eval(aou_ht.coverage_stats_meta_sample_count)
-    logger.info("Total number of AoU v8 release samples: %s", aou_count)
-
-    logger.info("Merging AoU and gnomAD v5 coverage HTs...")
-    aou_ht = _rename_cov_annotations(aou_ht, "aou", aou_count, coverage_over_x_bins)
-    v5_count = aou_count + gnomad_v5_count
-    logger.info("Total number of AoU + gnomAD v5 release genomes: %s", v5_count)
-    ht = aou_ht.join(gnomad_ht, "left")
-    merged_fields = _merge_coverage_fields(
-        ht=ht,
-        project_1="aou",
-        project_2="gnomad",
-        sample_count=v5_count,
-        operation="sum",
-    )
-    ht = ht.transmute(**merged_fields)
-    return ht.select_globals()
 
 
 def _rename_fields(
@@ -2154,7 +2102,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         group_membership_ht=hl.read_table(group_membership_ht_path),
         reduce_min_aggs=args.reduce_min_aggs,
         experimental_densify=args.experimental_densify,
-        skip_coverage_stats=args.skip_coverage_stats,
     )
     # Stamp the layout hash into globals for provenance: the union at merge time
     # inherits the first input's globals, so the final release HT records which
@@ -2368,8 +2315,6 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
             flags.append("--reduce-min-aggs")
         if args.experimental_densify:
             flags.append("--experimental-densify")
-        if args.skip_coverage_stats:
-            flags.append("--skip-coverage-stats")
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
@@ -3655,7 +3600,6 @@ def main(args):
                 project=project,
                 group_membership_ht=hl.read_table(group_membership_ht_path),
                 reduce_min_aggs=reduce_min_aggs,
-                skip_coverage_stats=args.skip_coverage_stats,
             )
             if args.n_partitions is not None:
                 # Checkpoint to temp only to stabilize before the coalesce; when
@@ -3810,9 +3754,10 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
-            aou_ht = hl.read_table(cov_and_an_ht_path).drop("AN", "qual_hists")
-            gnomad_ht = hl.read_table(gnomad_coverage_ht_path)
-            ht = join_aou_and_gnomad_coverage_ht(aou_ht, gnomad_ht)
+            # Coverage is gnomAD-only (AoU computes no coverage stats -- its
+            # reference blocks carry no DP), so the release HT is the gnomAD
+            # consent-drop result published as-is, with no AoU join.
+            ht = hl.read_table(gnomad_coverage_ht_path)
             if args.n_partitions is not None:
                 # Temp checkpoint only to stabilize the join before the coalesce;
                 # otherwise the destination checkpoint below materializes it once.
@@ -4086,25 +4031,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " at compute time)."
         ),
     )
-    parser.add_argument(
-        "--skip-coverage-stats",
-        action="store_true",
-        help=(
-            "Drop the ``coverage_stats`` aggregation, so the output HT has no"
-            " mean/median_approx/total_DP/over_X fields (AN and, for AoU, qual_hists"
-            " are unaffected). --project-name aou only: AoU reference blocks carry"
-            " GQ/END/GT/LEN and no DP, so DP is defined only where a sample carries a"
-            " variant and these fields aggregate to ~0 genome-wide (measured on"
-            " chr1:55.06-55.16Mb: mean 0.048x, median_approx 0 at 99.9%% of loci,"
-            " over_1 432 of 365,318 samples). Removes a 101-bin ``hl.agg.counter``"
-            " plus an ``hl.agg.approx_median`` sketch over the full cohort at every"
-            " reference site. The resulting HT is NOT usable for"
-            " --export-coverage-release-files; use --cov-and-an-output-suffix to keep"
-            " it separate. Note the additional saving from unpinning"
-            " ``{'group': 'adj'}`` from PINNED_LEAF_GROUPS requires a"
-            " --write-group-membership-ht regen and is not covered by this flag."
-        ),
-    )
     test_group = parser.add_argument_group(
         "Test mode",
         "Route inputs/outputs to test paths and (optionally) filter data.",
@@ -4278,7 +4204,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     coverage_args.add_argument(
         "--export-coverage-release-files",
-        help="Join and export AoU + gnomAD v4 coverage release HT and TSV file.",
+        help=(
+            "Export the gnomAD v5 coverage HT and TSV. Coverage is gnomAD-only:"
+            " AoU computes no coverage stats (its reference blocks carry no DP)."
+        ),
         action="store_true",
     )
 
@@ -4796,11 +4725,6 @@ if __name__ == "__main__":
 
     if args.merge_qual_hists and args.project_name != "aou":
         raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
-
-    # gnomAD's VDS has real per-base DP, and the consent-drop subtraction that
-    # produces the v5 coverage HT needs coverage_stats, so this is AoU-only.
-    if args.skip_coverage_stats and args.project_name != "aou":
-        parser.error("--skip-coverage-stats requires --project-name to be 'aou'.")
 
     if args.write_sample_artifacts and args.project_name != "aou":
         parser.error("--write-sample-artifacts requires --project-name to be 'aou'.")
