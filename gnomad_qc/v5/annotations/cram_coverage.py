@@ -51,6 +51,7 @@ import urllib.request
 from typing import Dict, List, Tuple
 
 import hailtop.batch as hb
+from gnomad.utils.annotations import COVERAGE_OVER_X_BINS
 
 from gnomad_qc.v5.resources.annotations import (
     cram_coverage_path,
@@ -73,8 +74,7 @@ TELOMERES_CENTROMERES_BED = (
     "https://storage.googleapis.com/gcp-public-data--gnomad/resources/grch38/"
     "telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.bed"
 )
-OVER_THRESHOLDS = [1, 5, 10, 15, 20, 25, 30, 50, 100]
-# Historical per-sample cap, applied only to the `mean_capped` column.
+
 DP_CAP = 100
 # Default histogram bin ceiling (--hist-ceiling): raw depths above it share the
 # top bin, right-censoring `median` there. Memory is (ceiling+1) x region_len
@@ -510,7 +510,7 @@ def main(args):
             out_tsv = f"{region_root}/region_{contig}_{start}_{end}.tsv.bgz"
             j.command(
                 f'python3 depth.py "{selected}" {contig} {start} {end} '
-                f'{DP_CAP} "{out_tsv}" {",".join(map(str, OVER_THRESHOLDS))} '
+                f'{DP_CAP} "{out_tsv}" {",".join(map(str, COVERAGE_OVER_X_BINS))} '
                 f"{args.hist_ceiling}"
             )
         b.run(wait=False)
@@ -542,7 +542,7 @@ def main(args):
                 "median": hl.tint32,
                 "n": hl.tint32,
                 "n_above_ceiling": hl.tint32,
-                **{f"over_{t}": hl.tfloat64 for t in OVER_THRESHOLDS},
+                **{f"over_{t}": hl.tfloat64 for t in COVERAGE_OVER_X_BINS},
             },
         )
         ht = ht.transmute(locus=hl.locus(ht.contig, ht.pos, reference_genome="GRCh38"))
@@ -555,7 +555,7 @@ def main(args):
         if test:
             regions = regions[: args.test_n_regions]
         expected = sum(e - s + 1 for _, s, e in regions)
-        over_cols = [f"over_{t}" for t in OVER_THRESHOLDS]
+        over_cols = [f"over_{t}" for t in COVERAGE_OVER_X_BINS]
         monotone_expr = hl.literal(True)
         for hi, lo in zip(over_cols, over_cols[1:]):
             monotone_expr = monotone_expr & (ht[hi] >= ht[lo])
