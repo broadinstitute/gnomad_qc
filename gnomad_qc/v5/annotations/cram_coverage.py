@@ -75,7 +75,9 @@ TELOMERES_CENTROMERES_BED = (
     "telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.bed"
 )
 
+# Coverage cap used in gnomAD v2.
 DP_CAP = 100
+
 # Default histogram bin ceiling (--hist-ceiling): raw depths above it share the
 # top bin, right-censoring `median` there. Memory is (ceiling+1) x region_len
 # x 2 bytes. 1000 is ~25x the genome-wide median depth; only pathological
