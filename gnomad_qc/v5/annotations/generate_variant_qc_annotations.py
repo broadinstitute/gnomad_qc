@@ -49,6 +49,7 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
+from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
 from gnomad_qc.v5.resources.sample_qc import (
     DENSE_TRIO_TEST_CHROMS,
     dense_trios,
@@ -1519,6 +1520,41 @@ def _validate_args(args, test: bool) -> None:
             "or the other."
         )
 
+    if args.explode_partitions and (
+        args.chunk_start is None or args.chunk_stop is None
+    ):
+        raise ValueError(
+            "--explode-partitions requires both --chunk-start and --chunk-stop "
+            "to define the partition range."
+        )
+    if not args.explode_partitions and (
+        args.chunk_start is not None or args.chunk_stop is not None
+    ):
+        raise ValueError(
+            "--chunk-start/--chunk-stop have no effect without "
+            "--explode-partitions, but would still stamp the output path as a "
+            "chunk; pass --explode-partitions or drop the chunk bounds."
+        )
+
+    if args.scout_alleles and args.explode_partitions:
+        raise ValueError(
+            "--scout-alleles and --explode-partitions are mutually exclusive "
+            "read-restriction modes: --explode-partitions would win in "
+            "_derive_read_intervals and the scout request would be silently "
+            "ignored."
+        )
+
+    if args.generate_sibling_stats and (
+        args.contig is not None or args.explode_partitions or args.scout_alleles
+    ):
+        raise ValueError(
+            "--generate-sibling-stats cannot be combined with --contig/"
+            "--explode-partitions/--scout-alleles: those flags restrict the "
+            "shared VDS read, so a partial-genome sib-stats table would be "
+            "written to the canonical sib-stats path and downstream joins "
+            "would silently mark out-of-region loci as non-sibling-singletons."
+        )
+
     if (
         args.read_subintervals_scale is not None
         and args.read_subintervals_per_chunk is not None
@@ -1790,9 +1826,6 @@ def main(args):
     try:
         if args.write_sample_artifacts:
             logger.info("Writing run-invariant sample artifacts...")
-            # Import here to avoid circular imports.
-            from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
-
             sc_ht = get_sample_id_collisions(environment=environment).ht()
             collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
             path = _aou_sample_artifact_path("collisions.json", environment, args.test)
