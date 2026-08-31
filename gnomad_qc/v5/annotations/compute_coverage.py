@@ -44,7 +44,7 @@ Per-project setup (--project-name {aou,gnomad})::
        --reduce-min-aggs to write the leaf-only variant.
     2b. (AoU only) Write the sample artifacts (--write-sample-artifacts):
         collisions.json + release_samples.json. Without them every chunk worker
-        rescans the ~330-partition sample-collisions HT twice and collects the
+        scans the ~330-partition sample-collisions HT and collects the
         ~330-partition meta HT inside get_aou_vds. Optional (the chunk falls back
         to those scans), but at fan-out scale it is paid per chunk.
     3. Write the preprocessed vep_context sites HT (--write-vep-context-sites):
@@ -1415,8 +1415,8 @@ def _load_project_vds(
     """
     if project == "aou":
         sex_karyotype_field = "meta.sex_karyotype"
-        # Each get_aou_vds call otherwise pays two full scans of the ~329-partition
-        # sample-collisions HT (once per rekey, to fetch 27 IDs) plus a collect of the
+        # Each get_aou_vds call otherwise pays a full aggregation of the
+        # ~329-partition sample-collisions HT (to fetch 27 IDs) plus a collect of the
         # ~330-partition meta HT for release_only (365k IDs) -- per chunk process, so
         # the fan-out pays them thousands of times over. Read the precomputed JSON
         # instead when it exists; fall back to the scans when it doesn't.
@@ -1980,7 +1980,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         # uses, so the densify + per-site aggregation is spread across many small
         # partitions. Reading the whole region as one partition per interval pins a
         # single worker at its memory limit and gets OOM-killed on AoU's large sample
-        # count (the dense per-site agg over ~245k samples does not fit one worker).
+        # count (the dense per-site agg over ~365k samples does not fit one worker).
         intervals_hash = "test_region"
         region_intervals = [_parse_region_interval(r) for r in args.test_region]
         if n_sub > 1:
@@ -3254,8 +3254,9 @@ def main(args):
     # (LowerTableIR "table_scan_down_pass"; 0.2.137/0.2.138 are unaffected).
     # Raising the branching factor above the chunk's partition count keeps the
     # scan combine single-level, which never enters the broken lowering path. The
-    # chunk reads exactly --read-subintervals-per-chunk partitions; the 2x margin
-    # only changes how many serialized scan states the driver merges at once.
+    # chunk reads at most --read-subintervals-per-chunk partitions (the interval
+    # balancing can return fewer); the 2x margin only changes how many serialized
+    # scan states the driver merges at once.
     branching_factor = None
     if args.run_chunk and args.experimental_densify:
         branching_factor = max(50, 2 * args.read_subintervals_per_chunk)
@@ -3759,9 +3760,9 @@ def main(args):
             # consent-drop result published as-is, with no AoU join.
             ht = hl.read_table(gnomad_coverage_ht_path)
             if args.n_partitions is not None:
-                # Temp checkpoint only to stabilize the join before the coalesce;
+                # Temp checkpoint only to stabilize before the coalesce;
                 # otherwise the destination checkpoint below materializes it once.
-                ht = ht.checkpoint(new_temp_file("aou_and_gnomad_cov_join", "ht"))
+                ht = ht.checkpoint(new_temp_file("gnomad_cov_release", "ht"))
                 ht = ht.naive_coalesce(args.n_partitions)
             ht = ht.checkpoint(cov_ht_path, overwrite=overwrite)
             ht.export(cov_tsv_path)
@@ -3949,7 +3950,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             " --experimental, e.g. '5g' or '2500m'. Plumbed to"
             " hl.experimental.init(jvm_heap_size=...). Set to ~50-70%% of"
             " container memory; the rest is for native off-heap"
-            " (RegionPool), Python, and OS overhead. Ignored without"
+            " (RegionPool), Python, and OS overhead. Rejected without"
             " --experimental."
         ),
     )
@@ -4221,7 +4222,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     an_args.add_argument(
         "--export-an-release-files",
-        help="Exports joint AoU + gnomAD v4 AN release HT and TSV file.",
+        help="Exports the joint AoU + gnomAD v5 AN release HT and TSV file.",
         action="store_true",
     )
 
@@ -4308,8 +4309,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=3,
         help=(
-            "Number of VDS partitions per chunk job. Default 3 (the"
-            " driver-comfort load used for the prod AoU runs). IMPORTANT:"
+            "Number of VDS partitions per chunk job. Default 3, a shape from"
+            " early testing; each chunk pays fixed overhead (relay + QoB driver +"
+            " scan combine), so larger values are substantially cheaper at"
+            " production scale (2026-08 calibration: ~$0.35/chunk fixed +"
+            " ~$0.068/partition). IMPORTANT:"
             " keep identical across --write-chunk-intervals / --use-batch-fanout"
             " / --merge-cov-chunks. The chunk set is fixed in the JSON at"
             " --write-chunk-intervals time (n_chunks = ceil(extent /"
@@ -4434,13 +4438,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Cores for the QoB driver pod each chunk/merge relay spawns."
             " Power of two between 0.25 and 16 (as a string, e.g. '2' or"
             " '0.5'). Forwarded to the relay's --driver-cores; decoupled"
-            " from the orchestrator's own --driver-cores. Default None leaves"
-            " QoB's own default (2). The driver is billed for the whole worker"
-            " barrier while idle, so cores are near-pure waste -- but memory scales"
-            " with cores, and a coverage chunk needs the memory: '2' + highmem is the"
-            " configuration measured to work. The freq fan-out runs 1-core highmem;"
-            " do not copy that here without retesting (1-core highmem is 6.5 GB,"
-            " LESS than the 2-core standard 8 GB that already died)."
+            " from the orchestrator's own --driver-cores. Default None sets no"
+            " explicit cores, so the driver job gets Hail Batch's 1-core default --"
+            " which with the highmem memory default is 6.5 GB, smaller than the"
+            " 2-core standard 8 GB that already died on a coverage chunk. Pass '2'"
+            " for coverage chunks: 2-core highmem (13 GB) is the smallest"
+            " configuration measured to work. The driver is billed for the whole"
+            " worker barrier while idle, so cores beyond the memory they bring are"
+            " near-pure waste."
         ),
     )
     fanout_group.add_argument(
@@ -4569,7 +4574,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "GCS output path for --run-chunk's per-chunk HT. Optional: when"
             " unset, auto-derived from the resolved cov_and_an HT path"
             " (plus ``--cov-and-an-output-suffix`` if set) and the chunk's"
-            " ``--chunk-start`` index (``_chunks/<chunk_start:08d>.chunk.ht``)."
+            " ``--chunk-start`` index"
+            " (``_chunks/<intervals_hash>/<chunk_start:08d>.chunk.ht``)."
             " The orchestrator (``--use-batch-fanout``) always passes this"
             " explicitly; this default fires only for standalone"
             " ``--run-chunk`` invocations (smoketests)."
