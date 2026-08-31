@@ -22,6 +22,43 @@ SV_SITES_VCF_PATH = (
 OMIM_PATH = "gs://gnomad-kristen/hom_depletion/omim_2023.tsv"
 IMPC_PATH = "gs://gnomad-kristen/hom_depletion/viability.csv.gz"  # 2026-03-16 13:49
 MGI_PATH = "gs://gnomad-kristen/hom_depletion/HOM_AllOrganism.txt"  # accessed 07/07/2026 https://www.informatics.jax.org/homology.shtml
+# Table S4 of Lassen et al. 2026 (AJHG 113:1330-1346, doi:10.1016/j.ajhg.2026.04.005):
+# genes with >=1 observed biallelic pLoF genotype ("knockout") in their six-biobank
+# meta-analysis (948,690 individuals), compared against previously published
+# knockout surveys.
+LASSEN_S4_PATH = (
+    "gs://gnomad-kristen/hom_depletion/lassen2026_meta_analysis_supp_s4.txt"
+)
+# Column order of LASSEN_S4_PATH, which is read positionally (see
+# `annotate_lassen_biallelic_ko`). "Novel" is their flag for genes whose knockout
+# was first observed in the 2026 meta-analysis. gnomAD/Sulem/Narasimhan/Saleheen
+# counts are secondhand, taken from the Oddsson et al. 2023 compilation.
+# Table S5 of the same paper: the 58 significant gene-trait recessive associations
+# (39 genes), each classified as Recessive / Additive / Ambiguous. Export the S5
+# sheet to this path as tab-delimited text, as for S4.
+# Supplementary Table 10 of Heyne et al. 2023 (Nature 613:519-525,
+# doi:10.1038/s41586-022-05420-7): per-variant FinnGen release 4 summary
+# statistics, including homozygote counts, for coding variants with any additive
+# association P < 1e-4. Upload the unzipped r4_coding_variants_web_table_v0.txt
+# to this path.
+HEYNE_S10_PATH = (
+    "gs://gnomad-kristen/hom_depletion/heyne2023_finngen_r4_coding_variants.txt"
+)
+# Number of FinnGen individuals analysed in Heyne et al. (release 4), used as the
+# denominator when computing how many homozygotes FinnGen was expected to see.
+FINNGEN_R4_N = 176899
+LASSEN_S5_PATH = (
+    "gs://gnomad-kristen/hom_depletion/lassen2026_meta_analysis_supp_s5.txt"
+)
+LASSEN_S4_DATASETS = [
+    "lassen2026",
+    "sulem",
+    "narasimhan",
+    "saleheen",
+    "gnomad_via_oddsson",
+    "oddsson",
+    "sun",
+]
 
 
 def get_field_name(group: str) -> str:
@@ -49,6 +86,15 @@ def annotate_group_freqs_and_cutoffs(
             sqrt(min_expected / (AN / 2))
 
     # If a group's index is not defined, the annotations are set to missing.
+
+    Also annotates `raw_freq` from the "raw" index. The group frequencies above are
+    adj-filtered, so their homozygote counts exclude genotypes failing genotype QC
+    (GQ/DP/allele balance). Carrying raw alongside them lets a zero adj homozygote
+    count be separated into "no homozygous genotypes were called" versus "homozygous
+    genotypes were called and then filtered", which are different findings.
+
+    Note that `freq` carries a single all-samples raw group, not one per genetic
+    ancestry group, so `raw_freq` is only comparable to the overall (adj) group.
 
     :param ht: Hail Table containing `freq` (array of frequency structs) and`freq_index_dict` (dict mapping group names to indices in `freq`).
     :param groups: List of group keys to use (e.g., ["adj", "afr_adj"]).
@@ -81,6 +127,9 @@ def annotate_group_freqs_and_cutoffs(
             defined_idx,
             freq_expr.AF**2 * (freq_expr.AN / 2),
         )
+
+    raw_idx = ht.freq_index_dict.get("raw")
+    group_freqs["raw_freq"] = hl.or_missing(hl.is_defined(raw_idx), ht.freq[raw_idx])
 
     return ht.annotate(**group_freqs, **cutoffs, **metrics)
 
@@ -331,6 +380,249 @@ def annotate_impc_viability(ht: hl.Table, impc_path: str, mgi_path: str) -> hl.T
     )
 
 
+def annotate_lassen_biallelic_ko(
+    ht: hl.Table,
+    s4_path: str = LASSEN_S4_PATH,
+) -> hl.Table:
+    """
+    Annotate whether a human biallelic pLoF knockout of `most_severe_gene` has been observed.
+
+    Uses table S4 of Lassen et al. 2026, which reports genes carrying at least one
+    biallelic pLoF genotype in their six-biobank meta-analysis (948,690 individuals)
+    alongside the same tally from earlier knockout surveys (Sun et al. 2024 directly;
+    Sulem, Narasimhan, Saleheen, gnomAD, and Oddsson via the Oddsson et al. 2023
+    compilation). A gene that is depleted of homozygotes here but has an observed
+    knockout there is unlikely to be intolerant of biallelic loss, so the depletion is
+    more plausibly allele-specific or technical. Conversely, `ko_novel_to_lassen2026`
+    marks genes whose first observed knockout is this 2026 meta-analysis -- evidence
+    that post-dates gnomAD's own knockout tallies.
+
+    Genes absent from S4 get `biallelic_plof_ko_observed=False` with
+    `gene_in_lassen_s4=False`; absence conflates true intolerance with lack of power
+    to observe a knockout, so pair it with constraint and mouse-viability annotations.
+
+    S4 is restricted to pLoF genotypes, so it speaks to whether the gene tolerates
+    biallelic loss-of-function, not whether a specific missense or in-frame allele is
+    tolerated.
+
+    Matching is by gene symbol. Symbols that VEP and S4 spell differently (aliases)
+    will not match and are reported as absent, which biases toward "no knockout
+    observed"; treat a lone absence as weaker evidence than a positive hit.
+
+    :param ht: Hail Table containing `most_severe_gene`.
+    :param s4_path: Path to the tab-delimited export of Lassen et al. 2026 table S4.
+    :return: Hail Table with a `lassen2026_ko` struct annotation.
+    """
+    # Read positionally: the header carries empty trailing column names and a
+    # trailing space in "gnomAD ", both of which break named import.
+    s4 = hl.import_table(s4_path, no_header=True, delimiter="\t")
+    s4 = s4.filter(~hl.literal({"Gene", "TOTAL"}).contains(s4.f0))
+
+    def _count(field: hl.expr.StringExpression) -> hl.expr.Int32Expression:
+        return hl.or_else(hl.parse_int32(field), 0)
+
+    s4 = s4.select(
+        gene_symbol=s4.f0,
+        lassen2026=_count(s4.f1),
+        novel=_count(s4.f2),
+        sulem=_count(s4.f3),
+        narasimhan=_count(s4.f4),
+        saleheen=_count(s4.f5),
+        gnomad_via_oddsson=_count(s4.f6),
+        oddsson=_count(s4.f7),
+        sun=_count(s4.f8),
+    )
+
+    # Join on gene symbol: it reaches 9,092 of the 9,176 S4 rows, whereas the
+    # Ensembl ID column is "NA" for ~36% of them. Drop rows whose symbol is unset
+    # ("NA"), the sole repeated symbol key, which would otherwise match any variant
+    # lacking a gene symbol.
+    value_fields = LASSEN_S4_DATASETS + ["novel"]
+    s4 = (
+        s4.filter(hl.is_defined(s4.gene_symbol) & (s4.gene_symbol != "NA"))
+        .key_by("gene_symbol")
+        .select(*value_fields)
+    )
+
+    rec = s4[ht.most_severe_gene]
+
+    observing = hl.array(
+        [
+            hl.or_missing(rec[dataset] > 0, dataset)
+            for dataset in LASSEN_S4_DATASETS
+        ]
+    ).filter(hl.is_defined)
+
+    return ht.annotate(
+        lassen2026_ko=hl.struct(
+            gene_in_lassen_s4=hl.is_defined(rec),
+            biallelic_plof_ko_observed=hl.or_else(hl.len(observing) > 0, False),
+            n_datasets_observing_ko=hl.or_else(hl.len(observing), 0),
+            datasets_observing_ko=observing,
+            ko_observed_in_gnomad_per_oddsson=hl.or_else(
+                rec.gnomad_via_oddsson > 0, False
+            ),
+            ko_novel_to_lassen2026=hl.or_else(rec.novel > 0, False),
+        )
+    )
+
+
+def annotate_lassen_recessive_assoc(
+    ht: hl.Table,
+    s5_path: str = LASSEN_S5_PATH,
+) -> hl.Table:
+    """
+    Annotate published recessive gene-trait associations for `most_severe_gene`.
+
+    Uses table S5 of Lassen et al. 2026: the significant associations from their
+    six-biobank recessive analysis, each labeled Recessive, Additive, or Ambiguous
+    according to whether the recessive model fit better than the additive one.
+
+    An association is evidence that biallelic carriers of the gene both exist and
+    reach adulthood with a measurable phenotype, so -- like the S4 knockout tally --
+    it argues against absolute intolerance of biallelic loss while marking the gene
+    as disease relevant. The tables are small (58 associations over 39 genes), so
+    most genes get `has_association=False`; this is a lookup for the occasional hit,
+    not a broadly informative annotation.
+
+    :param ht: Hail Table containing `most_severe_gene`.
+    :param s5_path: Path to the tab-delimited export of Lassen et al. 2026 table S5.
+    :return: Hail Table with a `lassen2026_recessive_assoc` struct annotation.
+    """
+    # Positional read, as for S4: the exported header carries empty trailing column
+    # names and a trailing space in "P rec pLoF ".
+    s5 = hl.import_table(s5_path, no_header=True, delimiter="\t")
+    s5 = s5.filter(s5.f0 != "Phenotype")
+    s5 = s5.select(
+        gene_symbol=s5.f1,
+        phenotype=s5.f0,
+        mode=s5.f2,
+        p_rec=hl.parse_float64(s5.f3),
+        p_add=hl.parse_float64(s5.f4),
+    )
+    s5 = s5.group_by(gene_symbol=s5.gene_symbol).aggregate(
+        associations=hl.agg.collect(
+            hl.struct(
+                phenotype=s5.phenotype,
+                mode=s5.mode,
+                p_rec=s5.p_rec,
+                p_add=s5.p_add,
+            )
+        )
+    )
+
+    rec = s5[ht.most_severe_gene]
+    associations = hl.or_else(
+        rec.associations, hl.empty_array(rec.associations.dtype.element_type)
+    )
+
+    return ht.annotate(
+        lassen2026_recessive_assoc=hl.struct(
+            has_association=hl.len(associations) > 0,
+            n_associations=hl.len(associations),
+            # True only when the recessive model fit better than the additive one
+            # for at least one trait, i.e. the paper's "more likely recessive" set.
+            has_recessive_mode=associations.any(lambda a: a.mode == "Recessive"),
+            modes=hl.set(associations.map(lambda a: a.mode)),
+            phenotypes=associations.map(lambda a: a.phenotype),
+            associations=associations,
+        )
+    )
+
+
+def annotate_finngen_homozygotes(
+    ht: hl.Table,
+    s10_path: str = HEYNE_S10_PATH,
+    n_finngen: int = FINNGEN_R4_N,
+    min_info: float = 0.9,
+    min_expected_hom: float = 5.0,
+) -> hl.Table:
+    """
+    Annotate FinnGen homozygote evidence for each variant from Heyne et al. 2023.
+
+    FinnGen is an independent cohort on an independent technology (imputed array
+    data rather than sequencing), so a homozygote deficit seen in both datasets is
+    unlikely to share a mapping or paralog artifact. Founder-population enrichment
+    also means FinnGen can be better powered than its sample size suggests for
+    Finnish-enriched alleles, and worse for alleles that are rarer in Finns.
+
+    A zero homozygote count is only meaningful relative to what FinnGen was powered
+    to observe, so this computes the expected count under Hardy-Weinberg,
+    `expected_hom = AF^2 * n_finngen`, and the Poisson probability of seeing none,
+    `p_zero_hom = exp(-expected_hom)`. `verdict` collapses this into:
+
+      - `homozygotes_observed`   FinnGen has homozygotes; the depletion is refuted.
+      - `depletion_replicated`   well imputed, `expected_hom >= min_expected_hom`,
+                                 and none observed.
+      - `underpowered`           none observed but too few expected to conclude
+                                 anything (the common case, easily misread as
+                                 corroboration).
+      - `low_imputation_quality` INFO below `min_info`; counts are unreliable.
+      - `not_in_finngen`         variant absent from the table, which reflects
+                                 FinnGen imputation coverage (and the table's own
+                                 additive P < 1e-4 filter), not biology.
+
+    :param ht: Hail Table keyed by locus and alleles (GRCh38).
+    :param s10_path: Path to the Heyne et al. table S10 text file.
+    :param n_finngen: Number of FinnGen individuals behind the homozygote counts.
+    :param min_info: Minimum imputation INFO score to trust a count.
+    :param min_expected_hom: Expected homozygotes needed to call a zero count a
+        replication rather than a lack of power.
+    :return: Hail Table with a `finngen` struct annotation.
+    """
+    fg = hl.import_table(s10_path, delimiter="\t")
+
+    # `variant` is GRCh38 "chrom:pos:ref:alt" without the "chr" prefix.
+    fg = fg.annotate(_v=fg.variant.split(":"))
+    fg = fg.annotate(
+        locus=hl.locus(
+            "chr" + fg._v[0], hl.parse_int32(fg._v[1]), reference_genome="GRCh38"
+        ),
+        alleles=[fg._v[2], fg._v[3]],
+        af=hl.parse_float64(fg.AF),
+        ac_hom=hl.parse_int32(fg.AC_Hom),
+        info_score=hl.parse_float64(fg.INFO),
+        enrichment_nfsee=hl.parse_float64(fg.enrichment_nfsee),
+        pval_recessive=hl.parse_float64(fg.pval_recessive),
+    )
+
+    # The table carries one row per variant-phenotype pair; collapse to one row
+    # per variant, keeping the per-variant fields and the best recessive p-value.
+    fg = fg.group_by("locus", "alleles").aggregate(
+        af=hl.agg.take(fg.af, 1)[0],
+        ac_hom=hl.agg.take(fg.ac_hom, 1)[0],
+        info_score=hl.agg.take(fg.info_score, 1)[0],
+        enrichment_nfsee=hl.agg.take(fg.enrichment_nfsee, 1)[0],
+        min_pval_recessive=hl.agg.min(fg.pval_recessive),
+        n_phenotypes=hl.agg.count(),
+    )
+
+    f = fg[ht.key]
+    expected_hom = f.af**2 * n_finngen
+
+    return ht.annotate(
+        finngen=hl.struct(
+            in_finngen=hl.is_defined(f.af),
+            af=f.af,
+            ac_hom=f.ac_hom,
+            info_score=f.info_score,
+            enrichment_nfsee=f.enrichment_nfsee,
+            expected_hom=expected_hom,
+            # Poisson P(0 | expected); only meaningful when no homozygote was seen.
+            p_zero_hom=hl.or_missing(f.ac_hom == 0, hl.exp(-expected_hom)),
+            min_pval_recessive=f.min_pval_recessive,
+            verdict=(
+                hl.case()
+                .when(hl.is_missing(f.af), "not_in_finngen")
+                .when(f.ac_hom > 0, "homozygotes_observed")
+                .when(f.info_score < min_info, "low_imputation_quality")
+                .when(expected_hom >= min_expected_hom, "depletion_replicated")
+                .default("underpowered")
+            ),
+        )
+    )
+
+
 def import_sv_sites_ht(sv_vcf_path: str = SV_SITES_VCF_PATH) -> hl.Table:
     """
     Import the gnomAD SV sites VCF as a rows-only Hail Table.
@@ -500,7 +792,9 @@ def select_group_output_fields(ht, groups):
         - `<field_name>_freq` structs with AC, AN, AF, homozygote_count
         - `<field_name>_hom_depletion` boolean fields
         - `<field_name>_af_cutoff` fields
+        - `raw_freq` struct with AC, AN, AF, homozygote_count
         - `most_severe_csq`, `most_severe_gene`, `lcr_or_segdup`
+        - `lassen2026_ko` struct of observed-human-knockout evidence
     :param groups: List of group keys (e.g., ["adj", "afr_adj"]).
     :return: Hail Table with selected and flattened fields.
     """
@@ -535,6 +829,29 @@ def select_group_output_fields(ht, groups):
         else hl.missing(hl.tfloat64)
     )
 
+    # Raw (pre-genotype-QC) homozygote evidence. `hom_depleted_adj_only` marks
+    # variants whose homozygotes were called but removed by adj filtering, so the
+    # apparent depletion is a genotype-quality artifact rather than a real absence.
+    #
+    # Raw exists only as a single all-samples group, so these columns pair with the
+    # overall flag only. They cannot adjudicate a per-ancestry flag: raw homozygotes
+    # in one ancestry group would make `zero_hom_raw` False for every group.
+    raw_freq = ht.raw_freq
+    zero_hom_raw = raw_freq.homozygote_count == 0
+    output_fields.update(
+        {
+            "raw_AC": raw_freq.AC,
+            "raw_AN": raw_freq.AN,
+            "raw_AF": raw_freq.AF,
+            "raw_homozygote_count": raw_freq.homozygote_count,
+            "zero_hom_raw": zero_hom_raw,
+        }
+    )
+    if "adj" in groups:
+        output_fields["hom_depleted_adj_only"] = (
+            ht.overall_hom_depletion & ~zero_hom_raw
+        )
+
     # Per variant fields.
     output_fields.update(
         {
@@ -549,6 +866,9 @@ def select_group_output_fields(ht, groups):
             "constraint": ht.constraint,
             "clinvar": ht.clinvar,
             "impc": ht.impc,
+            "lassen2026_ko": ht.lassen2026_ko,
+            "lassen2026_recessive_assoc": ht.lassen2026_recessive_assoc,
+            "finngen": ht.finngen,
             "sv_cnv": ht.sv_cnv,
         }
     )
@@ -631,6 +951,15 @@ def main(args):
 
         logger.info("Annotating IMPC mouse-knockout viability...")
         ht = annotate_impc_viability(ht, IMPC_PATH, MGI_PATH)
+
+        logger.info("Annotating Lassen et al. 2026 biallelic pLoF knockout evidence...")
+        ht = annotate_lassen_biallelic_ko(ht, LASSEN_S4_PATH)
+
+        logger.info("Annotating Lassen et al. 2026 recessive associations...")
+        ht = annotate_lassen_recessive_assoc(ht, LASSEN_S5_PATH)
+
+        logger.info("Annotating FinnGen homozygote evidence (Heyne et al. 2023)...")
+        ht = annotate_finngen_homozygotes(ht, HEYNE_S10_PATH)
 
         # Break lineage before the SV interval join. Only a select sits between SV
         # and the final write, so checkpointing here isolates the long upstream
