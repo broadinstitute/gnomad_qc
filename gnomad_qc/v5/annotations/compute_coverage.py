@@ -112,10 +112,11 @@ import re
 import shlex
 import subprocess
 import sys
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from functools import reduce
 from itertools import groupby
-from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from typing import Any, NamedTuple
 
 import hail as hl
 import hailtop.batch as hb
@@ -253,7 +254,7 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
 def get_group_membership_ht(
     meta_ht: hl.Table,
     project: str,
-    ds_ht: Optional[hl.Table] = None,
+    ds_ht: hl.Table | None = None,
     reduce_min_aggs: bool = False,
 ) -> hl.Table:
     """
@@ -313,7 +314,7 @@ def get_group_membership_ht(
     return ht
 
 
-def _chunk_intervals_hash(data: Dict[str, Any]) -> str:
+def _chunk_intervals_hash(data: dict[str, Any]) -> str:
     """
     Return a stable short content hash of the chunk-intervals JSON's boundaries.
 
@@ -358,7 +359,7 @@ def _chunk_path(cov_and_an_ht_path: str, idx: int, intervals_hash: str) -> str:
 
 def _list_present_chunk_indices(
     cov_and_an_ht_path: str, intervals_hash: str
-) -> Set[int]:
+) -> set[int]:
     """
     Return the set of chunk indices with a completed (``_SUCCESS``) output.
 
@@ -376,7 +377,7 @@ def _list_present_chunk_indices(
     :return: Set of completed chunk indices for this layout.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    present: Set[int] = set()
+    present: set[int] = set()
     for entry in hfs.ls(f"{base}_chunks/{intervals_hash}/*/_SUCCESS"):
         m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
         if m:
@@ -407,8 +408,8 @@ def _write_failed_chunks_manifest(
     n_dispatched: int,
     run_id: str,
     commit: str,
-    app_name: Optional[str],
-    waves: Sequence[Dict[str, Any]],
+    app_name: str | None,
+    waves: Sequence[dict[str, Any]],
 ) -> str:
     """
     Record the chunk indices that did not land, for a later targeted rerun.
@@ -501,7 +502,7 @@ def _group_path(
     return f"{base}_merge_groups_{tree}/L{level:02d}_{group_idx:08d}.ht"
 
 
-def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
+def _apply_path_suffix(path: str, suffix: str | None) -> str:
     """
     Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix.
 
@@ -516,7 +517,7 @@ def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
 
 
 def _results_environment(
-    environment: str, test: bool, override: Optional[str] = None
+    environment: str, test: bool, override: str | None = None
 ) -> str:
     """
     Return the bucket-selecting environment for coverage release artifacts.
@@ -542,8 +543,8 @@ def _resolve_cov_and_an_ht_path(
     project: str,
     environment: str,
     test: bool,
-    suffix: Optional[str],
-    chrom: Optional[str] = None,
+    suffix: str | None,
+    chrom: str | None = None,
 ) -> str:
     """
     Return the cov_and_an HT path, applying ``suffix`` and ``chrom`` when set.
@@ -620,7 +621,7 @@ def _log_name_for_run(
     run_merge: bool,
     chunk_start: int,
     chunk_stop: int,
-    merge_output: Optional[str],
+    merge_output: str | None,
 ) -> str:
     """
     Build a per-worker log name so concurrent chunk/merge workers don't clobber the monolithic log.
@@ -646,7 +647,7 @@ def _derive_chunk_locus_intervals(
     vds_filtered: hl.vds.VariantDataset,
     n_subdivisions: int = 1,
     reference_genome: str = "GRCh38",
-) -> List[hl.utils.Interval]:
+) -> list[hl.utils.Interval]:
     """
     Derive per-contig locus sub-intervals covering the filtered VDS reference_data.
 
@@ -683,7 +684,7 @@ def _derive_chunk_locus_intervals(
         )
     )
     n = max(n_subdivisions, 1)
-    sub_intervals: List[hl.utils.Interval] = []
+    sub_intervals: list[hl.utils.Interval] = []
     for contig, b in bounds.items():
         lo, hi = b.lo, b.hi + 1
         total = max(hi - lo, 1)
@@ -705,8 +706,8 @@ def _derive_chunk_locus_intervals(
 
 
 def _derive_ref_partition_intervals(
-    n_partitions: int, chrom: Optional[str] = None
-) -> List[hl.utils.Interval]:
+    n_partitions: int, chrom: str | None = None
+) -> list[hl.utils.Interval]:
     """
     Derive balanced locus intervals from the vep_context sites table.
 
@@ -739,8 +740,8 @@ def compute_all_release_stats_per_ref_site(
     sex_karyotype_field: str,
     project: str,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
-    interval_ht: Optional[hl.Table] = None,
-    group_membership_ht: Optional[hl.Table] = None,
+    interval_ht: hl.Table | None = None,
+    group_membership_ht: hl.Table | None = None,
     reduce_min_aggs: bool = False,
     experimental_densify: bool = False,
 ) -> hl.Table:
@@ -1103,10 +1104,10 @@ def _rename_fields(
 
 def _merge_an_fields(
     ht: hl.Table, project_1: str, project_2: str, operation: str
-) -> Tuple[
+) -> tuple[
     hl.expr.ArrayExpression,
-    List[Dict[str, str]],
-    Dict[str, hl.expr.ArrayExpression],
+    list[dict[str, str]],
+    dict[str, hl.expr.ArrayExpression],
 ]:
     """
     Merge AN fields from two projects.
@@ -1350,7 +1351,7 @@ def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -
 
 def _read_sample_artifact_json(
     name: str, environment: str, test: bool = False
-) -> Optional[Any]:
+) -> Any | None:
     """
     Return the parsed JSON sample artifact, or None when it has not been precomputed.
 
@@ -1372,13 +1373,13 @@ def _read_sample_artifact_json(
 def _load_project_vds(
     project: str,
     environment: str,
-    partition_range: Optional[List[int]] = None,
-    sub_intervals: Optional[List[hl.utils.Interval]] = None,
-    filter_intervals: Optional[List[hl.utils.Interval]] = None,
-    chrom: Optional[str] = None,
+    partition_range: list[int] | None = None,
+    sub_intervals: list[hl.utils.Interval] | None = None,
+    filter_intervals: list[hl.utils.Interval] | None = None,
+    chrom: str | None = None,
     test: bool = False,
     test_sample_subset: bool = False,
-) -> Tuple[hl.vds.VariantDataset, str]:
+) -> tuple[hl.vds.VariantDataset, str]:
     """
     Load the per-project VDS with consistent test/subsample handling.
 
@@ -1481,9 +1482,9 @@ def _load_project_vds(
 def _probe_vds(
     project: str,
     environment: str,
-    partition_range: Optional[List[int]],
-    chrom: Optional[str],
-    filter_intervals: Optional[List[hl.utils.Interval]] = None,
+    partition_range: list[int] | None,
+    chrom: str | None,
+    filter_intervals: list[hl.utils.Interval] | None = None,
 ) -> hl.vds.VariantDataset:
     """
     Cheap reference_data-bounds probe-load of the per-project VDS.
@@ -1537,7 +1538,7 @@ def _vep_context_sites_path(test: bool = False) -> str:
 
 
 def _build_vep_context_sites_ht(
-    intervals: Optional[List[hl.utils.Interval]] = None,
+    intervals: list[hl.utils.Interval] | None = None,
 ) -> hl.Table:
     """
     Build the locus-keyed, deduped, telomere/centromere/chrM-stripped vep_context sites HT.
@@ -1593,7 +1594,7 @@ def _chunk_intervals_path(environment: str, test: bool = False) -> str:
     return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
 
 
-def _interval_to_list(iv: hl.utils.Interval) -> List[Union[str, int, bool]]:
+def _interval_to_list(iv: hl.utils.Interval) -> list[str | int | bool]:
     """
     Serialize a locus interval to a JSON-friendly list.
 
@@ -1612,7 +1613,7 @@ def _interval_to_list(iv: hl.utils.Interval) -> List[Union[str, int, bool]]:
 
 
 def _interval_from_list(
-    t: List[Union[str, int, bool]], reference_genome: str
+    t: list[str | int | bool], reference_genome: str
 ) -> hl.utils.Interval:
     """
     Reconstruct a locus interval from its :func:``_interval_to_list`` serialization.
@@ -1659,8 +1660,8 @@ def _parse_region_interval(
 
 
 def _split_intervals_at_contigs(
-    intervals: List[hl.utils.Interval], reference_genome: str
-) -> List[hl.utils.Interval]:
+    intervals: list[hl.utils.Interval], reference_genome: str
+) -> list[hl.utils.Interval]:
     """
     Split any locus interval that straddles a contig boundary into one per contig.
 
@@ -1678,7 +1679,7 @@ def _split_intervals_at_contigs(
     rg = hl.get_reference(reference_genome)
     contigs = rg.contigs
     lengths = rg.lengths
-    out: List[hl.utils.Interval] = []
+    out: list[hl.utils.Interval] = []
     for iv in intervals:
         if iv.start.contig == iv.end.contig:
             out.append(iv)
@@ -1713,8 +1714,8 @@ def _build_chunk_intervals(
     total_partitions: int,
     partitions_per_chunk: int,
     n_sub: int,
-    chrom: Optional[str] = None,
-) -> Dict[str, Any]:
+    chrom: str | None = None,
+) -> dict[str, Any]:
     """
     Precompute every chunk's balanced read sub-intervals in ONE VDS open, by contig.
 
@@ -1783,7 +1784,7 @@ def _build_chunk_intervals(
         contig_subs = [
             iv for iv in contig_subs if iv.start.contig not in EXCLUDED_CONTIGS
         ]
-    chunks: List[Dict[str, Any]] = []
+    chunks: list[dict[str, Any]] = []
     for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
         contig_ivs = list(group)
         for j in range(0, len(contig_ivs), n_sub):
@@ -1819,9 +1820,9 @@ def _build_chunk_intervals(
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
     partition_count: int,
-    chrom: Optional[str],
+    chrom: str | None,
     sites_path: str,
-    sub_intervals: Optional[List[hl.utils.Interval]] = None,
+    sub_intervals: list[hl.utils.Interval] | None = None,
 ) -> hl.Table:
     """
     Build the per-chunk ``ref_ht`` from the preprocessed vep_context sites HT.
@@ -1863,8 +1864,8 @@ def _build_chunk_ref_ht(
 
 
 def _expand_leading_edges(
-    intervals: List[hl.utils.Interval], max_ref_block_len: int
-) -> List[hl.utils.Interval]:
+    intervals: list[hl.utils.Interval], max_ref_block_len: int
+) -> list[hl.utils.Interval]:
     """
     Back up each contig's first interval start by ``max_ref_block_len - 1``.
 
@@ -1885,8 +1886,8 @@ def _expand_leading_edges(
     :param max_ref_block_len: The VDS ``ref_block_max_length`` global value.
     :return: Intervals with each contig's leading start backed up (clamped at 1).
     """
-    seen_contigs: Set[str] = set()
-    expanded: List[hl.utils.Interval] = []
+    seen_contigs: set[str] = set()
+    expanded: list[hl.utils.Interval] = []
     for interval in intervals:
         contig = interval.start.contig
         if contig in seen_contigs:
@@ -1960,15 +1961,15 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         reduce_min_aggs=args.reduce_min_aggs,
     )
 
-    sub_intervals: Optional[List[hl.utils.Interval]] = None
+    sub_intervals: list[hl.utils.Interval] | None = None
     # The VDS read uses the same intervals EXCEPT each contig's leading edge is
     # backed up by ref_block_max_length-1 to capture reference blocks straddling
     # in from the previous chunk (see _expand_leading_edges). The sites/ref_ht
     # read keeps the un-widened sub_intervals so sites stay disjoint per chunk.
-    vds_read_intervals: Optional[List[hl.utils.Interval]] = None
+    vds_read_intervals: list[hl.utils.Interval] | None = None
     # For --test-region the VDS is read via filter_intervals (which splits
     # straddling reference blocks) instead of read_intervals; this holds those.
-    vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
+    vds_filter_intervals: list[hl.utils.Interval] | None = None
     # Content hash of the chunk-intervals layout this chunk belongs to; namespaces
     # the output path so chunks from a different (non-reproducible) layout are never
     # mixed at merge time. "test_region" for a --test-region run (no JSON).
@@ -2112,9 +2113,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
 
 def _run_coverage_merge(
-    input_paths: List[str],
+    input_paths: list[str],
     output_path: str,
-    coalesce_to: Optional[int] = None,
+    coalesce_to: int | None = None,
 ) -> None:
     """
     Union per-chunk coverage HTs and write the merged HT to ``output_path``.
@@ -2345,9 +2346,9 @@ def _submit_relay_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
     batch_name: str,
-    job_specs: List[_RelayJobSpec],
+    job_specs: list[_RelayJobSpec],
     log_label: str,
-) -> Optional[int]:
+) -> int | None:
     """
     Build and submit one Hail Batch of relay jobs sharing the same config.
 
@@ -2486,14 +2487,14 @@ def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
 def _submit_chunk_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
-    chunk_indices: List[int],
+    chunk_indices: list[int],
     cov_and_an_ht_path: str,
     intervals_hash: str,
     setup_cmd: str,
     common_flags_str: str,
     script: str,
-    wave_label: Optional[str] = None,
-) -> Optional[int]:
+    wave_label: str | None = None,
+) -> int | None:
     """
     Build and submit one Hail Batch containing all pending chunk jobs.
 
@@ -2568,7 +2569,7 @@ def _submit_chunk_batch(
 
 def _eligible_chunk_indices(
     args: argparse.Namespace,
-) -> Tuple[List[Optional[str]], List[int], str]:
+) -> tuple[list[str | None], list[int], str]:
     """
     Enumerate fan-out chunks and the subset selected by ``--chrom``.
 
@@ -2589,7 +2590,7 @@ def _eligible_chunk_indices(
         run, which has no JSON) used to namespace chunk outputs.
     """
     if args.test_region:
-        chunk_contigs: List[Optional[str]] = [None]
+        chunk_contigs: list[str | None] = [None]
         intervals_hash = "test_region"
     else:
         intervals_path = _chunk_intervals_path(args.environment, args.test)
@@ -2752,8 +2753,8 @@ def _orchestrate_coverage_batch(
         "Orchestrator run id: %s (stamped into the failed-chunk manifest)", run_id
     )
 
-    all_failed: List[int] = []
-    wave_records: List[Dict[str, Any]] = []
+    all_failed: list[int] = []
+    wave_records: list[dict[str, Any]] = []
     n_dispatched = 0
     for wi, wave_indices in enumerate(waves, start=1):
         wave_label = f"w{wi:03d}of{n_waves:03d}" if n_waves > 1 else None
@@ -2902,9 +2903,9 @@ def _orchestrate_coverage_batch(
 def _submit_merge_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
-    group_indices: List[int],
-    groups: List[List[str]],
-    group_output_paths: List[str],
+    group_indices: list[int],
+    groups: list[list[str]],
+    group_output_paths: list[str],
     setup_cmd: str,
     common_flags_str: str,
     script: str,
@@ -4433,18 +4434,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     fanout_group.add_argument(
         "--chunk-driver-cores",
         type=str,
-        default=None,
+        default="2",
         help=(
             "Cores for the QoB driver pod each chunk/merge relay spawns."
             " Power of two between 0.25 and 16 (as a string, e.g. '2' or"
             " '0.5'). Forwarded to the relay's --driver-cores; decoupled"
-            " from the orchestrator's own --driver-cores. Default None sets no"
-            " explicit cores, so the driver job gets Hail Batch's 1-core default --"
-            " which with the highmem memory default is 6.5 GB, smaller than the"
-            " 2-core standard 8 GB that already died on a coverage chunk. Pass '2'"
-            " for coverage chunks: 2-core highmem (13 GB) is the smallest"
-            " configuration measured to work. The driver is billed for the whole"
-            " worker barrier while idle, so cores beyond the memory they bring are"
+            " from the orchestrator's own --driver-cores. Default '2': with the"
+            " highmem memory default this is a 13 GB driver, the smallest"
+            " configuration measured to survive a coverage chunk (2-core standard,"
+            " 8 GB, died; 1-core highmem, 6.5 GB, is smaller than what died and"
+            " untested on coverage). The driver is billed for the whole worker"
+            " barrier while idle, so cores beyond the memory they bring are"
             " near-pure waste."
         ),
     )
