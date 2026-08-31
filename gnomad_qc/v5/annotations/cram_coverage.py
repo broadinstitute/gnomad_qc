@@ -64,7 +64,7 @@ logger = logging.getLogger("cram_coverage")
 logger.setLevel(logging.INFO)
 
 BATCH_IMAGE = "us-central1-docker.pkg.dev/broad-mpg-gnomad/images/v5_freq_batch:0.2.137"
-RP_PROJECT = "broad-mpg-gnomad"
+GCP_PROJECT = "broad-mpg-gnomad"
 AOU_CRAM_MANIFEST = "gs://fc-aou-datasets-controlled/v8/wgs/cram/manifest.csv"
 REF_FASTA = (
     "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta"
@@ -271,7 +271,7 @@ def sample_depth(row):
     from google.oauth2 import service_account
 
     person, cram, crai, batch = row
-    os.environ["GCS_REQUESTER_PAYS_PROJECT"] = os.environ["RP_PROJECT"]
+    os.environ["GCS_REQUESTER_PAYS_PROJECT"] = os.environ["GCP_PROJECT"]
     creds = service_account.Credentials.from_service_account_file(
         "/gsa-key/key.json",
         scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
@@ -466,7 +466,7 @@ def main(args):
         j.memory("standard")
         j.regions(["us-central1"])
         j.command("set -euo pipefail")
-        j.command(f"hailctl config set gcs_requester_pays/project {RP_PROJECT}")
+        j.command(f"hailctl config set gcs_requester_pays/project {GCP_PROJECT}")
         j.command(f"cat > select.py <<'PYEOF'{SELECT_PY}PYEOF")
         j.command(
             f'python3 select.py "{j.selected}" {n_samples} '
@@ -501,7 +501,7 @@ def main(args):
             j.command("set -euo pipefail")
             j.command("pip install --quiet pysam 2>&1 | tail -1")
             j.command(
-                f'export REF_GS="{REF_FASTA}" RP_PROJECT="{RP_PROJECT}" '
+                f'export REF_GS="{REF_FASTA}" GCP_PROJECT="{GCP_PROJECT}" '
                 f'N_PROCS="{args.cpu_per_job}"'
             )
             j.command(f"cat > fetch_ref.py <<'PYEOF'{REF_PY}PYEOF")
