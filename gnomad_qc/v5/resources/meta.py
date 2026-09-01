@@ -1,20 +1,32 @@
 """Script containing metadata related resources."""
 
+import json
+import logging
+from typing import Optional
+
+import hail as hl
+import hailtop.fs as hfs
 from gnomad.resources.resource_utils import (
     ExpressionResource,
     TableResource,
     VersionedTableResource,
 )
+from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v5.resources.basics import (
     _SAMPLE_DATA_ENVIRONMENTS,
+    _check_resource_existence,
     _get_base_bucket,
     _validate_environment,
+    qc_temp_prefix,
 )
 from gnomad_qc.v5.resources.constants import (
     CURRENT_PROJECT_META_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
 )
+
+logger = logging.getLogger("meta_resources")
+logger.setLevel(logging.INFO)
 
 
 def get_project_meta(environment: str = "batch") -> VersionedTableResource:
@@ -53,6 +65,144 @@ def get_sample_id_collisions(environment: str = "batch") -> TableResource:
     )
     return TableResource(
         path=f"gs://{bucket}/v5.0/metadata/gnomad.v5.0.sample_id_collisions.ht"
+    )
+
+
+def aou_sample_artifact_path(
+    name: str,
+    test: bool = False,
+    environment: str = "batch",
+    version: str = CURRENT_PROJECT_META_VERSION,
+) -> str:
+    """
+    Return the permanent path to a run-invariant AoU sample-level artifact.
+
+    Artifacts are small precomputed files read at VDS load (or by pipeline
+    workers) instead of rescanning the ~330-partition sample metadata tables:
+    the VDS-loading JSONs written by `write_aou_vds_sample_jsons`
+    (``sample_id_collisions.json``, ``high_quality_samples.json``,
+    ``release_samples.json``) and pipeline-specific Hail Tables such as the
+    frequency pipeline's ``meta_small.ht`` and ``gm_coalesced[_reduce].ht``.
+
+    Full-scope artifacts are permanent; unlike `_meta_root_path`, their root
+    resolves to the writable bucket in the "batch" environment (artifacts are
+    both written and read from batch). Test-scope artifacts are disposable and
+    live in the 4-day temp bucket, per repo convention.
+
+    :param name: Artifact file name (with extension).
+    :param test: If True, return the test-scoped path (10-sample test VDS runs),
+        in the 4-day temp bucket.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :param version: gnomAD version.
+    :return: GCS path to the artifact.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    if test:
+        # Test artifacts are disposable: 4-day temp bucket, per repo convention.
+        return (
+            f"{qc_temp_prefix(version=version, environment=environment, days=4)}"
+            f"aou_sample_artifacts_test/{name}"
+        )
+    return (
+        f"gs://{_get_base_bucket(environment)}/v{version}/metadata/genomes/"
+        f"aou_sample_artifacts_full/{name}"
+    )
+
+
+def load_aou_sample_artifact_json(
+    name: str,
+    test: bool = False,
+    environment: str = "batch",
+) -> Optional[list]:
+    """
+    Return the parsed JSON sample artifact, or None when it has not been written.
+
+    :param name: Artifact file name (with extension).
+    :param test: If True, read the test-scoped path.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :return: Parsed JSON value, or None if the file is absent.
+    """
+    path = aou_sample_artifact_path(name, test=test, environment=environment)
+    if not file_exists(path):
+        return None
+    with hfs.open(path) as f:
+        return json.load(f)
+
+
+def write_aou_vds_sample_jsons(
+    environment: str = "batch",
+    test: bool = False,
+    overwrite: bool = False,
+) -> None:
+    """
+    Write the permanent sample artifact JSONs used to load the AoU VDS.
+
+    Writes three artifacts so that VDS loads read small files instead of each
+    rescanning the ~330-partition sample metadata tables:
+
+    - ``sample_id_collisions.json``: pre-prefix sample IDs that collide with
+      gnomAD samples (from the sample-collisions Table).
+    - ``high_quality_samples.json``: post-prefix high-quality sample IDs,
+      collected with the exact ``meta_ht.high_quality`` filter that
+      ``get_aou_vds(high_quality_only=True)`` applies, so the two cannot drift.
+    - ``release_samples.json``: post-prefix release sample IDs, collected with
+      the exact ``meta_ht.release`` filter that ``get_aou_vds(release_only=True)``
+      applies.
+
+    `get_aou_vds` prefers these files and falls back to the original scans for
+    any that are absent.
+
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :param test: If True, write the test-scoped paths (4-day temp bucket).
+    :param overwrite: Whether to replace existing artifacts; without it, a rerun
+        fails instead of silently rewriting them. Default is False.
+    """
+    paths = {
+        name: aou_sample_artifact_path(name, test=test, environment=environment)
+        for name in (
+            "sample_id_collisions.json",
+            "high_quality_samples.json",
+            "release_samples.json",
+        )
+    }
+    _check_resource_existence(
+        environment=environment,
+        output_step_resources={
+            "--write-vds-sample-artifact-jsons": list(paths.values())
+        },
+        overwrite=overwrite,
+    )
+
+    sc_ht = get_sample_id_collisions(environment=environment).ht()
+    collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
+    with hfs.open(paths["sample_id_collisions.json"], "w") as f:
+        json.dump(collisions, f)
+    logger.info(
+        "Wrote %d collision sample IDs: %s",
+        len(collisions),
+        paths["sample_id_collisions.json"],
+    )
+
+    meta_ht = meta(data_type="genomes", environment=environment).ht()
+    hq_samples = meta_ht.filter(meta_ht.high_quality).s.collect()
+    with hfs.open(paths["high_quality_samples.json"], "w") as f:
+        json.dump(hq_samples, f)
+    logger.info(
+        "Wrote %d high-quality sample IDs: %s",
+        len(hq_samples),
+        paths["high_quality_samples.json"],
+    )
+
+    release_samples = meta_ht.filter(meta_ht.release).s.collect()
+    with hfs.open(paths["release_samples.json"], "w") as f:
+        json.dump(release_samples, f)
+    logger.info(
+        "Wrote %d release sample IDs: %s",
+        len(release_samples),
+        paths["release_samples.json"],
     )
 
 
