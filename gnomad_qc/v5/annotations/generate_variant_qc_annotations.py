@@ -28,7 +28,6 @@ from gnomad.variant_qc.random_forest import median_impute_features
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
     get_ac_info_ht_checkpoint_path,
-    get_vcf_ht_checkpoint_path,
     get_aou_annotated_sites_only_vcf,
     get_aou_vcf_header,
     get_info_ht,
@@ -36,6 +35,7 @@ from gnomad_qc.v5.resources.annotations import (
     get_trio_stats,
     get_true_positive_vcf_path,
     get_variant_qc_annotations,
+    get_vcf_ht_checkpoint_path,
     info_vcf_path,
 )
 from gnomad_qc.v5.resources.basics import (
@@ -65,9 +65,7 @@ logger.setLevel(logging.INFO)
 # reads). Used to sort derived intervals into genomic order, which read_vds's
 # partitioner requires (plain sorts/dict orders are lexicographic: chr1, chr10,
 # ..., chr2, ...).
-GRCH38_CONTIG_ORDER = {
-    c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)
-}
+GRCH38_CONTIG_ORDER = {c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)}
 
 
 def _optional_global(value, dtype) -> hl.expr.Expression:
@@ -339,9 +337,7 @@ def validate_local_allele_agg(
         sampled locus (and the input was non-empty).
     """
     if not use_local_allele_agg:
-        logger.warning(
-            "use_local_allele_agg is False; nothing to validate."
-        )
+        logger.warning("use_local_allele_agg is False; nothing to validate.")
         return True
 
     def _ac_arrays(candidate: bool) -> hl.Table:
@@ -425,7 +421,9 @@ def validate_local_allele_agg(
     def _elem_pab(x, y):
         return (
             hl.case()
-            .when(hl.is_missing(x) | hl.is_missing(y), hl.is_missing(x) & hl.is_missing(y))
+            .when(
+                hl.is_missing(x) | hl.is_missing(y), hl.is_missing(x) & hl.is_missing(y)
+            )
             .when(hl.is_nan(x) | hl.is_nan(y), hl.is_nan(x) & hl.is_nan(y))
             .default(hl.abs(x - y) <= pab_atol)
         )
@@ -664,9 +662,11 @@ def union_ac_info_hts(
     # Evaluate each input's provenance global once; used for verification here
     # and for the ac_info_ht_strata global at the end.
     input_params = [
-        hl.eval(h.globals.ac_info_ht_parameters)
-        if "ac_info_ht_parameters" in list(h.globals)
-        else None
+        (
+            hl.eval(h.globals.ac_info_ht_parameters)
+            if "ac_info_ht_parameters" in list(h.globals)
+            else None
+        )
         for h in hts
     ]
 
@@ -753,9 +753,7 @@ def union_ac_info_hts(
         params_dtype = hts[0].globals.ac_info_ht_parameters.dtype
         ht = ht.drop("ac_info_ht_parameters")
         ht = ht.annotate_globals(
-            ac_info_ht_strata=hl.literal(
-                input_params, dtype=hl.tarray(params_dtype)
-            )
+            ac_info_ht_strata=hl.literal(input_params, dtype=hl.tarray(params_dtype))
         )
     else:
         logger.warning(
@@ -1379,7 +1377,10 @@ def compute_chunks(args):
         sub_intervals = _derive_chunk_locus_intervals(vds_probe, n_subdivisions=n_sub)
 
     logger.info(
-        "Chunk partitions %d-%d: derived %d sub-intervals", start, stop, len(sub_intervals)
+        "Chunk partitions %d-%d: derived %d sub-intervals",
+        start,
+        stop,
+        len(sub_intervals),
     )
 
     return sub_intervals
@@ -1520,9 +1521,7 @@ def _validate_args(args, test: bool) -> None:
 
     if args.chrom is not None:
         if args.chrom not in hl.get_reference("GRCh38").contigs:
-            raise ValueError(
-                f"--chrom {args.chrom!r} is not a GRCh38 contig."
-            )
+            raise ValueError(f"--chrom {args.chrom!r} is not a GRCh38 contig.")
     # --chrom is a VDS read restriction only for --generate-ac-info-ht; its
     # trio-stats use (which dense-trio chromosome to process) has no
     # interaction with the chunk/test flags, so these checks are scoped to
@@ -1690,8 +1689,7 @@ def _resolve_union_inputs(args, test: bool, environment: str):
         for path in union_input_ac_info_ht_paths:
             logger.info("  %s", path)
     if args.union_ac_info_hts and (
-        union_input_ac_info_ht_paths is None
-        or len(union_input_ac_info_ht_paths) < 2
+        union_input_ac_info_ht_paths is None or len(union_input_ac_info_ht_paths) < 2
     ):
         raise ValueError(
             "--union-ac-info-hts requires input paths: pass "
@@ -1716,9 +1714,10 @@ def main(args):
 
     _validate_args(args, test)
 
-    info_ht_path = args.info_ht_path_override or get_info_ht(
-        test=test, environment=environment
-    ).path
+    info_ht_path = (
+        args.info_ht_path_override
+        or get_info_ht(test=test, environment=environment).path
+    )
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
     sib_stats_ht_path = get_sib_stats(test=test, environment=environment).path
     variant_qc_annotation_ht_path = get_variant_qc_annotations(
@@ -1781,9 +1780,7 @@ def main(args):
 
     try:
         if args.validate_local_allele_agg and args.generate_ac_info_ht:
-            logger.info(
-                "Validating local-allele-space aggregation against original..."
-            )
+            logger.info("Validating local-allele-space aggregation against original...")
             if not validate_local_allele_agg(
                 vds,
                 n_partitions=None,
@@ -1892,9 +1889,7 @@ def main(args):
                 overwrite=overwrite,
             )
             ac_info_ht = hl.read_table(ac_info_ht_checkpoint_path)
-            logger.info(
-                "Reusing reformatted VCF HT at %s...", vcf_ht_checkpoint_path
-            )
+            logger.info("Reusing reformatted VCF HT at %s...", vcf_ht_checkpoint_path)
             vcf_ht = hl.read_table(vcf_ht_checkpoint_path)
             ht = join_vcf_and_ac_info_hts(
                 ac_info_ht,
