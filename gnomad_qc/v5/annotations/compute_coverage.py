@@ -1457,6 +1457,71 @@ def _split_intervals_at_contigs(
     return out
 
 
+def _snap_edges_to_bounds(
+    intervals: list[hl.utils.Interval],
+    bounds: dict[str, tuple[int, int, bool]],
+) -> list[hl.utils.Interval]:
+    """
+    Extend each contig's first interval back to a bound start and its last forward to a bound end.
+
+    ``repartition_for_join`` bounds span the probe's first to last reference-block
+    key, so sites before the first block (or after the last) in the requested span
+    would never be read and would be dropped instead of emitted with AN=0.
+
+    :param intervals: Sorted locus intervals, each on one contig.
+    :param bounds: Per-contig ``(start position, end position, includes_end)``;
+        contigs absent from ``bounds`` are left as is.
+    :return: Intervals with per-contig edges snapped to ``bounds``.
+    """
+    out = list(intervals)
+    by_contig: dict[str, list[int]] = {}
+    for i, iv in enumerate(out):
+        by_contig.setdefault(iv.start.contig, []).append(i)
+    for contig, idxs in by_contig.items():
+        if contig not in bounds:
+            continue
+        lo, hi, inc_hi = bounds[contig]
+        rg = out[idxs[0]].start.reference_genome
+        first = out[idxs[0]]
+        if lo < first.start.position:
+            out[idxs[0]] = hl.Interval(
+                hl.Locus(contig, lo, reference_genome=rg),
+                first.end,
+                includes_start=True,
+                includes_end=first.includes_end,
+            )
+        last = out[idxs[-1]]
+        if hi > last.end.position or (
+            hi == last.end.position and inc_hi and not last.includes_end
+        ):
+            out[idxs[-1]] = hl.Interval(
+                last.start,
+                hl.Locus(contig, hi, reference_genome=rg),
+                includes_start=last.includes_start,
+                includes_end=inc_hi,
+            )
+    return out
+
+
+def _region_bounds(
+    regions: list[hl.utils.Interval],
+) -> dict[str, tuple[int, int, bool]]:
+    """
+    Per-contig ``(min start, max end, includes_end)`` of the ``--test-region`` intervals.
+
+    :param regions: Parsed ``--test-region`` intervals.
+    :return: Bounds for ``_snap_edges_to_bounds``.
+    """
+    bounds: dict[str, tuple[int, int, bool]] = {}
+    for r in regions:
+        c = r.start.contig
+        lo, hi, inc = bounds.get(c, (r.start.position, r.end.position, r.includes_end))
+        if r.end.position > hi or (r.end.position == hi and r.includes_end):
+            hi, inc = r.end.position, r.includes_end
+        bounds[c] = (min(lo, r.start.position), hi, inc)
+    return bounds
+
+
 def _build_chunk_intervals(
     project: str,
     environment: str,
@@ -1472,7 +1537,7 @@ def _build_chunk_intervals(
     sub-intervals over all reference-data loci, splits any that straddle a
     contig boundary, groups by contig, and slices each contig's run into
     chunks of ``n_sub``. No chunk crosses a contig boundary, chunks are
-    disjoint, and their union covers all loci.
+    disjoint, and their union covers every contig end to end.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
@@ -1519,6 +1584,12 @@ def _build_chunk_intervals(
         contig_subs = [
             iv for iv in contig_subs if iv.start.contig not in EXCLUDED_CONTIGS
         ]
+    # The bounds span the first to last reference-block key; sites outside
+    # that span on each contig must still be read (AN=0), not dropped.
+    contig_subs = _snap_edges_to_bounds(
+        contig_subs,
+        {c: (1, rg.lengths[c], True) for c in {iv.start.contig for iv in contig_subs}},
+    )
     chunks: list[dict[str, Any]] = []
     for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
         contig_ivs = list(group)
@@ -1687,6 +1758,11 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
                 vds_probe.reference_data.rows(),
                 n_partitions=n_sub,
                 locus_intervals=True,
+            )
+            # The bounds span the probe's first to last reference-block key;
+            # region sites outside them must still be read (AN=0), not dropped.
+            sub_intervals = _snap_edges_to_bounds(
+                sub_intervals, _region_bounds(region_intervals)
             )
             rbml_field = hl.vds.VariantDataset.ref_block_max_length_field
             if rbml_field not in vds_probe.reference_data.globals:
