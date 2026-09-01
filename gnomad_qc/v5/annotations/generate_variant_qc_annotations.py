@@ -3,7 +3,6 @@
 import argparse
 import logging
 import math
-from collections import OrderedDict
 from typing import Dict, List
 
 import hail as hl
@@ -1220,6 +1219,10 @@ def group_scout_loci_into_intervals(
     holds many target loci. This keeps the partition count in a healthy range
     regardless of how many target loci there are.
 
+    The derivation stays distributed: only the chunk-boundary loci (~2 per
+    interval) are collected to the driver, never the full target set, so a
+    genome-wide scout with hundreds of millions of target loci is safe.
+
     Intervals never span contigs.
 
     :param target_ht: Table of target loci (e.g. from `scout_target_loci`).
@@ -1230,9 +1233,15 @@ def group_scout_loci_into_intervals(
     :return: List of `hl.Interval` objects, in genomic order, each covering a
         contiguous chunk of target loci within a single contig.
     """
+    # Keyed by locus, so the table is globally sorted in genomic order.
     loci = target_ht.key_by("locus").select().distinct()
-    collected = loci.locus.collect()
-    n_loci = len(collected)
+
+    # One distributed pass: total count + per-contig counts (for within-contig
+    # chunking, so no interval spans a contig boundary).
+    stats = loci.aggregate(
+        hl.struct(n=hl.agg.count(), per_contig=hl.agg.counter(loci.locus.contig))
+    )
+    n_loci = stats.n
     if n_loci == 0:
         return []
 
@@ -1242,22 +1251,38 @@ def group_scout_loci_into_intervals(
     n_partitions = max(1, min(n_partitions, n_loci))
     chunk = max(1, math.ceil(n_loci / n_partitions))
 
-    # Group loci by contig; chunk within contig so no interval spans a contig
-    # boundary. `collect()` order is not guaranteed, so contigs and positions are
-    # explicitly sorted into genomic order for the read_vds partitioner.
-    by_contig: "OrderedDict[str, list]" = OrderedDict()
-    for loc in collected:
-        by_contig.setdefault(loc.contig, []).append(loc)
+    # Each contig's global-index offset, from cumulative counts in genomic order.
+    per_contig = dict(stats.per_contig)
+    offset = 0
+    offsets = {}
+    for contig in sorted(per_contig, key=lambda c: GRCH38_CONTIG_ORDER[c]):
+        offsets[contig] = offset
+        offset += per_contig[contig]
 
+    # Keep only the chunk-boundary loci: within-contig index at a chunk start,
+    # a chunk end, or the contig's last locus. A locus can be both start and
+    # end (chunk of size 1).
+    loci = loci.add_index("idx")
+    within = loci.idx - hl.literal(offsets)[loci.locus.contig]
+    contig_n = hl.literal(per_contig)[loci.locus.contig]
+    loci = loci.annotate(
+        is_start=within % chunk == 0,
+        is_end=(within % chunk == chunk - 1) | (within == contig_n - 1),
+    )
+    bounds = loci.filter(loci.is_start | loci.is_end).collect()
+
+    # `collect` on a keyed table returns rows in key (genomic) order, so starts
+    # and ends pair up by simple iteration.
     intervals: List[hl.utils.Interval] = []
-    for contig in sorted(by_contig, key=lambda c: GRCH38_CONTIG_ORDER[c]):
-        locs = sorted(by_contig[contig], key=lambda loc: loc.position)
-        for i in range(0, len(locs), chunk):
-            group = locs[i : i + chunk]
+    start = None
+    for row in bounds:
+        if row.is_start:
+            start = row.locus
+        if row.is_end:
             intervals.append(
                 hl.Interval(
-                    group[0],
-                    group[-1],
+                    start,
+                    row.locus,
                     includes_start=True,
                     includes_end=True,
                 )
