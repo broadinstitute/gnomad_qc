@@ -149,6 +149,11 @@ def hist_to_summary(hist, n_samples: int, thresholds, cap: int):
     """
     Convert a per-site raw-depth histogram to coverage summary arrays.
 
+    Single pass over depth rows with O(n_sites) temporaries: whole-array
+    expressions like `depths[:, None] * hist` or `hist.cumsum(axis=0)`
+    materialize (ceiling+1, n_sites) 8-byte arrays — ~40 GB at the production
+    shape (1001 x 5 Mb) — and OOM the region jobs.
+
     :param hist: (ceiling+1, n_sites) array; hist[d, i] = samples with raw
         depth d (clipped to the ceiling) at site i. The ceiling must be >= cap,
         which makes `mean_capped` exact.
@@ -161,15 +166,30 @@ def hist_to_summary(hist, n_samples: int, thresholds, cap: int):
     import numpy as np
 
     assert hist.shape[0] - 1 >= cap, "histogram ceiling must be >= cap"
-    n = hist.sum(axis=0)
-    assert (n == n_samples).all(), "histogram counts != sample count"
-    capped_depths = np.minimum(np.arange(hist.shape[0], dtype=np.float64), cap)
-    mean_capped = (capped_depths[:, None] * hist).sum(axis=0) / n_samples
-    cum = hist.cumsum(axis=0)
+    n_sites = hist.shape[1]
+    cum = np.zeros(n_sites, dtype=np.int64)
+    capped_sum = np.zeros(n_sites, dtype=np.int64)
     # Lower median: smallest depth d with cumulative count >= n/2.
-    median = (cum < (n_samples / 2)).sum(axis=0)
-    over = {t: (n_samples - cum[t - 1]) / n_samples for t in thresholds}
-    return mean_capped, median, over, hist[-1]
+    median = np.zeros(n_sites, dtype=np.int64)
+    unset = np.ones(n_sites, dtype=bool)
+    half = n_samples / 2
+    over = {}
+    tset = set(thresholds)
+    for d in range(hist.shape[0]):
+        row = hist[d]
+        if row.any():
+            row = row.astype(np.int64)
+            cum += row
+            capped_sum += min(d, cap) * row
+            if unset.any():
+                newly = unset & (cum >= half)
+                median[newly] = d
+                unset &= ~newly
+        if (d + 1) in tset:
+            over[d + 1] = (n_samples - cum) / n_samples
+    assert (cum == n_samples).all(), "histogram counts != sample count"
+    mean_capped = capped_sum / n_samples
+    return mean_capped, median, {t: over[t] for t in thresholds}, hist[-1]
 
 
 SELECT_PY = (
