@@ -1585,13 +1585,19 @@ def _derive_read_intervals(args, need_intervals: bool):
     :param need_intervals: Whether any selected step reads the VDS.
     :return: List of locus intervals, or None.
     """
+    # Early return so read-restriction flags never trigger derivation for
+    # invocations that don't read the VDS -- in particular, --chrom on a
+    # trio-stats-only run selects the dense-trio chromosome, not a VDS read.
+    if not need_intervals:
+        if args.explode_partitions or args.scout_alleles:
+            logger.info(
+                "Skipping interval derivation: the selected steps read neither "
+                "the VDS nor the VCF by interval."
+            )
+        return None
+
     sub_intervals = None
-    if not need_intervals and (args.explode_partitions or args.scout_alleles):
-        logger.info(
-            "Skipping interval derivation: the selected steps read neither the VDS "
-            "nor the VCF by interval."
-        )
-    elif args.explode_partitions:
+    if args.explode_partitions:
         logger.info("Explode partitions...")
         sub_intervals = compute_chunks(args)
         logger.info("Derived %d sub-intervals from chunk", len(sub_intervals))
