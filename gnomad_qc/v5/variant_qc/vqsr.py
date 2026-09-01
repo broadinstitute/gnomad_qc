@@ -10,8 +10,8 @@ import hailtop.batch as hb
 from hailtop.batch.job import Job
 
 from gnomad_qc.v5.resources.annotations import (
-    get_info_vcf_path,
     get_true_positive_vcf_path,
+    info_vcf_path,
 )
 from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
 from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import (
@@ -1103,7 +1103,7 @@ def main(args):
     # Configure all VQSR jobs.
     make_vqsr_jobs(
         b=b,
-        sites_only_vcf=get_info_vcf_path(test=test),
+        sites_only_vcf=info_vcf_path(test=test),
         is_small_callset=args.run_mode == "small",
         is_large_callset=args.run_mode == "large",
         output_vcf_name=args.out_vcf_name,

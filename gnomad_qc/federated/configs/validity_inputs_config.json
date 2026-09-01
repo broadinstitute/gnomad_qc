@@ -1,6 +1,5 @@
 {
-    "missingness_threshold": 0.5,
-    "struct_annotations_for_missingness": [],
+    "struct_annotations_to_skip_missingness": ["vep"],
     "freq_fields": {"freq": "freq", "freq_meta": "freq_meta", "freq_meta_sample_count": "freq_meta_sample_count"},
     "faf_fields": {},
     "freq_annotations_to_sum": ["AC", "AN", "homozygote_count"],
@@ -8,5 +7,6 @@
     "nhomalt_metric": "homozygote_count",
     "subsets": [""],
     "variant_filter_field": "",
-    "check_mono_and_only_het" : true
+    "data_type": "genomes",
+    "check_mono_and_only_het": true
 }

@@ -1,7 +1,7 @@
 """Create a schema-faithful VQSR test input from gnomAD v4 data.
 
 The v5 VQSR pipeline (``vqsr.py``) consumes a sites-only info VCF
-(:func:`get_info_vcf_path`) and, optionally, a true-positive/singleton VCF
+(:func:`info_vcf_path`) and, optionally, a true-positive/singleton VCF
 (:func:`get_true_positive_vcf_path`). Those are produced by
 ``generate_variant_qc_annotations.py`` (branch ``kl/info_edits``) from AoU data,
 which is not yet available.
@@ -31,8 +31,8 @@ from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
 from gnomad_qc.v4.resources.annotations import get_info as get_v4_info
 from gnomad_qc.v5.resources.annotations import (
-    get_info_vcf_path,
     get_true_positive_vcf_path,
+    info_vcf_path,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -140,7 +140,7 @@ def main(args):
         regions=["us-central1"],
     )
 
-    build_info_vcf(args.test_region, get_info_vcf_path(test=True))
+    build_info_vcf(args.test_region, info_vcf_path(test=True))
 
     if not args.skip_true_positive_vcf:
         build_true_positive_vcf(args.test_region)

@@ -17,15 +17,17 @@ from gnomad.sample_qc.relatedness import (
 from gnomad.utils.vcf import SEXES
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.sample_qc.identify_trios import families_to_trios
 from gnomad_qc.v5.resources.basics import (
-    WORKSPACE_BUCKET,
+    _check_resource_existence,
+    _get_batch_resource_kwargs,
+    _init_hail,
     get_aou_vds,
     get_logging_path,
 )
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
+    DENSE_TRIO_TEST_CHROMS,
     dense_trios,
     duplicates,
     ped_filter_param_json_path,
@@ -36,7 +38,11 @@ from gnomad_qc.v5.resources.sample_qc import (
     trios,
 )
 
-logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logging.basicConfig(
+    format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
+    level=logging.INFO,
+    force=True,
+)
 logger = logging.getLogger("identify_trios")
 logger.setLevel(logging.INFO)
 
@@ -221,17 +227,21 @@ def filter_ped(
 def create_dense_trio_mt(
     fam_ht: hl.Table,
     meta_ht: hl.Table,
-    test: bool = False,
+    chrom: str,
     naive_coalesce_partitions: Optional[int] = None,
+    environment: str = "rwb",
 ) -> hl.MatrixTable:
     """
     Create a dense MatrixTable for high quality trios.
 
     :param fam_ht: Table with family information.
     :param meta_ht: Table with metadata information.
-    :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
+    :param chrom: Single chromosome to densify (e.g., 'chr20'). All trios on that
+        chromosome only. The dense trio MT is densified one chromosome at a time.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
+    :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
+        or "batch".
     :return: Dense MatrixTable with high quality trios.
     """
     # Filter the metadata table to only high quality AoU samples.
@@ -242,66 +252,40 @@ def create_dense_trio_mt(
     # Note: Checked IDs for samples in trios; none of them have sample ID collisions.
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
-    if test:
-        # Filter to the first 15 trios for testing.
-        fam_ht = fam_ht.head(15)
-        fam_ht_list = fam_ht.collect()
-        trio_samples = set()
-        for row in fam_ht_list:
-            trio_samples.add(row.id)
-            trio_samples.add(row.pat_id)
-            trio_samples.add(row.mat_id)
-
-        meta_ht = meta_ht.filter(hl.literal(trio_samples).contains(meta_ht.s))
-
-    # v4 used `entries_to_keep` to filter non `gvcf_info` entries, but
-    # AoU VDS only has GQ, RGQ, PS, LGT, LAD, LA, FT entries.
     vds = get_aou_vds(
         filter_samples=meta_ht,
-        filter_partitions=range(2) if test else None,
-        chrom="chr20" if test else None,
+        chrom=chrom,
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
+        environment=environment,
     )
     return hl.vds.to_dense_mt(vds)
 
 
 def main(args):
     """Identify trios and filter based on Mendel errors and de novos."""
-    if args.rwb:
-        environment = "rwb"
-        hl.init(
-            log="/home/jupyter/workspaces/gnomadproduction/identify_trios.log",
-            tmp_dir=f"gs://{WORKSPACE_BUCKET}/tmp/4_day",
-        )
-    else:
-        environment = "batch"
-        hl.init(
-            backend="batch",
-            log="/identify_trios.log",
-            tmp_dir="gs://gnomad-tmp-4day",
-            gcs_requester_pays_configuration="broad-mpg-gnomad",
-            default_reference="GRCh38",
-            regions=["us-central1"],
-            # TODO: Add machine configurations for Batch.
-        )
-    hl.default_reference("GRCh38")
+    environment = args.environment
+    _init_hail("identify_trios", environment, **_get_batch_resource_kwargs(args))
 
     overwrite = args.overwrite
     test = args.test
+    chrom = args.chrom
 
     try:
 
-        rel_ht = relatedness().ht()
-        meta_ht = meta().ht()
+        rel_ht = relatedness(environment=environment).ht()
+        meta_ht = meta(environment=environment).ht()
         dup_ht_path = duplicates(environment=environment).path
-        raw_ped_path = pedigree(finalized=False).path
-        fake_ped_path = pedigree(finalized=False, fake=True).path
-        mendel_err_ht_path = ped_mendel_errors(test=test).path
-        final_ped_path = pedigree(test=test).path
-        filter_json_path = ped_filter_param_json_path(test=test)
-        trios_path = trios(test=test).path
-        dense_trio_mt_path = dense_trios(test=test).path
+        raw_ped_path = pedigree(finalized=False, environment=environment).path
+        fake_ped_path = pedigree(
+            finalized=False, fake=True, environment=environment
+        ).path
+        mendel_err_ht_path = ped_mendel_errors(test=test, environment=environment).path
+        final_ped_path = pedigree(test=test, environment=environment).path
+        filter_json_path = ped_filter_param_json_path(
+            test=test, environment=environment
+        )
+        trios_path = trios(test=test, environment=environment).path
 
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
@@ -310,19 +294,21 @@ def main(args):
 
         if args.identify_duplicates:
             logger.info("Selecting best duplicate per duplicated sample set...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"duplicates_ht": [dup_ht_path]},
                 overwrite=overwrite,
             )
             ht = get_duplicated_samples_ht(
                 get_duplicated_samples(rel_ht),
-                sample_rankings(release=True).ht(),
+                sample_rankings(release=True, environment=environment).ht(),
             )
             ht.write(dup_ht_path, overwrite=overwrite)
 
         if args.infer_families:
             logger.info("Inferring families...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"raw_pedigree": [raw_ped_path]},
                 overwrite=overwrite,
             )
@@ -348,7 +334,8 @@ def main(args):
 
         if args.create_fake_pedigree:
             logger.info("Creating fake Pedigree...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"fake_pedigree": [fake_ped_path]},
                 overwrite=overwrite,
             )
@@ -362,7 +349,8 @@ def main(args):
 
         if args.run_mendel_errors:
             logger.info("Running Mendel errors on chr20...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"mendel_err_ht": [mendel_err_ht_path]},
                 overwrite=overwrite,
             )
@@ -371,6 +359,7 @@ def main(args):
                 remove_dead_alleles=False,
                 filter_partitions=range(5) if test else None,
                 chrom="chr20",
+                environment=environment,
             )
             mendel_err_ht = run_mendel_errors(
                 vds,
@@ -381,7 +370,8 @@ def main(args):
 
         if args.finalize_ped:
             logger.info("Finalizing Pedigree...")
-            check_resource_existence(
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={
                     "final_pedigree": [final_ped_path],
                     "final_trios": [trios_path],
@@ -409,9 +399,23 @@ def main(args):
                 d.write(json.dumps(filters))
 
         if args.create_dense_trio_mt:
+            if chrom is None:
+                raise ValueError(
+                    "--chrom is required for --create-dense-trio-mt; the dense trio MT "
+                    "is densified one chromosome at a time."
+                )
+            if test and chrom not in DENSE_TRIO_TEST_CHROMS:
+                raise ValueError(
+                    f"--test densifies only the test chromosomes "
+                    f"{DENSE_TRIO_TEST_CHROMS}; got --chrom {chrom}."
+                )
             logger.info("Creating dense trio MT...")
             logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")
-            check_resource_existence(
+            dense_trio_mt_path = dense_trios(
+                test=test, chrom=chrom, environment=environment
+            ).path
+            _check_resource_existence(
+                environment=environment,
                 output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
                 overwrite=overwrite,
             )
@@ -422,32 +426,26 @@ def main(args):
                     "Specifying naive coalesce partitions may make the densify significantly slower..."
                 )
 
+            # NOTE: Code always densifies all trios from the finalized pedigree for
+            # cost estimation reasons.
             dense_trio_mt = create_dense_trio_mt(
-                hl.import_fam(final_ped_path),
+                hl.import_fam(pedigree(test=False, environment=environment).path),
                 meta_ht,
-                test=test,
+                chrom=chrom,
                 naive_coalesce_partitions=naive_coalesce_partitions,
+                environment=environment,
             )
             dense_trio_mt.write(dense_trio_mt_path, overwrite=overwrite)
 
     finally:
-        logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("identify_trios", environment=environment))
+        if environment == "rwb":
+            logger.info("Copying hail log to logging bucket...")
+            hl.copy_log(get_logging_path("identify_trios", environment=environment))
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--rwb",
-        help="Run the script in RWB environment.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--batch",
-        help="Run the script in Batch environment.",
-        action="store_true",
-    )
     parser.add_argument(
         "--overwrite",
         help="Overwrite existing data.",
@@ -455,8 +453,48 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--test",
-        help="Run script on subset of dataset. Applies to Mendel errors and dense trio MT creation.",
+        help=(
+            "Use test output paths. Subsets the data for Mendel error calculation. For "
+            "dense trio MT creation it only changes the output path (all trios are still "
+            "densified); pair with --chrom to limit to a single chromosome."
+        ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch"],
+        default="rwb",
+    )
+    parser.add_argument(
+        "--app-name",
+        type=str,
+        default=None,
+        help="Job name for batch/QoB backend.",
+    )
+    parser.add_argument(
+        "--driver-cores",
+        help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--driver-memory",
+        help="Memory for driver node. Applies to Batch environment only. Hail default is 'standard' if unspecified.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--worker-cores",
+        help="Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--worker-memory",
+        help="Memory for worker nodes. Applies to Batch environment only.",
+        type=str,
+        default=None,
     )
 
     identify_dup_args = parser.add_argument_group("Duplicate identification")
@@ -567,10 +605,20 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     dense_trio_mt_args.add_argument(
+        "--chrom",
+        help=(
+            "Single chromosome to densify (e.g., 'chr20'). Required for "
+            "--create-dense-trio-mt: the dense trio MT is densified one chromosome at a "
+            "time, run once per chromosome. Combine with --test to route output to a "
+            "test path."
+        ),
+        type=str,
+        default=None,
+    )
+    dense_trio_mt_args.add_argument(
         "--naive-coalesce-partitions",
         help=("Number of partitions to coalesce the VDS to."),
         type=int,
-        default=5000,
     )
 
     return parser

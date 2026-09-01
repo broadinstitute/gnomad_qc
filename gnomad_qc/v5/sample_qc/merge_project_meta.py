@@ -1,5 +1,6 @@
 """Merge gnomAD v4 metadata with AoU metadata to create gnomAD v5 project metadata."""
 
+import argparse
 import logging
 import os
 from functools import reduce
@@ -11,12 +12,12 @@ import pandas as pd
 
 from gnomad_qc.v4.resources.meta import meta as meta_v4
 from gnomad_qc.v5.resources.basics import (
+    _init_hail,
     add_project_prefix_to_sample_collisions,
     get_checkpoint_path,
+    get_logging_path,
 )
-from gnomad_qc.v5.resources.meta import project_meta, sample_id_collisions
-
-hl.default_reference(new_default_reference="GRCh38")
+from gnomad_qc.v5.resources.meta import get_project_meta, get_sample_id_collisions
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("merge_project_meta")
@@ -283,95 +284,137 @@ def get_sample_collisions(meta_hts: Dict[str, hl.Table]) -> hl.Table:
     return sample_collisions
 
 
-def main():
+def main(args):
     """Create v5 project metadata."""
-    meta_hts = {}
-    for project, project_metadata in get_meta_config().items():
-        project_hts = []
-        logger.info("Processing the %s project's metadata...", project)
-        for data_type in project_metadata.keys():
-            data_type_hts = []
-            logger.info("Importing %s's %s metadata ...", project, data_type)
-            for file in project_metadata[data_type]:
+    environment = args.environment
+    _init_hail("merge_project_meta", environment)
+    try:
+        meta_hts = {}
+        for project, project_metadata in get_meta_config().items():
+            project_hts = []
+            logger.info("Processing the %s project's metadata...", project)
+            for data_type in project_metadata.keys():
+                data_type_hts = []
+                logger.info("Importing %s's %s metadata ...", project, data_type)
+                for file in project_metadata[data_type]:
 
-                if file["file_format"] == "ht":
-                    ht = file["ht"]
+                    if file["file_format"] == "ht":
+                        ht = file["ht"]
 
-                elif file["file_format"] == "tsv":
-                    file_types = {
-                        input_field: FINAL_SCHEMA_FIELDS_AND_TYPES[final_field]
-                        for final_field, input_field in file["field_mappings"].items()
-                    }
-                    ht = hl.import_table(file["path"], types=file_types)
+                    elif file["file_format"] == "tsv":
+                        file_types = {
+                            input_field: FINAL_SCHEMA_FIELDS_AND_TYPES[final_field]
+                            for final_field, input_field in file[
+                                "field_mappings"
+                            ].items()
+                        }
+                        ht = hl.import_table(file["path"], types=file_types)
 
+                    else:
+                        raise ValueError(
+                            f"File format {file['file_type']} not supported"
+                        )
+
+                    ht = ht.flatten().select_globals()
+                    ht = ht.select(
+                        **{
+                            new_field: ht[field]
+                            for new_field, field in file["field_mappings"].items()
+                        }
+                    )
+                    ht = ht.key_by("s")
+                    logger.info("Selecting out fields for the final schema...")
+                    ht = select_only_final_fields(ht, project, data_type)
+                    data_type_hts.append(ht)
+
+                if len(data_type_hts) > 1:
+                    logger.info(
+                        "Combining the %s metadata files from %s...", data_type, project
+                    )
+                    # The left join ensures we keep only AoU samples with srWGS data but
+                    # requires all samples to be in the first table, which they are.
+                    data_type_ht = reduce(
+                        (lambda joined_ht, ht: joined_ht.join(ht, how="left")),
+                        data_type_hts,
+                    )
                 else:
-                    raise ValueError(f"File format {file['file_type']} not supported")
+                    data_type_ht = data_type_hts[0]
 
-                ht = ht.flatten().select_globals()
-                ht = ht.select(
-                    **{
-                        new_field: ht[field]
-                        for new_field, field in file["field_mappings"].items()
-                    }
-                )
-                ht = ht.key_by("s")
-                logger.info("Selecting out fields for the final schema...")
-                ht = select_only_final_fields(ht, project, data_type)
-                data_type_hts.append(ht)
-
-            if len(data_type_hts) > 1:
+                data_type_ht = data_type_ht.annotate(data_type=data_type)
                 logger.info(
-                    "Combining the %s metadata files from %s...", data_type, project
+                    "Updating the %s metadata to the final schema...", data_type
                 )
-                # The left join ensures we keep only AoU samples with srWGS data but
-                # requires all samples to be in the first table, which they are.
-                data_type_ht = reduce(
-                    (lambda joined_ht, ht: joined_ht.join(ht, how="left")),
-                    data_type_hts,
-                )
-            else:
-                data_type_ht = data_type_hts[0]
+                data_type_ht = update_ht_to_final_schema(data_type_ht)
+                project_hts.append(data_type_ht.key_by("s"))
 
-            data_type_ht = data_type_ht.annotate(data_type=data_type)
-            logger.info("Updating the %s metadata to the final schema...", data_type)
-            data_type_ht = update_ht_to_final_schema(data_type_ht)
-            project_hts.append(data_type_ht.key_by("s"))
+            logger.info(
+                "Combining the %s project's files into a single metadata file...",
+                project,
+            )
+            project_ht = reduce(
+                (lambda joined_ht, ht: joined_ht.union(ht)), project_hts
+            )
+            project_ht = project_ht.annotate(project=project)
+            logger.info("Updating the %s metadata to the final schema...", project)
+            project_ht = update_ht_to_final_schema(project_ht)
+            project_ht = project_ht.checkpoint(
+                get_checkpoint_path(
+                    f"{project}_meta", mt=False, environment=environment
+                ),
+                overwrite=True,
+            )
+            meta_hts[project] = project_ht.key_by("s")
 
         logger.info(
-            "Combining the %s project's files into a single metadata file...", project
+            "Determining if there are any sample ID collisions between projects..."
         )
-        project_ht = reduce((lambda joined_ht, ht: joined_ht.union(ht)), project_hts)
-        project_ht = project_ht.annotate(project=project)
-        logger.info("Updating the %s metadata to the final schema...", project)
-        project_ht = update_ht_to_final_schema(project_ht)
-        project_ht = project_ht.checkpoint(
-            get_checkpoint_path(f"{project}_meta", mt=False, environment="rwb"),
-            overwrite=True,
+        sample_collisions = get_sample_collisions(meta_hts)
+        sample_collisions = sample_collisions.checkpoint(
+            get_sample_id_collisions(environment=environment).path, overwrite=True
         )
-        meta_hts[project] = project_ht.key_by("s")
+        logger.info(
+            "Samples that appear in more than one project: %s",
+            hl.eval(
+                sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+            ),
+        )
 
-    logger.info("Determining if there are any sample ID collisions between projects...")
-    sample_collisions = get_sample_collisions(meta_hts)
-    sample_collisions = sample_collisions.checkpoint(
-        sample_id_collisions.path, overwrite=True
+        for project in get_meta_config().keys():
+            meta_hts[project] = add_project_prefix_to_sample_collisions(
+                meta_hts[project],
+                project=project,
+                sample_collisions=sample_collisions,
+            )
+
+        logger.info(
+            "Combining all project metadata files into a single metadata file..."
+        )
+        meta_ht = reduce((lambda joined_ht, ht: joined_ht.union(ht)), meta_hts.values())
+
+        project_meta_resource = get_project_meta(environment=environment)
+        logger.info(
+            "Writing combined project metadata to %s...", project_meta_resource.path
+        )
+        meta_ht.write(project_meta_resource.path, overwrite=True)
+
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("merge_project_meta", environment=environment))
+
+
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--environment",
+        help="Environment where script will run.",
+        choices=["rwb", "batch"],
+        default="rwb",
     )
-    logger.info(
-        f"Samples that appear in more than one project: {hl.eval(sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s)))}"
-    )
-
-    for project in get_meta_config().keys():
-        meta_hts[project] = add_project_prefix_to_sample_collisions(
-            meta_hts[project],
-            project=project,
-            sample_collisions=sample_collisions,
-        )
-
-    logger.info("Combining all project metadata files into a single metadata file...")
-    meta_ht = reduce((lambda joined_ht, ht: joined_ht.union(ht)), meta_hts.values())
-
-    logger.info("Writing combined project metadata to %s...", project_meta.path)
-    meta_ht.write(project_meta.path, overwrite=True)
+    return parser
 
 
 if __name__ == "__main__":
-    main()
+    parser = get_script_argument_parser()
+    args = parser.parse_args()
+    main(args)
