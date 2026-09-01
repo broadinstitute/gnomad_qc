@@ -1229,7 +1229,8 @@ def group_scout_loci_into_intervals(
     :param n_partitions: Desired (approximate) number of intervals/partitions. If
         set, takes precedence over `rows_per_partition`.
     :param rows_per_partition: Target number of loci per interval/partition. Used
-        only when `n_partitions` is None. Defaults to 2000 if neither is set.
+        only when `n_partitions` is None. Defaults to 20 if neither is set,
+        calibrated for the heavy high-allele strata scout mode targets.
     :return: List of `hl.Interval` objects, in genomic order, each covering a
         contiguous chunk of target loci within a single contig.
     """
@@ -1246,7 +1247,12 @@ def group_scout_loci_into_intervals(
         return []
 
     if n_partitions is None:
-        rows_per_partition = rows_per_partition or 2000
+        # Default calibrated on the min10-max100 stratum (~365k samples), where
+        # per-locus aggregation cost is high: 20 loci/partition gave healthy
+        # task sizes and 2000 was far too heavy. Scouts of low-allele (cheap,
+        # numerous) strata should override via --scout-rows-per-partition or
+        # --scout-n-partitions to avoid deriving too many partitions.
+        rows_per_partition = rows_per_partition or 20
         n_partitions = math.ceil(n_loci / rows_per_partition)
     n_partitions = max(1, min(n_partitions, n_loci))
     chunk = max(1, math.ceil(n_loci / n_partitions))
@@ -2465,7 +2471,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--scout-rows-per-partition",
         help=(
             "Target number of scouted loci per interval/partition on re-read. Used "
-            "only when --scout-n-partitions is not set. Default is 2000."
+            "only when --scout-n-partitions is not set. Default is 20, calibrated "
+            "for heavy high-allele strata; raise it when scouting cheap low-allele "
+            "loci."
         ),
         type=int,
         default=None,
