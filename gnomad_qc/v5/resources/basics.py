@@ -570,9 +570,7 @@ def get_aou_vds(
             )
             sample_collisions = set(collisions)
         else:
-            sample_collisions = get_sample_id_collisions(
-                environment=environment
-            ).ht()
+            sample_collisions = get_sample_id_collisions(environment=environment).ht()
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
