@@ -1,14 +1,12 @@
 """Script to generate annotations for variant QC on gnomAD v5."""
 
 import argparse
-import json
 import logging
 import math
 from collections import OrderedDict
 from typing import Dict, List
 
 import hail as hl
-import hailtop.fs as hfs
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import get_truth_ht
 from gnomad.utils.annotations import (
@@ -16,7 +14,7 @@ from gnomad.utils.annotations import (
     get_lowqual_expr,
     pab_max_expr,
 )
-from gnomad.utils.file_utils import file_exists, repartition_for_join
+from gnomad.utils.file_utils import repartition_for_join
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.variant_qc.pipeline import (
@@ -43,13 +41,11 @@ from gnomad_qc.v5.resources.annotations import (
 )
 from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
-    qc_temp_prefix,
     _get_batch_resource_kwargs,
     _init_hail,
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
 from gnomad_qc.v5.resources.sample_qc import (
     DENSE_TRIO_TEST_CHROMS,
     dense_trios,
@@ -73,81 +69,6 @@ logger.setLevel(logging.INFO)
 GRCH38_CONTIG_ORDER = {
     c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)
 }
-
-
-def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -> str:
-    """
-    Return the path to a chunk-invariant sample-level artifact (30-day storage).
-
-    These are written once by ``--write-sample-artifacts`` so later runs read a
-    small file instead of each rescanning the ~330-partition sample tables. This
-    pipeline writes and reads two artifacts: ``collisions.json`` (colliding sample
-    IDs) and ``high_quality_samples.json`` (post-prefix high-quality sample IDs).
-    Readers fall back to computing each one when its file is absent.
-
-    :param name: Artifact file name (with extension).
-    :param environment: Compute environment.
-    :param test: If True, return the test-scoped path.
-    :return: GCS path to the artifact.
-    """
-    scope = "test" if test else "full"
-    return f"{qc_temp_prefix(environment=environment, days=30)}aou_sample_artifacts_{scope}/{name}"
-
-
-def _read_sample_artifact_json(name: str, environment: str, test: bool = False):
-    """
-    Return the parsed JSON sample artifact, or None when it has not been precomputed.
-
-    :param name: Artifact file name (with extension).
-    :param environment: Compute environment.
-    :param test: If True, read the test-scoped path.
-    :return: Parsed JSON value, or None if the file is absent.
-    """
-    path = _aou_sample_artifact_path(name, environment, test)
-    if not file_exists(path):
-        return None
-    with hfs.open(path) as f:
-        return json.load(f)
-
-
-def _get_sample_artifact_vds_kwargs(environment: str, test: bool) -> dict:
-    """
-    Build `get_aou_vds` sample-filtering kwargs from precomputed sample artifacts.
-
-    Reads the run-invariant artifacts written by ``--write-sample-artifacts`` and
-    falls back to the original in-loader scans for any that are absent:
-    ``collisions.json`` replaces the sample-collisions Table scan, and
-    ``high_quality_samples.json`` replaces the meta-table filter behind
-    ``high_quality_only=True``. The writer uses the exact filter this substitutes
-    for (``meta_ht.high_quality``, collected post-prefix), so the two cannot
-    drift; ``add_project_prefix=True`` is set explicitly because the JSON holds
-    post-prefix IDs.
-
-    :param environment: Compute environment.
-    :param test: If True, read the test-scoped artifacts (the 10-sample test VDS).
-    :return: Keyword arguments for `get_aou_vds`.
-    """
-    kwargs = {"high_quality_only": True}
-    collisions = _read_sample_artifact_json("collisions.json", environment, test)
-    if collisions is not None:
-        logger.info(
-            "Using precomputed collisions.json (%d sample IDs).", len(collisions)
-        )
-        kwargs["sample_collisions"] = set(collisions)
-    hq_samples = _read_sample_artifact_json(
-        "high_quality_samples.json", environment, test
-    )
-    if hq_samples is not None:
-        logger.info(
-            "Using precomputed high_quality_samples.json (%d sample IDs).",
-            len(hq_samples),
-        )
-        kwargs.update(
-            high_quality_only=False,
-            filter_samples=hq_samples,
-            add_project_prefix=True,
-        )
-    return kwargs
 
 
 def _optional_global(value, dtype) -> hl.expr.Expression:
@@ -1355,7 +1276,7 @@ def compute_scout_intervals(args) -> List[hl.utils.Interval]:
 
     scout_input_partitions = args.test_n_partitions
     vds = get_aou_vds(
-        **_get_sample_artifact_vds_kwargs(environment, args.test),
+        high_quality_only=True,
         filter_partitions=(
             range(scout_input_partitions) if scout_input_partitions else None
         ),
@@ -1809,7 +1730,7 @@ def main(args):
     if need_vds:
         # NOTE: VDS will have 'aou_' prefix on sample IDs.
         vds = get_aou_vds(
-            **_get_sample_artifact_vds_kwargs(environment, args.test),
+            high_quality_only=True,
             filter_partitions=(
                 None
                 if sub_intervals is not None
@@ -1824,28 +1745,6 @@ def main(args):
         )
 
     try:
-        if args.write_sample_artifacts:
-            logger.info("Writing run-invariant sample artifacts...")
-            sc_ht = get_sample_id_collisions(environment=environment).ht()
-            collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
-            path = _aou_sample_artifact_path("collisions.json", environment, args.test)
-            with hfs.open(path, "w") as f:
-                json.dump(collisions, f)
-            logger.info("Wrote %d collision sample IDs: %s", len(collisions), path)
-
-            # Must be the exact filter high_quality_only=True applies in
-            # get_aou_vds; this JSON substitutes for that filter.
-            meta_ht = meta(data_type="genomes", environment=environment).ht()
-            hq_samples = meta_ht.filter(meta_ht.high_quality).s.collect()
-            path = _aou_sample_artifact_path(
-                "high_quality_samples.json", environment, args.test
-            )
-            with hfs.open(path, "w") as f:
-                json.dump(hq_samples, f)
-            logger.info(
-                "Wrote %d high-quality sample IDs: %s", len(hq_samples), path
-            )
-
         if args.validate_local_allele_agg and args.generate_ac_info_ht:
             logger.info(
                 "Validating local-allele-space aggregation against original..."
@@ -2213,20 +2112,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         nargs="?",
         const=2,
         type=int,
-    )
-    parser.add_argument(
-        "--write-sample-artifacts",
-        help=(
-            "Precompute run-invariant sample artifacts (collisions.json and "
-            "high_quality_samples.json) to the shared 30-day artifact path, so "
-            "every subsequent VDS load reads two small JSONs instead of "
-            "rescanning the ~330-partition sample tables. Run once before a "
-            "fan-out of --generate-ac-info-ht jobs; loads fall back to the "
-            "original scans when the artifacts are absent. The path scheme "
-            "matches the pending --write-sample-artifacts on the frequency "
-            "pipeline branch, so either writer's collisions.json serves both."
-        ),
-        action="store_true",
     )
     parser.add_argument(
         "--generate-trio-stats",
