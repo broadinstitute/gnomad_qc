@@ -1326,7 +1326,7 @@ def compute_scout_intervals(args) -> List[hl.utils.Interval]:
         checkpoint_path=hl.utils.new_temp_file("scout_target_loci", "ht"),
         min_alleles=args.min_alleles,
         max_alleles=args.max_alleles,
-        contig=args.contig,
+        contig=args.chrom,
     )
     n_targets = target_ht.count()
     logger.info("Scout found %d target loci", n_targets)
@@ -1398,7 +1398,7 @@ def compute_contig_intervals(args) -> List[hl.utils.Interval]:
     :param args: Parsed CLI args.
     :return: List of locus intervals covering the contig, in genomic order.
     """
-    contig = args.contig
+    contig = args.chrom
     reference_genome = "GRCh38"
     rg = hl.get_reference(reference_genome)
     contig_len = rg.contig_length(contig)
@@ -1497,10 +1497,10 @@ def _validate_args(args, test: bool) -> None:
         )
 
     if args.generate_sibling_stats and (
-        args.contig is not None or args.explode_partitions or args.scout_alleles
+        args.chrom is not None or args.explode_partitions or args.scout_alleles
     ):
         raise ValueError(
-            "--generate-sibling-stats cannot be combined with --contig/"
+            "--generate-sibling-stats cannot be combined with --chrom/"
             "--explode-partitions/--scout-alleles: those flags restrict the "
             "shared VDS read, so a partial-genome sib-stats table would be "
             "written to the canonical sib-stats path and downstream joins "
@@ -1518,25 +1518,31 @@ def _validate_args(args, test: bool) -> None:
             "not both."
         )
 
-    if args.contig is not None:
-        if args.contig not in hl.get_reference("GRCh38").contigs:
+    if args.chrom is not None:
+        if args.chrom not in hl.get_reference("GRCh38").contigs:
             raise ValueError(
-                f"--contig {args.contig!r} is not a GRCh38 contig."
+                f"--chrom {args.chrom!r} is not a GRCh38 contig."
             )
+    # --chrom is a VDS read restriction only for --generate-ac-info-ht; its
+    # trio-stats use (which dense-trio chromosome to process) has no
+    # interaction with the chunk/test flags, so these checks are scoped to
+    # the AC-info step.
+    if args.generate_ac_info_ht and args.chrom is not None:
         if (
             args.explode_partitions
             or args.chunk_start is not None
             or args.chunk_stop is not None
         ):
             raise ValueError(
-                "--contig and chunk processing (--explode-partitions/"
-                "--chunk-start/--chunk-stop) are mutually exclusive: use one "
-                "read-restriction mode."
+                "--chrom and chunk processing (--explode-partitions/"
+                "--chunk-start/--chunk-stop) are mutually exclusive for "
+                "--generate-ac-info-ht: use one read-restriction mode."
             )
         if args.test_n_partitions is not None:
             raise ValueError(
-                "--contig cannot be combined with --test-n-partitions; use a "
-                "small contig (e.g. chr21) as the test unit instead."
+                "--chrom cannot be combined with --test-n-partitions for "
+                "--generate-ac-info-ht; use a small contig (e.g. chr21) as the "
+                "test unit instead."
             )
 
     if args.scout_alleles and args.min_alleles is None and args.max_alleles is None:
@@ -1572,7 +1578,7 @@ def _derive_read_intervals(args, need_intervals: bool):
     Derive the VDS read intervals for the selected read-restriction mode.
 
     Dispatches to chunk (--explode-partitions), scout (--scout-alleles), or
-    contig (--contig) derivation; returns None when no mode is selected or when
+    contig (--chrom) derivation; returns None when no mode is selected or when
     no step in this invocation reads the VDS.
 
     :param args: Parsed CLI args.
@@ -1580,9 +1586,7 @@ def _derive_read_intervals(args, need_intervals: bool):
     :return: List of locus intervals, or None.
     """
     sub_intervals = None
-    if not need_intervals and (
-        args.explode_partitions or args.scout_alleles or args.contig
-    ):
+    if not need_intervals and (args.explode_partitions or args.scout_alleles):
         logger.info(
             "Skipping interval derivation: the selected steps read neither the VDS "
             "nor the VCF by interval."
@@ -1595,8 +1599,8 @@ def _derive_read_intervals(args, need_intervals: bool):
         logger.info("Scouting target loci by allele count...")
         sub_intervals = compute_scout_intervals(args)
         logger.info("Derived %d scout intervals", len(sub_intervals))
-    elif args.contig:
-        logger.info("Deriving read intervals for contig %s...", args.contig)
+    elif args.chrom:
+        logger.info("Deriving read intervals for contig %s...", args.chrom)
         sub_intervals = compute_contig_intervals(args)
         logger.info("Derived %d contig sub-intervals", len(sub_intervals))
 
@@ -1729,7 +1733,7 @@ def main(args):
             environment=environment,
             test=not args.use_stable_info_paths,
             test_n_partitions=test_n_partitions,
-            contig=args.contig,
+            contig=args.chrom,
             chunk_start=args.chunk_start,
             chunk_stop=args.chunk_stop,
             min_alleles=args.min_alleles,
@@ -1813,7 +1817,7 @@ def main(args):
                     environment=environment,
                     test=test,
                     test_n_partitions=_optional_global(test_n_partitions, hl.tint32),
-                    contig=_optional_global(args.contig, hl.tstr),
+                    contig=_optional_global(args.chrom, hl.tstr),
                     explode_partitions=args.explode_partitions,
                     chunk_start=_optional_global(args.chunk_start, hl.tint32),
                     chunk_stop=_optional_global(args.chunk_stop, hl.tint32),
@@ -2165,8 +2169,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--chrom",
         help=(
-            "Single chromosome (e.g. 'chr20'). Required for --generate-trio-stats; trio "
-            "stats are computed one chromosome at a time."
+            "Single chromosome/contig (e.g. 'chr20'). Required for "
+            "--generate-trio-stats (trio stats are computed one chromosome at a "
+            "time). With --generate-ac-info-ht, restricts the VDS read to the "
+            "contig: without --scout-alleles the contig span is subdivided into "
+            "read intervals via --read-subintervals-scale or "
+            "--read-subintervals-per-chunk; with --scout-alleles the scout pass "
+            "is restricted to the contig. Mutually exclusive with chunk "
+            "processing and --test-n-partitions for the AC-info step."
         ),
         type=str,
         default=None,
@@ -2334,21 +2344,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=None,
     )
     parser.add_argument(
-        "--contig",
-        help=(
-            "Restrict the --generate-ac-info-ht VDS read to a single contig "
-            "(e.g. chr1). Without --scout-alleles, the contig span is subdivided "
-            "into read intervals using --read-subintervals-scale (times the "
-            "contig's VDS partition count) or --read-subintervals-per-chunk "
-            "(absolute count); no bounds aggregation is needed since the contig "
-            "span is known. With --scout-alleles, the scout pass is restricted "
-            "to the contig. Mutually exclusive with chunk processing and "
-            "--test-n-partitions."
-        ),
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
         "--max-alleles",
         help=(
             "Optional maximum number of alleles (including the reference) allowed at "
@@ -2436,7 +2431,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "3-partition chunk gives ~45 sub-intervals), allocated across contigs "
             "proportionally to their position span. Use instead of "
             "--read-subintervals-per-chunk when the chunk's partition count is not "
-            "known up front (e.g. a --contig run). Mutually exclusive with "
+            "known up front (e.g. a --chrom run). Mutually exclusive with "
             "--read-subintervals-per-chunk."
         ),
         type=float,
