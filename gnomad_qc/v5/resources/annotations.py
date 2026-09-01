@@ -287,7 +287,7 @@ def get_ac_info_ht_checkpoint_path(
     version: str = CURRENT_ANNOTATION_VERSION,
     add_test_suffix: bool = False,
     environment: str = "batch",
-    test: bool = True,
+    test: bool = False,
     test_n_partitions: int = None,
     contig: str = None,
     chunk_start: int = None,
@@ -299,7 +299,7 @@ def get_ac_info_ht_checkpoint_path(
     """
     Get checkpoint path for the AC info table written by --generate-ac-info-ht.
 
-    Uses the 30-day temp bucket (durable annotations bucket when `test` is False)
+    Uses the durable annotations bucket (30-day temp bucket when `test` is True)
     and a filename derived from the run's parameters
     (each component included only when set), so per-stratum and per-chunk runs
     get distinct paths without manual overrides, e.g.
@@ -311,10 +311,9 @@ def get_ac_info_ht_checkpoint_path(
     :param add_test_suffix: Whether the filename should include the test suffix.
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
-    :param test: If True (default), place the checkpoint under the 30-day temp
-        bucket; if False, place it under the durable annotations bucket. Pass
-        False for production runs whose AC info HTs should be kept
-        (--use-stable-info-paths).
+    :param test: If True, place the checkpoint under the 30-day temp bucket
+        (--use-tmp-info-paths or test runs); default False places it under the
+        durable annotations bucket, so production AC info HTs are kept.
     :param test_n_partitions: Optional number of test partitions used for the run.
     :param contig: Optional contig the run was restricted to.
     :param chunk_start: Optional chunk start partition index used for the run.
@@ -352,7 +351,7 @@ def get_vcf_ht_checkpoint_path(
     version: str = CURRENT_ANNOTATION_VERSION,
     add_test_suffix: bool = False,
     environment: str = "batch",
-    test: bool = True,
+    test: bool = False,
 ) -> str:
     """
     Get checkpoint path for the reformatted sites VCF HT (--create-sites-vcf-ht).
@@ -363,9 +362,9 @@ def get_vcf_ht_checkpoint_path(
         a distinct file.
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
-    :param test: If True (default), place the checkpoint under the 30-day temp
-        bucket; if False, place it under the durable annotations bucket
-        (--use-stable-info-paths).
+    :param test: If True, place the checkpoint under the 30-day temp bucket
+        (--use-tmp-info-paths or test runs); default False places it under the
+        durable annotations bucket.
     :return: Path to the reformatted sites VCF HT checkpoint.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)

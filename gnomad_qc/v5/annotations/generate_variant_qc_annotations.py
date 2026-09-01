@@ -1565,12 +1565,6 @@ def _validate_args(args, test: bool) -> None:
             "path. Generate the per-stratum AC info HTs first, then union them "
             "in a separate run."
         )
-    if args.use_stable_info_paths and test:
-        raise ValueError(
-            "--use-stable-info-paths is for production runs; it cannot be "
-            "combined with --test/--test-n-partitions (test AC info HTs belong "
-            "in the temp bucket)."
-        )
 
 
 def _derive_read_intervals(args, need_intervals: bool):
@@ -1666,7 +1660,7 @@ def _resolve_union_inputs(args, test: bool, environment: str):
             get_ac_info_ht_checkpoint_path(
                 add_test_suffix=test,
                 environment=environment,
-                test=not args.use_stable_info_paths,
+                test=args.use_tmp_info_paths or test,
                 contig=contig,
                 min_alleles=stratum_min,
                 max_alleles=stratum_max,
@@ -1737,7 +1731,7 @@ def main(args):
         get_ac_info_ht_checkpoint_path(
             add_test_suffix=test,
             environment=environment,
-            test=not args.use_stable_info_paths,
+            test=args.use_tmp_info_paths or test,
             test_n_partitions=test_n_partitions,
             contig=args.chrom,
             chunk_start=args.chunk_start,
@@ -1753,7 +1747,7 @@ def main(args):
         get_vcf_ht_checkpoint_path(
             add_test_suffix=test,
             environment=environment,
-            test=not args.use_stable_info_paths,
+            test=args.use_tmp_info_paths or test,
         )
     )
     if args.create_sites_vcf_ht or args.create_final_info_ht:
@@ -2196,10 +2190,10 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--vcf-ht-checkpoint-path-override",
         help=(
             "Optional override path for the reformatted sites VCF HT. By "
-            "default the path is derived (sites_vcf[_test].ht in the 30-day temp "
-            "bucket, or the durable annotations bucket with "
-            "--use-stable-info-paths); written by --create-sites-vcf-ht and read "
-            "by --create-final-info-ht."
+            "default the path is derived (sites_vcf[_test].ht in the durable "
+            "annotations bucket, or the 30-day temp bucket with "
+            "--use-tmp-info-paths or on test runs); written by "
+            "--create-sites-vcf-ht and read by --create-final-info-ht."
         ),
         type=str,
         default=None,
@@ -2324,14 +2318,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     split_workflow_args.add_argument(
-        "--use-stable-info-paths",
+        "--use-tmp-info-paths",
         help=(
             "Derive AC info HT and sites VCF HT checkpoint paths under the "
-            "durable annotations bucket instead of the 30-day temp bucket, so "
-            "production artifacts are kept. Every step of a workflow "
-            "(--generate-ac-info-ht, --union-ac-info-hts, --create-sites-vcf-ht, "
-            "--create-final-info-ht) must agree on this flag for the derived "
-            "paths to line up. Not allowed with --test/--test-n-partitions."
+            "30-day temp bucket instead of the default durable annotations "
+            "bucket. Use for full-VDS experiments that should self-expire; "
+            "--test/--test-n-partitions runs always use the temp bucket, "
+            "without needing this flag. This flag exists (rather than reusing "
+            "--test) because --test also switches the input to the 10-sample "
+            "test VDS. Every step of a workflow (--generate-ac-info-ht, "
+            "--union-ac-info-hts, --create-sites-vcf-ht, --create-final-info-ht) "
+            "must agree on this flag for the derived paths to line up."
         ),
         action="store_true",
     )
@@ -2341,10 +2338,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "Optional override path for the AC info HT checkpoint. By default the "
             "path is derived automatically from the run's parameters "
             "(test/--test-n-partitions, --chunk-start/--chunk-stop, "
-            "--min-alleles/--max-alleles, union), landing in the 30-day temp "
-            "bucket, or in the durable annotations bucket with "
-            "--use-stable-info-paths; the --union-ac-info-hts output and "
-            "the --create-final-info-ht input share the derived 'union' path."
+            "--min-alleles/--max-alleles, union), landing in the durable "
+            "annotations bucket, or in the 30-day temp bucket with "
+            "--use-tmp-info-paths or on test runs; the --union-ac-info-hts "
+            "output and the --create-final-info-ht input share the derived "
+            "'union' path."
         ),
         type=str,
         default=None,
