@@ -1702,9 +1702,9 @@ def _resolve_union_inputs(args, test: bool, environment: str):
         strata = [_parse_allele_stratum(s) for s in args.union_allele_strata]
         union_input_ac_info_ht_paths = [
             get_ac_info_ht_checkpoint_path(
-                test=test,
+                add_test_suffix=test,
                 environment=environment,
-                stable=args.use_stable_info_paths,
+                test=not args.use_stable_info_paths,
                 contig=contig,
                 min_alleles=stratum_min,
                 max_alleles=stratum_max,
@@ -1773,9 +1773,9 @@ def main(args):
     # generate runs get paths derived from their partition/allele parameters.
     ac_info_ht_checkpoint_path = args.ac_info_ht_checkpoint_path_override or (
         get_ac_info_ht_checkpoint_path(
-            test=test,
+            add_test_suffix=test,
             environment=environment,
-            stable=args.use_stable_info_paths,
+            test=not args.use_stable_info_paths,
             test_n_partitions=test_n_partitions,
             contig=args.contig,
             chunk_start=args.chunk_start,
@@ -1789,9 +1789,9 @@ def main(args):
         logger.info("AC info HT checkpoint path: %s", ac_info_ht_checkpoint_path)
     vcf_ht_checkpoint_path = args.vcf_ht_checkpoint_path_override or (
         get_vcf_ht_checkpoint_path(
-            test=test,
+            add_test_suffix=test,
             environment=environment,
-            stable=args.use_stable_info_paths,
+            test=not args.use_stable_info_paths,
         )
     )
     if args.create_sites_vcf_ht or args.create_final_info_ht:

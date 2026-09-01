@@ -30,6 +30,7 @@ def _annotations_root(
     data_set: str = "aou",
     environment: str = "batch",
     read_only: bool = False,
+    days: Optional[int] = None,
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -43,6 +44,8 @@ def _annotations_root(
     :param read_only: Whether the path is for read-only resources. When True
         and environment is "batch", the read-only bucket is used.
         Default is False.
+    :param days: Optional retention days for the temp bucket; only used when `test`
+        is True. Default is None.
     :return: Root path of the variant annotation files.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
@@ -50,7 +53,8 @@ def _annotations_root(
 
     if test:
         return (
-            f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
+            f"{qc_temp_prefix(version=version, environment=environment, days=days)}"
+            f"{path_suffix}"
         )
 
     return f"gs://{_get_base_bucket(environment, read_only=read_only)}/v{version}/{path_suffix}"
@@ -281,9 +285,9 @@ def get_info_ht(
 
 def get_ac_info_ht_checkpoint_path(
     version: str = CURRENT_ANNOTATION_VERSION,
-    test: bool = False,
+    add_test_suffix: bool = False,
     environment: str = "batch",
-    stable: bool = False,
+    test: bool = True,
     test_n_partitions: int = None,
     contig: str = None,
     chunk_start: int = None,
@@ -295,7 +299,8 @@ def get_ac_info_ht_checkpoint_path(
     """
     Get checkpoint path for the AC info table written by --generate-ac-info-ht.
 
-    Uses the 30-day temp bucket and a filename derived from the run's parameters
+    Uses the 30-day temp bucket (durable annotations bucket when `test` is False)
+    and a filename derived from the run's parameters
     (each component included only when set), so per-stratum and per-chunk runs
     get distinct paths without manual overrides, e.g.
     ``ac_info_ht_test_3p_min10_max100.ht`` or ``ac_info_ht_chunk0_2000_max9.ht``.
@@ -303,12 +308,13 @@ def get_ac_info_ht_checkpoint_path(
     will automatically reuse existing data.
 
     :param version: Version of annotation path to return.
-    :param test: Whether the path should use the test suffix.
+    :param add_test_suffix: Whether the filename should include the test suffix.
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
-    :param stable: If True, place the checkpoint under the durable annotations
-        bucket instead of the 30-day temp bucket. Use for production runs whose
-        AC info HTs should be kept. Default is False (temp bucket).
+    :param test: If True (default), place the checkpoint under the 30-day temp
+        bucket; if False, place it under the durable annotations bucket. Pass
+        False for production runs whose AC info HTs should be kept
+        (--use-stable-info-paths).
     :param test_n_partitions: Optional number of test partitions used for the run.
     :param contig: Optional contig the run was restricted to.
     :param chunk_start: Optional chunk start partition index used for the run.
@@ -321,7 +327,7 @@ def get_ac_info_ht_checkpoint_path(
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
     parts = ["ac_info_ht"]
-    if test:
+    if add_test_suffix:
         parts.append("test")
     if test_n_partitions is not None:
         parts.append(f"{test_n_partitions}p")
@@ -335,49 +341,39 @@ def get_ac_info_ht_checkpoint_path(
         parts.append(f"max{max_alleles}")
     if union:
         parts.append("union")
-    if stable:
-        prefix = (
-            f"{_annotations_root(version, test=False, environment=environment)}"
-            "/create_info_ht"
-        )
-    else:
-        prefix = (
-            f"{qc_temp_prefix(version=version, environment=environment, days=30)}"
-            "create_info_ht"
-        )
+    prefix = (
+        f"{_annotations_root(version, test=test, environment=environment, days=30)}"
+        "/create_info_ht"
+    )
     return f"{prefix}/{'_'.join(parts)}.ht"
 
 
 def get_vcf_ht_checkpoint_path(
     version: str = CURRENT_ANNOTATION_VERSION,
-    test: bool = False,
+    add_test_suffix: bool = False,
     environment: str = "batch",
-    stable: bool = False,
+    test: bool = True,
 ) -> str:
     """
     Get checkpoint path for the reformatted sites VCF HT (--create-sites-vcf-ht).
 
     :param version: Version of annotation path to return.
-    :param test: Whether the path should use the test suffix. A test sites VCF HT
-        holds only the first two partitions of the VCF, so it is a distinct file.
+    :param add_test_suffix: Whether the filename should include the test suffix. A
+        test sites VCF HT holds only the first two partitions of the VCF, so it is
+        a distinct file.
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
-    :param stable: If True, place the checkpoint under the durable annotations
-        bucket instead of the 30-day temp bucket. Default is False (temp bucket).
+    :param test: If True (default), place the checkpoint under the 30-day temp
+        bucket; if False, place it under the durable annotations bucket
+        (--use-stable-info-paths).
     :return: Path to the reformatted sites VCF HT checkpoint.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    if stable:
-        prefix = (
-            f"{_annotations_root(version, test=False, environment=environment)}"
-            "/create_info_ht"
-        )
-    else:
-        prefix = (
-            f"{qc_temp_prefix(version=version, environment=environment, days=30)}"
-            "create_info_ht"
-        )
-    return f"{prefix}/sites_vcf{'_test' if test else ''}.ht"
+    prefix = (
+        f"{_annotations_root(version, test=test, environment=environment, days=30)}"
+        "/create_info_ht"
+    )
+    return f"{prefix}/sites_vcf{'_test' if add_test_suffix else ''}.ht"
 
 
 def info_vcf_path(
