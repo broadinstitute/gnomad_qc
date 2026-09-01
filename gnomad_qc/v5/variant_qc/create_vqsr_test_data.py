@@ -30,10 +30,7 @@ import hail as hl
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
 from gnomad_qc.v4.resources.annotations import get_info as get_v4_info
-from gnomad_qc.v5.resources.annotations import (
-    get_true_positive_vcf_path,
-    info_vcf_path,
-)
+from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_vqsr_test_data")

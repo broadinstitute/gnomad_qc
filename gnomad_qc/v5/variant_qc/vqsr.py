@@ -9,10 +9,7 @@ import hail as hl
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 
-from gnomad_qc.v5.resources.annotations import (
-    get_true_positive_vcf_path,
-    info_vcf_path,
-)
+from gnomad_qc.v5.resources.annotations import get_true_positive_vcf_path, info_vcf_path
 from gnomad_qc.v5.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
 from gnomad_qc.v5.variant_qc.import_variant_qc_vcf import (
     import_variant_qc_vcf as import_vqsr,
