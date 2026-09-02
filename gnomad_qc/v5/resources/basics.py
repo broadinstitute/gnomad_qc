@@ -547,14 +547,30 @@ def get_aou_vds(
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
         # Import here to avoid circular imports.
-        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+        from gnomad_qc.v5.resources.meta import (
+            get_sample_id_collisions,
+            load_aou_sample_artifact_json,
+            meta,
+        )
 
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        sample_collisions = get_sample_id_collisions(environment=environment).ht()
+        # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
+        # over rescanning the sample-collisions Table.
+        collisions = load_aou_sample_artifact_json(
+            "sample_id_collisions.json", test=test, environment=environment
+        )
+        if collisions is not None:
+            logger.info(
+                "Using precomputed sample_id_collisions.json (%d sample IDs).",
+                len(collisions),
+            )
+            sample_collisions = set(collisions)
+        else:
+            sample_collisions = get_sample_id_collisions(environment=environment).ht()
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
@@ -588,15 +604,36 @@ def get_aou_vds(
 
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # For the release and high-quality filters, prefer the permanent precomputed
+    # JSONs (write_aou_vds_sample_jsons) over the meta-table scans. The JSON IDs
+    # are post-prefix, matching the VDS sample IDs at this point.
     if release_only:
         logger.info("Filtering VDS to release samples only...")
-        filter_expr = meta_ht.release
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        release_samples = load_aou_sample_artifact_json(
+            "release_samples.json", test=test, environment=environment
+        )
+        if release_samples is not None:
+            logger.info(
+                "Using precomputed release_samples.json (%d sample IDs).",
+                len(release_samples),
+            )
+            vds = hl.vds.filter_samples(vds, release_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
 
     if high_quality_only:
         logger.info("Filtering VDS to high quality samples only...")
-        filter_expr = meta_ht.high_quality
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        hq_samples = load_aou_sample_artifact_json(
+            "high_quality_samples.json", test=test, environment=environment
+        )
+        if hq_samples is not None:
+            logger.info(
+                "Using precomputed high_quality_samples.json (%d sample IDs).",
+                len(hq_samples),
+            )
+            vds = hl.vds.filter_samples(vds, hq_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.high_quality))
 
     if filter_samples:
         logger.info(
@@ -890,7 +927,7 @@ def get_samples_to_exclude(
 
 def add_project_prefix_to_sample_collisions(
     t: Union[hl.Table, hl.MatrixTable],
-    sample_collisions: hl.Table,
+    sample_collisions: Union[hl.Table, Set[str]],
     project: Optional[str] = None,
     sample_id_field: str = "s",
 ) -> hl.Table:
@@ -898,7 +935,10 @@ def add_project_prefix_to_sample_collisions(
     Add project prefix to sample IDs that exist in multiple projects.
 
     :param t: Table/MatrixTable to add project prefix to sample IDs.
-    :param sample_collisions: Table of sample IDs that exist in multiple projects.
+    :param sample_collisions: Table of sample IDs that exist in multiple projects, or
+        an already-collected set of those IDs. Collecting from a Table launches a full
+        scan of it, so callers applying the same collisions to several tables should
+        collect once and pass the set.
     :param project: Optional project name to prepend to sample collisions. If not set, will use 'ht.project' annotation. Default is None.
     :param sample_id_field: Field name for sample IDs in the table.
     :return: Table with project prefix added to sample IDs.
@@ -906,7 +946,12 @@ def add_project_prefix_to_sample_collisions(
     logger.info(
         "Adding project prefix to sample IDs that exists in multiple projects..."
     )
-    collisions = sample_collisions.aggregate(hl.agg.collect_as_set(sample_collisions.s))
+    if isinstance(sample_collisions, hl.Table):
+        collisions = sample_collisions.aggregate(
+            hl.agg.collect_as_set(sample_collisions.s)
+        )
+    else:
+        collisions = sample_collisions
 
     if project:
         prefix_expr = hl.literal(project)
