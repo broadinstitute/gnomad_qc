@@ -561,7 +561,7 @@ def get_aou_vds(
         # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
         # over rescanning the sample-collisions Table.
         collisions = load_aou_sample_artifact_json(
-            "sample_id_collisions.json", test=test, environment=environment
+            "sample_id_collisions.json", environment=environment
         )
         if collisions is not None:
             logger.info(
@@ -610,7 +610,7 @@ def get_aou_vds(
     if release_only:
         logger.info("Filtering VDS to release samples only...")
         release_samples = load_aou_sample_artifact_json(
-            "release_samples.json", test=test, environment=environment
+            "release_samples.json", environment=environment
         )
         if release_samples is not None:
             logger.info(
@@ -624,7 +624,7 @@ def get_aou_vds(
     if high_quality_only:
         logger.info("Filtering VDS to high quality samples only...")
         hq_samples = load_aou_sample_artifact_json(
-            "high_quality_samples.json", test=test, environment=environment
+            "high_quality_samples.json", environment=environment
         )
         if hq_samples is not None:
             logger.info(

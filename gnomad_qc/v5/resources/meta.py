@@ -18,7 +18,6 @@ from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
     _get_base_bucket,
     _validate_environment,
-    qc_temp_prefix,
 )
 from gnomad_qc.v5.resources.constants import (
     CURRENT_PROJECT_META_VERSION,
@@ -70,7 +69,6 @@ def get_sample_id_collisions(environment: str = "batch") -> TableResource:
 
 def aou_sample_artifact_path(
     name: str,
-    test: bool = False,
     environment: str = "batch",
     version: str = CURRENT_PROJECT_META_VERSION,
 ) -> str:
@@ -83,47 +81,35 @@ def aou_sample_artifact_path(
     (``sample_id_collisions.json``, ``high_quality_samples.json``,
     ``release_samples.json``).
 
-    Full-scope artifacts are permanent; unlike `_meta_root_path`, their root
-    resolves to the writable bucket in the "batch" environment (artifacts are
-    both written and read from batch). Test-scope artifacts are disposable and
-    live in the 4-day temp bucket, per repo convention.
+    Unlike `_meta_root_path`, this resolves to the writable bucket in the
+    "batch" environment: artifacts are both written and read from batch.
 
     :param name: Artifact file name (with extension).
-    :param test: If True, return the test-scoped path (10-sample test VDS runs),
-        in the 4-day temp bucket.
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
     :param version: gnomAD version.
     :return: GCS path to the artifact.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    if test:
-        # Test artifacts are disposable: 4-day temp bucket, per repo convention.
-        return (
-            f"{qc_temp_prefix(version=version, environment=environment, days=4)}"
-            f"aou_sample_artifacts_test/{name}"
-        )
     return (
         f"gs://{_get_base_bucket(environment)}/v{version}/metadata/genomes/"
-        f"aou_sample_artifacts_full/{name}"
+        f"aou_sample_artifacts/{name}"
     )
 
 
 def load_aou_sample_artifact_json(
     name: str,
-    test: bool = False,
     environment: str = "batch",
 ) -> Optional[list]:
     """
     Return the parsed JSON sample artifact, or None when it has not been written.
 
     :param name: Artifact file name (with extension).
-    :param test: If True, read the test-scoped path.
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
     :return: Parsed JSON value, or None if the file is absent.
     """
-    path = aou_sample_artifact_path(name, test=test, environment=environment)
+    path = aou_sample_artifact_path(name, environment=environment)
     if not file_exists(path):
         return None
     with hfs.open(path) as f:
@@ -132,7 +118,6 @@ def load_aou_sample_artifact_json(
 
 def write_aou_vds_sample_jsons(
     environment: str = "batch",
-    test: bool = False,
     overwrite: bool = False,
 ) -> None:
     """
@@ -155,12 +140,11 @@ def write_aou_vds_sample_jsons(
 
     :param environment: Environment to use. Default is "batch". Must be one of
         "rwb" or "batch".
-    :param test: If True, write the test-scoped paths (4-day temp bucket).
     :param overwrite: Whether to replace existing artifacts; without it, a rerun
         fails instead of silently rewriting them. Default is False.
     """
     paths = {
-        name: aou_sample_artifact_path(name, test=test, environment=environment)
+        name: aou_sample_artifact_path(name, environment=environment)
         for name in (
             "sample_id_collisions.json",
             "high_quality_samples.json",
