@@ -7,3 +7,4 @@ autopep8==2.0.2 # This should be kept in sync with the version in .pre-commit-co
 pre-commit
 pydocstyle==6.3.0 # This should be kept in sync with the version in .pre-commit-config.yaml
 pylint
+matplotlib
