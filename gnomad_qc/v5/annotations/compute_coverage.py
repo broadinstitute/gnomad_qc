@@ -245,7 +245,10 @@ def get_group_membership_ht(
             force_leaf_groups=PINNED_LEAF_GROUPS,
         )
 
-    return ht
+    # Coalesce: this is a small per-sample lookup (~365k rows) that otherwise
+    # inherits ~330 partitions from the meta HT and fans every downstream
+    # read/collect into ~330 tasks.
+    return ht.naive_coalesce(10)
 
 
 def _chunk_intervals_hash(data: dict[str, Any]) -> str:

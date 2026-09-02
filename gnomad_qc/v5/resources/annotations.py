@@ -1,5 +1,7 @@
 """Script containing annotation related resources."""
 
+from typing import Optional
+
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.v5.resources.basics import (
@@ -62,6 +64,7 @@ def _annotations_root(
 def get_trio_stats(
     test: bool = False,
     environment: str = "batch",
+    chrom: Optional[str] = None,
 ) -> VersionedTableResource:
     """
     Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.
@@ -69,6 +72,8 @@ def get_trio_stats(
     :param test: Whether to use a temporary path for testing.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param chrom: Optional single chromosome for a per-chromosome trio stats HT (trio
+        stats are computed one chromosome at a time). Default is None (combined HT).
     :return: AoU trio stats VersionedTableResource.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -77,7 +82,7 @@ def get_trio_stats(
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}."
-                "trio_stats.ht"
+                f"trio_stats{f'.{chrom}' if chrom else ''}.ht"
             )
             for version in ANNOTATION_VERSIONS
         },

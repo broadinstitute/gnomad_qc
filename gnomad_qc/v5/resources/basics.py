@@ -2,7 +2,7 @@
 
 import logging
 from os import getenv
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -16,6 +16,7 @@ from hail.utils import new_temp_file
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
 from gnomad_qc.v5.resources.constants import (
+    AOU_BUCKET,
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
@@ -203,6 +204,53 @@ def _init_hail(
     hl.default_reference("GRCh38")
 
 
+# GCS buckets that our user emails cannot stat (the read-only Batch bucket and the
+# controlled-access AoU bucket), so resources living in them must be excluded from
+# existence checks. All other buckets (including the writable Batch buckets) are
+# stat-able and checked normally.
+_UNSTATTABLE_BUCKET_PREFIXES = (
+    f"gs://{BATCH_READ_ONLY_BUCKET}",
+    f"gs://{AOU_BUCKET}",
+)
+
+
+def _drop_unstattable_resources(
+    step_resources: Optional[Dict[str, List]],
+) -> Tuple[Optional[Dict[str, List]], List[str]]:
+    """
+    Drop resources in unstattable buckets from a step-resource dict.
+
+    `hailtop.fs.exists` and `hl.hadoop_exists` use our user emails to check for file
+    existence, and our user emails cannot stat the buckets in
+    `_UNSTATTABLE_BUCKET_PREFIXES`, so those resources must be excluded from existence
+    checks.
+
+    :param step_resources: A dictionary with keys as pipeline steps and values as lists
+        of resources (path strings or resource objects with a `.path` attribute).
+        Default is None.
+    :return: A tuple of (filtered dictionary with unstattable resources removed and any
+        steps left with no resources dropped, list of the dropped resource paths). The
+        filtered dictionary is None if `step_resources` is None.
+    """
+    if step_resources is None:
+        return None, []
+
+    filtered = {}
+    skipped = []
+    for step, resources in step_resources.items():
+        kept = []
+        for r in resources:
+            path = r if isinstance(r, str) else r.path
+            if path.startswith(_UNSTATTABLE_BUCKET_PREFIXES):
+                skipped.append(path)
+            else:
+                kept.append(r)
+        if kept:
+            filtered[step] = kept
+
+    return filtered, skipped
+
+
 def _check_resource_existence(
     environment: str,
     input_step_resources: Optional[Dict[str, List]] = None,
@@ -210,12 +258,17 @@ def _check_resource_existence(
     overwrite: bool = False,
 ) -> None:
     """
-    Check resource existence only when the environment is not 'batch'.
+    Check resource existence, skipping only resources our user emails cannot stat.
 
-    `hailtop.fs.exists` and `hl.hadoop_exists` use our user emails to check for file existence,
-    and our user emails do not have access to the read-only Batch bucket for v5.
+    `hailtop.fs.exists` and `hl.hadoop_exists` use our user emails to check for file
+    existence, and our user emails do not have access to the buckets in
+    `_UNSTATTABLE_BUCKET_PREFIXES` (the read-only Batch bucket and the controlled-access
+    AoU bucket) for v5. Resources living in those buckets are dropped before checking;
+    all other buckets (including the writable Batch buckets) are stat-able and checked
+    normally.
 
-    :param environment: The environment to check. If 'batch', no checks are performed.
+    :param environment: The environment to check. When 'batch', resources in unstattable
+        buckets are skipped.
     :param input_step_resources: A dictionary with keys as pipeline steps that generate
         input files and the value as a list of the input files to check the existence
         of. Default is None.
@@ -227,10 +280,21 @@ def _check_resource_existence(
     :return: None.
     """
     if environment == "batch":
-        logger.info(
-            "Skipping resource existence check for Batch environment. To replace any existing outputs, run with --overwrite."
+        input_step_resources, skipped_input = _drop_unstattable_resources(
+            input_step_resources
         )
-        return
+        output_step_resources, skipped_output = _drop_unstattable_resources(
+            output_step_resources
+        )
+        skipped = skipped_input + skipped_output
+        if skipped:
+            logger.info(
+                "Skipping resource existence checks for the following unstattable "
+                "bucket resources (read-only Batch and controlled-access AoU buckets). "
+                "To replace any existing outputs there, run with --overwrite:\n%s",
+                "\n".join(skipped),
+            )
+
     check_resource_existence(
         input_step_resources=input_step_resources,
         output_step_resources=output_step_resources,
@@ -495,22 +559,30 @@ def get_aou_vds(
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
         # Import here to avoid circular imports.
-        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+        from gnomad_qc.v5.resources.meta import (
+            get_sample_id_collisions,
+            load_aou_sample_artifact_json,
+            meta,
+        )
 
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        if sample_collisions is None:
-            sample_collisions_ht = get_sample_id_collisions(
-                environment=environment
-            ).ht()
-            # Collect once: passing the Table would rescan it inside each of the two
-            # calls below.
-            sample_collisions = sample_collisions_ht.aggregate(
-                hl.agg.collect_as_set(sample_collisions_ht.s)
+        # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
+        # over rescanning the sample-collisions Table.
+        collisions = load_aou_sample_artifact_json(
+            "sample_id_collisions.json", test=test, environment=environment
+        )
+        if collisions is not None:
+            logger.info(
+                "Using precomputed sample_id_collisions.json (%d sample IDs).",
+                len(collisions),
             )
+            sample_collisions = set(collisions)
+        else:
+            sample_collisions = get_sample_id_collisions(environment=environment).ht()
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
@@ -544,15 +616,36 @@ def get_aou_vds(
 
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # For the release and high-quality filters, prefer the permanent precomputed
+    # JSONs (write_aou_vds_sample_jsons) over the meta-table scans. The JSON IDs
+    # are post-prefix, matching the VDS sample IDs at this point.
     if release_only:
         logger.info("Filtering VDS to release samples only...")
-        filter_expr = meta_ht.release
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        release_samples = load_aou_sample_artifact_json(
+            "release_samples.json", test=test, environment=environment
+        )
+        if release_samples is not None:
+            logger.info(
+                "Using precomputed release_samples.json (%d sample IDs).",
+                len(release_samples),
+            )
+            vds = hl.vds.filter_samples(vds, release_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
 
     if high_quality_only:
         logger.info("Filtering VDS to high quality samples only...")
-        filter_expr = meta_ht.high_quality
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        hq_samples = load_aou_sample_artifact_json(
+            "high_quality_samples.json", test=test, environment=environment
+        )
+        if hq_samples is not None:
+            logger.info(
+                "Using precomputed high_quality_samples.json (%d sample IDs).",
+                len(hq_samples),
+            )
+            vds = hl.vds.filter_samples(vds, hq_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.high_quality))
 
     if filter_samples:
         logger.info(
