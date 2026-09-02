@@ -81,8 +81,7 @@ def aou_sample_artifact_path(
     workers) instead of rescanning the ~330-partition sample metadata tables:
     the VDS-loading JSONs written by `write_aou_vds_sample_jsons`
     (``sample_id_collisions.json``, ``high_quality_samples.json``,
-    ``release_samples.json``) and pipeline-specific Hail Tables such as the
-    frequency pipeline's ``meta_small.ht`` and ``gm_coalesced[_reduce].ht``.
+    ``release_samples.json``).
 
     Full-scope artifacts are permanent; unlike `_meta_root_path`, their root
     resolves to the writable bucket in the "batch" environment (artifacts are

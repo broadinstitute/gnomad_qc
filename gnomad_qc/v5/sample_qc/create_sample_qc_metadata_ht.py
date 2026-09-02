@@ -498,7 +498,6 @@ def main(args):
             logger.info("Writing permanent VDS-loading sample artifact JSONs...")
             write_aou_vds_sample_jsons(
                 environment=environment,
-                test=args.test,
                 overwrite=args.overwrite,
             )
             return
@@ -615,14 +614,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "~330-partition sample tables. Runs standalone (skips the meta HT "
             "build); rerun it whenever the meta HT is rewritten. Requires "
             "--overwrite to replace existing artifacts."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--test",
-        help=(
-            "With --write-vds-sample-artifact-jsons, write the test-scoped "
-            "artifact paths (used when loading the 10-sample test VDS)."
         ),
         action="store_true",
     )
