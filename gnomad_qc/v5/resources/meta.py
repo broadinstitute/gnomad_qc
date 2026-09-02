@@ -79,9 +79,7 @@ def aou_sample_artifact_path(
     workers) instead of rescanning the ~330-partition sample metadata tables:
     the VDS-loading JSONs written by `write_aou_vds_sample_jsons`
     (``sample_id_collisions.json``, ``high_quality_samples.json``,
-    ``release_samples.json``). One set of artifacts serves every load,
-    including test-VDS loads (the test VDS samples are a subset of the same
-    sample universe).
+    ``release_samples.json``).
 
     Unlike `_meta_root_path`, this resolves to the writable bucket in the
     "batch" environment: artifacts are both written and read from batch.
