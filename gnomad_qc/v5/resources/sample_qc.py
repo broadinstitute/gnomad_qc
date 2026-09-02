@@ -1,5 +1,7 @@
 """Script containing sample QC related resources."""
 
+from typing import List
+
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     PedigreeResource,
@@ -814,14 +816,17 @@ def trios(
 
 
 def dense_trios(
+    chrom: str,
     split: bool = False,
     test: bool = False,
     environment: str = "batch",
     read_only: bool = False,
 ) -> VersionedMatrixTableResource:
     """
-    Get the VersionedMatrixTableResource for the dense trio MatrixTable.
+    Get the VersionedMatrixTableResource for the per-chromosome dense trio MatrixTable.
 
+    :param chrom: Single chromosome (e.g. 'chr20') for the per-chromosome dense trio MT.
+        The dense trio MT is densified one chromosome at a time.
     :param split: Whether to get the resource for the split trio MatrixTable.
     :param test: Whether to use a tmp path for a test resource.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
@@ -835,8 +840,41 @@ def dense_trios(
             version: MatrixTableResource(
                 f"{get_sample_qc_root(version, test, environment=environment, read_only=read_only)}"
                 f"/relatedness/trios/aou.genomes.v{version}.trios.dense"
-                f"{'.split' if split else ''}.mt"
+                f"{'.split' if split else ''}"
+                f".{chrom}.mt"
             )
             for version in SAMPLE_QC_VERSIONS
         },
     )
+
+
+# Chromosomes the dense trio MT is densified on for test runs. Single source of truth for
+# both the test chromosomes consumers process (``get_dense_trio_chroms``) and the
+# ``--test`` densify in identify_trios.py. Two chromosomes so the per-chromosome union is
+# exercised in test.
+DENSE_TRIO_TEST_CHROMS = ["chr20", "chr21"]
+
+
+def get_dense_trio_chroms(
+    test: bool = False, include_sex_chr: bool = False
+) -> List[str]:
+    """
+    Get the chromosomes the dense trio MT spans.
+
+    The dense trio MT is densified one chromosome at a time (see ``create_dense_trio_mt``
+    in ``identify_trios.py``); consumers (trio stats, de novo calling) process those
+    chromosomes individually and union their per-chromosome outputs, rather than unioning
+    the large dense MTs.
+
+    :param test: Whether this is a test run. Default is False.
+    :param include_sex_chr: Whether to include chrX and chrY. Trio stats use autosomes
+        only; de novo calling sets this True. Ignored when `test` is set. Default is False.
+    :return: ``DENSE_TRIO_TEST_CHROMS`` when `test`, else the autosomes (plus chrX and
+        chrY when `include_sex_chr`).
+    """
+    if test:
+        return DENSE_TRIO_TEST_CHROMS
+    chroms = [f"chr{i}" for i in range(1, 23)]
+    if include_sex_chr:
+        chroms += ["chrX", "chrY"]
+    return chroms

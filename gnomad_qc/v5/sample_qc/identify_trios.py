@@ -27,6 +27,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.meta import meta
 from gnomad_qc.v5.resources.sample_qc import (
+    DENSE_TRIO_TEST_CHROMS,
     dense_trios,
     duplicates,
     ped_filter_param_json_path,
@@ -226,7 +227,7 @@ def filter_ped(
 def create_dense_trio_mt(
     fam_ht: hl.Table,
     meta_ht: hl.Table,
-    test: bool = False,
+    chrom: str,
     naive_coalesce_partitions: Optional[int] = None,
     environment: str = "rwb",
 ) -> hl.MatrixTable:
@@ -235,7 +236,8 @@ def create_dense_trio_mt(
 
     :param fam_ht: Table with family information.
     :param meta_ht: Table with metadata information.
-    :param test: Whether to filter to two partitions of chr20 for testing. Default is False.
+    :param chrom: Single chromosome to densify (e.g., 'chr20'). All trios on that
+        chromosome only. The dense trio MT is densified one chromosome at a time.
     :param naive_coalesce_partitions: Optional Number of partitions to coalesce the VDS
         to. Default is None.
     :param environment: Environment to use. Default is "rwb". Must be one of "rwb"
@@ -250,24 +252,9 @@ def create_dense_trio_mt(
     # Note: Checked IDs for samples in trios; none of them have sample ID collisions.
     meta_ht = filter_to_trios(meta_ht, fam_ht)
 
-    if test:
-        # Filter to the first 15 trios for testing.
-        fam_ht = fam_ht.head(15)
-        fam_ht_list = fam_ht.collect()
-        trio_samples = set()
-        for row in fam_ht_list:
-            trio_samples.add(row.id)
-            trio_samples.add(row.pat_id)
-            trio_samples.add(row.mat_id)
-
-        meta_ht = meta_ht.filter(hl.literal(trio_samples).contains(meta_ht.s))
-
-    # v4 used `entries_to_keep` to filter non `gvcf_info` entries, but
-    # AoU VDS only has GQ, RGQ, PS, LGT, LAD, LA, FT entries.
     vds = get_aou_vds(
         filter_samples=meta_ht,
-        filter_partitions=range(2) if test else None,
-        chrom="chr20" if test else None,
+        chrom=chrom,
         naive_coalesce_partitions=naive_coalesce_partitions,
         add_project_prefix=True,
         environment=environment,
@@ -282,6 +269,7 @@ def main(args):
 
     overwrite = args.overwrite
     test = args.test
+    chrom = args.chrom
 
     try:
 
@@ -298,7 +286,6 @@ def main(args):
             test=test, environment=environment
         )
         trios_path = trios(test=test, environment=environment).path
-        dense_trio_mt_path = dense_trios(test=test, environment=environment).path
 
         logger.info(
             "Filtering relatedness HT to only include high quality AoU samples..."
@@ -412,8 +399,21 @@ def main(args):
                 d.write(json.dumps(filters))
 
         if args.create_dense_trio_mt:
+            if chrom is None:
+                raise ValueError(
+                    "--chrom is required for --create-dense-trio-mt; the dense trio MT "
+                    "is densified one chromosome at a time."
+                )
+            if test and chrom not in DENSE_TRIO_TEST_CHROMS:
+                raise ValueError(
+                    f"--test densifies only the test chromosomes "
+                    f"{DENSE_TRIO_TEST_CHROMS}; got --chrom {chrom}."
+                )
             logger.info("Creating dense trio MT...")
             logger.info("Note that sample IDs in this MT will contain 'aou_' prefix.")
+            dense_trio_mt_path = dense_trios(
+                test=test, chrom=chrom, environment=environment
+            ).path
             _check_resource_existence(
                 environment=environment,
                 output_step_resources={"dense_trio_mt": [dense_trio_mt_path]},
@@ -426,10 +426,12 @@ def main(args):
                     "Specifying naive coalesce partitions may make the densify significantly slower..."
                 )
 
+            # NOTE: Code always densifies all trios from the finalized pedigree for
+            # cost estimation reasons.
             dense_trio_mt = create_dense_trio_mt(
-                hl.import_fam(final_ped_path),
+                hl.import_fam(pedigree(test=False, environment=environment).path),
                 meta_ht,
-                test=test,
+                chrom=chrom,
                 naive_coalesce_partitions=naive_coalesce_partitions,
                 environment=environment,
             )
@@ -451,7 +453,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--test",
-        help="Run script on subset of dataset. Applies to Mendel errors and dense trio MT creation.",
+        help=(
+            "Use test output paths. Subsets the data for Mendel error calculation. For "
+            "dense trio MT creation it only changes the output path (all trios are still "
+            "densified); pair with --chrom to limit to a single chromosome."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -597,6 +603,17 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--create-dense-trio-mt",
         help=("Create a dense MT for high quality trios."),
         action="store_true",
+    )
+    dense_trio_mt_args.add_argument(
+        "--chrom",
+        help=(
+            "Single chromosome to densify (e.g., 'chr20'). Required for "
+            "--create-dense-trio-mt: the dense trio MT is densified one chromosome at a "
+            "time, run once per chromosome. Combine with --test to route output to a "
+            "test path."
+        ),
+        type=str,
+        default=None,
     )
     dense_trio_mt_args.add_argument(
         "--naive-coalesce-partitions",

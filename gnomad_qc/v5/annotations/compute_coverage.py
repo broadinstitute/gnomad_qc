@@ -18,14 +18,17 @@ Execution roles (mutually exclusive; dispatched by early return in ``main``):
 
 A full prod AoU release is three separate invocations: fan-out compute,
 merge-cov-chunks, then the in-process assembly. The setup HTs (downsampling,
-group membership, sample artifacts, sites, chunk intervals) are written by
-their own in-process invocations first; the fan-out reads them from disk.
+group membership, sites, chunk intervals) are written by their own
+in-process invocations first; the fan-out reads them from disk. The AoU sample
+artifact JSONs (release samples, ID collisions) come from
+``create_sample_qc_metadata_ht.py --write-vds-sample-artifact-jsons`` and are
+read inside ``get_aou_vds``.
 
 Workflow::
 
     1. (AoU) --write-aou-downsampling-ht
     2. --write-group-membership-ht (--reduce-min-aggs for the leaf-only
-       variant); (AoU) --write-sample-artifacts
+       variant)
     3. --write-vep-context-sites: deduped, telomere/centromere/chrM-stripped
        sites HT -- the definition of "every site the compute must cover".
     4. Compute: --compute-all-cov-release-stats-ht (strict single job), or
@@ -245,7 +248,12 @@ def get_group_membership_ht(
             force_leaf_groups=PINNED_LEAF_GROUPS,
         )
 
-    return ht
+    # Coalesce: this is a small per-sample lookup (~365k rows) that otherwise
+    # inherits ~330 partitions from the meta HT and fans every downstream
+    # read/collect into ~330 tasks. The coalesced copy must be materialized
+    # (the write below): a lazy naive_coalesce does not propagate through a
+    # key-indexed join, so consumers cannot fix it themselves.
+    return ht.naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS)
 
 
 def _chunk_intervals_hash(data: dict[str, Any]) -> str:
@@ -1111,49 +1119,6 @@ def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Tabl
     return hl.filter_intervals(target_ht, intervals)
 
 
-def _aou_sample_artifact_path(name: str, environment: str, test: bool = False) -> str:
-    """
-    Return the path to a chunk-invariant AoU sample-level artifact (30-day storage).
-
-    Small files written once per run (``collisions.json``,
-    ``release_samples.json``) so chunk workers read them instead of rescanning
-    the sample tables. The path scheme is shared with ``generate_frequency.py``
-    so one writer serves both pipelines; hoist into ``basics.py`` when the
-    branches merge.
-
-    :param name: Artifact file name (with extension).
-    :param environment: Compute environment.
-    :param test: If True, return the test-scoped path.
-    :return: GCS path to the artifact.
-    """
-    scope = "test" if test else "full"
-    return (
-        f"{qc_temp_prefix(environment=environment, days=30)}"
-        f"aou_sample_artifacts_{scope}/{name}"
-    )
-
-
-def _read_sample_artifact_json(
-    name: str, environment: str, test: bool = False
-) -> Any | None:
-    """
-    Return the parsed JSON sample artifact, or None when not precomputed.
-
-    Absence is not an error: every caller falls back to computing the value
-    itself.
-
-    :param name: Artifact file name (with extension).
-    :param environment: Compute environment.
-    :param test: If True, read the test-scoped path.
-    :return: Parsed JSON value, or None if absent.
-    """
-    path = _aou_sample_artifact_path(name, environment, test)
-    if not file_exists(path):
-        return None
-    with hfs.open(path) as f:
-        return json.load(f)
-
-
 def _load_project_vds(
     project: str,
     environment: str,
@@ -1188,20 +1153,11 @@ def _load_project_vds(
     """
     if project == "aou":
         sex_karyotype_field = "meta.sex_karyotype"
-        # Read the precomputed sample artifacts when they exist; else fall back
-        # to the sample-table scans they replace (a collisions aggregation plus
-        # a meta collect -- per chunk process at fan-out scale).
-        collisions = _read_sample_artifact_json("collisions.json", environment, test)
-        release_samples = _read_sample_artifact_json(
-            "release_samples.json", environment, test
-        )
+        # get_aou_vds reads the precomputed sample artifact JSONs (release
+        # samples, ID collisions; see write_aou_vds_sample_jsons) and falls
+        # back to the sample-table scans only when they are absent.
         vds = get_aou_vds(
-            release_only=release_samples is None,
-            filter_samples=release_samples,
-            # The release list holds post-prefix IDs; set add_project_prefix
-            # explicitly so the filter can't miss them if annotate_meta changes.
-            add_project_prefix=release_samples is not None,
-            sample_collisions=set(collisions) if collisions is not None else None,
+            release_only=True,
             filter_partitions=(
                 None if (sub_intervals or filter_intervals) else partition_range
             ),
@@ -2861,33 +2817,6 @@ def main(args):
             else None
         )
 
-        # Materialize the sample artifacts once per run (see
-        # _aou_sample_artifact_path); whichever pipeline runs first serves both.
-        if args.write_sample_artifacts:
-            if project != "aou":
-                raise ValueError(
-                    "--write-sample-artifacts only applies to --project-name aou"
-                    " (gnomAD has no sample-collision or AoU release artifact)."
-                )
-            # Imported lazily to avoid a circular import (as in get_aou_vds).
-            from gnomad_qc.v5.resources.meta import get_sample_id_collisions
-
-            sc_ht = get_sample_id_collisions(environment=environment).ht()
-            collisions = sorted(sc_ht.aggregate(hl.agg.collect_as_set(sc_ht.s)))
-            path = _aou_sample_artifact_path("collisions.json", environment, test)
-            with hfs.open(path, "w") as f:
-                json.dump(collisions, f)
-            logger.info("Wrote %d collision sample IDs: %s", len(collisions), path)
-
-            # Must match get_aou_vds's release_only filter exactly (it replaces it).
-            release_samples = meta_ht.filter(
-                (meta_ht.project_meta.project == "aou") & meta_ht.release
-            ).s.collect()
-            path = _aou_sample_artifact_path("release_samples.json", environment, test)
-            with hfs.open(path, "w") as f:
-                json.dump(release_samples, f)
-            logger.info("Wrote %d release sample IDs: %s", len(release_samples), path)
-
         if args.write_vep_context_sites:
             logger.info("Writing preprocessed vep_context sites HT...")
             sites_path = _vep_context_sites_path(test=test)
@@ -3009,17 +2938,9 @@ def main(args):
                     ds_ht=hl.read_table(downsampling_ht_path),
                     reduce_min_aggs=reduce_min_aggs,
                 )
-            # Coalesce on write. This HT is one row per sample (~365k for AoU) but
-            # inherits the meta HT's ~330 partitions, and every consumer either joins
-            # or key-indexes it -- which fans that consumer's read/collect stages to
-            # ~330 tasks, per chunk, across the whole fan-out. Consumers cannot fix it
-            # themselves: a lazy naive_coalesce does not propagate through a
-            # key-indexed join, so the coalesced copy has to be materialized, and doing
-            # it here means every consumer benefits instead of each re-checkpointing
-            # its own copy.
-            group_membership_ht.naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS).write(
-                group_membership_ht_path, overwrite=overwrite
-            )
+            # Already coalesced to GROUP_MEMBERSHIP_N_PARTITIONS in
+            # get_group_membership_ht; writing materializes it for every consumer.
+            group_membership_ht.write(group_membership_ht_path, overwrite=overwrite)
 
         # --- COMPUTE (strict, single job): whole-VDS per-ref-site
         # coverage/AN/qual-hists. Prod AoU does this via ROLE 1 fan-out
@@ -3550,16 +3471,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--write-sample-artifacts",
-        help=(
-            "AoU only. Write collisions.json + release_samples.json once so"
-            " chunk workers skip the per-chunk sample-table scans. Shares"
-            " paths with generate_frequency."
-        ),
-        action="store_true",
-    )
-
-    parser.add_argument(
         "--write-aou-downsampling-ht",
         help="Write v5 downsampling HT.",
         action="store_true",
@@ -4072,9 +3983,6 @@ if __name__ == "__main__":
     if args.merge_qual_hists and args.project_name != "aou":
         raise ValueError("--merge-qual-hists requires --project-name to be 'aou'.")
 
-    if args.write_sample_artifacts and args.project_name != "aou":
-        parser.error("--write-sample-artifacts requires --project-name to be 'aou'.")
-
     # 'lowmem' is excluded via choices on every memory flag: Hail Batch rejects
     # it for JVM jobs, and every QoB pod this script starts is a JVM job.
 
@@ -4090,7 +3998,6 @@ if __name__ == "__main__":
     step_flags = {
         "--write-aou-downsampling-ht": args.write_aou_downsampling_ht,
         "--write-group-membership-ht": args.write_group_membership_ht,
-        "--write-sample-artifacts": args.write_sample_artifacts,
         "--write-vep-context-sites": args.write_vep_context_sites,
         "--write-chunk-intervals": args.write_chunk_intervals,
         "--compute-all-cov-release-stats-ht": args.compute_all_cov_release_stats_ht,
