@@ -566,13 +566,29 @@ def get_aou_vds(
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
         # Import here to avoid circular imports.
-        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+        from gnomad_qc.v5.resources.meta import (
+            get_sample_id_collisions,
+            load_aou_sample_artifact_json,
+            meta,
+        )
 
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
+        if sample_collisions is None:
+            # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
+            # over rescanning the sample-collisions Table.
+            collisions = load_aou_sample_artifact_json(
+                "sample_id_collisions.json", test=test, environment=environment
+            )
+            if collisions is not None:
+                logger.info(
+                    "Using precomputed sample_id_collisions.json (%d sample IDs).",
+                    len(collisions),
+                )
+                sample_collisions = set(collisions)
         if sample_collisions is None:
             sample_collisions_ht = get_sample_id_collisions(
                 environment=environment
@@ -615,15 +631,36 @@ def get_aou_vds(
 
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # For the release and high-quality filters, prefer the permanent precomputed
+    # JSONs (write_aou_vds_sample_jsons) over the meta-table scans. The JSON IDs
+    # are post-prefix, matching the VDS sample IDs at this point.
     if release_only:
         logger.info("Filtering VDS to release samples only...")
-        filter_expr = meta_ht.release
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        release_samples = load_aou_sample_artifact_json(
+            "release_samples.json", test=test, environment=environment
+        )
+        if release_samples is not None:
+            logger.info(
+                "Using precomputed release_samples.json (%d sample IDs).",
+                len(release_samples),
+            )
+            vds = hl.vds.filter_samples(vds, release_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
 
     if high_quality_only:
         logger.info("Filtering VDS to high quality samples only...")
-        filter_expr = meta_ht.high_quality
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        hq_samples = load_aou_sample_artifact_json(
+            "high_quality_samples.json", test=test, environment=environment
+        )
+        if hq_samples is not None:
+            logger.info(
+                "Using precomputed high_quality_samples.json (%d sample IDs).",
+                len(hq_samples),
+            )
+            vds = hl.vds.filter_samples(vds, hq_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.high_quality))
 
     if filter_samples:
         logger.info(

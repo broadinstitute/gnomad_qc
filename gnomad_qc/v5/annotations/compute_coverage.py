@@ -135,7 +135,10 @@ def get_group_membership_ht(
             ),
         )
 
-    return ht
+    # Coalesce: this is a small per-sample lookup (~365k rows) that otherwise
+    # inherits ~330 partitions from the meta HT and fans every downstream
+    # read/collect into ~330 tasks.
+    return ht.naive_coalesce(10)
 
 
 def validate_vds(vds: hl.vds.VariantDataset) -> None:
