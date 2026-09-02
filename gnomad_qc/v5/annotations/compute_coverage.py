@@ -605,10 +605,26 @@ def _derive_ref_partition_intervals(
     )
 
 
+def _spans_sex_chromosome(intervals: Sequence[hl.utils.Interval]) -> bool:
+    """
+    Return whether any locus interval touches chrX or chrY.
+
+    The sex-karyotype ploidy adjustment in ``compute_stats_per_ref_site`` only
+    changes genotypes on those contigs, so a chunk that touches neither can
+    skip it.
+
+    :param intervals: Locus intervals (Python ``hl.utils.Interval`` objects).
+    :return: True if any interval starts or ends on an X or Y contig.
+    """
+    contigs = {i.start.contig for i in intervals} | {i.end.contig for i in intervals}
+    rg = intervals[0].start.reference_genome
+    return bool(contigs & (set(rg.x_contigs) | set(rg.y_contigs)))
+
+
 def compute_all_release_stats_per_ref_site(
     vds: hl.vds.VariantDataset,
     ref_ht: hl.Table,
-    sex_karyotype_field: str,
+    sex_karyotype_field: str | None,
     project: str,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
     interval_ht: hl.Table | None = None,
@@ -628,7 +644,11 @@ def compute_all_release_stats_per_ref_site(
         ``LEN`` field is added if missing. DP is read from variant data only.
     :param ref_ht: Locus-only sites Table defining the positions to aggregate at.
     :param sex_karyotype_field: Dotted path on the variant_data column struct to
-        the sample's sex karyotype (sets per-sample ploidy on sex chromosomes).
+        the sample's sex karyotype (sets per-sample ploidy on sex chromosomes),
+        or None to skip the adjustment. It is the identity on autosomes, so
+        pass None when ``ref_ht`` has no chrX/chrY sites (see
+        :func:`_spans_sex_chromosome`): that also skips the per-sample
+        karyotype lookup and its column checkpoint.
     :param project: "aou" or "gnomad". AoU adds ``qual_hists`` and computes no
         coverage stats; gnomAD computes coverage and AN only.
     :param coverage_over_x_bins: DP thresholds for the ``over_X`` fields.
@@ -699,8 +719,11 @@ def compute_all_release_stats_per_ref_site(
     )
 
     vmt = vds.variant_data
-    sex_expr = reduce(lambda x, field: x[field], sex_karyotype_field.split("."), vmt)
-    vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
+    if sex_karyotype_field is not None:
+        sex_expr = reduce(
+            lambda x, field: x[field], sex_karyotype_field.split("."), vmt
+        )
+        vmt = vmt.annotate_cols(sex_karyotype=sex_expr)
     rmt = vds.reference_data
     # Hail < 0.2.134 VDSes lack LEN on reference data; drop this branch once
     # all inputs are >= 0.2.134.
@@ -734,7 +757,7 @@ def compute_all_release_stats_per_ref_site(
         entry_keep_fields=["GQ", "DP"],
         reducible_aggs={"AN"} if reduce_min_aggs else None,
         entry_agg_group_membership=entry_agg_group_membership,
-        sex_karyotype_field="sex_karyotype",
+        sex_karyotype_field=(None if sex_karyotype_field is None else "sex_karyotype"),
     )
 
     def _cov_stats(
@@ -1806,6 +1829,11 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         sub_intervals=sub_intervals,
     )
 
+    # No chunk crosses a contig (_build_chunk_intervals; --test-region is
+    # per-contig), so an autosomal chunk skips the sex-ploidy adjustment.
+    if not _spans_sex_chromosome(sub_intervals):
+        logger.info("Autosomal chunk: skipping the sex-karyotype ploidy adjustment.")
+        sex_karyotype_field = None
     cov_and_an_ht = compute_all_release_stats_per_ref_site(
         vds,
         ref_ht,
@@ -3014,6 +3042,13 @@ def main(args):
                 sites_path=_vep_context_sites_path(test),
                 sub_intervals=strict_sub_intervals,
             )
+            # None (whole VDS) keeps the adjustment; a per-contig or --test-region
+            # span on autosomes skips it.
+            if strict_sub_intervals and not _spans_sex_chromosome(strict_sub_intervals):
+                logger.info(
+                    "Autosomal span: skipping the sex-karyotype ploidy adjustment."
+                )
+                sex_karyotype_field = None
 
             cov_and_an_ht = compute_all_release_stats_per_ref_site(
                 vds,
