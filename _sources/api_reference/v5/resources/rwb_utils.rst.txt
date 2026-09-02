@@ -1,0 +1,22 @@
+gnomad_qc.v5.resources.rwb_utils
+================================
+
+
+This module contains utility functions for the Research Workbench.
+
+These functions should live in the 'util_functions.ipynb.' notebook. It is included here
+for version control purposes and cannot be imported via the gnomad_qc module in
+Researcher Workbench unless the gnomad_qc repo is cloned prior to use.
+
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.resources.rwb_utils
+
+.. automodule:: gnomad_qc.v5.resources.rwb_utils
+    :exclude-members: get_script_argument_parser

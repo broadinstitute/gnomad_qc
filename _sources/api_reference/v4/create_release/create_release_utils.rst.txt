@@ -1,0 +1,16 @@
+gnomad_qc.v4.create_release.create_release_utils
+================================================
+
+Common utils for creating gnomAD v4 exomes and genomes releases.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.create_release_utils
+
+.. automodule:: gnomad_qc.v4.create_release.create_release_utils
+    :exclude-members: get_script_argument_parser

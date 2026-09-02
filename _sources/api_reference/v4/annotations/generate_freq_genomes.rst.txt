@@ -1,0 +1,32 @@
+gnomad_qc.v4.annotations.generate_freq_genomes
+==============================================
+
+
+Script to create frequencies HT for v4.0 genomes.
+
+This script is written specifically for the v4.0 genomes release to handle the
+addition and subtraction of samples from the HGDP + 1KG subset. The HGDP + 1KG
+subset has updated sample QC annotations. The addition of new samples from the
+densified MT will include new variants, which will require the recomputation of AN
+for the v3.1 releases samples, and merging it to call stats of the v3.1.2 release
+sites HT and of updated HGDP + 1KG subset. In addition, the code will also get the
+other call stats related annotations, including: filtering allele frequencies ('faf'),
+'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff' as done in v4.0 exomes.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.annotations.generate_freq_genomes.get_script_argument_parser
+   :prog: gnomad_qc.v4.annotations.generate_freq_genomes.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.generate_freq_genomes
+
+.. automodule:: gnomad_qc.v4.annotations.generate_freq_genomes
+    :exclude-members: get_script_argument_parser

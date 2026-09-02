@@ -1,0 +1,16 @@
+gnomad_qc.v4.resources.variant_qc
+=================================
+
+Script containing variant QC related resources.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.resources.variant_qc
+
+.. automodule:: gnomad_qc.v4.resources.variant_qc
+    :exclude-members: get_script_argument_parser

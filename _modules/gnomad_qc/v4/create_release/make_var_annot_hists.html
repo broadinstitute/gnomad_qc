@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.create_release.make_var_annot_hists &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.create_release.make_var_annot_hists</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.create_release.make_var_annot_hists</h1><div class="highlight"><pre>
+<span></span><span class="c1"># noqa: D100</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="n">DataException</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.annotations</span> <span class="kn">import</span> <span class="n">create_frequency_bins_expr</span><span class="p">,</span> <span class="n">get_annotations_hists</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.file_utils</span> <span class="kn">import</span> <span class="n">file_exists</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.release</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">annotation_hists_params_path</span><span class="p">,</span>
+    <span class="n">qual_hists_json_path</span><span class="p">,</span>
+    <span class="n">release_ht_path</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<span class="n">LOG10_ANNOTATIONS</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;AS_VarDP&quot;</span><span class="p">,</span> <span class="s2">&quot;QUALapprox&quot;</span><span class="p">,</span> <span class="s2">&quot;AS_QUALapprox&quot;</span><span class="p">]</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">List of annotations to log scale when creating histograms.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+
+<div class="viewcode-block" id="create_frequency_bins_expr_inbreeding"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/make_var_annot_hists.html#gnomad_qc.v4.create_release.make_var_annot_hists.create_frequency_bins_expr_inbreeding">[docs]</a><span class="k">def</span> <span class="nf">create_frequency_bins_expr_inbreeding</span><span class="p">(</span>
+    <span class="n">AF</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">NumericExpression</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StringExpression</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create bins for frequencies in preparation for aggregating Inbreedind Coefficient by frequency bin.</span>
+
+<span class="sd">    Uses bins of &lt; 0.0005 and &gt;= 0.0005</span>
+
+<span class="sd">    NOTE: Frequencies should be frequencies from raw data.</span>
+<span class="sd">    Used when creating site quality distribution json files.</span>
+
+<span class="sd">    :param AF: Field in input that contains the allele frequency information</span>
+<span class="sd">    :return: Expression containing bin name</span>
+<span class="sd">    :rtype: hl.expr.StringExpression</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">bin_expr</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">case</span><span class="p">()</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">AF</span> <span class="o">&lt;</span> <span class="mf">0.0005</span><span class="p">,</span> <span class="s2">&quot;under_0.0005&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">AF</span> <span class="o">&gt;=</span> <span class="mf">0.0005</span><span class="p">,</span> <span class="s2">&quot;over_0.0005&quot;</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">or_missing</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">bin_expr</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/create_release/make_var_annot_hists.html#gnomad_qc.v4.create_release.make_var_annot_hists.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>  <span class="c1"># noqa: D103</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/variant_histograms.log&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day/variant_histograms&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">data_type</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">data_type</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Loading ANNOTATIONS_HISTS dictionary with metric histogram parameters...&quot;</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">annotation_hists_params_path</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="n">DataException</span><span class="p">(</span>
+            <span class="s2">&quot;Annotation hists JSON file not found. Need to create this JSON before&quot;</span>
+            <span class="s2">&quot;running script. Use previous release&#39;s JSON as a starting point for &quot;</span>
+            <span class="s2">&quot;determining metrics histogram bounds.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">annotation_hists_params_path</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">))</span> <span class="k">as</span> <span class="n">a</span><span class="p">:</span>
+        <span class="n">ANNOTATIONS_HISTS</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">a</span><span class="o">.</span><span class="n">read</span><span class="p">())</span>
+
+    <span class="c1"># NOTE: histogram aggregations on these metrics are done on the entire</span>
+    <span class="c1"># callset (not just PASS variants), on raw data # noqa</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Loading release Hail Table...&quot;</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">read_table</span><span class="p">(</span><span class="n">release_ht_path</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">public</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="c1"># Keep only PCSK9.</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Filtering to PCSK9 region...&quot;</span><span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span>
+            <span class="p">[</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">parse_locus_interval</span><span class="p">(</span>
+                    <span class="s2">&quot;chr1:55039447-55064852&quot;</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span>
+                <span class="p">)</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">freq</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">,</span> <span class="n">info</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">ANNOTATIONS_HISTS</span><span class="p">))</span>
+
+    <span class="n">inbreeding_bin_ranges</span> <span class="o">=</span> <span class="n">ANNOTATIONS_HISTS</span><span class="p">[</span><span class="s2">&quot;inbreeding_coeff&quot;</span><span class="p">]</span>
+
+    <span class="c1"># Remove InbreedingCoeff from ANNOTATIONS_HISTS. It requires different ranges</span>
+    <span class="c1"># by allele frequency and needs to be handled differently. It is stored as a</span>
+    <span class="c1"># dictionary in annotation_hists_path</span>
+    <span class="n">ANNOTATIONS_HISTS</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">ANNOTATIONS_HISTS</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">&quot;inbreeding_coeff&quot;</span>
+    <span class="p">}</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Getting info annotation histograms...&quot;</span><span class="p">)</span>
+    <span class="n">hist_ranges_expr</span> <span class="o">=</span> <span class="n">get_annotations_hists</span><span class="p">(</span><span class="n">ht</span><span class="p">,</span> <span class="n">ANNOTATIONS_HISTS</span><span class="p">,</span> <span class="n">LOG10_ANNOTATIONS</span><span class="p">)</span>
+
+    <span class="c1"># Note: This evaluates the minimum and maximum values for each metric of interest</span>
+    <span class="c1"># to help determine the bounds of the hists. Run this first, then update values in</span>
+    <span class="c1"># annotation_hists_path JSON if necessary after examining data in a notebook</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">determine_bounds</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Evaluating minimum and maximum values for each metric of interest. Maximum&quot;</span>
+            <span class="s2">&quot; values capped at 1e10.&quot;</span>
+        <span class="p">)</span>
+        <span class="n">minmax_dict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">metric</span> <span class="ow">in</span> <span class="n">ANNOTATIONS_HISTS</span><span class="p">:</span>
+            <span class="n">minmax_dict</span><span class="p">[</span><span class="n">metric</span><span class="p">]</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="nb">min</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="n">metric</span><span class="p">]),</span>
+                <span class="nb">max</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">if_else</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="n">metric</span><span class="p">])</span> <span class="o">&lt;</span> <span class="mf">1e10</span><span class="p">,</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="p">[</span><span class="n">metric</span><span class="p">]),</span>
+                    <span class="mf">1e10</span><span class="p">,</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+        <span class="n">minmax</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">minmax_dict</span><span class="p">))</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Metrics bounds: </span><span class="si">{</span><span class="n">minmax</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Aggregating hists over ranges defined in the annotation_hists_path JSON&quot;</span>
+            <span class="s2">&quot; file. --determine_bounds can be used to help define these ranges if&quot;</span>
+            <span class="s2">&quot; initial results seem off...&quot;</span>
+        <span class="p">)</span>
+        <span class="c1"># NOTE: QUALApprox and AS_QUALApprox are log10 scaled and also split into</span>
+        <span class="c1"># frequency bins</span>
+        <span class="n">hists</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="n">hist_expr</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">metric</span><span class="o">=</span><span class="n">hist_metric</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">hist_metric</span><span class="p">,</span> <span class="n">hist_expr</span> <span class="ow">in</span> <span class="n">hist_ranges_expr</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="p">]</span>
+            <span class="p">)</span>
+            <span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+                        <span class="n">create_frequency_bins_expr</span><span class="p">(</span><span class="n">AC</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">AF</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span><span class="p">),</span>
+                        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span>
+                            <span class="n">hl</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">QUALapprox</span><span class="p">),</span>
+                            <span class="o">*</span><span class="n">ANNOTATIONS_HISTS</span><span class="p">[</span><span class="s2">&quot;QUALapprox&quot;</span><span class="p">],</span>
+                        <span class="p">),</span>
+                    <span class="p">)</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">metric</span><span class="o">=</span><span class="s2">&quot;QUALapprox-&quot;</span> <span class="o">+</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+            <span class="p">)</span>
+            <span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">group_by</span><span class="p">(</span>
+                        <span class="n">create_frequency_bins_expr</span><span class="p">(</span><span class="n">AC</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AC</span><span class="p">,</span> <span class="n">AF</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span><span class="p">),</span>
+                        <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span>
+                            <span class="n">hl</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">AS_QUALapprox</span><span class="p">),</span>
+                            <span class="o">*</span><span class="n">ANNOTATIONS_HISTS</span><span class="p">[</span><span class="s2">&quot;AS_QUALapprox&quot;</span><span class="p">],</span>
+                        <span class="p">),</span>
+                    <span class="p">)</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">metric</span><span class="o">=</span><span class="s2">&quot;AS_QUALapprox-&quot;</span> <span class="o">+</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+            <span class="p">),</span>
+            <span class="n">_localize</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># # Defining hist range for inbreeding coefficient and bins for allele frequency</span>
+        <span class="c1"># groups because they needed different ranges</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">af_bin</span><span class="o">=</span><span class="n">create_frequency_bins_expr_inbreeding</span><span class="p">(</span><span class="n">AF</span><span class="o">=</span><span class="n">ht</span><span class="o">.</span><span class="n">freq</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">AF</span><span class="p">))</span>
+        <span class="n">inbreeding_hists</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">ht</span><span class="o">.</span><span class="n">aggregate</span><span class="p">(</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+                    <span class="n">ht</span><span class="o">.</span><span class="n">af_bin</span> <span class="o">==</span> <span class="n">x</span><span class="p">,</span>
+                    <span class="n">hl</span><span class="o">.</span><span class="n">agg</span><span class="o">.</span><span class="n">hist</span><span class="p">(</span>
+                        <span class="n">ht</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">inbreeding_coeff</span><span class="p">,</span>
+                        <span class="o">*</span><span class="n">inbreeding_bin_ranges</span><span class="p">[</span><span class="n">x</span><span class="p">],</span>
+                    <span class="p">),</span>
+                <span class="p">)</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">metric</span><span class="o">=</span><span class="s2">&quot;inbreeding_coeff&quot;</span> <span class="o">+</span> <span class="s2">&quot;-&quot;</span> <span class="o">+</span> <span class="n">x</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">inbreeding_bin_ranges</span>
+        <span class="p">]</span>
+
+        <span class="n">hists</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">json</span><span class="p">(</span><span class="n">hists</span><span class="p">))</span>
+        <span class="n">inbreeding_hists</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">json</span><span class="p">(</span><span class="n">inbreeding_hists</span><span class="p">))</span>
+
+        <span class="c1"># Note: The following removes &#39;}&#39; from the JSON stored in hists and &#39;{&#39; from the JSON stored in</span>
+        <span class="c1"># inbreeding_hists then joins them together to be written out as a single JSON</span>
+        <span class="n">hists</span> <span class="o">=</span> <span class="n">hists</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="s2">&quot;,&quot;</span> <span class="o">+</span> <span class="n">inbreeding_hists</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+
+        <span class="n">output_path</span> <span class="o">=</span> <span class="n">qual_hists_json_path</span><span class="p">(</span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Writing output to </span><span class="si">%s</span><span class="s2"> ...&quot;</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">hl</span><span class="o">.</span><span class="n">hadoop_open</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">hists</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--determine_bounds&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Determine min/max values for each variant metric and prints them to stdout&quot;</span>
+            <span class="s2">&quot; (to be used in hand-tooled histogram ranges). Note that this should only&quot;</span>
+            <span class="s2">&quot; be run if the defaults do not result in well-behaved histograms.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--data-type&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Data type&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="s2">&quot;genomes&quot;</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use test resources and test on PCSK9 region&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

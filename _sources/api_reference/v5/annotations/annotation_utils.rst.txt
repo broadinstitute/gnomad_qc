@@ -1,0 +1,16 @@
+gnomad_qc.v5.annotations.annotation_utils
+=========================================
+
+AoU-specific annotation utilities.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.annotations.annotation_utils
+
+.. automodule:: gnomad_qc.v5.annotations.annotation_utils
+    :exclude-members: get_script_argument_parser

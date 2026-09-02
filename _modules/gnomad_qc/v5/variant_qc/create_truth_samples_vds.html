@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.variant_qc.create_truth_samples_vds &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.variant_qc.create_truth_samples_vds</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v5.variant_qc.create_truth_samples_vds</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Script to create a VDS of the 8 Genomes-in-a-Bottle (GiaB) truth samples from their gVCFs.</span>
+
+<span class="sd">The GiaB gVCFs were sequenced with the same protocol as the AoU v8 data and live in the</span>
+<span class="sd">AoU control-samples bucket</span>
+<span class="sd">(``gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/qc/control_samples/``).</span>
+<span class="sd">They are already reblocked, so they are passed straight into Hail&#39;s VDS combiner (no</span>
+<span class="sd">reblocking step).</span>
+
+<span class="sd">The combiner needs the per-gVCF paths up front. The truth-sample bucket cannot be</span>
+<span class="sd">listed and the sample IDs might be sensitive, so neither the paths nor the IDs are stored</span>
+<span class="sd">in this repo. Instead the script reads a single-column TSV manifest of gVCF paths</span>
+<span class="sd">(``truth_samples_gvcf_paths``) by known object path.</span>
+
+<span class="sd">This is intended to run in the ``batch`` environment (Hail Batch in the AoU authorization</span>
+<span class="sd">domain), since that is where the AoU truth-sample gVCFs are readable.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">List</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">import</span> <span class="nn">hailtop.fs</span> <span class="k">as</span> <span class="nn">hfs</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="n">check_resource_existence</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.basics</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_get_batch_resource_kwargs</span><span class="p">,</span>
+    <span class="n">_init_hail</span><span class="p">,</span>
+    <span class="n">qc_temp_prefix</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v5.resources.variant_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">get_truth_samples_combiner_plan</span><span class="p">,</span>
+    <span class="n">truth_samples_gvcf_paths</span><span class="p">,</span>
+    <span class="n">truth_samples_vds</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %I:%M:%S %p&quot;</span><span class="p">,</span>
+    <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;create_truth_samples_vds&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+<span class="c1"># Number of GiaB truth samples expected in the manifest (one gVCF per sample).</span>
+<span class="n">N_TRUTH_SAMPLES</span> <span class="o">=</span> <span class="mi">8</span>
+
+<span class="c1"># Small interval (PCSK9 gene) used by --test to keep the combiner run quick and cheap.</span>
+<span class="n">_TEST_CONTIG</span><span class="p">,</span> <span class="n">_TEST_START</span><span class="p">,</span> <span class="n">_TEST_END</span> <span class="o">=</span> <span class="s2">&quot;chr1&quot;</span><span class="p">,</span> <span class="mi">55039447</span><span class="p">,</span> <span class="mi">55064852</span>
+<span class="n">TEST_INTERVAL</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_TEST_CONTIG</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">_TEST_START</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">_TEST_END</span><span class="si">}</span><span class="s2">&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">_test_interval</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">Interval</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build the --test value Interval.</span>
+
+<span class="sd">    Returns a value ``Interval`` (not a parsed ``IntervalExpression``) so it can be</span>
+<span class="sd">    passed straight to ``new_combiner``, which reads ``interval.point_type`` at</span>
+<span class="sd">    construction. Built lazily here rather than at module load because constructing</span>
+<span class="sd">    ``hl.Locus`` resolves the reference genome, which would initialize Hail on import</span>
+<span class="sd">    and break the later ``_init_hail`` call.</span>
+
+<span class="sd">    :return: Value Interval spanning :data:`TEST_INTERVAL`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">hl</span><span class="o">.</span><span class="n">Interval</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">Locus</span><span class="p">(</span><span class="n">_TEST_CONTIG</span><span class="p">,</span> <span class="n">_TEST_START</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">),</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">Locus</span><span class="p">(</span><span class="n">_TEST_CONTIG</span><span class="p">,</span> <span class="n">_TEST_END</span><span class="p">,</span> <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">),</span>
+        <span class="n">includes_end</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="read_and_check_gvcf_paths"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/create_truth_samples_vds.html#gnomad_qc.v5.variant_qc.create_truth_samples_vds.read_and_check_gvcf_paths">[docs]</a><span class="k">def</span> <span class="nf">read_and_check_gvcf_paths</span><span class="p">(</span><span class="n">manifest_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Read and validate the truth-sample gVCF paths from a single-column TSV manifest.</span>
+
+<span class="sd">    Lines that do not start with ``gs://`` (e.g. a header line, blank lines, or</span>
+<span class="sd">    comments) are ignored, so the manifest can optionally have a header. Raises if the</span>
+<span class="sd">    manifest does not contain exactly :data:`N_TRUTH_SAMPLES` paths.</span>
+
+<span class="sd">    :param manifest_path: GCS path to the single-column TSV of gVCF paths.</span>
+<span class="sd">    :return: List of gVCF GCS paths.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">hfs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">manifest_path</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">gvcf_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f</span> <span class="k">if</span> <span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;gs://&quot;</span><span class="p">)]</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">gvcf_paths</span><span class="p">)</span> <span class="o">!=</span> <span class="n">N_TRUTH_SAMPLES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Expected </span><span class="si">{</span><span class="n">N_TRUTH_SAMPLES</span><span class="si">}</span><span class="s2"> gVCF path(s) in </span><span class="si">{</span><span class="n">manifest_path</span><span class="si">}</span><span class="s2">, found &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">gvcf_paths</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">gvcf_paths</span></div>
+
+
+<span class="k">def</span> <span class="nf">_verify_test_vds_against_gvcf</span><span class="p">(</span><span class="n">vds</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">VariantDataset</span><span class="p">,</span> <span class="n">gvcf_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Cross-check the test VDS against the source gVCF over TEST_INTERVAL.</span>
+
+<span class="sd">    Imports the single source gVCF directly, restricts to :data:`TEST_INTERVAL`, and</span>
+<span class="sd">    compares both halves of the VDS against it, confirming the combiner preserved the</span>
+<span class="sd">    actual data (not just that the VDS is structurally well-formed):</span>
+
+<span class="sd">    - **Variant calls** (``variant_data``): the per-call ``(locus, alleles, genotype)``</span>
+<span class="sd">      set. gVCF variant records carry a trailing ``&lt;NON_REF&gt;`` symbolic allele (reference</span>
+<span class="sd">      blocks have only ``&lt;NON_REF&gt;``); it is dropped so alleles line up with the VDS</span>
+<span class="sd">      representation. The VDS stores local ``LGT``/``LA``, converted to a global ``GT``</span>
+<span class="sd">      with :func:`hl.vds.lgt_to_gt` for the comparison.</span>
+<span class="sd">    - **Reference blocks** (``reference_data``): the per-block ``start_locus -&gt; (END,</span>
+<span class="sd">      GQ)`` map. Only blocks lying strictly inside the interval are compared: the</span>
+<span class="sd">      combiner clips reference blocks at the import-interval boundaries, so the first/last</span>
+<span class="sd">      block would legitimately differ from the gVCF&#39;s; interior blocks are untouched and</span>
+<span class="sd">      must match exactly. Assumes the default combiner reference fields (``GQ`` retained).</span>
+
+<span class="sd">    :param vds: The combined VDS to check.</span>
+<span class="sd">    :param gvcf_path: Path to the single source gVCF that was combined.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">non_ref</span> <span class="o">=</span> <span class="s2">&quot;&lt;NON_REF&gt;&quot;</span>
+    <span class="n">test_interval</span> <span class="o">=</span> <span class="n">_test_interval</span><span class="p">()</span>
+    <span class="n">start_pos</span> <span class="o">=</span> <span class="n">test_interval</span><span class="o">.</span><span class="n">start</span><span class="o">.</span><span class="n">position</span>
+    <span class="n">end_pos</span> <span class="o">=</span> <span class="n">test_interval</span><span class="o">.</span><span class="n">end</span><span class="o">.</span><span class="n">position</span>
+
+    <span class="c1"># Source gVCF over the interval.</span>
+    <span class="n">gvcf</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">import_vcf</span><span class="p">(</span>
+        <span class="n">gvcf_path</span><span class="p">,</span>
+        <span class="n">force_bgz</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">array_elements_required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">gvcf</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">gvcf</span><span class="p">,</span> <span class="p">[</span><span class="n">test_interval</span><span class="p">])</span>
+
+    <span class="c1"># --- Variant calls ---</span>
+    <span class="c1"># gVCF variant records have at least one real (non-&lt;NON_REF&gt;) ALT allele.</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="n">gvcf</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">gvcf</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">a</span> <span class="o">!=</span> <span class="n">non_ref</span><span class="p">)))</span>
+    <span class="n">var</span> <span class="o">=</span> <span class="n">var</span><span class="o">.</span><span class="n">annotate_rows</span><span class="p">(</span><span class="n">_alleles</span><span class="o">=</span><span class="n">var</span><span class="o">.</span><span class="n">alleles</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">a</span> <span class="o">!=</span> <span class="n">non_ref</span><span class="p">))</span>
+    <span class="n">gvcf_calls</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">_alleles</span><span class="p">)):</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">GT</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">var</span><span class="o">.</span><span class="n">entries</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="p">}</span>
+    <span class="n">vd</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">,</span> <span class="p">[</span><span class="n">test_interval</span><span class="p">])</span>
+    <span class="n">vd</span> <span class="o">=</span> <span class="n">vd</span><span class="o">.</span><span class="n">annotate_entries</span><span class="p">(</span><span class="n">_gt</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">lgt_to_gt</span><span class="p">(</span><span class="n">vd</span><span class="o">.</span><span class="n">LGT</span><span class="p">,</span> <span class="n">vd</span><span class="o">.</span><span class="n">LA</span><span class="p">))</span>
+    <span class="n">vds_calls</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">alleles</span><span class="p">)):</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">_gt</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">vd</span><span class="o">.</span><span class="n">entries</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="c1"># --- Reference blocks ---</span>
+    <span class="c1"># NOTE: interior-only comparison. The combiner imports only `test_interval`, so a</span>
+    <span class="c1"># reference block straddling either boundary is CLIPPED to the interval (its start is</span>
+    <span class="c1"># bumped up to / its END pulled back to the boundary). Such a block then no longer</span>
+    <span class="c1"># matches the gVCF&#39;s original (un-clipped) block, which would be a spurious failure.</span>
+    <span class="c1"># Interior blocks (start strictly after the interval start AND END strictly before</span>
+    <span class="c1"># the interval end) are never clipped, so they must match the gVCF exactly. We</span>
+    <span class="c1"># therefore drop the (at most two) boundary blocks from BOTH sides via the</span>
+    <span class="c1"># `start_pos &lt; ... &lt; end_pos` guards below and compare only the interior.</span>
+    <span class="c1"># gVCF reference blocks have &lt;NON_REF&gt; as their only ALT and an INFO/END field.</span>
+    <span class="n">ref</span> <span class="o">=</span> <span class="n">gvcf</span><span class="o">.</span><span class="n">filter_rows</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">gvcf</span><span class="o">.</span><span class="n">alleles</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">a</span><span class="p">:</span> <span class="n">a</span> <span class="o">==</span> <span class="n">non_ref</span><span class="p">)))</span>
+    <span class="n">gvcf_ref</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="p">):</span> <span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">END</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">GQ</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">ref</span><span class="o">.</span><span class="n">entries</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">start_pos</span> <span class="o">&lt;</span> <span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="o">.</span><span class="n">position</span> <span class="ow">and</span> <span class="n">e</span><span class="o">.</span><span class="n">info</span><span class="o">.</span><span class="n">END</span> <span class="o">&lt;</span> <span class="n">end_pos</span>
+    <span class="p">}</span>
+    <span class="n">rd</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span><span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="p">,</span> <span class="p">[</span><span class="n">test_interval</span><span class="p">])</span>
+    <span class="n">vds_ref</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="p">):</span> <span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">END</span><span class="p">,</span> <span class="n">e</span><span class="o">.</span><span class="n">GQ</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">rd</span><span class="o">.</span><span class="n">entries</span><span class="p">()</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">start_pos</span> <span class="o">&lt;</span> <span class="n">e</span><span class="o">.</span><span class="n">locus</span><span class="o">.</span><span class="n">position</span> <span class="ow">and</span> <span class="n">e</span><span class="o">.</span><span class="n">END</span> <span class="o">&lt;</span> <span class="n">end_pos</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span> <span class="nf">_diff</span><span class="p">(</span><span class="n">expected</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">actual</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">only_expected</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">expected</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">actual</span><span class="p">))[:</span><span class="mi">5</span><span class="p">]</span>
+        <span class="n">only_actual</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">actual</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">expected</span><span class="p">))[:</span><span class="mi">5</span><span class="p">]</span>
+        <span class="n">mismatched</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">expected</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">actual</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">set</span><span class="p">(</span><span class="n">expected</span><span class="p">)</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">actual</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">expected</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">!=</span> <span class="n">actual</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="p">][:</span><span class="mi">5</span><span class="p">]</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;only in gVCF: </span><span class="si">{</span><span class="n">only_expected</span><span class="si">}</span><span class="s2">; only in VDS: </span><span class="si">{</span><span class="n">only_actual</span><span class="si">}</span><span class="s2">; &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;mismatches (key, gvcf, vds): </span><span class="si">{</span><span class="n">mismatched</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">vds_calls</span> <span class="o">!=</span> <span class="n">gvcf_calls</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;variant calls differ — </span><span class="si">{</span><span class="n">_diff</span><span class="p">(</span><span class="n">gvcf_calls</span><span class="p">,</span><span class="w"> </span><span class="n">vds_calls</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">vds_ref</span> <span class="o">!=</span> <span class="n">gvcf_ref</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;reference blocks differ — </span><span class="si">{</span><span class="n">_diff</span><span class="p">(</span><span class="n">gvcf_ref</span><span class="p">,</span><span class="w"> </span><span class="n">vds_ref</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Combined VDS does not match the source gVCF over </span><span class="si">{</span><span class="n">TEST_INTERVAL</span><span class="si">}</span><span class="s2">: &quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">errors</span><span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Verified </span><span class="si">%d</span><span class="s2"> variant call(s) and </span><span class="si">%d</span><span class="s2"> interior reference block(s) in the VDS &quot;</span>
+        <span class="s2">&quot;match the source gVCF over </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">vds_calls</span><span class="p">),</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">vds_ref</span><span class="p">),</span>
+        <span class="n">TEST_INTERVAL</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="validate_vds"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/create_truth_samples_vds.html#gnomad_qc.v5.variant_qc.create_truth_samples_vds.validate_vds">[docs]</a><span class="k">def</span> <span class="nf">validate_vds</span><span class="p">(</span><span class="n">vds_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">manifest_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Verify a combined truth-samples VDS looks correct.</span>
+
+<span class="sd">    Runs Hail&#39;s :meth:`VariantDataset.validate` (the canonical structural check) plus</span>
+<span class="sd">    cheap sanity counts: non-empty data, expected sample count, and (in test mode) that</span>
+<span class="sd">    all variant loci fall within :data:`TEST_INTERVAL`. In test mode it additionally</span>
+<span class="sd">    cross-checks the variant calls and reference blocks against the source gVCF via</span>
+<span class="sd">    :func:`_verify_test_vds_against_gvcf`.</span>
+
+<span class="sd">    :param vds_path: Path to the VDS to validate.</span>
+<span class="sd">    :param test: Whether the VDS was produced by a ``--test`` run (1 gVCF, one interval).</span>
+<span class="sd">    :param manifest_path: Manifest path. Only used in test mode, to locate the single</span>
+<span class="sd">        source gVCF for the cross-check; a full run validates against</span>
+<span class="sd">        :data:`N_TRUTH_SAMPLES`.</span>
+<span class="sd">    :return: None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">vds</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">read_vds</span><span class="p">(</span><span class="n">vds_path</span><span class="p">)</span>
+    <span class="n">vds</span><span class="o">.</span><span class="n">validate</span><span class="p">()</span>
+
+    <span class="n">n_samples</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">n_samples</span><span class="p">()</span>
+    <span class="n">n_var</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">count_rows</span><span class="p">()</span>
+    <span class="n">n_ref</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">reference_data</span><span class="o">.</span><span class="n">count_rows</span><span class="p">()</span>
+    <span class="n">sample_ids</span> <span class="o">=</span> <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="o">.</span><span class="n">s</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;VDS </span><span class="si">%s</span><span class="s2">: </span><span class="si">%d</span><span class="s2"> sample(s) </span><span class="si">%s</span><span class="s2">, </span><span class="si">%d</span><span class="s2"> variant rows, </span><span class="si">%d</span><span class="s2"> reference rows.&quot;</span><span class="p">,</span>
+        <span class="n">vds_path</span><span class="p">,</span>
+        <span class="n">n_samples</span><span class="p">,</span>
+        <span class="n">sample_ids</span><span class="p">,</span>
+        <span class="n">n_var</span><span class="p">,</span>
+        <span class="n">n_ref</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">n_var</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">n_ref</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;VDS </span><span class="si">{</span><span class="n">vds_path</span><span class="si">}</span><span class="s2"> has no variant or reference data.&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">n_samples</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Expected 1 sample in test VDS, found </span><span class="si">{</span><span class="n">n_samples</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+        <span class="n">n_outside</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">filter_intervals</span><span class="p">(</span>
+            <span class="n">vds</span><span class="o">.</span><span class="n">variant_data</span><span class="p">,</span> <span class="p">[</span><span class="n">_test_interval</span><span class="p">()],</span> <span class="n">keep</span><span class="o">=</span><span class="kc">False</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">count_rows</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">n_outside</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_outside</span><span class="si">}</span><span class="s2"> variant rows fall outside </span><span class="si">{</span><span class="n">TEST_INTERVAL</span><span class="si">}</span><span class="s2">; the interval &quot;</span>
+                <span class="s2">&quot;restriction did not work.&quot;</span>
+            <span class="p">)</span>
+        <span class="c1"># Cross-check the combined data against the single source gVCF.</span>
+        <span class="n">_verify_test_vds_against_gvcf</span><span class="p">(</span><span class="n">vds</span><span class="p">,</span> <span class="n">read_and_check_gvcf_paths</span><span class="p">(</span><span class="n">manifest_path</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">n_samples</span> <span class="o">!=</span> <span class="n">N_TRUTH_SAMPLES</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Expected </span><span class="si">{</span><span class="n">N_TRUTH_SAMPLES</span><span class="si">}</span><span class="s2"> samples (one per manifest gVCF), found &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_samples</span><span class="si">}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;VDS </span><span class="si">%s</span><span class="s2"> passed validation.&quot;</span><span class="p">,</span> <span class="n">vds_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v5/variant_qc/create_truth_samples_vds.html#gnomad_qc.v5.variant_qc.create_truth_samples_vds.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a VDS of the GiaB truth samples from their gVCFs.&quot;&quot;&quot;</span>
+    <span class="c1"># NOTE: Script assumes we will only run this in Batch.</span>
+    <span class="n">environment</span> <span class="o">=</span> <span class="s2">&quot;batch&quot;</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">_init_hail</span><span class="p">(</span>
+        <span class="s2">&quot;create_truth_samples_vds&quot;</span><span class="p">,</span>
+        <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span>
+        <span class="n">billing_project</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gcp_billing_project</span><span class="p">,</span>
+        <span class="n">experimental</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">experimental</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">_get_batch_resource_kwargs</span><span class="p">(</span><span class="n">args</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="n">manifest_path</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">manifest_path</span>
+    <span class="n">output_path</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span><span class="si">}</span><span class="s2">truth_samples.vds&quot;</span>
+        <span class="k">if</span> <span class="n">test</span>
+        <span class="k">else</span> <span class="n">truth_samples_vds</span><span class="o">.</span><span class="n">path</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_truth_samples_vds</span><span class="p">:</span>
+        <span class="n">check_resource_existence</span><span class="p">(</span>
+            <span class="n">input_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;manifest&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">manifest_path</span><span class="p">]},</span>
+            <span class="n">output_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;--create-truth-samples-vds&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">output_path</span><span class="p">]},</span>
+            <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">gvcf_paths</span> <span class="o">=</span> <span class="n">read_and_check_gvcf_paths</span><span class="p">(</span><span class="n">manifest_path</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+            <span class="c1"># Cheapest possible real run: combine a single gVCF over one small</span>
+            <span class="c1"># interval, written to a temp path.</span>
+            <span class="n">gvcf_paths</span> <span class="o">=</span> <span class="n">gvcf_paths</span><span class="p">[:</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">interval_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;intervals&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">_test_interval</span><span class="p">()]}</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Test mode: combining 1 gVCF over </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span> <span class="n">TEST_INTERVAL</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Genome-optimized partitioning for the full combine.</span>
+            <span class="n">interval_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;use_genome_default_intervals&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Running the VDS combiner on </span><span class="si">%d</span><span class="s2"> gVCF(s) -&gt; </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">gvcf_paths</span><span class="p">),</span>
+            <span class="n">output_path</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">combiner</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">vds</span><span class="o">.</span><span class="n">new_combiner</span><span class="p">(</span>
+            <span class="n">output_path</span><span class="o">=</span><span class="n">output_path</span><span class="p">,</span>
+            <span class="n">temp_path</span><span class="o">=</span><span class="n">qc_temp_prefix</span><span class="p">(</span><span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">,</span> <span class="n">days</span><span class="o">=</span><span class="mi">4</span><span class="p">),</span>
+            <span class="c1"># Save the combiner plan so a failed/interrupted run can resume.</span>
+            <span class="n">save_path</span><span class="o">=</span><span class="n">get_truth_samples_combiner_plan</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">),</span>
+            <span class="n">gvcf_paths</span><span class="o">=</span><span class="n">gvcf_paths</span><span class="p">,</span>
+            <span class="n">reference_genome</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+            <span class="c1"># Overwrite any stale saved combiner plan when --overwrite is set.</span>
+            <span class="n">force</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">interval_kwargs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">combiner</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">validate_truth_samples_vds</span><span class="p">:</span>
+        <span class="n">check_resource_existence</span><span class="p">(</span>
+            <span class="n">input_step_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;--create-truth-samples-vds&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">output_path</span><span class="p">]},</span>
+        <span class="p">)</span>
+        <span class="n">validate_vds</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">test</span><span class="p">,</span> <span class="n">manifest_path</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite any stale saved combiner plan. Does not overwrite an existing VDS (the combiner will fail if the output VDS already exists, regardless of this flag).&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Cheap end-to-end test: combine only the first gVCF in the manifest over &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;a single small interval (</span><span class="si">{</span><span class="n">TEST_INTERVAL</span><span class="si">}</span><span class="s2">) and write to a temporary path.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--manifest-path&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;GCS path to the single-column TSV listing each truth-sample gVCF path &quot;</span>
+            <span class="s2">&quot;(one &#39;gs://...&#39; path per line).&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="n">truth_samples_gvcf_paths</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-truth-samples-vds&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Run the VDS combiner to create the truth-samples VDS.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--validate-truth-samples-vds&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Validate the combined VDS (structural invariants + sample/row sanity &quot;</span>
+            <span class="s2">&quot;counts). Can be run in the same invocation as --create-truth-samples-vds.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Batch/QoB backend configuration. This script always runs in the batch</span>
+    <span class="c1"># environment, so these tune the Hail Batch the combiner runs on.</span>
+    <span class="n">batch_group</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;batch configuration&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Optional parameters for the batch/QoB backend.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--gcp-billing-project&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;broad-mpg-gnomad&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Google Cloud billing project for reading requester pays buckets.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--experimental&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Route the QoB init through `hl.experimental.init` instead of&quot;</span>
+            <span class="s2">&quot; `hl.init` and attach the QoB driver to an existing Hail Batch.&quot;</span>
+            <span class="s2">&quot; Requires HAIL_BATCH_ID to be set in the env (Hail Batch&quot;</span>
+            <span class="s2">&quot; injects this inside batch jobs); raises if not. Without this&quot;</span>
+            <span class="s2">&quot; flag, each invocation creates its own Hail Batch.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--app-name&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Job name for batch/QoB backend.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--driver-cores&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of cores for the driver node. Pass a power of two&quot;</span>
+            <span class="s2">&quot; between 0.25 and 16 (as a string, e.g. &#39;2&#39; or &#39;0.5&#39;).&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--driver-memory&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Memory type for driver node (e.g., &#39;highmem&#39;).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--jvm-heap-size&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Max JVM heap size (-Xmx) for the in-process QoB driver under&quot;</span>
+            <span class="s2">&quot; --experimental, e.g. &#39;5g&#39; or &#39;2500m&#39;. Plumbed to&quot;</span>
+            <span class="s2">&quot; hl.experimental.init(jvm_heap_size=...). Set to ~50-70</span><span class="si">%%</span><span class="s2"> of&quot;</span>
+            <span class="s2">&quot; container memory; the rest is for native off-heap&quot;</span>
+            <span class="s2">&quot; (RegionPool), Python, and OS overhead. Ignored without&quot;</span>
+            <span class="s2">&quot; --experimental.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--worker-cores&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of cores per worker node. Pass a power of two&quot;</span>
+            <span class="s2">&quot; between 0.25 and 16 (as a string, e.g. &#39;1&#39; or &#39;0.5&#39;).&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">batch_group</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--worker-memory&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Memory type for worker nodes (e.g., &#39;highmem&#39;).&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">main</span><span class="p">(</span><span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">())</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
