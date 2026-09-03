@@ -1217,9 +1217,12 @@ def group_scout_loci_into_intervals(
     holds many target loci. This keeps the partition count in a healthy range
     regardless of how many target loci there are.
 
-    The derivation stays distributed: only the chunk-boundary loci (~2 per
-    interval) are collected to the driver, never the full target set, so a
-    genome-wide scout with hundreds of millions of target loci is safe.
+    The derivation stays distributed: only the chunk-boundary loci reach the
+    driver, ~2 per interval, so the collect scales as ``2 * n_loci /
+    rows_per_partition`` rather than ``n_loci``. The 20-row default is
+    calibrated for small high-allele strata; a large low-allele scout should
+    raise `rows_per_partition` (or set `n_partitions`) to keep the boundary
+    collect and the interval count bounded.
 
     Intervals never span contigs.
 
@@ -1254,6 +1257,13 @@ def group_scout_loci_into_intervals(
         n_partitions = math.ceil(n_loci / rows_per_partition)
     n_partitions = max(1, min(n_partitions, n_loci))
     chunk = max(1, math.ceil(n_loci / n_partitions))
+    if n_partitions > 100_000:
+        logger.warning(
+            "Deriving %d scout intervals (~%d boundary loci collected to the "
+            "driver); consider raising rows_per_partition for this stratum.",
+            n_partitions,
+            2 * n_partitions,
+        )
 
     # Each contig's global-index offset, from cumulative counts in genomic order.
     per_contig = dict(stats.per_contig)
@@ -1310,6 +1320,12 @@ def compute_scout_intervals(args) -> List[hl.utils.Interval]:
             range(scout_input_partitions) if scout_input_partitions else None
         ),
         annotate_meta=False,
+        # NOTE: deliberately honors --test (unlike compute_chunks' full-VDS
+        # probe): the scout is a full row-metadata scan, so a --test run
+        # should scout the 10-sample test VDS and stay cheap. Intervals
+        # derived from the test VDS are valid for the test-VDS load in main.
+        # compute_chunks must always probe the full VDS because
+        # --chunk-start/--chunk-stop are full-VDS partition indices.
         test=args.test,
         environment=environment,
     )
@@ -1450,7 +1466,7 @@ def compute_contig_intervals(args) -> List[hl.utils.Interval]:
     return intervals
 
 
-def _validate_args(args, test: bool) -> None:
+def _validate_args(args) -> None:
     """
     Raise ValueError for invalid CLI flag combinations.
 
@@ -1458,7 +1474,6 @@ def _validate_args(args, test: bool) -> None:
     (e.g. the union input count) stay with the code that derives them.
 
     :param args: Parsed CLI args.
-    :param test: Whether this is a test run (--test or --test-n-partitions).
     """
     if args.test_n_partitions is not None and (
         args.explode_partitions
@@ -1563,6 +1578,18 @@ def _validate_args(args, test: bool) -> None:
             "in a single invocation: both write to the AC info HT checkpoint "
             "path. Generate the per-stratum AC info HTs first, then union them "
             "in a separate run."
+        )
+
+    if (
+        args.create_final_info_ht
+        and args.generate_ac_info_ht
+        and (args.min_alleles is not None or args.max_alleles is not None)
+    ):
+        raise ValueError(
+            "--generate-ac-info-ht with --min-alleles/--max-alleles cannot be "
+            "combined with --create-final-info-ht: the single allele stratum "
+            "would be written to the derived 'union' path and joined straight "
+            "into the final info HT as if it covered every allele count."
         )
 
 
@@ -1712,7 +1739,7 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     test = args.test or test_n_partitions is not None
 
-    _validate_args(args, test)
+    _validate_args(args)
 
     info_ht_path = (
         args.info_ht_path_override
