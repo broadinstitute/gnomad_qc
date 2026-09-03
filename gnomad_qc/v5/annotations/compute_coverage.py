@@ -274,6 +274,24 @@ def _chunk_intervals_hash(data: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
+def _test_region_hash(args: argparse.Namespace) -> str:
+    """
+    Return the layout hash for a ``--test-region`` run.
+
+    Such runs have no chunk-intervals JSON, so the hash covers the region
+    strings instead. Two test runs on different regions under the same output
+    path then never see each other's chunk as already present. The
+    sub-interval count is deliberately not included: the merge and validate
+    steps do not pass it, and it does not change the chunk's contents.
+
+    :param args: Parsed CLI args with ``test_region`` set.
+    :return: ``test_region_`` plus a 16-hex-char hash.
+    """
+    return (
+        f"test_region_{_chunk_intervals_hash({'test_region': list(args.test_region)})}"
+    )
+
+
 def _chunk_path(cov_and_an_ht_path: str, idx: int, intervals_hash: str) -> str:
     """
     Return a sibling per-chunk HT path under ``<cov_and_an_path>_chunks/<hash>/``.
@@ -465,6 +483,23 @@ def _resolve_cov_and_an_ht_path(
     return _apply_path_suffix(path, full_suffix)
 
 
+def _group_membership_ht_path(project: str, environment: str, test: bool) -> str:
+    """
+    Return the path of the cell-reduced group_membership HT this script writes and reads.
+
+    It is kept apart (``_cells`` suffix) from the full-shape HT at the
+    ``group_membership`` resource path, which ``generate_frequency.py`` reads
+    and which does not expand cells.
+
+    :param project: "aou" or "gnomad".
+    :param environment: Compute environment.
+    :param test: Whether to route to the test path.
+    :return: Fully resolved group_membership HT path.
+    """
+    path = group_membership(test=test, data_set=project, environment=environment).path
+    return _apply_path_suffix(path, "cells")
+
+
 def _gnomad_v5_merged_path(environment: str, coverage_type: str, test: bool) -> str:
     """
     Return the gnomAD v5 merged (consent-drop-subtracted) coverage/AN HT path.
@@ -594,10 +629,15 @@ def _spans_sex_chromosome(intervals: Sequence[hl.utils.Interval]) -> bool:
     skip it.
 
     :param intervals: Locus intervals (Python ``hl.utils.Interval`` objects).
-    :return: True if any interval starts or ends on an X or Y contig.
+    :return: True if any interval covers any part of an X or Y contig.
     """
-    contigs = {i.start.contig for i in intervals} | {i.end.contig for i in intervals}
     rg = intervals[0].start.reference_genome
+    order = {c: k for k, c in enumerate(rg.contigs)}
+    # An interval may span several contigs (partition bounds are not
+    # contig-aligned), so take every contig from its start to its end.
+    contigs: set[str] = set()
+    for i in intervals:
+        contigs.update(rg.contigs[order[i.start.contig] : order[i.end.contig] + 1])
     return bool(contigs & (set(rg.x_contigs) | set(rg.y_contigs)))
 
 
@@ -716,14 +756,16 @@ def compute_all_release_stats_per_ref_site(
     )
     # Unify the genotype into LGT (ref blocks carry GT, variant sites LGT)
     # and drop GT so gt_field resolves to LGT. GT/LGT ploidy is identical,
-    # so AN is unchanged.
+    # so AN is unchanged. AoU arrives with adj already annotated; gnomAD keeps
+    # LAD so compute_stats_per_ref_site annotates adj itself, after the
+    # sex-ploidy adjustment (haploid calls get the haploid DP cutoff).
     mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT))
     mtds = mtds.select_entries(
-        *[f for f in ("LGT", "GQ", "DP", "adj", "END") if f in mtds.entry]
+        *[f for f in ("LGT", "GQ", "DP", "LAD", "adj", "END") if f in mtds.entry]
     )
     # AoU has nothing DP-based left to compute (adj is already annotated,
     # no coverage stats, no DP histogram), so drop DP from the densify. gnomAD
-    # keeps it for coverage_stats.
+    # keeps it for coverage_stats and adj.
     if project == "aou":
         mtds = mtds.drop("DP")
 
@@ -860,7 +902,8 @@ def merge_gnomad_coverage_hts(
     :param coverage_over_x_bins: Boundaries for the over-X fields. Default is :data:`COVERAGE_OVER_X_BINS`.
     :param gnomad_sample_count: v4 release genome count. Default `GNOMAD_SAMPLE_COUNT`.
     :param consent_drop_count: Consent-drop genome count. Default `GNOMAD_CONSENT_DROP_SAMPLE_COUNT`.
-    :return: gnomAD v5 genomes coverage HT.
+    :return: gnomAD v5 genomes coverage HT in the release schema (``mean``,
+        ``median_approx``, ``total_DP``, fraction ``over_X``).
     """
     logger.info(
         "Subtracting gnomAD v4 consent drop samples from gnomAD v4 genomes release HT..."
@@ -882,9 +925,17 @@ def merge_gnomad_coverage_hts(
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
 
-    # Keep median_approx from v4 release.
-    gnomad_ht = gnomad_ht.transmute(
-        median_approx_gnomad=gnomad_ht.median_approx_gnomad_release
+    # Back to the v4 release schema: mean and fraction over-X bins from the
+    # subtracted sums; median_approx is kept from the v4 release as-is. This
+    # HT is exported for release unchanged (AoU computes no coverage stats).
+    gnomad_ht = gnomad_ht.select(
+        mean=gnomad_ht.sum_gnomad / gnomad_v5_count,
+        median_approx=gnomad_ht.median_approx_gnomad_release,
+        total_DP=gnomad_ht.total_DP_gnomad,
+        **{
+            f"over_{x}": gnomad_ht[f"over_{x}_gnomad"] / gnomad_v5_count
+            for x in coverage_over_x_bins
+        },
     )
 
     gnomad_ht = gnomad_ht.select_globals()
@@ -1159,8 +1210,15 @@ def _load_project_vds(
         # get_aou_vds reads the precomputed sample artifact JSONs (release
         # samples, ID collisions; see write_aou_vds_sample_jsons) and falls
         # back to the sample-table scans only when they are absent.
+        # Release samples are already free of hard-filtered samples, and AN,
+        # GQ and DP never read alleles, so skip the hard-filter Table scan, the
+        # dead-allele LA/LAD rewrite and the count_cols() logging -- each is
+        # extra per-chunk work with no effect on the output.
         vds = get_aou_vds(
             release_only=True,
+            remove_hard_filtered_samples=False,
+            remove_dead_alleles=False,
+            log_sample_counts=False,
             filter_partitions=(
                 None if (sub_intervals or filter_intervals) else partition_range
             ),
@@ -1701,22 +1759,20 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         environment, test, args.results_environment
     )
 
-    group_membership_ht_path = group_membership(
-        test=test, data_set=project, environment=environment
-    ).path
+    group_membership_ht_path = _group_membership_ht_path(project, environment, test)
 
     sub_intervals: list[hl.utils.Interval] | None = None
     # sub_intervals with leading edges widened (see _expand_leading_edges).
     vds_read_intervals: list[hl.utils.Interval] | None = None
     # --test-region reads the VDS via filter_intervals instead; holds those.
     vds_filter_intervals: list[hl.utils.Interval] | None = None
-    # Layout hash namespacing the output; "test_region" for a --test-region run.
+    # Layout hash namespacing the output (see _test_region_hash for --test-region).
     intervals_hash: str
     if args.test_region:
         # Balance the region into n_sub sub-intervals with the same machinery as
         # the prod precompute: one partition per region OOMs a single worker at
         # AoU's ~365k samples.
-        intervals_hash = "test_region"
+        intervals_hash = _test_region_hash(args)
         region_intervals = [_parse_region_interval(r) for r in args.test_region]
         if n_sub > 1:
             vds_probe = _probe_vds(
@@ -2211,12 +2267,12 @@ def _eligible_chunk_indices(
     :param args: Parsed CLI args.
     :return: ``(chunk_contigs, eligible, intervals_hash)`` -- per-chunk contig
         (None for the single ``--test-region`` chunk), eligible indices after
-        the ``--chrom`` filter, and the layout hash ("test_region" when no
-        JSON).
+        the ``--chrom`` filter, and the layout hash (:func:`_test_region_hash`
+        when there is no JSON).
     """
     if args.test_region:
         chunk_contigs: list[str | None] = [None]
-        intervals_hash = "test_region"
+        intervals_hash = _test_region_hash(args)
     else:
         intervals_path = _chunk_intervals_path(args.environment, args.test)
         if not file_exists(intervals_path):
@@ -2757,10 +2813,14 @@ def main(args):
     # 50); 0.2.137/0.2.138 are unaffected. A branching factor above the chunk's
     # partition count (chunks read at most --read-subintervals-per-chunk) keeps
     # the scan combine single-level, avoiding the broken lowering. Chunk
-    # workers only: the single-job path runs on dataproc (0.2.137).
+    # workers only: the single-job path runs on dataproc (0.2.137). A
+    # --test-region chunk with one sub-interval reads the region's native VDS
+    # partitions (filter_intervals), so it gets a fixed high floor instead.
     branching_factor = None
     if args.run_chunk:
-        branching_factor = max(50, 2 * args.read_subintervals_per_chunk)
+        branching_factor = max(
+            50, 2 * args.read_subintervals_per_chunk, 1024 if args.test_region else 0
+        )
 
     _init_hail(
         log_name,
@@ -2810,9 +2870,7 @@ def main(args):
             )
             return
 
-        group_membership_ht_path = group_membership(
-            test=test, data_set=project, environment=environment
-        ).path
+        group_membership_ht_path = _group_membership_ht_path(project, environment, test)
 
         downsampling_ht_path = (
             get_aou_downsampling(test=test, environment=environment).path
@@ -3119,7 +3177,18 @@ def main(args):
                 gnomad_release_ht = _filter_to_locus_bounds(
                     gnomad_release_ht, gnomad_ht
                 )
-            ht = merge_gnomad_coverage_hts(gnomad_ht, gnomad_release_ht)
+            # The subtraction rebuilds DP sums as mean * n, so n must be the
+            # cohort the HT was actually computed on, not the script constant.
+            consent_drop_count = hl.eval(gnomad_ht.coverage_stats_meta_sample_count)
+            if consent_drop_count != GNOMAD_CONSENT_DROP_SAMPLE_COUNT:
+                logger.warning(
+                    "Consent-drop coverage HT has %d samples; script constant is %d.",
+                    consent_drop_count,
+                    GNOMAD_CONSENT_DROP_SAMPLE_COUNT,
+                )
+            ht = merge_gnomad_coverage_hts(
+                gnomad_ht, gnomad_release_ht, consent_drop_count=consent_drop_count
+            )
             ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
 
         if args.merge_gnomad_an:
