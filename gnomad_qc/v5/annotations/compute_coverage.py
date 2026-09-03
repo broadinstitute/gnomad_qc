@@ -675,24 +675,26 @@ def compute_all_release_stats_per_ref_site(
         ``compute_stats_per_ref_site`` takes the ``hl.experimental.densify``
         path instead of ``to_dense_mt``. Default is False.
     :return: HT keyed by locus with per-stratum ``AN``; flat coverage fields
-        (global adj group) for gnomAD; ``qual_hists`` for AoU. AoU reference
-        blocks carry no DP, so its coverage would measure ~0 genome-wide
-        (chr1:55.06-55.16Mb: mean 0.048x, ``over_1`` 432 of 365,318) and is
-        never computed.
+        (global adj group) for gnomAD; ``qual_hists`` (adj GQ histogram only)
+        for AoU. AoU reference blocks carry no DP, so its coverage would
+        measure ~0 genome-wide (chr1:55.06-55.16Mb: mean 0.048x, ``over_1``
+        432 of 365,318) and is never computed, and for the same reason its DP
+        histogram at reference sites is empty and is not computed either.
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
         """
-        Build adj-only GQ + DP histograms from a [GQ, DP, adj] triple.
+        Build the adj-only GQ histogram from a [GQ, adj] pair.
 
         Selecting ``.qual_hists`` drops ``raw_qual_hists`` (approved for
-        removal from v5), so Hail prunes those aggregations.
+        removal from v5), so Hail prunes those aggregations. No DP histogram:
+        AoU reference blocks carry no DP, so it would be empty at reference
+        sites (also approved for removal).
         """
         return hl.struct(
             qual_hists=qual_hist_expr(
                 gq_expr=qual_expr[0],
-                dp_expr=qual_expr[1],
-                adj_expr=qual_expr[2] == 1,
+                adj_expr=qual_expr[1] == 1,
                 split_adj_and_raw=True,
             ).qual_hists
         )
@@ -718,7 +720,7 @@ def compute_all_release_stats_per_ref_site(
     if project == "gnomad":
         entry_agg_group_membership["coverage_stats"] = [{"group": "adj"}]
     if project == "aou":
-        entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.DP, t.adj], _get_hists)
+        entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.adj], _get_hists)
 
         # qual_hists does its own adj filtering (adj is an argument), so it runs
         # on the raw group; _get_hists keeps only the adj-filtered result.
@@ -757,6 +759,10 @@ def compute_all_release_stats_per_ref_site(
         mtds = mtds.select_entries(
             *[f for f in ("LGT", "GQ", "DP", "adj", "END") if f in mtds.entry]
         )
+        # AoU has nothing DP-based left to compute (adj is already annotated,
+        # no coverage stats, no DP histogram), so drop DP from the densify.
+        if project == "aou":
+            mtds = mtds.drop("DP")
 
     ht = compute_stats_per_ref_site(
         mtds,
@@ -764,7 +770,7 @@ def compute_all_release_stats_per_ref_site(
         entry_agg_funcs,
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
-        entry_keep_fields=["GQ", "DP"],
+        entry_keep_fields=["GQ", "DP"] if project == "gnomad" else ["GQ"],
         reducible_aggs={"AN"} if reduce_min_aggs else None,
         entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field=(None if sex_karyotype_field is None else "sex_karyotype"),
@@ -1095,11 +1101,12 @@ def join_aou_and_gnomad_qual_hists_ht(
     aou_ht = _rename_fields(aou_ht, "qual_hists", "aou", rename_globals=False)
     gnomad_ht = _rename_fields(gnomad_ht, "qual_hists", "gnomad", rename_globals=False)
     ht = aou_ht.join(gnomad_ht, "left")
+    # Only the adj GQ histogram survives in v5: the v4 raw_qual_hists are not
+    # merged, and dp_hist_all is not computed for AoU (no DP on its reference
+    # blocks), so the v4 one is dropped rather than released unmerged.
     qual_hists = [
         "gq_hist_all",
-        "dp_hist_all",
     ]
-    # Only adj qual_hists survive in v5; the v4 raw_qual_hists are not merged.
     hist_structs = {
         "qual_hists": qual_hists,
     }
