@@ -27,8 +27,8 @@ read inside ``get_aou_vds``.
 Workflow::
 
     1. (AoU) --write-aou-downsampling-ht
-    2. --write-group-membership-ht (--reduce-min-aggs for the leaf-only
-       variant)
+    2. --write-group-membership-ht: one aggregation cell per distinct
+       membership pattern; every AN group is reconstructed by summing cells.
     3. --write-vep-context-sites: deduped, telomere/centromere/chrM-stripped
        sites HT -- the definition of "every site the compute must cover".
     4. Compute: --compute-all-cov-release-stats-ht (strict single job), or
@@ -140,15 +140,6 @@ logging.basicConfig(
 logger = logging.getLogger("v5_coverage_and_an")
 logger.setLevel(logging.INFO)
 
-# Overall groups that non-reducible aggregations are pinned to via
-# ``entry_agg_group_membership`` (qual_hists → raw; coverage_stats → adj,
-# gnomAD only). Under --reduce-min-aggs these must stay leaves in the reduced
-# group_membership HT so they are read directly instead of rebuilt per row.
-# Not used under --reduce-cells: there the raw group is already a single cell
-# (all samples) and pinning adj would add a full extra pass over every sample
-# per site, when it is reconstructed from the adj cells for free.
-PINNED_LEAF_GROUPS = [{"group": "adj"}, {"group": "raw"}]
-
 # All Batch jobs are pinned to the region the input data lives in (AoU VDS,
 # vep_context, and outputs are us-central1) to avoid inter-region GCS egress.
 BATCH_REGIONS = ["us-central1"]
@@ -196,24 +187,24 @@ def get_group_membership_ht(
     meta_ht: hl.Table,
     project: str,
     ds_ht: hl.Table | None = None,
-    reduce_min_aggs: bool = False,
-    reduce_cells: bool = False,
 ) -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
 
+    The HT is reduced to cells (``reduce_to_cells=True``): one aggregation per
+    distinct membership pattern instead of one per group, with every group --
+    downsamplings included -- reconstructed by summing cells. Compute calls
+    must pass ``reducible_aggs={"AN"}`` and pin every non-summable annotation
+    (qual_hists, coverage_stats) to a single group via
+    ``entry_agg_group_membership``; a pinned group that is not itself a cell
+    (gnomAD coverage_stats -> adj) is aggregated over the union of its cells.
+
     :param meta_ht: Meta HT.
     :param project: "aou" or "gnomad". For "gnomad", filters ``meta_ht`` to the consent-drop samples.
     :param ds_ht: Optional downsampling HT (AoU only).
-    :param reduce_min_aggs: If True, build reduced; compute calls must then pass ``reducible_aggs`` and list non-reducible annotations under ``entry_agg_group_membership``. Leaf reduction (``reduce_to_minimal_groups``) unless ``reduce_cells``.
-    :param reduce_cells: If True (requires ``reduce_min_aggs``), reduce to cells (``reduce_to_cells``): one aggregation per distinct membership pattern, with every group -- downsamplings included -- reconstructed by summing cells. No groups are pinned as leaves.
     :return: Group membership HT.
     """
-    reduce_kwargs = dict(
-        reduce_to_minimal_groups=reduce_min_aggs and not reduce_cells,
-        reduce_to_cells=reduce_cells,
-        force_leaf_groups=None if reduce_cells else PINNED_LEAF_GROUPS,
-    )
+    reduce_kwargs = dict(reduce_to_cells=True)
     if project == "aou":
         ht = generate_freq_group_membership_array(
             meta_ht,
@@ -474,28 +465,6 @@ def _resolve_cov_and_an_ht_path(
     return _apply_path_suffix(path, full_suffix)
 
 
-def _resolve_group_membership_ht_path(
-    project: str,
-    environment: str,
-    test: bool,
-    reduce_min_aggs: bool,
-    reduce_cells: bool = False,
-) -> str:
-    """
-    Return the group_membership HT path, with ``_reduce`` appended under ``reduce_min_aggs`` and ``_cells`` under ``reduce_cells``.
-
-    :param project: "aou" or "gnomad".
-    :param environment: Compute environment.
-    :param test: Whether to route to the test path.
-    :param reduce_min_aggs: If True, append ``_reduce`` (the leaf-only HT is kept separate).
-    :param reduce_cells: If True, append ``_cells`` instead (the cell HT is kept separate from both).
-    :return: Fully resolved group_membership HT path.
-    """
-    path = group_membership(test=test, data_set=project, environment=environment).path
-    suffix = "cells" if reduce_cells else ("reduce" if reduce_min_aggs else None)
-    return _apply_path_suffix(path, suffix)
-
-
 def _gnomad_v5_merged_path(environment: str, coverage_type: str, test: bool) -> str:
     """
     Return the gnomAD v5 merged (consent-drop-subtracted) coverage/AN HT path.
@@ -640,8 +609,6 @@ def compute_all_release_stats_per_ref_site(
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
     interval_ht: hl.Table | None = None,
     group_membership_ht: hl.Table | None = None,
-    reduce_min_aggs: bool = False,
-    experimental_densify: bool = False,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -667,13 +634,10 @@ def compute_all_release_stats_per_ref_site(
     :param interval_ht: Optional interval Table for partition pruning. Unused
         on the v5 path.
     :param group_membership_ht: Group-membership Table defining the per-stratum
-        sample sets AN is fanned out across.
-    :param reduce_min_aggs: If True, pass ``reducible_aggs={"AN"}`` so AN goes
-        through the leaf-reduction path; requires a ``group_membership_ht``
-        built with ``reduce_to_minimal_groups=True``.
-    :param experimental_densify: If True, merge the VDS into one sparse MT so
-        ``compute_stats_per_ref_site`` takes the ``hl.experimental.densify``
-        path instead of ``to_dense_mt``. Default is False.
+        sample sets AN is fanned out across. Must be the cell-reduced HT from
+        :func:`get_group_membership_ht`: AN is passed as the only
+        ``reducible_aggs`` entry, so it is aggregated once per cell and every
+        group is rebuilt by summing cells.
     :return: HT keyed by locus with per-stratum ``AN``; flat coverage fields
         (global adj group) for gnomAD; ``qual_hists`` (adj GQ histogram only)
         for AoU. AoU reference blocks carry no DP, so its coverage would
@@ -747,22 +711,21 @@ def compute_all_release_stats_per_ref_site(
     # lean hl.experimental.densify scan instead of to_dense_mt's outer-join +
     # per-cell coalesce; outputs match. A missing ref allele skips
     # to_merged_sparse_mt's sequence-context branch (no FASTA needed).
-    mtds = vds
-    if experimental_densify:
-        mtds = hl.vds.to_merged_sparse_mt(
-            vds, ref_allele_function=lambda locus: hl.missing("str")
-        )
-        # Unify the genotype into LGT (ref blocks carry GT, variant sites LGT)
-        # and drop GT so gt_field resolves to LGT. GT/LGT ploidy is identical,
-        # so AN is unchanged.
-        mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT))
-        mtds = mtds.select_entries(
-            *[f for f in ("LGT", "GQ", "DP", "adj", "END") if f in mtds.entry]
-        )
-        # AoU has nothing DP-based left to compute (adj is already annotated,
-        # no coverage stats, no DP histogram), so drop DP from the densify.
-        if project == "aou":
-            mtds = mtds.drop("DP")
+    mtds = hl.vds.to_merged_sparse_mt(
+        vds, ref_allele_function=lambda locus: hl.missing("str")
+    )
+    # Unify the genotype into LGT (ref blocks carry GT, variant sites LGT)
+    # and drop GT so gt_field resolves to LGT. GT/LGT ploidy is identical,
+    # so AN is unchanged.
+    mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT))
+    mtds = mtds.select_entries(
+        *[f for f in ("LGT", "GQ", "DP", "adj", "END") if f in mtds.entry]
+    )
+    # AoU has nothing DP-based left to compute (adj is already annotated,
+    # no coverage stats, no DP histogram), so drop DP from the densify. gnomAD
+    # keeps it for coverage_stats.
+    if project == "aou":
+        mtds = mtds.drop("DP")
 
     ht = compute_stats_per_ref_site(
         mtds,
@@ -771,7 +734,7 @@ def compute_all_release_stats_per_ref_site(
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
         entry_keep_fields=["GQ", "DP"] if project == "gnomad" else ["GQ"],
-        reducible_aggs={"AN"} if reduce_min_aggs else None,
+        reducible_aggs={"AN"},
         entry_agg_group_membership=entry_agg_group_membership,
         sex_karyotype_field=(None if sex_karyotype_field is None else "sex_karyotype"),
     )
@@ -1738,13 +1701,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         environment, test, args.results_environment
     )
 
-    group_membership_ht_path = _resolve_group_membership_ht_path(
-        project,
-        environment,
-        test=test,
-        reduce_min_aggs=args.reduce_min_aggs,
-        reduce_cells=args.reduce_cells,
-    )
+    group_membership_ht_path = group_membership(
+        test=test, data_set=project, environment=environment
+    ).path
 
     sub_intervals: list[hl.utils.Interval] | None = None
     # sub_intervals with leading edges widened (see _expand_leading_edges).
@@ -1870,8 +1829,6 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         sex_karyotype_field=sex_karyotype_field,
         project=project,
         group_membership_ht=hl.read_table(group_membership_ht_path),
-        reduce_min_aggs=args.reduce_min_aggs,
-        experimental_densify=args.experimental_densify,
     )
     # Provenance: the merge inherits globals from its first input, so the final
     # HT records the layout that produced it.
@@ -2032,12 +1989,6 @@ def _build_relay_common_flags(args: argparse.Namespace, *, chunk: bool) -> str:
         flags.append(
             f"--read-subintervals-per-chunk {args.read_subintervals_per_chunk}"
         )
-        if args.reduce_min_aggs:
-            flags.append("--reduce-min-aggs")
-        if args.reduce_cells:
-            flags.append("--reduce-cells")
-        if args.experimental_densify:
-            flags.append("--experimental-densify")
         if args.test_sample_subset:
             flags.append("--test-sample-subset")
         if args.chrom:
@@ -2753,8 +2704,6 @@ def main(args):
     test = args.test
     chrom = args.chrom
     overwrite = args.overwrite
-    reduce_min_aggs = args.reduce_min_aggs
-    reduce_cells = args.reduce_cells
     results_environment = _results_environment(
         environment, test, args.results_environment
     )
@@ -2802,14 +2751,15 @@ def main(args):
 
     # QoB / dataproc init — ROLE 2 (worker) and ROLE 3 (in-process) only.
     #
-    # Hail 0.2.139 workaround: the --experimental-densify scan crashes at
+    # Hail 0.2.139 workaround: the hl.experimental.densify scan crashes at
     # compile time (NotImplementedError, SimpleSStream.settableTupleTypes) when
     # the scanned table has more partitions than the branching factor (default
     # 50); 0.2.137/0.2.138 are unaffected. A branching factor above the chunk's
     # partition count (chunks read at most --read-subintervals-per-chunk) keeps
-    # the scan combine single-level, avoiding the broken lowering.
+    # the scan combine single-level, avoiding the broken lowering. Chunk
+    # workers only: the single-job path runs on dataproc (0.2.137).
     branching_factor = None
-    if args.run_chunk and args.experimental_densify:
+    if args.run_chunk:
         branching_factor = max(50, 2 * args.read_subintervals_per_chunk)
 
     _init_hail(
@@ -2860,13 +2810,9 @@ def main(args):
             )
             return
 
-        group_membership_ht_path = _resolve_group_membership_ht_path(
-            project,
-            environment,
-            test=test,
-            reduce_min_aggs=reduce_min_aggs,
-            reduce_cells=reduce_cells,
-        )
+        group_membership_ht_path = group_membership(
+            test=test, data_set=project, environment=environment
+        ).path
 
         downsampling_ht_path = (
             get_aou_downsampling(test=test, environment=environment).path
@@ -2987,8 +2933,6 @@ def main(args):
                 group_membership_ht = get_group_membership_ht(
                     v4_meta(data_type="genomes").ht(),
                     project=project,
-                    reduce_min_aggs=reduce_min_aggs,
-                    reduce_cells=reduce_cells,
                 )
             else:
                 logger.info("Writing AoU group membership HT...")
@@ -2999,8 +2943,6 @@ def main(args):
                     meta_ht=aou_meta_ht,
                     project=project,
                     ds_ht=hl.read_table(downsampling_ht_path),
-                    reduce_min_aggs=reduce_min_aggs,
-                    reduce_cells=reduce_cells,
                 )
             # Already coalesced to GROUP_MEMBERSHIP_N_PARTITIONS in
             # get_group_membership_ht; writing materializes it for every consumer.
@@ -3092,7 +3034,6 @@ def main(args):
                 sex_karyotype_field=sex_karyotype_field,
                 project=project,
                 group_membership_ht=hl.read_table(group_membership_ht_path),
-                reduce_min_aggs=reduce_min_aggs,
             )
             if args.n_partitions is not None:
                 # Temp checkpoint only to stabilize before the coalesce.
@@ -3457,36 +3398,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help=("Like --cov-and-an-output-suffix, for the --merge-qual-hists output."),
-    )
-    parser.add_argument(
-        "--experimental-densify",
-        action="store_true",
-        help=(
-            "Compute via hl.experimental.densify on a merged sparse MT instead"
-            " of hl.vds.to_dense_mt (equivalent output; A/Bs the densify cost)."
-            " Fan-out chunk path only."
-        ),
-    )
-    parser.add_argument(
-        "--reduce-min-aggs",
-        action="store_true",
-        help=(
-            "Leaf-only reduce_to_minimal_groups optimization: build the"
-            " group_membership HT reduced and pass reducible_aggs={'AN'} at"
-            " compute. Must be set consistently for the write and compute runs."
-        ),
-    )
-    parser.add_argument(
-        "--reduce-cells",
-        action="store_true",
-        help=(
-            "With --reduce-min-aggs: reduce the group_membership HT to cells"
-            " (reduce_to_cells) instead of leaf groups, so AN is aggregated once"
-            " per distinct membership pattern and every group, downsamplings"
-            " included, is reconstructed by summing cells. Writes/reads the"
-            " _cells group_membership HT. Must be set consistently for the write"
-            " and compute runs."
-        ),
     )
     test_group = parser.add_argument_group(
         "Test mode",
@@ -4024,9 +3935,6 @@ if __name__ == "__main__":
             "--submit-orchestrator requires --use-batch-fanout or"
             " --merge-cov-chunks (it wraps an orchestrator run in a Batch job)."
         )
-
-    if args.reduce_cells and not args.reduce_min_aggs:
-        parser.error("--reduce-cells requires --reduce-min-aggs.")
 
     if args.jvm_heap_size is not None and not args.experimental:
         parser.error(
