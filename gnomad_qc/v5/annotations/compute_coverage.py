@@ -1993,7 +1993,7 @@ def _build_setup_command(
         # compatible, so lowering the pin without rewriting the input HTs
         # breaks the fan-out (JSON artifacts are immune).
         "/opt/venv/bin/pip install --quiet --upgrade --force-reinstall"
-        " --no-deps hail==0.2.128\n"
+        " --no-deps hail==0.2.137\n"
         f"curl -sSL {methods_tarball} | tar xz -C /tmp\n"
         f"mv /tmp/gnomad_methods-{methods_dir_suffix} /tmp/gnomad_methods\n"
         f"curl -sSL {qc_tarball} | tar xz -C /tmp\n"
