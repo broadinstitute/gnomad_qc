@@ -559,7 +559,8 @@ def main(args):
 
     overwrite = args.overwrite
     test_n_partitions = args.test_n_partitions
-    test = args.test or test_n_partitions is not None
+    test_chrom = args.test_chrom
+    test = args.test or test_n_partitions is not None or test_chrom is not None
 
     info_ht_path = get_info_ht(test=test, environment=environment).path
     trio_stats_ht_path = get_trio_stats(test=test, environment=environment).path
@@ -610,17 +611,32 @@ def main(args):
         if args.export_info_vcf:
             logger.info("Exporting info ht as VCF...")
             out_info_vcf_path = info_vcf_path(test=test, environment=environment)
+            # --test-chrom cuts the full info HT to the requested contigs. The test info
+            # HT is partition-filtered, so its contigs won't match a test run's -L args.
+            in_info_ht_path = (
+                get_info_ht(test=False, environment=environment).path
+                if test_chrom
+                else info_ht_path
+            )
             _check_resource_existence(
                 environment=environment,
                 input_step_resources={
-                    "info_ht": [info_ht_path],
+                    "info_ht": [in_info_ht_path],
                 },
                 output_step_resources={
                     "info_vcf_path": [out_info_vcf_path],
                 },
                 overwrite=overwrite,
             )
-            info_ht = hl.read_table(info_ht_path)
+            info_ht = hl.read_table(in_info_ht_path)
+            if test_chrom:
+                info_ht = hl.filter_intervals(
+                    info_ht,
+                    [
+                        hl.parse_locus_interval(c, reference_genome="GRCh38")
+                        for c in test_chrom
+                    ],
+                )
             # TODO: Check if AS_QUALapprox and AS_VarDP are needed for v5 (not used for v4) and if so need preceeded pipe.
             # Reformat AS_SB_TABLE to be a nested array of arrays for proper use
             # within the 'adjust_vcf_incompatible_types' function.
@@ -634,7 +650,19 @@ def main(args):
             info_ht = adjust_vcf_incompatible_types(
                 info_ht, pipe_delimited_annotations=[]
             )
-            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
+            # GATK's isolation forest infers allele-specific mode from Number=A in the
+            # header (the explicit --use-allele-specific-annotations flag was replaced
+            # by this header check in GATK 4.5.0.0); these features are scalars here, so
+            # Hail would write Number=1. AS mode also forces
+            # START_POSITION_AND_MINIMAL_REPRESENTATION resource matching, so the header
+            # matters even though the input is split.
+            vcf_metadata = {
+                "info": {
+                    f: {"Number": "A", "Type": "Float", "Description": ""}
+                    for f in INFO_FEATURES
+                }
+            }
+            hl.export_vcf(info_ht, out_info_vcf_path, tabix=True, metadata=vcf_metadata)
 
         if args.generate_trio_stats:
             chrom = args.chrom
@@ -875,6 +903,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "stats are computed one chromosome at a time."
         ),
         type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--test-chrom",
+        help=(
+            "Contig(s) (e.g. 'chr22') to cut the full info HT to for --export-info-vcf. "
+            "Use to match the contigs a downstream test run scores. Implies --test."
+        ),
+        type=str,
+        nargs="+",
         default=None,
     )
     parser.add_argument(
