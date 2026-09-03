@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import Dict
+from typing import Dict, List
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
@@ -42,7 +42,13 @@ from gnomad_qc.v5.resources.basics import (
     get_aou_vds,
     get_logging_path,
 )
-from gnomad_qc.v5.resources.sample_qc import dense_trios, pedigree, relatedness
+from gnomad_qc.v5.resources.sample_qc import (
+    DENSE_TRIO_TEST_CHROMS,
+    dense_trios,
+    get_dense_trio_chroms,
+    pedigree,
+    relatedness,
+)
 
 logging.basicConfig(
     format="%(levelname)s (%(name)s %(lineno)s): %(message)s",
@@ -224,6 +230,145 @@ def run_generate_trio_stats(
     mt = mt.transmute_entries(GT=mt.LGT)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
     return generate_trio_stats(mt)
+
+
+# Per-chromosome trio stats inherit the dense trio MT's fine partitioning
+# (~2k-12k partitions each for a few tens of MB), so each is coalesced down to
+# this value -- both at generation and again as it's read into the union.
+# Across the 22 autosomes that's ~22 * 25 = ~550 partitions combined, versus
+# the ~138k we'd get from their native partitionings.
+TRIO_STATS_N_PARTITIONS_PER_CHROM = 25
+
+# adj/raw paired count fields produced by generate_trio_stats_expr.
+TRIO_STATS_PAIRED_FIELDS = [
+    "n_transmitted",
+    "n_untransmitted",
+    "n_de_novos",
+    "ac_parents",
+    "an_parents",
+    "ac_children",
+    "an_children",
+]
+
+
+def validate_trio_stats(
+    ht: hl.Table,
+    per_chrom_hts: Dict[str, hl.Table],
+    expected_chroms: List[str],
+) -> None:
+    """
+    Validate the combined trio stats HT for union integrity and value sanity.
+
+    Raises on hard failures (row/contig loss, schema mismatch, invariant
+    violations); logs biological plausibility metrics for eyeballing.
+
+    :param ht: Combined (unioned) trio stats HT.
+    :param per_chrom_hts: Per-chromosome trio stats HTs keyed by contig.
+    :param expected_chroms: Contigs the union should cover (autosomes).
+    """
+    # Structural checks (cheap; catch a broken union first).
+    ref_ht = per_chrom_hts[expected_chroms[0]]
+    if ht.row.dtype != ref_ht.row.dtype or list(ht.key) != list(ref_ht.key):
+        raise ValueError("Combined trio stats schema/key differs from per-chrom HT.")
+
+    per_chrom_counts = {c: h.count() for c, h in per_chrom_hts.items()}
+
+    # Single pass over the combined HT for everything else.
+    agg = ht.aggregate(
+        hl.struct(
+            n_rows=hl.agg.count(),
+            contigs=hl.agg.counter(ht.locus.contig),
+            n_multiallelic=hl.agg.count_where(hl.len(ht.alleles) != 2),
+            n_non_autosome=hl.agg.count_where(~ht.locus.in_autosome()),
+            n_missing=hl.agg.count_where(
+                hl.any(
+                    [
+                        hl.is_missing(ht[f"{f}_{s}"])
+                        for f in TRIO_STATS_PAIRED_FIELDS
+                        for s in ["raw", "adj"]
+                    ]
+                )
+            ),
+            n_negative=hl.agg.count_where(
+                hl.any(
+                    [
+                        ht[f"{f}_{s}"] < 0
+                        for f in TRIO_STATS_PAIRED_FIELDS
+                        for s in ["raw", "adj"]
+                    ]
+                )
+            ),
+            # adj must be a subset of raw for every paired field.
+            n_adj_gt_raw=hl.agg.count_where(
+                hl.any(
+                    [ht[f"{f}_adj"] > ht[f"{f}_raw"] for f in TRIO_STATS_PAIRED_FIELDS]
+                )
+            ),
+            # AC <= AN for parents and children, both strata.
+            n_ac_gt_an=hl.agg.count_where(
+                hl.any(
+                    [
+                        ht[f"ac_{grp}_{s}"] > ht[f"an_{grp}_{s}"]
+                        for grp in ["parents", "children"]
+                        for s in ["raw", "adj"]
+                    ]
+                )
+            ),
+            sum_t_adj=hl.agg.sum(ht.n_transmitted_adj),
+            sum_u_adj=hl.agg.sum(ht.n_untransmitted_adj),
+            sum_dnm_raw=hl.agg.sum(ht.n_de_novos_raw),
+            sum_dnm_adj=hl.agg.sum(ht.n_de_novos_adj),
+        )
+    )
+
+    observed_contigs = set(agg.contigs)
+    problems = []
+
+    # Row-count conservation (union concatenates, so exact).
+    total_per_chrom = sum(per_chrom_counts.values())
+    if agg.n_rows != total_per_chrom:
+        problems.append(
+            f"row count {agg.n_rows} != sum of per-chrom counts {total_per_chrom}"
+        )
+    # Per-contig conservation + contig set.
+    if observed_contigs != set(expected_chroms):
+        problems.append(
+            f"contigs {sorted(observed_contigs)} != expected {sorted(expected_chroms)}"
+        )
+    for c in expected_chroms:
+        if agg.contigs.get(c, 0) != per_chrom_counts.get(c):
+            problems.append(
+                f"{c}: combined {agg.contigs.get(c, 0)} != per-chrom "
+                f"{per_chrom_counts.get(c)}"
+            )
+    # Content invariants (all must be zero).
+    for label, n in [
+        ("multiallelic rows", agg.n_multiallelic),
+        ("non-autosomal rows", agg.n_non_autosome),
+        ("rows with missing counts", agg.n_missing),
+        ("rows with negative counts", agg.n_negative),
+        ("rows where adj > raw", agg.n_adj_gt_raw),
+        ("rows where AC > AN", agg.n_ac_gt_an),
+    ]:
+        if n != 0:
+            problems.append(f"{n} {label}")
+
+    # Biological plausibility (logged, not fatal).
+    denom = agg.sum_t_adj + agg.sum_u_adj
+    ratio = agg.sum_t_adj / denom if denom > 0 else float("nan")
+    logger.info(
+        "Combined trio stats: %d rows across %d contigs.",
+        agg.n_rows,
+        len(observed_contigs),
+    )
+    logger.info("Transmission ratio (adj) = %.4f (expect ~0.5).", ratio)
+    logger.info("De novos: raw=%d, adj=%d.", agg.sum_dnm_raw, agg.sum_dnm_adj)
+
+    if problems:
+        raise ValueError(
+            "Trio stats validation FAILED:\n  - " + "\n  - ".join(problems)
+        )
+    logger.info("Trio stats validation PASSED.")
 
 
 def run_generate_sib_stats(
@@ -561,18 +706,85 @@ def main(args):
             hl.export_vcf(info_ht, out_info_vcf_path, tabix=True)
 
         if args.generate_trio_stats:
-            logger.info("Generating trio stats...")
+            chrom = args.chrom
+            if chrom is None:
+                raise ValueError(
+                    "--chrom is required for --generate-trio-stats; trio stats are "
+                    "computed one chromosome at a time (combine with --union-trio-stats)."
+                )
+            if test and chrom not in DENSE_TRIO_TEST_CHROMS:
+                raise ValueError(
+                    f"--test computes trio stats only for {DENSE_TRIO_TEST_CHROMS}; got "
+                    f"--chrom {chrom}."
+                )
+            logger.info("Generating trio stats for %s...", chrom)
+            per_chrom_trio_stats_path = get_trio_stats(
+                test=test, environment=environment, chrom=chrom
+            ).path
             _check_resource_existence(
                 environment=environment,
+                output_step_resources={"trio_stats_ht": [per_chrom_trio_stats_path]},
+                overwrite=overwrite,
+            )
+            ht = run_generate_trio_stats(
+                dense_trios(test=test, chrom=chrom, environment=environment).mt(),
+                pedigree(test=test, environment=environment).pedigree(),
+            )
+            # The dense trio MT is finely partitioned, so the per-chrom trio stats
+            # inherit ~thousands of tiny partitions. Checkpoint the full result,
+            # then naive_coalesce off the materialized partitioning before writing.
+            ht = ht.checkpoint(hl.utils.new_temp_file(f"trio_stats_{chrom}", "ht"))
+            ht = ht.naive_coalesce(TRIO_STATS_N_PARTITIONS_PER_CHROM)
+            ht.write(per_chrom_trio_stats_path, overwrite=overwrite)
+
+        if args.union_trio_stats:
+            logger.info("Unioning per-chromosome trio stats...")
+            chroms = get_dense_trio_chroms(test)
+            per_chrom_trio_stats_paths = [
+                get_trio_stats(test=test, environment=environment, chrom=c).path
+                for c in chroms
+            ]
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={
+                    "trio_stats_per_chrom": per_chrom_trio_stats_paths
+                },
                 output_step_resources={"trio_stats_ht": [trio_stats_ht_path]},
                 overwrite=overwrite,
             )
-
-            ht = run_generate_trio_stats(
-                dense_trios(test=test, environment=environment).mt(),
-                pedigree(test=test, environment=environment).pedigree(),
-            )
+            # The per-chrom HTs inherit the dense trio MTs' fine partitioning
+            # (~2k-12k partitions each), so naive_coalesce each one as it is read;
+            # union() then concatenate to get len(chroms) *
+            # TRIO_STATS_N_PARTITIONS_PER_CHROM partitions instead of the sum of every
+            # chrom's native count (~138k).
+            hts = [
+                get_trio_stats(test=test, environment=environment, chrom=c)
+                .ht()
+                .naive_coalesce(TRIO_STATS_N_PARTITIONS_PER_CHROM)
+                for c in chroms
+            ]
+            ht = hts[0] if len(hts) == 1 else hts[0].union(*hts[1:])
             ht.write(trio_stats_ht_path, overwrite=overwrite)
+
+        if args.validate_trio_stats:
+            logger.info("Validating combined trio stats...")
+            chroms = get_dense_trio_chroms(test)
+            per_chrom = {
+                c: get_trio_stats(test=test, environment=environment, chrom=c)
+                for c in chroms
+            }
+            _check_resource_existence(
+                environment=environment,
+                input_step_resources={
+                    "trio_stats_ht": [trio_stats_ht_path],
+                    "trio_stats_per_chrom": [r.path for r in per_chrom.values()],
+                },
+            )
+            validate_trio_stats(
+                get_trio_stats(test=test, environment=environment).ht(),
+                {c: r.ht() for c, r in per_chrom.items()},
+                chroms,
+            )
 
         if args.generate_sibling_stats:
             logger.info("Generating sibling stats...")
@@ -724,8 +936,30 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--generate-trio-stats",
-        help="Calculates trio stats.",
+        help=(
+            "Calculate trio stats for a single chromosome (--chrom). Run once per "
+            "chromosome, then combine with --union-trio-stats."
+        ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--union-trio-stats",
+        help="Union the per-chromosome trio stats HTs into the combined trio stats HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--validate-trio-stats",
+        help="Validate the combined trio stats HT (union integrity + value sanity).",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--chrom",
+        help=(
+            "Single chromosome (e.g. 'chr20'). Required for --generate-trio-stats; trio "
+            "stats are computed one chromosome at a time."
+        ),
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--generate-sibling-stats",
