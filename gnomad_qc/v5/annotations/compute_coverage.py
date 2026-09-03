@@ -1282,18 +1282,30 @@ def _probe_vds(
     )
 
 
-def _vep_context_sites_path(test: bool = False) -> str:
+def _vep_context_sites_path(
+    test: bool = False, test_region: list[str] | None = None
+) -> str:
     """
     Return the path to the preprocessed vep_context sites HT (30-day storage).
 
     Prod is genome-wide; a ``--test`` write is scoped and goes to a separate
-    ``_test`` path.
+    ``_test`` path. A ``--test-region`` write is further namespaced by the
+    region(s) so that test chains for different regions never read each
+    other's sites HT (a stale sites HT silently yields empty chunks).
 
     :param test: If True, return the test-scoped sites path.
+    :param test_region: The ``--test-region`` strings, if any (test only).
     :return: GCS path to the preprocessed sites HT.
     """
+    name = "vep_context_sites"
+    if test:
+        name += "_test"
+        if test_region:
+            name += "_" + "__".join(
+                re.sub(r"[^A-Za-z0-9]+", "_", r) for r in test_region
+            )
     # Pin to dataproc so it is accessible everywhere
-    return f"{qc_temp_prefix(environment='dataproc', days=30)}{'vep_context_sites_test.ht' if test else 'vep_context_sites.ht'}"
+    return f"{qc_temp_prefix(environment='dataproc', days=30)}{name}.ht"
 
 
 def _build_vep_context_sites_ht(
@@ -1843,7 +1855,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         vds_filtered=vds,
         partition_count=n,
         chrom=chrom,
-        sites_path=_vep_context_sites_path(test),
+        sites_path=_vep_context_sites_path(test, args.test_region),
         sub_intervals=sub_intervals,
     )
 
@@ -2306,7 +2318,7 @@ def _orchestrate_coverage_batch(
     project = args.project_name
 
     # Fail fast if the sites HT the chunks read isn't there yet.
-    sites_path = _vep_context_sites_path(args.test)
+    sites_path = _vep_context_sites_path(args.test, args.test_region)
     if not file_exists(sites_path):
         raise FileNotFoundError(
             f"vep_context sites HT not found at {sites_path}. Run"
@@ -2869,7 +2881,7 @@ def main(args):
 
         if args.write_vep_context_sites:
             logger.info("Writing preprocessed vep_context sites HT...")
-            sites_path = _vep_context_sites_path(test=test)
+            sites_path = _vep_context_sites_path(test, args.test_region)
             check_resource_existence(
                 output_step_resources={"vep_context_sites": [sites_path]},
                 overwrite=overwrite,
@@ -3063,7 +3075,7 @@ def main(args):
                 vds_filtered=vds,
                 partition_count=test_n or 0,
                 chrom=chrom,
-                sites_path=_vep_context_sites_path(test),
+                sites_path=_vep_context_sites_path(test, args.test_region),
                 sub_intervals=strict_sub_intervals,
             )
             # None (whole VDS) keeps the adjustment; a per-contig or --test-region
@@ -3091,7 +3103,7 @@ def main(args):
 
         if args.validate_cov_and_an:
             logger.info("Validating cov_and_an HT covers all vep_context sites...")
-            sites_ht = hl.read_table(_vep_context_sites_path(test))
+            sites_ht = hl.read_table(_vep_context_sites_path(test, args.test_region))
             # Scope validation to what actually ran: the JSON's chunks for a
             # --test-n-partitions run, whole contigs for --chrom.
             intervals_path = _chunk_intervals_path(environment, test)
