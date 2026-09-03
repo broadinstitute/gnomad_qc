@@ -1,6 +1,7 @@
 """Script to generate annotations for variant QC on gnomAD v5."""
 
 import argparse
+import functools
 import logging
 import math
 from typing import Dict, List
@@ -61,11 +62,21 @@ logging.basicConfig(
 logger = logging.getLogger("generate_variant_qc_annotations")
 logger.setLevel(logging.INFO)
 
-# Contig name -> genomic-order index for GRCh38 (the only reference this script
-# reads). Used to sort derived intervals into genomic order, which read_vds's
-# partitioner requires (plain sorts/dict orders are lexicographic: chr1, chr10,
-# ..., chr2, ...).
-GRCH38_CONTIG_ORDER = {c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)}
+
+@functools.lru_cache(maxsize=None)
+def _grch38_contig_order() -> Dict[str, int]:
+    """
+    Map contig name to genomic-order index for GRCh38 (built once, cached).
+
+    Used to sort derived intervals into genomic order, which read_vds's
+    partitioner requires (plain sorts/dict orders are lexicographic: chr1,
+    chr10, ..., chr2, ...). Lazy rather than a module constant because
+    `hl.get_reference` initializes Hail with a default (local) backend if
+    called before this script's `_init_hail(backend="batch")`.
+
+    :return: Dict of contig name -> genomic-order index.
+    """
+    return {c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)}
 
 
 def _optional_global(value, dtype) -> hl.expr.Expression:
@@ -1138,7 +1149,7 @@ def _derive_chunk_locus_intervals(
     # lexicographic key order, which read_vds's partitioner rejects for
     # multi-contig chunks.
     sub_intervals: List[hl.utils.Interval] = []
-    for contig in sorted(bounds, key=lambda c: GRCH38_CONTIG_ORDER[c]):
+    for contig in sorted(bounds, key=lambda c: _grch38_contig_order()[c]):
         b = bounds[contig]
         if total_subdivisions is not None:
             n = max(1, round(total_subdivisions * spans[contig] / total_span))
@@ -1269,7 +1280,7 @@ def group_scout_loci_into_intervals(
     per_contig = dict(stats.per_contig)
     offset = 0
     offsets = {}
-    for contig in sorted(per_contig, key=lambda c: GRCH38_CONTIG_ORDER[c]):
+    for contig in sorted(per_contig, key=lambda c: _grch38_contig_order()[c]):
         offsets[contig] = offset
         offset += per_contig[contig]
 
