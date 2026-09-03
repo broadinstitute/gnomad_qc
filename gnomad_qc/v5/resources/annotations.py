@@ -152,11 +152,11 @@ def group_membership(
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :param data_set: Data set of annotation resource. Default is "aou".
-    :param environment: Environment to use. Default is "batch". Must be one of "rwb"
-        or "batch".
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb", "batch", or "dataproc".
     :return: Hail Table containing group membership annotations.
     """
-    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
@@ -176,10 +176,10 @@ def qual_hists(
 
     :param test: Whether to use a tmp path for tests. Default is False.
     :param environment: Environment to use for quality histograms. Default is "batch".
-        Must be one of "rwb" or "batch".
+        Must be one of "rwb", "batch", or "dataproc".
     :return: Hail Table containing quality histogram annotations.
     """
-    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
     return VersionedTableResource(
         CURRENT_ANNOTATION_VERSION,
         {
