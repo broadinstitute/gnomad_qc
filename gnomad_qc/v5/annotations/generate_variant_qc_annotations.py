@@ -25,6 +25,7 @@ from gnomad.variant_qc.random_forest import median_impute_features
 
 from gnomad_qc.v5.annotations.annotation_utils import annotate_adj_no_dp, get_adj_expr
 from gnomad_qc.v5.resources.annotations import (
+    get_ac_info_ht_checkpoint_path,
     get_aou_annotated_sites_only_vcf,
     get_aou_vcf_header,
     get_info_ht,
@@ -139,8 +140,9 @@ def generate_ac_info_ht(vds: hl.vds.VariantDataset) -> hl.Table:
 def create_info_ht(
     vcf_path: str,
     header_path: str,
+    vds: hl.vds.VariantDataset,
+    ac_info_ht_checkpoint_path: str,
     lowqual_indel_phred_het_prior: int = 40,
-    vds: hl.vds.VariantDataset = None,
     test: bool = False,
 ) -> hl.Table:
     """
@@ -151,6 +153,7 @@ def create_info_ht(
     :param lowqual_indel_phred_het_prior: Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad's Data Sciences Platform for VQSR.
     :param vds: VariantDataset to use for computing AC and AC_raw annotations.
     :param test: Whether to write run a test using just the first two partitions of the loaded VCF.
+    :param ac_info_ht_checkpoint_path: Path to checkpoint intermediate AC info HT.
     :return: Hail Table with reformatted annotations.
     """
     ht = hl.import_vcf(
@@ -201,7 +204,10 @@ def create_info_ht(
 
     logger.info("Adding AC info annotations to info ht...")
     ac_info_ht = generate_ac_info_ht(vds)
-    ac_info_ht = ac_info_ht.checkpoint(hl.utils.new_temp_file("ac_info_ht", "ht"))
+    ac_info_ht = ac_info_ht.checkpoint(
+        ac_info_ht_checkpoint_path,
+        overwrite=True,
+    )
     # Annotate ac_info_ht with info annotations because info VCF
     # provided by AoU has variants not present in samples we consider high quality.
     info_ht = ac_info_ht.annotate(**ht[ac_info_ht.key])
@@ -567,6 +573,9 @@ def main(args):
     variant_qc_annotation_ht_path = get_variant_qc_annotations(
         test=test, environment=environment
     ).path
+    ac_info_ht_checkpoint_path = get_ac_info_ht_checkpoint_path(
+        test=test, environment=environment
+    )
 
     if args.export_true_positive_vcfs and not (
         args.transmitted_singletons or args.sibling_singletons
@@ -587,6 +596,7 @@ def main(args):
             # a few partitions of the full (not test) VDS).
             test=args.test,
             environment=environment,
+            naive_coalesce_partitions=args.naive_coalesce_partitions,
         )
 
     try:
@@ -602,8 +612,9 @@ def main(args):
             ht = create_info_ht(
                 vcf_path=get_aou_annotated_sites_only_vcf(environment=environment),
                 header_path=get_aou_vcf_header(environment=environment),
-                lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
                 vds=vds,
+                ac_info_ht_checkpoint_path=ac_info_ht_checkpoint_path,
+                lowqual_indel_phred_het_prior=args.lowqual_indel_phred_het_prior,
                 test=test,
             )
             ht.write(info_ht_path, overwrite=overwrite)
@@ -886,6 +897,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--create-info-ht",
         help="Create the info ht containing annotations needed for variant QC.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--naive-coalesce-partitions",
+        help=(
+            "Coalesce the VDS to this many partitions. "
+            "Reduces the number of parallel Batch workers at the expense of more memory "
+            "per worker. Only applies to --create-info-ht and --generate-sibling-stats."
+        ),
+        type=int,
+        default=None,
     )
     parser.add_argument(
         "--lowqual-indel-phred-het-prior",

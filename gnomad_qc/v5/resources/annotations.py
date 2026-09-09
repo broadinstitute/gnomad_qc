@@ -279,6 +279,31 @@ def get_info_ht(
     )
 
 
+def get_ac_info_ht_checkpoint_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    environment: str = "batch",
+) -> str:
+    """
+    Get checkpoint path for the intermediate AC info table in create_info_ht.
+
+    Uses the 30-day temp bucket and a stable filename for the intermediate
+    create_info_ht checkpoint output. This helper only returns the checkpoint
+    path and does not imply that reruns will automatically reuse existing data.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether the path should use the test suffix.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :return: Path to AC info checkpoint HT.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    return (
+        f"{qc_temp_prefix(version=version, environment=environment, days=30)}"
+        f"create_info_ht/ac_info_ht{'_test' if test else ''}.ht"
+    )
+
+
 def info_vcf_path(
     version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
