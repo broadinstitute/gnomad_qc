@@ -1230,7 +1230,14 @@ def _load_project_vds(
         )
         vmt = vds.variant_data
         # Variant sites: the usual gnomAD adj cutoffs (GQ >= 20, DP >= 10 with
-        # DP approximated as sum(LAD), AB >= 0.2 for het calls).
+        # DP approximated as sum(LAD), AB >= 0.2 for het calls). No sex-ploidy
+        # adjustment is needed before adj: the AoU v8 VDS already stores XY
+        # chrX/chrY non-PAR calls as haploid (verified 2026-09-10 on
+        # chrX:10.0-10.5Mb: every XY non-PAR call has ploidy 1 and there are no
+        # hets), so get_adj_expr already applies the haploid DP cutoff. Adjusting
+        # first was measured output-identical and ~12% more expensive on a chrX
+        # chunk. The post-densify adjustment in compute_stats_per_ref_site is
+        # still required: reference blocks densify as diploid hom-ref.
         vmt = vmt.annotate_entries(DP=hl.sum(vmt.LAD))
         vmt = vmt.annotate_entries(adj=get_adj_expr(vmt.LGT, vmt.GQ, vmt.DP, vmt.LAD))
         rmt = vds.reference_data
