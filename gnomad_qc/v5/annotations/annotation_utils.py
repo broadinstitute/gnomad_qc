@@ -1,7 +1,6 @@
 """AoU-specific annotation utilities."""
 
 import logging
-from typing import Union
 
 import hail as hl
 from gnomad.utils.annotations import get_adj_expr as get_gnomad_adj_expr
@@ -33,6 +32,17 @@ def annotate_adj_no_dp(
     depths and is only applied to non-hom-ref calls; hom-ref calls are filtered on GQ
     only. See the module comment for details.
 
+    Accepts three entry layouts:
+
+        - ``LGT`` and ``LAD`` (VDS variant data): full adj criteria.
+        - ``GT`` and ``AD`` (split or dense data): full adj criteria.
+        - ``GT`` without allele depths (VDS reference data, e.g. the AoU reference
+          blocks with only ``GT``, ``GQ``, ``END`` and ``LEN``): every call must be
+          hom-ref and adj is ``GQ >= adj_gq``. A non-hom-ref call raises at runtime
+          rather than being silently marked non-adj.
+
+    ``GQ`` is required in all three cases.
+
     :param mt: Input MatrixTable.
     :param adj_gq: Minimum GQ. Default is 20.
     :param adj_dp: Minimum DP (sum of allele depths) for non-hom-ref calls. Default is
@@ -42,23 +52,45 @@ def annotate_adj_no_dp(
         calls. Default is 5.
     :return: MatrixTable with adj annotation.
     """
-    if "LGT" in mt.entry and "LAD" in mt.entry:
-        gt_expr = mt.LGT
-        ad_expr = mt.LAD
-    else:
-        assert "GT" in mt.entry and "AD" in mt.entry
-        gt_expr = mt.GT
-        ad_expr = mt.AD
-    return mt.annotate_entries(
-        adj=get_adj_expr(
-            gt_expr, mt.GQ, ad_expr, adj_gq, adj_dp, adj_ab, haploid_adj_dp
+    entry_fields = set(mt.entry)
+    if "GQ" not in entry_fields:
+        raise ValueError("annotate_adj_no_dp requires a 'GQ' entry field.")
+
+    if "LGT" in entry_fields and "LAD" in entry_fields:
+        adj_expr = get_adj_expr(
+            mt.LGT, mt.GQ, mt.LAD, adj_gq, adj_dp, adj_ab, haploid_adj_dp
         )
-    )
+    elif "GT" in entry_fields and "AD" in entry_fields:
+        adj_expr = get_adj_expr(
+            mt.GT, mt.GQ, mt.AD, adj_gq, adj_dp, adj_ab, haploid_adj_dp
+        )
+    elif "GT" in entry_fields:
+        # Reference data: hom-ref blocks that carry GQ but no allele depths, so
+        # adj is GQ only. A missing genotype (e.g. after a sex-ploidy adjustment)
+        # gets a missing adj, matching get_adj_expr. Error on a non-hom-ref call
+        # rather than silently marking it non-adj.
+        adj_expr = (
+            hl.case()
+            .when(hl.is_missing(mt.GT), hl.missing(hl.tbool))
+            .when(mt.GT.is_hom_ref(), mt.GQ >= adj_gq)
+            .or_error(
+                "Found a non-hom-ref genotype in a MatrixTable with no AD or LAD "
+                "entry field. Allele depths are required to compute adj for "
+                "non-hom-ref calls."
+            )
+        )
+    else:
+        raise ValueError(
+            "annotate_adj_no_dp requires 'LGT' and 'LAD', 'GT' and 'AD', or 'GT' "
+            "alone (hom-ref reference data) in the entry fields."
+        )
+
+    return mt.annotate_entries(adj=adj_expr)
 
 
 def get_adj_expr(
     gt_expr: hl.expr.CallExpression,
-    gq_expr: Union[hl.expr.Int32Expression, hl.expr.Int64Expression],
+    gq_expr: hl.expr.Int32Expression | hl.expr.Int64Expression,
     ad_expr: hl.expr.ArrayNumericExpression,
     adj_gq: int = 20,
     adj_dp: int = 10,
