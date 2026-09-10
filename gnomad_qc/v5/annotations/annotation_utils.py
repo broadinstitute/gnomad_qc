@@ -14,8 +14,10 @@ logger.setLevel(logging.INFO)
 # Adapted from https://github.com/broadinstitute/gatk/pull/8772/files.
 #
 # The AoU VDS has no DP entry field, so DP is approximated as sum(LAD). Hom-ref calls
-# (reference blocks, which carry GQ but no LAD) are filtered on GQ only. All other
-# calls use the usual gnomAD cutoffs: GQ, DP (as sum(LAD)), and AB for het calls.
+# with no allele depths (reference blocks, which carry GQ but no LAD) are filtered on
+# GQ only. All other calls, including hom-ref calls that do carry allele depths (e.g.
+# calls downcoded to hom-ref by split_multi), use the usual gnomAD cutoffs: GQ, DP (as
+# sum(LAD)), and AB for het calls.
 # After discussion, we decided to use a GQ 20 threshold for both haploid and diploid
 # genotypes. See thread: https://atgu.slack.com/archives/CRA2TKTV0/p1787333884174549
 def annotate_adj_no_dp(
@@ -29,8 +31,8 @@ def annotate_adj_no_dp(
     Annotate genotypes with adj criteria.
 
     Defaults correspond to gnomAD values. DP is approximated as the sum of the allele
-    depths and is only applied to non-hom-ref calls; hom-ref calls are filtered on GQ
-    only. See the module comment for details.
+    depths. Hom-ref calls with no allele depths (reference blocks) are filtered on GQ
+    only; every other call uses the gnomAD cutoffs. See the module comment for details.
 
     Accepts three entry layouts:
 
@@ -100,9 +102,10 @@ def get_adj_expr(
     """
     Get adj genotype annotation.
 
-    Defaults correspond to gnomAD values. Hom-ref calls are filtered on GQ only. All
-    other calls use the standard gnomAD adj criteria (GQ, DP, and AB for het calls)
-    with DP approximated as the sum of `ad_expr`.
+    Defaults correspond to gnomAD values. Hom-ref calls with a missing `ad_expr`
+    (reference blocks) are filtered on GQ only. All other calls, including hom-ref
+    calls with defined allele depths, use the standard gnomAD adj criteria (GQ, DP,
+    and AB for het calls) with DP approximated as the sum of `ad_expr`.
 
     .. note::
 
@@ -112,15 +115,15 @@ def get_adj_expr(
     :param gq_expr: GQ expression.
     :param ad_expr: Allele depth expression.
     :param adj_gq: Minimum GQ. Default is 20.
-    :param adj_dp: Minimum DP (sum of allele depths) for non-hom-ref calls. Default is
-        10.
+    :param adj_dp: Minimum DP (sum of allele depths) for calls with allele depths.
+        Default is 10.
     :param adj_ab: Minimum allele balance for het calls. Default is 0.2.
-    :param haploid_adj_dp: Minimum DP (sum of allele depths) for haploid non-ref
-        calls. Default is 5.
+    :param haploid_adj_dp: Minimum DP (sum of allele depths) for haploid calls with
+        allele depths. Default is 5.
     :return: Expression for adj genotype annotation.
     """
     return hl.if_else(
-        gt_expr.is_hom_ref(),
+        gt_expr.is_hom_ref() & hl.is_missing(ad_expr),
         gq_expr >= adj_gq,
         get_gnomad_adj_expr(
             gt_expr,
