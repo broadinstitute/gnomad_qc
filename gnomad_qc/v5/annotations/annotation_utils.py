@@ -1,6 +1,7 @@
 """AoU-specific annotation utilities."""
 
 import logging
+from typing import Union
 
 import hail as hl
 from gnomad.utils.annotations import get_adj_expr as get_gnomad_adj_expr
@@ -92,7 +93,7 @@ def annotate_adj_no_dp(
 
 def get_adj_expr(
     gt_expr: hl.expr.CallExpression,
-    gq_expr: hl.expr.Int32Expression | hl.expr.Int64Expression,
+    gq_expr: Union[hl.expr.Int32Expression, hl.expr.Int64Expression],
     ad_expr: hl.expr.ArrayNumericExpression,
     adj_gq: int = 20,
     adj_dp: int = 10,
