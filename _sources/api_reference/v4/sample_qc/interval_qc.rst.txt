@@ -1,0 +1,32 @@
+gnomad_qc.v4.sample_qc.interval_qc
+==================================
+
+
+Script to define high quality intervals based on per interval aggregate statistics over samples.
+
+Two methods are available for defining high quality intervals:
+
+    - mean fraction of bases over DP 0 to determine high quality intervals.
+    - fraction of samples with a mean interval coverage over a specified coverage that
+      is different for autosomes and sex chromosomes.
+
+Aggregate statistics over samples can also be stratified by platform to determine
+per-platform high quality intervals.
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.interval_qc.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.interval_qc.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.interval_qc
+
+.. automodule:: gnomad_qc.v4.sample_qc.interval_qc
+    :exclude-members: get_script_argument_parser

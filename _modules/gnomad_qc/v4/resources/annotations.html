@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.resources.annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.resources.annotations</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.resources.annotations</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script containing annotation related resources.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span>
+
+<span class="kn">from</span> <span class="nn">gnomad.resources.grch38.gnomad</span> <span class="kn">import</span> <span class="n">SUBSETS</span>
+<span class="kn">from</span> <span class="nn">gnomad.resources.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DataException</span><span class="p">,</span>
+    <span class="n">TableResource</span><span class="p">,</span>
+    <span class="n">VariantDatasetResource</span><span class="p">,</span>
+    <span class="n">VersionedTableResource</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.constants</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ALL_SITES_AN_RELEASES</span><span class="p">,</span>
+    <span class="n">ANNOTATION_VERSIONS</span><span class="p">,</span>
+    <span class="n">CURRENT_ALL_SITES_AN_RELEASE</span><span class="p">,</span>
+    <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_FREQ_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_HGDP_TGP_RELEASE</span><span class="p">,</span>
+    <span class="n">CURRENT_VEP_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+    <span class="n">CURRENT_VRS_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+    <span class="n">FREQ_VERSIONS</span><span class="p">,</span>
+    <span class="n">HGDP_TGP_RELEASES</span><span class="p">,</span>
+    <span class="n">VEP_ANNOTATION_VERSIONS</span><span class="p">,</span>
+    <span class="n">VERSIONS</span><span class="p">,</span>
+    <span class="n">VRS_ANNOTATION_VERSIONS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">SUBSETS</span> <span class="o">=</span> <span class="n">SUBSETS</span><span class="p">[</span><span class="s2">&quot;v4&quot;</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">_annotations_root</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get root path to the variant annotation files.</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full v4 VDS.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;. Default is &quot;exomes&quot;.</span>
+<span class="sd">    :return: Root path of the variant annotation files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;gs://gnomad-tmp/gnomad_v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">_testing/annotations/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="n">test</span>
+        <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;gs://gnomad/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/annotations/</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">&quot;</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_info"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_info">[docs]</a><span class="k">def</span> <span class="nf">get_info</span><span class="p">(</span><span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 info VersionedTableResource.</span>
+
+<span class="sd">    :param split: Whether to return the split or multi-allelic version of the resource.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full v4 VDS.</span>
+<span class="sd">    :return: gnomAD v4 info VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.info</span><span class="si">{</span><span class="s1">&#39;.split&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">split</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_vep"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_vep">[docs]</a><span class="k">def</span> <span class="nf">get_vep</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+    <span class="n">vep_version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 VEP annotation VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test Table instead of</span>
+<span class="sd">        the full v4 Table.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;.</span>
+<span class="sd">        Default is &quot;exomes&quot;.</span>
+<span class="sd">    :param vep_version: VEP version to use (e.g., &quot;105&quot;, &quot;115&quot;). Default is &quot;105&quot;.</span>
+<span class="sd">    :return: gnomAD v4 VEP VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">vep_version_postfix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">vep_version</span> <span class="o">==</span> <span class="n">DEFAULT_VEP_VERSION</span> <span class="k">else</span> <span class="n">vep_version</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VEP_ANNOTATION_VERSION</span><span class="p">[</span><span class="n">vep_version</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.vep</span><span class="si">{</span><span class="n">vep_version_postfix</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_ANNOTATION_VERSIONS</span><span class="p">[</span><span class="n">vep_version</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="validate_vep_path"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.validate_vep_path">[docs]</a><span class="k">def</span> <span class="nf">validate_vep_path</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+    <span class="n">vep_version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">DEFAULT_VEP_VERSION</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full v4 VDS.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;.</span>
+<span class="sd">        Default is &quot;exomes&quot;.</span>
+<span class="sd">    :param vep_version: VEP version to use (e.g., &quot;105&quot;, &quot;115&quot;). Default is &quot;105&quot;.</span>
+<span class="sd">    :return: gnomAD v4 VEP VersionedTableResource containing validity check.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">vep_version_postfix</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span> <span class="k">if</span> <span class="n">vep_version</span> <span class="o">==</span> <span class="n">DEFAULT_VEP_VERSION</span> <span class="k">else</span> <span class="n">vep_version</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VEP_ANNOTATION_VERSION</span><span class="p">[</span><span class="n">vep_version</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.vep</span><span class="si">{</span><span class="n">vep_version_postfix</span><span class="si">}</span><span class="s2">.validate.ht&quot;</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VEP_ANNOTATION_VERSIONS</span><span class="p">[</span><span class="n">vep_version</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_trio_stats"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_trio_stats">[docs]</a><span class="k">def</span> <span class="nf">get_trio_stats</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">releasable_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 trio stats VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a temporary path for testing.</span>
+<span class="sd">    :param releasable_only: Whether to use only releasable data.</span>
+<span class="sd">    :return: gnomAD v4 trio stats VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="s1">&#39;releasable.&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">releasable_only</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">trio_stats.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_sib_stats"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_sib_stats">[docs]</a><span class="k">def</span> <span class="nf">get_sib_stats</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 sibling stats VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :return: gnomAD v4 sibling stats VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.sib_stats.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_variant_qc_annotations"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_variant_qc_annotations">[docs]</a><span class="k">def</span> <span class="nf">get_variant_qc_annotations</span><span class="p">(</span><span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Return the VersionedTableResource to the RF-ready annotated Table.</span>
+
+<span class="sd">    Annotations that are included in the Table:</span>
+
+<span class="sd">        Features for RF:</span>
+<span class="sd">            - variant_type</span>
+<span class="sd">            - allele_type</span>
+<span class="sd">            - n_alt_alleles</span>
+<span class="sd">            - has_star</span>
+<span class="sd">            - AS_QD</span>
+<span class="sd">            - AS_pab_max</span>
+<span class="sd">            - AS_MQRankSum</span>
+<span class="sd">            - AS_SOR</span>
+<span class="sd">            - AS_ReadPosRankSum</span>
+
+<span class="sd">        Training sites (bool):</span>
+<span class="sd">            - transmitted_singleton</span>
+<span class="sd">            - sibling_singleton</span>
+<span class="sd">            - fail_hard_filters - (ht.QD &lt; 2) | (ht.FS &gt; 60) | (ht.MQ &lt; 30)</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :return: Table with variant QC annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.variant_qc_annotations.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="info_vcf_path"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.info_vcf_path">[docs]</a><span class="k">def</span> <span class="nf">info_vcf_path</span><span class="p">(</span>
+    <span class="n">info_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;AS&quot;</span><span class="p">,</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">split</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Path to sites VCF (input information for running VQSR).</span>
+
+<span class="sd">    :param info_method: Method for generating info VCF. Must be one of &quot;AS&quot;, &quot;quasi&quot;,</span>
+<span class="sd">        or &quot;set_long_AS_missing&quot;. Default is &quot;AS&quot;.</span>
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param split: Whether to return the split or multi-allelic version of the resource.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test VDS instead of the</span>
+<span class="sd">        full v4 VDS.</span>
+<span class="sd">    :return: String for the path to the info VCF.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">info_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;AS&quot;</span><span class="p">,</span> <span class="s2">&quot;quasi&quot;</span><span class="p">,</span> <span class="s2">&quot;set_long_AS_missing&quot;</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Invalid info_method: </span><span class="si">{</span><span class="n">info_method</span><span class="si">}</span><span class="s2">. Must be one of &#39;AS&#39;, &#39;quasi&#39;, or &quot;</span>
+            <span class="s2">&quot;&#39;long_AS_missing_info&#39;.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.info.</span><span class="si">{</span><span class="n">info_method</span><span class="si">}{</span><span class="s1">&#39;.split&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">split</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.vcf.bgz&quot;</span></div>
+
+
+<div class="viewcode-block" id="get_true_positive_vcf_path"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_true_positive_vcf_path">[docs]</a><span class="k">def</span> <span class="nf">get_true_positive_vcf_path</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">adj</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">true_positive_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Provide the path to the transmitted singleton VCF used as input to VQSR.</span>
+
+<span class="sd">    :param version: Version of true positive VCF path to return.</span>
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param adj: Whether to use adj genotypes.</span>
+<span class="sd">    :param true_positive_type: Type of true positive VCF path to return. Should be one</span>
+<span class="sd">        of &quot;transmitted_singleton&quot;, &quot;sibling_singleton&quot;, or</span>
+<span class="sd">        &quot;transmitted_singleton.sibling_singleton&quot;. Default is &quot;transmitted_singleton&quot;.</span>
+<span class="sd">    :return: String for the path to the true positive VCF.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tp_types</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;transmitted_singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;sibling_singleton&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;transmitted_singleton.sibling_singleton&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">true_positive_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tp_types</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;true_positive_type must be one of </span><span class="si">{</span><span class="n">tp_types</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s1">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="n">true_positive_type</span><span class="si">}</span><span class="s1">.</span><span class="si">{</span><span class="s2">&quot;adj&quot;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">adj</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s2">&quot;raw&quot;</span><span class="si">}</span><span class="s1">.vcf.bgz&#39;</span></div>
+
+
+<span class="n">freq</span> <span class="o">=</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+    <span class="n">CURRENT_FREQ_VERSION</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">],</span>
+    <span class="p">{</span>
+        <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.frequencies.ht&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">FREQ_VERSIONS</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">]</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+
+<span class="n">qual_hist</span> <span class="o">=</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+    <span class="n">CURRENT_FREQ_VERSION</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">],</span>
+    <span class="p">{</span>
+        <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.qual_hists.ht&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">FREQ_VERSIONS</span><span class="p">[</span><span class="s2">&quot;exomes&quot;</span><span class="p">]</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_downsampling"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_downsampling">[docs]</a><span class="k">def</span> <span class="nf">get_downsampling</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">subset</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the downsampling annotation table.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for tests. Default is False.</span>
+<span class="sd">    :param subset: Optional subset to return downsampling Table for. Downsampling for</span>
+<span class="sd">        entire dataset will be returned if not specified.</span>
+<span class="sd">    :return: Hail Table containing subset or overall dataset downsampling annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.exomes.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.downsampling</span><span class="si">{</span><span class="sa">f</span><span class="s1">&#39;.</span><span class="si">{</span><span class="n">subset</span><span class="si">}</span><span class="s1">&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">subset</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_freq"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_freq">[docs]</a><span class="k">def</span> <span class="nf">get_freq</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">hom_alt_adjusted</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="n">chrom</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">intermediate_subset</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">finalized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the frequency annotation table for a specified release.</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;.</span>
+<span class="sd">    :param test: Whether to use a tmp path for tests.</span>
+<span class="sd">    :param hom_alt_adjusted: Whether to return the hom alt adjusted frequency table.</span>
+<span class="sd">    :param chrom: Chromosome to return frequency table for. Entire Table will be</span>
+<span class="sd">        returned if not specified.</span>
+<span class="sd">    :param intermediate_subset: Optional intermediate subset to return temp frequency</span>
+<span class="sd">        Table for. Entire Table will be returned if not specified.</span>
+<span class="sd">    :param finalized: Whether to return the finalized frequency table. Default is True.</span>
+<span class="sd">    :return: Hail Table containing subset or overall cohort frequency annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">version</span> <span class="o">=</span> <span class="n">CURRENT_FREQ_VERSION</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span>
+
+    <span class="n">ht_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.frequencies&quot;</span>
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">finalized</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">chrom</span><span class="p">:</span>
+            <span class="n">ht_name</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">chrom</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">hom_alt_adjusted</span><span class="p">:</span>
+            <span class="n">ht_name</span> <span class="o">+=</span> <span class="s2">&quot;.pre_hom_alt_adjustment&quot;</span>
+
+    <span class="k">if</span> <span class="n">data_type</span> <span class="o">==</span> <span class="s2">&quot;exomes&quot;</span> <span class="ow">and</span> <span class="n">intermediate_subset</span><span class="p">:</span>
+        <span class="n">ht_name</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;.</span><span class="si">{</span><span class="n">intermediate_subset</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+            <span class="n">ht_name</span> <span class="o">+=</span> <span class="s2">&quot;.test&quot;</span>
+        <span class="n">ht_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/temp/</span><span class="si">{</span><span class="n">ht_name</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">finalized</span><span class="p">:</span>
+            <span class="n">ht_name</span> <span class="o">+=</span> <span class="s2">&quot;.final&quot;</span>
+        <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+            <span class="n">ht_name</span> <span class="o">+=</span> <span class="s2">&quot;.test&quot;</span>
+        <span class="n">ht_path</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">ht_name</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+
+    <span class="k">return</span> <span class="n">TableResource</span><span class="p">(</span><span class="n">ht_path</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_all_sites_an_and_qual_hists"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_all_sites_an_and_qual_hists">[docs]</a><span class="k">def</span> <span class="nf">get_all_sites_an_and_qual_hists</span><span class="p">(</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the all sites AN and qual hists TableResource.</span>
+
+<span class="sd">    :param data_type: &#39;exomes&#39; or &#39;genomes&#39;. Default is &#39;exomes&#39;.</span>
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :return: Hail Table containing all sites AN and qual hists annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ALL_SITES_AN_RELEASE</span><span class="p">[</span><span class="n">data_type</span><span class="p">],</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.all_sites_an_and_qual_hists.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ALL_SITES_AN_RELEASES</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_combined_frequency"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_combined_frequency">[docs]</a><span class="k">def</span> <span class="nf">get_combined_frequency</span><span class="p">(</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">filtered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the combined v4 genome and exome frequency annotation VersionedTableResource.</span>
+
+<span class="sd">    :param test: Whether to use a tmp path for testing.</span>
+<span class="sd">    :param filtered: Whether to return the resource for the filtered combined frequency.</span>
+<span class="sd">        Default is True.</span>
+<span class="sd">    :return: Hail Table containing combined frequency annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.frequencies</span><span class="si">{</span><span class="s1">&#39;.filtered&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">filtered</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_freq_comparison"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_freq_comparison">[docs]</a><span class="k">def</span> <span class="nf">get_freq_comparison</span><span class="p">(</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">filtered</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.</span>
+
+<span class="sd">    Table contains results from one of the following comparison methods:</span>
+<span class="sd">        - &#39;contingency_table_test&#39;: Hail&#39;s contingency table test -- chi-squared or</span>
+<span class="sd">           Fisher’s exact test of independence depending on min allele count.</span>
+<span class="sd">        - &#39;cmh_test&#39;: Cochran–Mantel–Haenszel test -- stratified test of independence</span>
+<span class="sd">           for 2x2xK contingency tables.</span>
+
+<span class="sd">    :param method: Method used to compare frequencies between v4 genomes and exomes.</span>
+<span class="sd">        Can be one of `contingency_table_test` or `cmh_test`.</span>
+<span class="sd">    :param test: Whether to use a tmp path for testing. Default is False.</span>
+<span class="sd">    :param filtered: Whether to return the filtered frequency comparison Table. Default</span>
+<span class="sd">        is True.</span>
+<span class="sd">    :return: VersionedTableResource containing results from the specified comparison</span>
+<span class="sd">        `method`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">methods</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;contingency_table_test&quot;</span><span class="p">,</span> <span class="s2">&quot;cmh_test&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">methods</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">DataException</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;The method: </span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2"> is not an option. Possible options are: </span><span class="si">{</span><span class="n">methods</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="o">=</span><span class="s1">&#39;joint&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.joint.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.compare_frequencies.</span><span class="si">{</span><span class="n">method</span><span class="si">}{</span><span class="s1">&#39;.filtered&#39;</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">filtered</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">&#39;&#39;</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_insilico_predictors"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_insilico_predictors">[docs]</a><span class="k">def</span> <span class="nf">get_insilico_predictors</span><span class="p">(</span><span class="n">predictor</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cadd&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the path to the in silico predictors TableResource for a specified release.</span>
+
+<span class="sd">    :param predictor: One of the in silico predictors available in gnomAD v4, including</span>
+<span class="sd">        cadd, revel, primate_ai, splice_ai, and pangolin.</span>
+<span class="sd">    :return: in silico predictor VersionedTableResource for gnomAD v4.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;gs://gnomad/v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">/annotations/in_silico_predictors/gnomad.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">predictor</span><span class="si">}</span><span class="s2">.grch38.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_vrs"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_vrs">[docs]</a><span class="k">def</span> <span class="nf">get_vrs</span><span class="p">(</span>
+    <span class="n">original_annotations</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 VersionedTableResource containing VRS annotations.</span>
+
+<span class="sd">    :param original_annotations: Whether to obtain the original input Table with</span>
+<span class="sd">           all its annotations in addition to the added on VRS annotations.</span>
+<span class="sd">           If set to False, obtain a Table with only the VRS annotations.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test Table instead</span>
+<span class="sd">           of the full v4 Table.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;.</span>
+<span class="sd">           Default is &quot;exomes&quot;.</span>
+<span class="sd">    :return: gnomAD v4 VRS VersionedTableResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">CURRENT_VRS_ANNOTATION_VERSION</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="n">version</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="n">path</span><span class="o">=</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.original_annotations.vrs.ht&quot;</span>
+                    <span class="k">if</span> <span class="n">original_annotations</span>
+                    <span class="k">else</span> <span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.vrs.ht&quot;</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">version</span> <span class="ow">in</span> <span class="n">VRS_ANNOTATION_VERSIONS</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="hgdp_tgp_updated_callstats"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.hgdp_tgp_updated_callstats">[docs]</a><span class="k">def</span> <span class="nf">hgdp_tgp_updated_callstats</span><span class="p">(</span>
+    <span class="n">subset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VersionedTableResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the HGDP + 1KG/TGP subset updated call stats TableResource.</span>
+
+<span class="sd">    :param subset: The subset of the HGDP + 1KG/TGP release to return,</span>
+<span class="sd">        must be &quot;added&quot;, &quot;subtracted&quot;, &quot;pop_diff&quot;, &quot;join&quot;, &quot;v3_release_an&quot;,</span>
+<span class="sd">        &quot;v3_pop_diff_an&quot;, or &quot;pre_validity_check&quot;.</span>
+<span class="sd">    :param test: Whether to return the annotation resource for testing purposes.</span>
+<span class="sd">    :return: MatrixTableResource for specified subset.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">subsets</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;added&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;subtracted&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;pop_diff&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;join&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;v3_release_an&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;v3_pop_diff_an&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;pre_validity_check&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">subset</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">subsets</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Operation must be one of </span><span class="si">{</span><span class="n">subsets</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">VersionedTableResource</span><span class="p">(</span>
+        <span class="n">default_version</span><span class="o">=</span><span class="n">CURRENT_HGDP_TGP_RELEASE</span><span class="p">,</span>
+        <span class="n">versions</span><span class="o">=</span><span class="p">{</span>
+            <span class="n">release</span><span class="p">:</span> <span class="n">TableResource</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">release</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;genomes&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/gnomad.genomes.v</span><span class="si">{</span><span class="n">release</span><span class="si">}</span><span class="s2">.hgdp_1kg_subset_updated_callstats_</span><span class="si">{</span><span class="n">subset</span><span class="si">}</span><span class="s2">.ht&quot;</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">release</span> <span class="ow">in</span> <span class="n">HGDP_TGP_RELEASES</span>
+        <span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_split_vds"><a class="viewcode-back" href="../../../../api_reference/v4/resources/annotations.html#gnomad_qc.v4.resources.annotations.get_split_vds">[docs]</a><span class="k">def</span> <span class="nf">get_split_vds</span><span class="p">(</span>
+    <span class="n">version</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;exomes&quot;</span><span class="p">,</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">VariantDatasetResource</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the gnomAD v4 split VDS.</span>
+
+<span class="sd">    This is a temporary resource that will be removed once the split VDS is no longer</span>
+<span class="sd">    needed. Given the uncertainies around frequency calculation runtimes, we cannot</span>
+<span class="sd">    store it in gnomad-tmp but this needs to be deleted once frequency work is complete.</span>
+
+<span class="sd">    :param version: Version of annotation path to return.</span>
+<span class="sd">    :param data_type: Data type of annotation resource. e.g. &quot;exomes&quot; or &quot;genomes&quot;.</span>
+<span class="sd">           Default is &quot;exomes&quot;.</span>
+<span class="sd">    :param test: Whether to use a tmp path for analysis of the test Table instead</span>
+<span class="sd">           of the full v4 Table.</span>
+<span class="sd">    :return: gnomAD v4 VariantDatasetResource.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">version</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">version</span> <span class="o">=</span> <span class="n">CURRENT_FREQ_VERSION</span><span class="p">[</span><span class="n">data_type</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">VariantDatasetResource</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">_annotations_root</span><span class="p">(</span><span class="n">version</span><span class="p">,</span><span class="w"> </span><span class="n">test</span><span class="p">,</span><span class="w"> </span><span class="n">data_type</span><span class="p">)</span><span class="si">}</span><span class="s2">/temp/gnomad.</span><span class="si">{</span><span class="n">data_type</span><span class="si">}</span><span class="s2">.v</span><span class="si">{</span><span class="n">version</span><span class="si">}</span><span class="s2">.split_multi.vds&quot;</span>
+    <span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

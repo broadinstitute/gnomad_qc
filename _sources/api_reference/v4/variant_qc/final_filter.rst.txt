@@ -1,0 +1,21 @@
+gnomad_qc.v4.variant_qc.final_filter
+====================================
+
+Script to create final filter Table for release.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.variant_qc.final_filter.get_script_argument_parser
+   :prog: gnomad_qc.v4.variant_qc.final_filter.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.variant_qc.final_filter
+
+.. automodule:: gnomad_qc.v4.variant_qc.final_filter
+    :exclude-members: get_script_argument_parser

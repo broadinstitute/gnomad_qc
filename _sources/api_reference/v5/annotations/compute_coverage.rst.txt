@@ -1,0 +1,21 @@
+gnomad_qc.v5.annotations.compute_coverage
+=========================================
+
+Script to compute coverage, allele number, and quality histograms on all gnomAD v5 genomes (AoU v8 + updated gnomAD v4).
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v5.annotations.compute_coverage.get_script_argument_parser
+   :prog: gnomad_qc.v5.annotations.compute_coverage.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.annotations.compute_coverage
+
+.. automodule:: gnomad_qc.v5.annotations.compute_coverage
+    :exclude-members: get_script_argument_parser

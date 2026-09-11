@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v5.annotations.generate_variant_qc_annotations &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+        <script src="../../../_static/doctools.js"></script>
+        <script src="../../../_static/sphinx_highlight.js"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="gnomad_qc.v5.resources" href="../resources/index.html" />
+    <link rel="prev" title="gnomad_qc.v5.annotations.generate_frequency" href="generate_frequency.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../index.html">API Reference</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../../v4/index.html">v4</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../index.html">v5</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="index.html">annotations</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="annotation_utils.html">annotation_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="compute_coverage.html">compute_coverage</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generate_frequency.html">generate_frequency</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">generate_variant_qc_annotations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../resources/index.html">resources</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../variant_qc/index.html">variant_qc</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../federated/index.html">federated</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../analyses/index.html">analyses</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">gnomad_qc</a></li>
+          <li class="breadcrumb-item"><a href="../index.html">gnomad_qc.v5</a></li>
+          <li class="breadcrumb-item"><a href="index.html">gnomad_qc.v5.annotations</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v5.annotations.generate_variant_qc_annotations</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../../_sources/api_reference/v5/annotations/generate_variant_qc_annotations.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="gnomad-qc-v5-annotations-generate-variant-qc-annotations">
+<h1>gnomad_qc.v5.annotations.generate_variant_qc_annotations<a class="headerlink" href="#gnomad-qc-v5-annotations-generate-variant-qc-annotations" title="Permalink to this heading"></a></h1>
+<p>Script to generate annotations for variant QC on gnomAD v5.</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">gnomad_qc</span><span class="o">.</span><span class="n">v5</span><span class="o">.</span><span class="n">annotations</span><span class="o">.</span><span class="n">generate_variant_qc_annotations</span><span class="o">.</span><span class="n">py</span>
+       <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">environment</span> <span class="p">{</span><span class="n">rwb</span><span class="p">,</span><span class="n">batch</span><span class="p">}]</span> <span class="p">[</span><span class="o">--</span><span class="n">app</span><span class="o">-</span><span class="n">name</span> <span class="n">APP_NAME</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">cores</span> <span class="n">DRIVER_CORES</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">driver</span><span class="o">-</span><span class="n">memory</span> <span class="n">DRIVER_MEMORY</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">cores</span> <span class="n">WORKER_CORES</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">worker</span><span class="o">-</span><span class="n">memory</span> <span class="n">WORKER_MEMORY</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">overwrite</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">test</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="p">[</span><span class="n">TEST_N_PARTITIONS</span><span class="p">]]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">trio</span><span class="o">-</span><span class="n">stats</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">union</span><span class="o">-</span><span class="n">trio</span><span class="o">-</span><span class="n">stats</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">validate</span><span class="o">-</span><span class="n">trio</span><span class="o">-</span><span class="n">stats</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">chrom</span> <span class="n">CHROM</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">sibling</span><span class="o">-</span><span class="n">stats</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">vcf</span><span class="o">-</span><span class="n">ht</span><span class="o">-</span><span class="n">checkpoint</span><span class="o">-</span><span class="n">path</span><span class="o">-</span><span class="n">override</span> <span class="n">VCF_HT_CHECKPOINT_PATH_OVERRIDE</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">repartition</span><span class="o">-</span><span class="k">for</span><span class="o">-</span><span class="n">join</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">info</span><span class="o">-</span><span class="n">ht</span><span class="o">-</span><span class="n">path</span><span class="o">-</span><span class="n">override</span> <span class="n">INFO_HT_PATH_OVERRIDE</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">generate</span><span class="o">-</span><span class="n">ac</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">union</span><span class="o">-</span><span class="n">ac</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">hts</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">union</span><span class="o">-</span><span class="nb">input</span><span class="o">-</span><span class="n">ac</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">ht</span><span class="o">-</span><span class="n">paths</span> <span class="n">UNION_INPUT_AC_INFO_HT_PATHS</span> <span class="p">[</span><span class="n">UNION_INPUT_AC_INFO_HT_PATHS</span> <span class="o">...</span><span class="p">]]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">union</span><span class="o">-</span><span class="n">contigs</span> <span class="n">UNION_CONTIGS</span> <span class="p">[</span><span class="n">UNION_CONTIGS</span> <span class="o">...</span><span class="p">]]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">union</span><span class="o">-</span><span class="n">allele</span><span class="o">-</span><span class="n">strata</span> <span class="n">UNION_ALLELE_STRATA</span> <span class="p">[</span><span class="n">UNION_ALLELE_STRATA</span> <span class="o">...</span><span class="p">]]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">union</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">UNION_N_PARTITIONS</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">sites</span><span class="o">-</span><span class="n">vcf</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">final</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">tmp</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">paths</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">ac</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">ht</span><span class="o">-</span><span class="n">checkpoint</span><span class="o">-</span><span class="n">path</span><span class="o">-</span><span class="n">override</span> <span class="n">AC_INFO_HT_CHECKPOINT_PATH_OVERRIDE</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="nb">max</span><span class="o">-</span><span class="n">alleles</span> <span class="n">MAX_ALLELES</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="nb">min</span><span class="o">-</span><span class="n">alleles</span> <span class="n">MIN_ALLELES</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">lowqual</span><span class="o">-</span><span class="n">indel</span><span class="o">-</span><span class="n">phred</span><span class="o">-</span><span class="n">het</span><span class="o">-</span><span class="n">prior</span> <span class="n">LOWQUAL_INDEL_PHRED_HET_PRIOR</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">info</span><span class="o">-</span><span class="n">vcf</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">use</span><span class="o">-</span><span class="n">local</span><span class="o">-</span><span class="n">allele</span><span class="o">-</span><span class="n">agg</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">validate</span><span class="o">-</span><span class="n">local</span><span class="o">-</span><span class="n">allele</span><span class="o">-</span><span class="n">agg</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">explode</span><span class="o">-</span><span class="n">partitions</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">start</span> <span class="n">CHUNK_START</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">chunk</span><span class="o">-</span><span class="n">stop</span> <span class="n">CHUNK_STOP</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">read</span><span class="o">-</span><span class="n">subintervals</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">chunk</span> <span class="n">READ_SUBINTERVALS_PER_CHUNK</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">read</span><span class="o">-</span><span class="n">subintervals</span><span class="o">-</span><span class="n">scale</span> <span class="n">READ_SUBINTERVALS_SCALE</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">scout</span><span class="o">-</span><span class="n">alleles</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">scout</span><span class="o">-</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">SCOUT_N_PARTITIONS</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">scout</span><span class="o">-</span><span class="n">rows</span><span class="o">-</span><span class="n">per</span><span class="o">-</span><span class="n">partition</span> <span class="n">SCOUT_ROWS_PER_PARTITION</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">create</span><span class="o">-</span><span class="n">variant</span><span class="o">-</span><span class="n">qc</span><span class="o">-</span><span class="n">annotation</span><span class="o">-</span><span class="n">ht</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">impute</span><span class="o">-</span><span class="n">features</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">n</span><span class="o">-</span><span class="n">partitions</span> <span class="n">N_PARTITIONS</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">export</span><span class="o">-</span><span class="n">true</span><span class="o">-</span><span class="n">positive</span><span class="o">-</span><span class="n">vcfs</span><span class="p">]</span>
+       <span class="p">[</span><span class="o">--</span><span class="n">transmitted</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span> <span class="p">[</span><span class="o">--</span><span class="n">sibling</span><span class="o">-</span><span class="n">singletons</span><span class="p">]</span>
+</pre></div>
+</div>
+<section id="named-arguments">
+<h2>Named Arguments<a class="headerlink" href="#named-arguments" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--environment</kbd></dt>
+<dd><p>Possible choices: rwb, batch</p>
+<p>Environment where script will run.</p>
+<p>Default: “rwb”</p>
+</dd>
+<dt><kbd>--app-name</kbd></dt>
+<dd><p>Job name for batch/QoB backend.</p>
+</dd>
+<dt><kbd>--driver-cores</kbd></dt>
+<dd><p>Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.</p>
+</dd>
+<dt><kbd>--driver-memory</kbd></dt>
+<dd><p>Memory for driver node. Applies to Batch environment only. Hail default is ‘standard’ if unspecified.</p>
+</dd>
+<dt><kbd>--worker-cores</kbd></dt>
+<dd><p>Number of cores. Applies to Batch environment only. Hail default is 1 if unspecified.</p>
+</dd>
+<dt><kbd>--worker-memory</kbd></dt>
+<dd><p>Memory for worker nodes. Applies to Batch environment only. Hail default is ‘standard’ if unspecified.</p>
+</dd>
+<dt><kbd>--overwrite</kbd></dt>
+<dd><p>Overwrite output files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test</kbd></dt>
+<dd><p>Write to test path.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--test-n-partitions</kbd></dt>
+<dd><p>Use only n partitions of the VDS as input for testing purposes (default: 2).</p>
+</dd>
+<dt><kbd>--generate-trio-stats</kbd></dt>
+<dd><p>Calculate trio stats for a single chromosome (–chrom). Run once per chromosome, then combine with –union-trio-stats.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--union-trio-stats</kbd></dt>
+<dd><p>Union the per-chromosome trio stats HTs into the combined trio stats HT.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--validate-trio-stats</kbd></dt>
+<dd><p>Validate the combined trio stats HT (union integrity + value sanity).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--chrom</kbd></dt>
+<dd><p>Single chromosome/contig (e.g. ‘chr20’). Required for –generate-trio-stats (trio stats are computed one chromosome at a time). With –generate-ac-info-ht, restricts the VDS read to the contig: without –scout-alleles the contig span is subdivided into read intervals via –read-subintervals-scale or –read-subintervals-per-chunk; with –scout-alleles the scout pass is restricted to the contig. Mutually exclusive with chunk processing and –test-n-partitions for the AC-info step.</p>
+</dd>
+<dt><kbd>--generate-sibling-stats</kbd></dt>
+<dd><p>Calculates sibling stats.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--vcf-ht-checkpoint-path-override</kbd></dt>
+<dd><p>Optional override path for the reformatted sites VCF HT. By default the path is derived (sites_vcf[_test].ht in the durable annotations bucket, or the 30-day temp bucket with –use-tmp-info-paths or on test runs); written by –create-sites-vcf-ht and read by –create-final-info-ht.</p>
+</dd>
+<dt><kbd>--repartition-for-join</kbd></dt>
+<dd><p>With –create-final-info-ht, co-partition the VCF and AC info HTs onto identical interval boundaries before the join so it requires no shuffle (removes the join shuffle stage). Best for full-genome runs.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--info-ht-path-override</kbd></dt>
+<dd><p>Optional override path for the info HT output. If set, this path is used instead of the default resource path.</p>
+</dd>
+<dt><kbd>--ac-info-ht-checkpoint-path-override</kbd></dt>
+<dd><p>Optional override path for the AC info HT checkpoint. By default the path is derived automatically from the run’s parameters (test/–test-n-partitions, –chunk-start/–chunk-stop, –min-alleles/–max-alleles, union), landing in the durable annotations bucket, or in the 30-day temp bucket with –use-tmp-info-paths or on test runs; the –union-ac-info-hts output and the –create-final-info-ht input share the derived ‘union’ path.</p>
+</dd>
+<dt><kbd>--max-alleles</kbd></dt>
+<dd><p>Optional maximum number of alleles (including the reference) allowed at a locus when creating the info HT. Variants at loci with more than this many alleles are filtered out. Default is None (no filtering).</p>
+</dd>
+<dt><kbd>--min-alleles</kbd></dt>
+<dd><p>Optional minimum number of alleles (including the reference) allowed at a locus when creating the info HT. Variants at loci with fewer than this many alleles are filtered out. Default is None (no filtering).</p>
+</dd>
+<dt><kbd>--lowqual-indel-phred-het-prior</kbd></dt>
+<dd><p>Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad’s Data Sciences Platform for VQSR.</p>
+<p>Default: 40</p>
+</dd>
+<dt><kbd>--export-info-vcf</kbd></dt>
+<dd><p>Export info ht as VCF.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--use-local-allele-agg</kbd></dt>
+<dd><p>Compute the AC aggregation and AS_pab_max in local-allele space, so per-genotype cost scales with each genotype’s local alleles instead of every global alt. Output is identical to the original aggregation. Recommended for high-allele strata (e.g. –min-alleles 10 and above); at low-allele loci the original default is slightly cheaper. (Formerly –run-opt2.)</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--validate-local-allele-agg</kbd></dt>
+<dd><p>Before writing, diff the –use-local-allele-agg aggregation (AC arrays and AS_pab_max) against the original on the loaded VDS and abort if they do not match. Use with a small input (e.g. –scout-alleles or –test-n-partitions).</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="split-info-ht-workflow">
+<h2>Split info HT workflow<a class="headerlink" href="#split-info-ht-workflow" title="Permalink to this heading"></a></h2>
+<p>Create the info HT in independent steps: per-stratum AC info HTs (–generate-ac-info-ht, one run per –min-alleles/–max-alleles range), union them (–union-ac-info-hts), reformat the sites-only VCF once (–create-sites-vcf-ht), and join to write the final info HT (–create-final-info-ht). The VCF is never interval-filtered, so split (min-repped) VCF loci can never be dropped at interval boundaries.</p>
+<dl class="option-list">
+<dt><kbd>--generate-ac-info-ht</kbd></dt>
+<dd><p>Run only the AC info aggregation on the VDS (no VCF import or join). Combine with –min-alleles/–max-alleles, –use-local-allele-agg, and scout/chunk processing. The checkpoint path is derived automatically from the run’s partition/allele parameters (see –ac-info-ht-checkpoint-path-override to override).</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--union-ac-info-hts</kbd></dt>
+<dd><p>Union per-allele-count-stratum AC info HTs (from separate –generate-ac-info-ht runs) and write the result to –ac-info-ht-checkpoint-path-override. Fails if the input strata overlap (both allele bounds are inclusive, so e.g. max 9 pairs with min 10). Mutually exclusive with –generate-ac-info-ht.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--union-input-ac-info-ht-paths</kbd></dt>
+<dd><p>Space-separated paths to the per-stratum AC info HTs to union with –union-ac-info-hts. At least two paths are required. Alternatively derive the list with –union-contigs/–union-allele-strata.</p>
+</dd>
+<dt><kbd>--union-contigs</kbd></dt>
+<dd><p>With –union-ac-info-hts, derive the input paths instead of listing them: one per contig x allele stratum, using the same path derivation as –generate-ac-info-ht (so run flags like –test must match the generate runs). Pass contig names (e.g. chr1 chr2 chr3) or ‘autosomes’ for chr1-chr22. Requires –union-allele-strata; mutually exclusive with –union-input-ac-info-ht-paths. Derived inputs are existence-checked up front, so a forgotten stratum run fails before any compute.</p>
+</dd>
+<dt><kbd>--union-allele-strata</kbd></dt>
+<dd><p>Allele strata as MIN:MAX specs (inclusive, either side optional) matching the –min-alleles/–max-alleles of the generate runs, e.g. ‘:9’ ‘10:100’ ‘101:’. Used with –union-contigs.</p>
+</dd>
+<dt><kbd>--union-n-partitions</kbd></dt>
+<dd><p>Optional number of partitions for the unioned AC info HT. Default is None (keep the union’s partitioning).</p>
+</dd>
+<dt><kbd>--create-sites-vcf-ht</kbd></dt>
+<dd><p>Import and reformat the full AoU annotated sites-only VCF into a HT (adds AS_lowqual) and write it to the derived sites VCF HT path (see –vcf-ht-checkpoint-path-override to override). No VDS is loaded and no interval filtering is applied.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--create-final-info-ht</kbd></dt>
+<dd><p>Join the AC info HT at –ac-info-ht-checkpoint-path-override (e.g. the –union-ac-info-hts output) with the reformatted VCF HT to write the final info HT to –info-ht-path-override (or the default resource path). Reads the reformatted VCF HT at the derived path (or –vcf-ht-checkpoint-path-override override), so run –create-sites-vcf-ht first. Combine with –repartition-for-join for a shuffle-free full-genome join.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--use-tmp-info-paths</kbd></dt>
+<dd><p>Derive AC info HT and sites VCF HT checkpoint paths under the 30-day temp bucket instead of the default durable annotations bucket. Use for full-VDS experiments that should self-expire; –test/–test-n-partitions runs always use the temp bucket, without needing this flag. This flag exists (rather than reusing –test) because –test also switches the input to the 10-sample test VDS. Every step of a workflow (–generate-ac-info-ht, –union-ac-info-hts, –create-sites-vcf-ht, –create-final-info-ht) must agree on this flag for the derived paths to line up.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="chunk-processing-parameters">
+<h2>Chunk processing parameters<a class="headerlink" href="#chunk-processing-parameters" title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--explode-partitions</kbd></dt>
+<dd><p>Derive locus sub-intervals for chunk processing.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--chunk-start</kbd></dt>
+<dd><p>Start partition index for chunk processing.</p>
+</dd>
+<dt><kbd>--chunk-stop</kbd></dt>
+<dd><p>Stop partition index for chunk processing (exclusive).</p>
+</dd>
+<dt><kbd>--read-subintervals-per-chunk</kbd></dt>
+<dd><p>Number of locus sub-intervals to subdivide each chunk into, per contig. Default is None (1 sub-interval per contig, legacy behavior). Mutually exclusive with –read-subintervals-scale.</p>
+</dd>
+<dt><kbd>--read-subintervals-scale</kbd></dt>
+<dd><p>Derive the total sub-interval count automatically as this multiplier times the number of VDS partitions in the chunk (e.g. 15 with a 3-partition chunk gives ~45 sub-intervals), allocated across contigs proportionally to their position span. Use instead of –read-subintervals-per-chunk when the chunk’s partition count is not known up front (e.g. a –chrom run). Mutually exclusive with –read-subintervals-per-chunk.</p>
+</dd>
+</dl>
+</section>
+<section id="scout-target-loci-by-allele-count">
+<h2>Scout target loci by allele count<a class="headerlink" href="#scout-target-loci-by-allele-count" title="Permalink to this heading"></a></h2>
+<p>Two-pass mode: a cheap rows-only pass finds loci within the –min-alleles/–max-alleles range, then the VDS is re-read targeting only those loci with a scaled (not per-row) number of partitions.</p>
+<dl class="option-list">
+<dt><kbd>--scout-alleles</kbd></dt>
+<dd><p>Enable the two-pass scout mode when creating the info HT. Requires at least one of –min-alleles or –max-alleles.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--scout-n-partitions</kbd></dt>
+<dd><p>Approximate number of intervals/partitions to spread the scouted target loci across on re-read. Takes precedence over –scout-rows-per-partition.</p>
+</dd>
+<dt><kbd>--scout-rows-per-partition</kbd></dt>
+<dd><p>Target number of scouted loci per interval/partition on re-read. Used only when –scout-n-partitions is not set. Default is 20, calibrated for heavy high-allele strata; raise it when scouting cheap low-allele loci.</p>
+</dd>
+</dl>
+</section>
+<section id="variant-qc-annotation-ht-parameters.">
+<h2>Variant QC annotation HT parameters.<a class="headerlink" href="#variant-qc-annotation-ht-parameters." title="Permalink to this heading"></a></h2>
+<dl class="option-list">
+<dt><kbd>--create-variant-qc-annotation-ht</kbd></dt>
+<dd><p>Creates an annotated HT with features for variant QC.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--impute-features</kbd></dt>
+<dd><p>If set, imputation is performed for variant QC features.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--n-partitions</kbd></dt>
+<dd><p>Desired number of partitions for variant QC annotation HT.</p>
+<p>Default: 5000</p>
+</dd>
+</dl>
+</section>
+<section id="export-true-positive-vcfs">
+<h2>Export true positive VCFs<a class="headerlink" href="#export-true-positive-vcfs" title="Permalink to this heading"></a></h2>
+<p>Arguments used to define true positive variant set.</p>
+<dl class="option-list">
+<dt><kbd>--export-true-positive-vcfs</kbd></dt>
+<dd><p>Exports true positive variants (–transmitted-singletons and/or –sibling-singletons) to VCF files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--transmitted-singletons</kbd></dt>
+<dd><p>Include transmitted singletons in the exports of true positive variants to VCF files.</p>
+<p>Default: False</p>
+</dd>
+<dt><kbd>--sibling-singletons</kbd></dt>
+<dd><p>Include sibling singletons in the exports of true positive variants to VCF files.</p>
+<p>Default: False</p>
+</dd>
+</dl>
+</section>
+<section id="module-functions">
+<h2>Module Functions<a class="headerlink" href="#module-functions" title="Permalink to this heading"></a></h2>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht</span></code></a>(vds)</p></td>
+<td><p>Compute AC and AC_raw annotations for each allele count filter group.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_local_allele_agg" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_local_allele_agg"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_local_allele_agg</span></code></a>(vds)</p></td>
+<td><p>Diff the local-allele-space aggregation against the original on a subset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_sites_vcf_ht" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_sites_vcf_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_sites_vcf_ht</span></code></a>(...)</p></td>
+<td><p>Import the AoU annotated sites-only VCF and reformat it into a HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.join_vcf_and_ac_info_hts" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.join_vcf_and_ac_info_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.join_vcf_and_ac_info_hts</span></code></a>(...)</p></td>
+<td><p>Annotate the AC info HT with the reformatted sites VCF HT's annotations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.union_ac_info_hts" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.union_ac_info_hts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.union_ac_info_hts</span></code></a>(...)</p></td>
+<td><p>Union per-allele-count-stratum AC info HTs into a single AC info HT.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats</span></code></a>(mt, ...)</p></td>
+<td><p>Generate trio transmission stats from a VariantDataset and pedigree info.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_trio_stats" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_trio_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_trio_stats</span></code></a>(ht, ...)</p></td>
+<td><p>Validate the combined trio stats HT for union integrity and value sanity.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats</span></code></a>(mt, ...)</p></td>
+<td><p>Generate sibling stats from a VariantDataset and relatedness info.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_variant_qc_annotation_ht" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_variant_qc_annotation_ht"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_variant_qc_annotation_ht</span></code></a>(...)</p></td>
+<td><p>Create a Table with all necessary annotations for variant QC.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_tp_ht_for_vcf_export" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_tp_ht_for_vcf_export"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_tp_ht_for_vcf_export</span></code></a>(ht)</p></td>
+<td><p>Get Tables with raw and adj true positive variants to export as a VCF for use in VQSR.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.scout_target_loci" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.scout_target_loci"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.scout_target_loci</span></code></a>(...)</p></td>
+<td><p>Find loci whose allele count falls within a target range (cheap rows-only pass).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.group_scout_loci_into_intervals" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.group_scout_loci_into_intervals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.group_scout_loci_into_intervals</span></code></a>(...)</p></td>
+<td><p>Group scouted target loci into a bounded set of locus intervals.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_scout_intervals" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_scout_intervals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_scout_intervals</span></code></a>(args)</p></td>
+<td><p>Run the scout pass and derive partition-scaled re-read intervals.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_chunks" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_chunks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_chunks</span></code></a>(args)</p></td>
+<td><p>Derive per-contig locus sub-intervals for a chunk of the VDS.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_contig_intervals" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_contig_intervals"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_contig_intervals</span></code></a>(args)</p></td>
+<td><p>Derive equal-width read intervals covering a single contig.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.main" title="gnomad_qc.v5.annotations.generate_variant_qc_annotations.main"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.main</span></code></a>(args)</p></td>
+<td><p>Generate all variant annotations needed for variant QC.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_script_argument_parser</span></code>()</p></td>
+<td><p>Get script argument parser.</p></td>
+</tr>
+</tbody>
+</table>
+<span class="target" id="module-gnomad_qc.v5.annotations.generate_variant_qc_annotations"></span><p>Script to generate annotations for variant QC on gnomAD v5.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">generate_ac_info_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_local_allele_agg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#generate_ac_info_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.generate_ac_info_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Compute AC and AC_raw annotations for each allele count filter group.</p>
+<p>Function also adds <cite>AS_pab_max</cite> and <cite>allele_info</cite> annotations.</p>
+<p>With <cite>use_local_allele_agg</cite>, both the AC aggregation and <cite>AS_pab_max</cite> are
+computed in local-allele space: per-genotype cost scales with the number of
+local alleles instead of global alts, which is much faster at high-allele
+loci and produces output identical to the original. The local-allele path
+adds per-genotype hash-map overhead that can be a net loss at low-allele
+loci, so the original dense aggregation remains the default.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset to use for computing AC and AC_raw annotations.</p></li>
+<li><p><strong>max_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional maximum number of alleles (including the reference) allowed at a locus. Variants at loci with more than this many alleles are filtered out. Default is None (no filtering).</p></li>
+<li><p><strong>min_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional minimum number of alleles (including the reference) allowed at a locus. Variants at loci with fewer than this many alleles are filtered out. Default is None (no filtering).</p></li>
+<li><p><strong>use_local_allele_agg</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If True, compute the AC aggregation AND <cite>AS_pab_max</cite> in local-allele space. This removes the ~n_global_alts-per-genotype costs in the AC aggregation and <cite>pab_max_expr</cite>, the dominant costs at high-allele loci. Recommended for high-allele strata (e.g. min_alleles &gt;= 10). Default is False (original aggregation).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table with AC and AC_raw annotations split by high quality, release, and unrelated.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_local_allele_agg">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">validate_local_allele_agg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_local_allele_agg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pab_atol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-09</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#validate_local_allele_agg"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_local_allele_agg" title="Permalink to this definition"></a></dt>
+<dd><p>Diff the local-allele-space aggregation against the original on a subset.</p>
+<p>Builds the pre-split AC / AC_raw arrays and <cite>AS_pab_max</cite> with both the
+original and the local-allele strategy and asserts they match at every
+locus.</p>
+<p>Comparisons handle missingness and NaN explicitly (rather than letting
+<cite>hl.agg.all</cite> silently skip them), verify the key sets are identical in both
+directions (so row-set drift is caught, not swallowed), and fail on empty
+input (so a zero-locus run is never a vacuous PASS). AC arrays (integers) are
+compared exactly; <cite>AS_pab_max</cite> (float) is compared to within <cite>pab_atol</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset to validate on.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of leading <cite>variant_data</cite> partitions to sample.
+Pass None to validate every loaded partition.</p></li>
+<li><p><strong>max_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional max alleles filter applied before aggregation.</p></li>
+<li><p><strong>min_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional min alleles filter applied before aggregation.</p></li>
+<li><p><strong>use_local_allele_agg</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If True, validate the local-allele AC aggregation
+and <cite>AS_pab_max</cite> against the original aggregation.</p></li>
+<li><p><strong>pab_atol</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code>) – Absolute tolerance for the <cite>AS_pab_max</cite> float comparison.
+Default is 1e-9.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True iff the key sets match and every compared field matches at every
+sampled locus (and the input was non-empty).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_sites_vcf_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">create_sites_vcf_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vcf_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lowqual_indel_phred_het_prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">40</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#create_sites_vcf_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_sites_vcf_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Import the AoU annotated sites-only VCF and reformat it into a HT.</p>
+<p>Converts the array-typed AS_* annotations to scalars, drops fields redundant
+with their AS_* versions, and adds <cite>AS_lowqual</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vcf_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the annotated sites-only VCF.</p></li>
+<li><p><strong>header_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to the header file for the VCF.</p></li>
+<li><p><strong>lowqual_indel_phred_het_prior</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Phred-scaled prior for a het genotype at a site with a low quality indel. Default is 40. We use 1/10k bases (phred=40) to be more consistent with the filtering used by Broad’s Data Sciences Platform for VQSR.</p></li>
+<li><p><strong>test</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to use just the first two partitions of the loaded VCF.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Reformatted sites VCF Table.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.join_vcf_and_ac_info_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">join_vcf_and_ac_info_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ac_info_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vcf_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ac_info_ht_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vcf_ht_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_repartition_for_join</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#join_vcf_and_ac_info_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.join_vcf_and_ac_info_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Annotate the AC info HT with the reformatted sites VCF HT’s annotations.</p>
+<p>The join is driven by the AC info side’s keys (the AoU VCF has variants not
+present in the samples we consider high quality, and those rows are dropped);
+<cite>AS_pab_max</cite> is moved from <cite>AC_info</cite> into <cite>info</cite> to match the final schema.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ac_info_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – AC info HT (split, e.g. a <cite>generate_ac_info_ht</cite> checkpoint or a <cite>union_ac_info_hts</cite> output).</p></li>
+<li><p><strong>vcf_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Reformatted sites VCF HT (from <cite>create_sites_vcf_ht</cite>).</p></li>
+<li><p><strong>ac_info_ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Readable path for <cite>ac_info_ht</cite>. Required when <cite>use_repartition_for_join</cite> is True (both sides are re-read with shared <cite>_intervals</cite>).</p></li>
+<li><p><strong>vcf_ht_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Readable path for <cite>vcf_ht</cite>. If None and <cite>use_repartition_for_join</cite> is True, the VCF HT is first written to a temp path.</p></li>
+<li><p><strong>use_repartition_for_join</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – If True, co-partition the VCF and AC info HTs onto identical interval boundaries (via <cite>repartition_for_join</cite>) so the join is partition-aligned and requires no shuffle. Best for full-genome runs. Default is False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Info HT.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.union_ac_info_hts">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">union_ac_info_hts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ac_info_ht_paths</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expected_strata</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#union_ac_info_hts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.union_ac_info_hts" title="Permalink to this definition"></a></dt>
+<dd><p>Union per-allele-count-stratum AC info HTs into a single AC info HT.</p>
+<p>The per-stratum AC info HTs come from separate <cite>–generate-ac-info-ht</cite> runs over
+disjoint allele-count ranges (e.g. <cite>–max-alleles 9</cite>, <cite>–min-alleles 10
+–max-alleles 100</cite>, <cite>–min-alleles 101</cite>), so the result is a row union, not a
+key join. All inputs must share identical row and key schemas. When every input
+carries the <cite>ac_info_ht_parameters</cite> global (written by –generate-ac-info-ht),
+the union replaces it with an <cite>ac_info_ht_strata</cite> array holding each input’s
+parameters in input order; otherwise globals are taken from the first input.</p>
+<p>After the union, asserts that the total row count equals the sum of the input row
+counts and that all keys are distinct, so accidental locus overlap between strata
+(e.g. overlapping min/max allele ranges – both bounds are inclusive) fails loudly
+instead of silently duplicating rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ac_info_ht_paths</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Paths to the per-stratum AC info HTs to union. Must contain at least two paths.</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional number of partitions for the unioned Table. Default is None (keep the union’s partitioning).</p></li>
+<li><p><strong>expected_strata</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>]) – Optional list (aligned with <cite>ac_info_ht_paths</cite>) of dicts of expected <cite>ac_info_ht_parameters</cite> global fields (e.g. contig, min_alleles, max_alleles, test). Each input’s recorded parameters must match its expectation – a path name is only a convention, but the globals are written by the run itself, so this catches a table sitting at the right path with the wrong contents. Inputs without the provenance global fail verification. Default is None (no verification).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Unioned AC info HT (checkpointed to a temp path).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">run_generate_trio_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fam_ped</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#run_generate_trio_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_trio_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Generate trio transmission stats from a VariantDataset and pedigree info.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Dense trio MatrixTable.</p></li>
+<li><p><strong>fam_ped</strong> (<a class="reference external" href="https://hail.is/docs/0.2/genetics/hail.genetics.Pedigree.html#hail.genetics.Pedigree" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Pedigree</span></code></a>) – Pedigree containing trio info.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing trio stats.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_trio_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">validate_trio_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_chrom_hts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expected_chroms</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#validate_trio_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.validate_trio_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Validate the combined trio stats HT for union integrity and value sanity.</p>
+<p>Raises on hard failures (row/contig loss, schema mismatch, invariant
+violations); logs biological plausibility metrics for eyeballing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Combined (unioned) trio stats HT.</p></li>
+<li><p><strong>per_chrom_hts</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]) – Per-chromosome trio stats HTs keyed by contig.</p></li>
+<li><p><strong>expected_chroms</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>]) – Contigs the union should cover (autosomes).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">None</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">run_generate_sib_stats</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">relatedness_ht</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#run_generate_sib_stats"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.run_generate_sib_stats" title="Permalink to this definition"></a></dt>
+<dd><p>Generate sibling stats from a VariantDataset and relatedness info.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mt</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.MatrixTable.html#hail.MatrixTable" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">MatrixTable</span></code></a>) – Input MatrixTable.</p></li>
+<li><p><strong>relatedness_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table containing relatedness info.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table containing sibling stats.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_variant_qc_annotation_ht">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">create_variant_qc_annotation_ht</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">info_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trio_stats_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sib_stats_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">impute_features</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#create_variant_qc_annotation_ht"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.create_variant_qc_annotation_ht" title="Permalink to this definition"></a></dt>
+<dd><p>Create a Table with all necessary annotations for variant QC.</p>
+<p>Annotations that are included:</p>
+<blockquote>
+<div><dl class="simple">
+<dt>Features for RF:</dt><dd><ul class="simple">
+<li><p>variant_type</p></li>
+<li><p>allele_type</p></li>
+<li><p>n_alt_alleles</p></li>
+<li><p>has_star</p></li>
+<li><p>AS_QD</p></li>
+<li><p>AS_pab_max</p></li>
+<li><p>AS_MQRankSum</p></li>
+<li><p>AS_SOR</p></li>
+<li><p>AS_ReadPosRankSum</p></li>
+</ul>
+</dd>
+<dt>Training sites (bool):</dt><dd><ul class="simple">
+<li><p>transmitted_singleton</p></li>
+<li><p>sibling_singleton</p></li>
+<li><p>fail_hard_filters - (ht.AS_QD &lt; 0.5) | (ht.AS_FS &gt; 60) | (ht.AS_MQ &lt; 30)</p></li>
+</ul>
+</dd>
+</dl>
+</div></blockquote>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>info_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Info Table with split multi-allelics.</p></li>
+<li><p><strong>trio_stats_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with trio statistics.</p></li>
+<li><p><strong>sib_stats_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table with sibling statistics.</p></li>
+<li><p><strong>impute_features</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to impute features using feature medians (this is
+done by variant type).</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Number of partitions to use for final annotated Table.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Hail Table with all annotations needed for variant QC.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_tp_ht_for_vcf_export">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">get_tp_ht_for_vcf_export</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transmitted_singletons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sibling_singletons</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#get_tp_ht_for_vcf_export"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.get_tp_ht_for_vcf_export" title="Permalink to this definition"></a></dt>
+<dd><p>Get Tables with raw and adj true positive variants to export as a VCF for use in VQSR.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Input Table with transmitted singleton and sibling singleton information.</p></li>
+<li><p><strong>transmitted_singletons</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include transmitted singletons in the
+true positive variants.</p></li>
+<li><p><strong>sibling_singletons</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">bool</span></code>) – Whether to include sibling singletons in the true
+positive variants.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dictionary of ‘raw’ and ‘adj’ true positive variant sites Tables.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.scout_target_loci">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">scout_target_loci</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_alleles</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">contig</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#scout_target_loci"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.scout_target_loci" title="Permalink to this definition"></a></dt>
+<dd><p>Find loci whose allele count falls within a target range (cheap rows-only pass).</p>
+<p>This is the first pass of a two-pass “scout then re-read” strategy: it scans only
+the row metadata of the VDS variant data (entries are pruned, so no genotype
+aggregation runs) to identify the loci of interest, and writes them to a
+checkpointed Table that stays distributed (no driver collect of every locus).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vds</strong> (<a class="reference external" href="https://hail.is/docs/0.2/vds/hail.vds.VariantDataset.html#hail.vds.VariantDataset" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">VariantDataset</span></code></a>) – VariantDataset to scout. Only <cite>variant_data</cite> row keys are read.</p></li>
+<li><p><strong>checkpoint_path</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Path to checkpoint the target loci Table.</p></li>
+<li><p><strong>min_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional minimum number of alleles (including the reference)
+at a locus. Loci with fewer are excluded. Default is None (no minimum).</p></li>
+<li><p><strong>max_alleles</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Optional maximum number of alleles (including the reference)
+at a locus. Loci with more are excluded. Default is None (no maximum).</p></li>
+<li><p><strong>contig</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>) – Optional contig (e.g. “chr1”) to restrict the scout to.
+Default is None (whole input).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Table keyed by <cite>locus, alleles</cite> containing only the target loci.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.group_scout_loci_into_intervals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">group_scout_loci_into_intervals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target_ht</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_partitions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows_per_partition</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#group_scout_loci_into_intervals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.group_scout_loci_into_intervals" title="Permalink to this definition"></a></dt>
+<dd><p>Group scouted target loci into a bounded set of locus intervals.</p>
+<p>Rather than one interval (and therefore one partition) per target locus, the
+sorted target loci are grouped into chunks so that each resulting interval – and
+thus each partition produced when the VDS is re-read with these intervals –
+holds many target loci. This keeps the partition count in a healthy range
+regardless of how many target loci there are.</p>
+<p>The derivation stays distributed: only the chunk-boundary loci reach the
+driver, ~2 per interval, so the collect scales as <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">n_loci</span> <span class="pre">/</span>
+<span class="pre">rows_per_partition</span></code> rather than <code class="docutils literal notranslate"><span class="pre">n_loci</span></code>. The 20-row default is
+calibrated for small high-allele strata; a large low-allele scout should
+raise <cite>rows_per_partition</cite> (or set <cite>n_partitions</cite>) to keep the boundary
+collect and the interval count bounded.</p>
+<p>Intervals never span contigs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>target_ht</strong> (<a class="reference external" href="https://hail.is/docs/0.2/hail.Table.html#hail.Table" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Table</span></code></a>) – Table of target loci (e.g. from <cite>scout_target_loci</cite>).</p></li>
+<li><p><strong>n_partitions</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Desired (approximate) number of intervals/partitions. If
+set, takes precedence over <cite>rows_per_partition</cite>.</p></li>
+<li><p><strong>rows_per_partition</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>) – Target number of loci per interval/partition. Used
+only when <cite>n_partitions</cite> is None. Defaults to 20 if neither is set,
+calibrated for the heavy high-allele strata scout mode targets.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of <cite>hl.Interval</cite> objects, in genomic order, each covering a
+contiguous chunk of target loci within a single contig.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_scout_intervals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">compute_scout_intervals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#compute_scout_intervals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_scout_intervals" title="Permalink to this definition"></a></dt>
+<dd><p>Run the scout pass and derive partition-scaled re-read intervals.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>args</strong> – Parsed CLI args.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of locus intervals covering the scouted target loci.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_chunks">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">compute_chunks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#compute_chunks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_chunks" title="Permalink to this definition"></a></dt>
+<dd><p>Derive per-contig locus sub-intervals for a chunk of the VDS.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>args</strong> – Parsed CLI args.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of locus intervals covering the chunk.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_contig_intervals">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">compute_contig_intervals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#compute_contig_intervals"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.compute_contig_intervals" title="Permalink to this definition"></a></dt>
+<dd><p>Derive equal-width read intervals covering a single contig.</p>
+<p>The contig’s span is known from the reference genome, so unlike chunk mode no
+bounds aggregation over the VDS reference data is needed. With
+–read-subintervals-scale, the sub-interval count is the scale times the
+number of VDS partitions overlapping the contig (a metadata-only lookup);
+otherwise –read-subintervals-per-chunk gives the absolute count.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>args</strong> – Parsed CLI args.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<a class="reference external" href="https://hail.is/docs/0.2/utils/index.html#hail.utils.Interval" title="(in Hail v0.2.139)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Interval</span></code></a>]</p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of locus intervals covering the contig, in genomic order.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="gnomad_qc.v5.annotations.generate_variant_qc_annotations.main">
+<span class="sig-prename descclassname"><span class="pre">gnomad_qc.v5.annotations.generate_variant_qc_annotations.</span></span><span class="sig-name descname"><span class="pre">main</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../_modules/gnomad_qc/v5/annotations/generate_variant_qc_annotations.html#main"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#gnomad_qc.v5.annotations.generate_variant_qc_annotations.main" title="Permalink to this definition"></a></dt>
+<dd><p>Generate all variant annotations needed for variant QC.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="generate_frequency.html" class="btn btn-neutral float-left" title="gnomad_qc.v5.annotations.generate_frequency" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../resources/index.html" class="btn btn-neutral float-right" title="gnomad_qc.v5.resources" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

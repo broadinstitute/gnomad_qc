@@ -1,0 +1,54 @@
+gnomad_qc.v4.annotations.recover_and_complete_vep115
+====================================================
+
+
+Complete VEP annotation for gnomAD context HT.
+
+Background:
+
+    This script was created to recover from a VEP 115 run that failed after processing
+    ~99% (37797/38029 partitions) of the gnomAD context HT (all possible SNVs). The job
+    ran for an extended period before failing at task 32305 due to a VEP JSON parsing
+    error. The error was caused by variant chr18:16770181 A>C, where VEP annotated the
+    context field with '-nan', resulting in:
+
+        com.fasterxml.jackson.core.JsonParseException: Unexpected character ('n' (code
+        110)) in numeric value: expected digit (0-9) to follow minus sign
+
+    After filtering that variant, another variant in the same region also failed with
+    the same error. To ensure successful completion, the entire chr18 centromere region
+    (chr18:15460900-20861207) is now excluded from VEP processing.
+
+    Rather than rerun VEP on the entire context HT, this script:
+
+        - Reconstructs the partially written HT by updating metadata files.
+        - Identifies which variants still need VEP annotation.
+        - Filters out the chr18 centromere region to prevent crashes.
+        - Runs VEP only on the remaining unannotated variants.
+        - Combines all results into a complete VEP-annotated context HT.
+
+    Note: Variants in the chr18 centromere will have missing VEP annotations and
+    should be investigated separately.
+
+Pipeline Steps:
+
+    Step 1: Copy partial HT to temp location.
+    Step 2: Extract partition metadata from index files and vep_context HT.
+    Step 3: Reconstruct partial HT by updating metadata files.
+    Step 4: Filter context HT to variants missing VEP (excluding chr18 centromere).
+    Step 5: Run VEP on remaining variants (excludes chr18 centromere).
+    Step 6: Run VEP on chr18 centromere variants with modified config.
+    Step 7: Combine all VEP results and add metadata to final HT.
+
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.annotations.recover_and_complete_vep115
+
+.. automodule:: gnomad_qc.v4.annotations.recover_and_complete_vep115
+    :exclude-members: get_script_argument_parser

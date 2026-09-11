@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.identify_trios
+=====================================
+
+Script to identify trios from relatedness data and filter based on Mendel errors and de novos.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.identify_trios.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.identify_trios.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.identify_trios
+
+.. automodule:: gnomad_qc.v4.sample_qc.identify_trios
+    :exclude-members: get_script_argument_parser

@@ -1,0 +1,21 @@
+gnomad_qc.v4.create_release.make_var_annot_hists
+================================================
+
+
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.create_release.make_var_annot_hists.get_script_argument_parser
+   :prog: gnomad_qc.v4.create_release.make_var_annot_hists.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.create_release.make_var_annot_hists
+
+.. automodule:: gnomad_qc.v4.create_release.make_var_annot_hists
+    :exclude-members: get_script_argument_parser

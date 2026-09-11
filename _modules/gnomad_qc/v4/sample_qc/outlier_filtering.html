@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gnomad_qc.v4.sample_qc.outlier_filtering &mdash; gnomad_qc master documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/theme_overrides.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+        <script src="../../../../_static/sphinx_highlight.js"></script>
+        <script src="https://unpkg.com/mermaid@10.2.0/dist/mermaid.min.js"></script>
+        <script>mermaid.initialize({startOnLoad:true});</script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            gnomad_qc
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api_reference/index.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/broadinstitute/gnomad_qc/tags">Change Log</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gnomad_qc</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">gnomad_qc.v4.sample_qc.outlier_filtering</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gnomad_qc.v4.sample_qc.outlier_filtering</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Script to determine sample QC metric outliers that should be filtered.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+
+<span class="kn">import</span> <span class="nn">hail</span> <span class="k">as</span> <span class="nn">hl</span>
+<span class="kn">from</span> <span class="nn">gnomad.sample_qc.filtering</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">compute_qc_metrics_residuals</span><span class="p">,</span>
+    <span class="n">compute_stratified_metrics_filter</span><span class="p">,</span>
+    <span class="n">determine_nearest_neighbors</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad.utils.slack</span> <span class="kn">import</span> <span class="n">slack_notifications</span>
+<span class="kn">from</span> <span class="nn">hail.utils.misc</span> <span class="kn">import</span> <span class="n">new_temp_file</span>
+
+<span class="kn">from</span> <span class="nn">gnomad_qc.resource_utils</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PipelineResourceCollection</span><span class="p">,</span>
+    <span class="n">PipelineStepResourceCollection</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.slack_creds</span> <span class="kn">import</span> <span class="n">slack_token</span>
+<span class="kn">from</span> <span class="nn">gnomad_qc.v4.resources.sample_qc</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">ancestry_pca_scores</span><span class="p">,</span>
+    <span class="n">finalized_outlier_filtering</span><span class="p">,</span>
+    <span class="n">get_pop_ht</span><span class="p">,</span>
+    <span class="n">get_sample_qc</span><span class="p">,</span>
+    <span class="n">hard_filtered_samples</span><span class="p">,</span>
+    <span class="n">joint_qc_meta</span><span class="p">,</span>
+    <span class="n">nearest_neighbors</span><span class="p">,</span>
+    <span class="n">nearest_neighbors_filtering</span><span class="p">,</span>
+    <span class="n">platform</span><span class="p">,</span>
+    <span class="n">regressed_filtering</span><span class="p">,</span>
+    <span class="n">stratified_filtering</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(levelname)s</span><span class="s2"> (</span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(lineno)s</span><span class="s2">): </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;outlier_filtering&quot;</span><span class="p">)</span>
+<span class="n">logger</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_sample_qc_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.get_sample_qc_ht">[docs]</a><span class="k">def</span> <span class="nf">get_sample_qc_ht</span><span class="p">(</span>
+    <span class="n">sample_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span> <span class="n">test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">24</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get sample QC Table with modifications needed for outlier filtering.</span>
+
+<span class="sd">    The following modifications are made:</span>
+<span class="sd">        - Add &#39;r_snp_indel&#39; metric</span>
+<span class="sd">        - Convert each element of `bases_over_dp_threshold` to a top level annotation</span>
+<span class="sd">          with &#39;bases_dp_over_{dp_threshold}&#39;</span>
+<span class="sd">        - Exclude hard filtered samples</span>
+<span class="sd">        - Sample 1% of the dataset if `test` is True</span>
+
+<span class="sd">    :param sample_qc_ht: Sample QC Table.</span>
+<span class="sd">    :param test: Whether to filter the input Table to a random sample of 1% of the</span>
+<span class="sd">        dataset. Default is False.</span>
+<span class="sd">    :param seed: Random seed for making test dataset. Default is 24.</span>
+<span class="sd">    :return: Sample QC Table for outlier filtering.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">test</span><span class="p">:</span>
+        <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="n">seed</span><span class="p">)</span>
+
+    <span class="c1"># Convert each element of `bases_over_dp_threshold` to an annotation with a name</span>
+    <span class="c1"># that contains the DP threshold.</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="o">**</span><span class="p">{</span>
+            <span class="sa">f</span><span class="s2">&quot;bases_dp_over_</span><span class="si">{</span><span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">dp_bins</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="p">(</span>
+                <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">bases_over_dp_threshold</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">dp_bins</span><span class="p">))</span>
+        <span class="p">},</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;bases_over_gq_threshold&quot;</span><span class="p">)</span>
+    <span class="c1"># Exclude hard filtered samples from the sample QC Table.</span>
+    <span class="c1"># They should not be included in the metric distribution stats.</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">hard_filtered_samples</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+    <span class="p">)</span>
+    <span class="c1"># Add &#39;r_snp_indel&#39; annotation the sample QC HT.</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">r_snp_indel</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">n_snp</span>
+        <span class="o">/</span> <span class="p">(</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">n_insertion</span> <span class="o">+</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">n_deletion</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="apply_filter"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.apply_filter">[docs]</a><span class="k">def</span> <span class="nf">apply_filter</span><span class="p">(</span>
+    <span class="n">sample_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">qc_metrics</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">filtering_method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">apply_r_ti_tv_singleton_filter</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">pop_scores_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">pop_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">platform_ht</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply stratified, regressed, or nearest neighbors outlier filtering method.</span>
+
+<span class="sd">    :param sample_qc_ht: Sample QC HT.</span>
+<span class="sd">    :param qc_metrics: Specific metrics to use for outlier detection.</span>
+<span class="sd">    :param filtering_method: The filtering method to apply to `sample_qc_ht`. One of</span>
+<span class="sd">        &#39;stratified&#39;, &#39;regressed&#39;, or &#39;nearest_neighbors&#39;.</span>
+<span class="sd">    :param apply_r_ti_tv_singleton_filter: Whether to apply the filtering method to</span>
+<span class="sd">        only samples with: Number of singletons (or n_singleton residuals) &gt;</span>
+<span class="sd">        median(comparison group number of singletons/n_singleton residuals).</span>
+<span class="sd">    :param pop_scores_ht: Optional Table with population PCA scores.</span>
+<span class="sd">    :param pop_ht: Optional Table with population assignment.</span>
+<span class="sd">    :param platform_ht: Optional Table with platform assignment.</span>
+<span class="sd">    :param kwargs: Additional parameters to pass to the requested filtering method</span>
+<span class="sd">        function.</span>
+<span class="sd">    :return: Table with outlier filter annotations.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Create dict of expression parameters needed in filtering method.</span>
+    <span class="n">ann_exprs</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">pop_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ann_exprs</span><span class="p">[</span><span class="s2">&quot;pop_expr&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pop_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span>
+    <span class="k">if</span> <span class="n">platform_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ann_exprs</span><span class="p">[</span><span class="s2">&quot;platform_expr&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">platform_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">qc_platform</span>
+        <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;regressed&quot;</span><span class="p">:</span>
+            <span class="n">ann_exprs</span><span class="p">[</span><span class="s2">&quot;platform_scores_expr&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">platform_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">scores</span>
+    <span class="k">if</span> <span class="n">pop_scores_ht</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ann_exprs</span><span class="p">[</span><span class="s2">&quot;pop_scores_expr&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pop_scores_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">scores</span>
+
+    <span class="c1"># Run filtering method using defined expressions, and any other passed parameters.</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;stratified&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_stratified_filtering_method</span><span class="p">(</span>
+            <span class="n">sample_qc_ht</span><span class="p">,</span> <span class="n">qc_metrics</span><span class="p">,</span> <span class="o">**</span><span class="n">ann_exprs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;regressed&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_regressed_filtering_method</span><span class="p">(</span>
+            <span class="n">sample_qc_ht</span><span class="p">,</span> <span class="n">qc_metrics</span><span class="p">,</span> <span class="o">**</span><span class="n">ann_exprs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;nearest_neighbors&quot;</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_nearest_neighbor_filtering_method</span><span class="p">(</span><span class="n">sample_qc_ht</span><span class="p">,</span> <span class="n">qc_metrics</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;&#39;filtering_method&#39; must be one of: &#39;stratified&#39;, &#39;regressed&#39;, &quot;</span>
+            <span class="s2">&quot;&#39;nearest_neighbors&#39;!&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Apply the n_singleton median filter for the r_ti_tv_singleton filter.</span>
+    <span class="k">if</span> <span class="n">apply_r_ti_tv_singleton_filter</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">checkpoint</span><span class="p">(</span><span class="n">new_temp_file</span><span class="p">(</span><span class="s2">&quot;outlier_filtering&quot;</span><span class="p">,</span> <span class="n">extension</span><span class="o">=</span><span class="s2">&quot;ht&quot;</span><span class="p">))</span>
+        <span class="n">ann_exprs</span> <span class="o">=</span> <span class="p">{</span><span class="n">ann</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;_expr&quot;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]:</span> <span class="n">expr</span> <span class="k">for</span> <span class="n">ann</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">ann_exprs</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_n_singleton_filter_to_r_ti_tv_singleton</span><span class="p">(</span>
+            <span class="n">ht</span><span class="p">,</span> <span class="n">sample_qc_ht</span><span class="p">,</span> <span class="n">filtering_method</span><span class="p">,</span> <span class="n">ann_exprs</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+        <span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">apply_r_ti_tv_singleton_filter</span><span class="o">=</span><span class="n">apply_r_ti_tv_singleton_filter</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="apply_stratified_filtering_method"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.apply_stratified_filtering_method">[docs]</a><span class="k">def</span> <span class="nf">apply_stratified_filtering_method</span><span class="p">(</span>
+    <span class="n">sample_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">qc_metrics</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">pop_expr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StringExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">platform_expr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StringExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">include_unreleasable_in_cutoffs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use population stratified QC metrics to determine what samples are outliers and should be filtered.</span>
+
+<span class="sd">    Use `compute_stratified_metrics_filter` to compute the median, MAD, and upper and</span>
+<span class="sd">    lower thresholds for each `qc_metrics` stratified by assigned population and/or</span>
+<span class="sd">    platform and return a `qc_metrics_filters` annotation indicating if the sample</span>
+<span class="sd">    falls a certain number of MAD outside the distribution.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We</span>
+<span class="sd">        modify this for &#39;n_singleton&#39; to be (math.inf, 8.0) and for</span>
+<span class="sd">        &#39;r_het_hom_var&#39; to be (math.inf, 4.0). The math.inf (infinity) is used to</span>
+<span class="sd">        prevent a lower cutoff for these metrics.</span>
+
+<span class="sd">    :param sample_qc_ht: Sample QC HT.</span>
+<span class="sd">    :param qc_metrics: Specific metrics to use for outlier detection.</span>
+<span class="sd">    :param pop_expr: Optional expression with population assignment.</span>
+<span class="sd">    :param platform_expr: Optional expression with platform assignment.</span>
+<span class="sd">    :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in</span>
+<span class="sd">        the determination of filtering cutoffs.</span>
+<span class="sd">    :return: Table with stratified metrics and filters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">pop_expr</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">platform_expr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;At least one of &#39;pop_expr&#39; or &#39;platform_expr&#39; must be specified!&quot;</span>
+        <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Computing QC metrics outlier filters with stratification, using metrics: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">qc_metrics</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">strata</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">pop_expr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">strata</span><span class="p">[</span><span class="s2">&quot;pop&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pop_expr</span>
+    <span class="k">if</span> <span class="n">platform_expr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">strata</span><span class="p">[</span><span class="s2">&quot;platform&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">platform_expr</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Outlier filtering is stratified by: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">strata</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">compute_stratified_metrics_filter</span><span class="p">(</span>
+        <span class="n">sample_qc_ht</span><span class="p">,</span>
+        <span class="n">qc_metrics</span><span class="o">=</span><span class="p">{</span><span class="n">metric</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">metric</span><span class="p">]</span> <span class="k">for</span> <span class="n">metric</span> <span class="ow">in</span> <span class="n">qc_metrics</span><span class="p">},</span>
+        <span class="n">strata</span><span class="o">=</span><span class="n">strata</span><span class="p">,</span>
+        <span class="n">metric_threshold</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;n_singleton&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">),</span>
+            <span class="s2">&quot;r_het_hom_var&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">),</span>
+        <span class="p">},</span>
+        <span class="n">comparison_sample_expr</span><span class="o">=</span><span class="p">(</span>
+            <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">releasable</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">include_unreleasable_in_cutoffs</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">filter_ht</span></div>
+
+
+<div class="viewcode-block" id="apply_regressed_filtering_method"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.apply_regressed_filtering_method">[docs]</a><span class="k">def</span> <span class="nf">apply_regressed_filtering_method</span><span class="p">(</span>
+    <span class="n">sample_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">qc_metrics</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">pop_scores_expr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">platform_scores_expr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">ArrayExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">platform_expr</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">StringExpression</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">regress_pop_n_pcs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">30</span><span class="p">,</span>
+    <span class="n">regress_platform_n_pcs</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">9</span><span class="p">,</span>
+    <span class="n">regress_per_platform</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_unreleasable_in_regression</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">include_unreleasable_in_cutoffs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.</span>
+
+<span class="sd">    The following are all possible filtering options:</span>
+<span class="sd">        - Include `pop_scores_expr`: Regress population PCs only and determine outliers</span>
+<span class="sd">          for each metric in `qc_metrics`.</span>
+<span class="sd">        - Include `platform_scores_expr`: Regress platform PCs only and determine</span>
+<span class="sd">          outliers for each metric in `qc_metrics`.</span>
+<span class="sd">        - Include `pop_scores_expr` and `platform_scores_expr`: Regress both population</span>
+<span class="sd">          PCs and platform PCs and determine outliers for each metric in `qc_metrics`.</span>
+<span class="sd">        - For all of the above filtering options, there is also a `regress_per_platform`</span>
+<span class="sd">          option, which will stratify the dataset by platform before performing the</span>
+<span class="sd">          regression and outlier filtering.</span>
+
+<span class="sd">    After regression, `compute_stratified_metrics_filter` is used to compute the</span>
+<span class="sd">    median, MAD, and upper and lower thresholds for each of the `qc_metrics` residuals,</span>
+<span class="sd">    optionally stratified by assigned platform, and return a `qc_metrics_filters`</span>
+<span class="sd">    annotation indicating if the sample falls a certain number of MAD outside the</span>
+<span class="sd">    distribution.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We</span>
+<span class="sd">        modify this for &#39;n_singleton_residual&#39; to be (math.inf, 8.0) and for</span>
+<span class="sd">        &#39;r_het_hom_var_residual&#39; to be (math.inf, 4.0). The math.inf (infinity) is used</span>
+<span class="sd">        to prevent a lower cutoff for these metrics.</span>
+
+<span class="sd">    :param sample_qc_ht: Sample QC HT.</span>
+<span class="sd">    :param qc_metrics: Specific metrics to use for outlier detection.</span>
+<span class="sd">    :param pop_scores_expr: Optional expression with population PCA scores.</span>
+<span class="sd">    :param platform_scores_expr: Optional expression with platform PCA scores.</span>
+<span class="sd">    :param platform_expr: Optional expression with platform assignment.</span>
+<span class="sd">    :param regress_pop_n_pcs: Number of population PCA scores to use in regression.</span>
+<span class="sd">        Default is 30.</span>
+<span class="sd">    :param regress_platform_n_pcs: Number of platform PCA scores to use in regression.</span>
+<span class="sd">        Default is 9.</span>
+<span class="sd">    :param regress_per_platform: Whether to perform the regression per platform.</span>
+<span class="sd">        Default is False.</span>
+<span class="sd">    :param include_unreleasable_in_regression: Whether to include unreleasable samples</span>
+<span class="sd">        in the regressions.</span>
+<span class="sd">    :param include_unreleasable_in_cutoffs: Whether to include unreleasable samples in</span>
+<span class="sd">        the determination of filtering cutoffs.</span>
+<span class="sd">    :return: Table with regression residuals and outlier filters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">pop_scores_expr</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">platform_expr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;At least one of &#39;pop_scores_expr&#39; or &#39;platform_scores_expr&#39; must be &quot;</span>
+            <span class="s2">&quot;specified!&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">regress_per_platform</span> <span class="ow">and</span> <span class="n">platform_expr</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;When using &#39;regress_per_platform&#39;, &#39;platform_expr&#39; must be specified!&quot;</span>
+        <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Computing QC metrics outlier filters with PC regression, using metrics: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">qc_metrics</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ann_expr</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;scores&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">empty_array</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">)}</span>
+    <span class="n">global_expr</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">log_str</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">pop_scores_expr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;scores&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;scores&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="n">pop_scores_expr</span><span class="p">[:</span><span class="n">regress_pop_n_pcs</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">log_str</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;pop PCs&quot;</span><span class="p">)</span>
+        <span class="n">global_expr</span><span class="p">[</span><span class="s2">&quot;regress_pop_n_pcs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regress_pop_n_pcs</span>
+    <span class="k">if</span> <span class="n">regress_per_platform</span><span class="p">:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;platform&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">platform_expr</span>
+        <span class="n">log_str</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;is stratified by platform&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">platform_scores_expr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;scores&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;scores&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="n">platform_scores_expr</span><span class="p">[:</span><span class="n">regress_platform_n_pcs</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">log_str</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;platform PCs&quot;</span><span class="p">)</span>
+        <span class="n">global_expr</span><span class="p">[</span><span class="s2">&quot;regress_platform_n_pcs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">regress_platform_n_pcs</span>
+
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ann_expr</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;QC metric residuals are being computed using a regression with </span><span class="si">%s</span><span class="s2">.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot; and &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">log_str</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">sample_qc_res_ht</span> <span class="o">=</span> <span class="n">compute_qc_metrics_residuals</span><span class="p">(</span>
+        <span class="n">sample_qc_ht</span><span class="p">,</span>
+        <span class="n">pc_scores</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">scores</span><span class="p">,</span>
+        <span class="n">qc_metrics</span><span class="o">=</span><span class="p">{</span><span class="n">metric</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">metric</span><span class="p">]</span> <span class="k">for</span> <span class="n">metric</span> <span class="ow">in</span> <span class="n">qc_metrics</span><span class="p">},</span>
+        <span class="n">strata</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;platform&quot;</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">platform</span><span class="p">}</span> <span class="k">if</span> <span class="n">regress_per_platform</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">regression_sample_inclusion_expr</span><span class="o">=</span><span class="p">(</span>
+            <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">releasable</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">include_unreleasable_in_regression</span>
+            <span class="k">else</span> <span class="n">hl</span><span class="o">.</span><span class="n">bool</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">compute_stratified_metrics_filter</span><span class="p">(</span>
+        <span class="n">sample_qc_res_ht</span><span class="p">,</span>
+        <span class="n">qc_metrics</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">sample_qc_res_ht</span><span class="o">.</span><span class="n">row_value</span><span class="p">),</span>
+        <span class="n">metric_threshold</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;n_singleton_residual&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">),</span>
+            <span class="s2">&quot;r_het_hom_var_residual&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">),</span>
+        <span class="p">},</span>
+        <span class="n">strata</span><span class="o">=</span><span class="p">(</span>
+            <span class="p">{</span><span class="s2">&quot;platform&quot;</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">sample_qc_res_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">platform</span><span class="p">}</span>
+            <span class="k">if</span> <span class="n">regress_per_platform</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">),</span>
+        <span class="n">comparison_sample_expr</span><span class="o">=</span><span class="p">(</span>
+            <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">sample_qc_res_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">releasable</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">include_unreleasable_in_cutoffs</span>
+            <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">sample_qc_res_ht</span> <span class="o">=</span> <span class="n">sample_qc_res_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">filter_ht</span><span class="p">[</span><span class="n">sample_qc_res_ht</span><span class="o">.</span><span class="n">key</span><span class="p">])</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">sample_qc_res_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+        <span class="o">**</span><span class="n">filter_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">(),</span>
+        <span class="o">**</span><span class="n">global_expr</span><span class="p">,</span>
+        <span class="n">regress_per_platform</span><span class="o">=</span><span class="n">regress_per_platform</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">filter_ht</span></div>
+
+
+<div class="viewcode-block" id="apply_nearest_neighbor_filtering_method"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.apply_nearest_neighbor_filtering_method">[docs]</a><span class="k">def</span> <span class="nf">apply_nearest_neighbor_filtering_method</span><span class="p">(</span>
+    <span class="n">sample_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">qc_metrics</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">nn_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use nearest neighbor QC metrics to determine what samples are outliers and should be filtered.</span>
+
+<span class="sd">    Use `compute_stratified_metrics_filter` to compute the median, MAD, and upper and</span>
+<span class="sd">    lower thresholds for each `qc_metrics` of the samples nearest neighbors and return</span>
+<span class="sd">    a `qc_metrics_filters` annotation indicating if the sample falls a certain number</span>
+<span class="sd">    of MAD outside the nearest neighbors metric distribution.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We</span>
+<span class="sd">        modify this for &#39;n_singleton&#39; to be (math.inf, 8.0) and for</span>
+<span class="sd">        &#39;r_het_hom_var&#39; and &#39;r_ti_tv_singleton&#39; to be (math.inf, 4.0). The</span>
+<span class="sd">        math.inf is used to prevent a lower cutoff for these metrics.</span>
+
+<span class="sd">    :param sample_qc_ht: Sample QC HT.</span>
+<span class="sd">    :param qc_metrics: Specific metrics to use for outlier detection.</span>
+<span class="sd">    :param nn_ht: Table with nearest neighbors annotation &#39;nearest_neighbors&#39;. This</span>
+<span class="sd">        annotation should be a List of samples that are the nearest neighbors of each</span>
+<span class="sd">        sample.</span>
+<span class="sd">    :return: Table with nearest neighbor outlier filters.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Computing QC metrics outlier filters by nearest neighbor comparison, using &quot;</span>
+        <span class="s2">&quot;metrics: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">qc_metrics</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+        <span class="n">nearest_neighbors</span><span class="o">=</span><span class="n">nn_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">nearest_neighbors</span>
+    <span class="p">)</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">compute_stratified_metrics_filter</span><span class="p">(</span>
+        <span class="n">sample_qc_ht</span><span class="p">,</span>
+        <span class="n">qc_metrics</span><span class="o">=</span><span class="p">{</span><span class="n">metric</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">metric</span><span class="p">]</span> <span class="k">for</span> <span class="n">metric</span> <span class="ow">in</span> <span class="n">qc_metrics</span><span class="p">},</span>
+        <span class="n">metric_threshold</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;n_singleton_residual&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">),</span>
+            <span class="s2">&quot;r_het_hom_var_residual&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">),</span>
+        <span class="p">},</span>
+        <span class="n">comparison_sample_expr</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">nearest_neighbors</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">filter_ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span><span class="o">**</span><span class="n">nn_ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+
+    <span class="k">return</span> <span class="n">filter_ht</span></div>
+
+
+<div class="viewcode-block" id="apply_n_singleton_filter_to_r_ti_tv_singleton"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.apply_n_singleton_filter_to_r_ti_tv_singleton">[docs]</a><span class="k">def</span> <span class="nf">apply_n_singleton_filter_to_r_ti_tv_singleton</span><span class="p">(</span>
+    <span class="n">ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">sample_qc_ht</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">,</span>
+    <span class="n">filtering_method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">ann_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">expr</span><span class="o">.</span><span class="n">Expression</span><span class="p">],</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.</span>
+
+<span class="sd">    This function takes a Table (`ht`) returned from one of the filtering functions:</span>
+
+<span class="sd">        - `apply_stratified_filtering_method`</span>
+<span class="sd">        - `apply_regressed_filtering_method`</span>
+<span class="sd">        - `apply_nearest_neighbor_filtering_method`</span>
+
+<span class="sd">    which must include filtering information for &#39;n_singleton&#39; or</span>
+<span class="sd">    &#39;n_singleton_residuals&#39;.</span>
+
+<span class="sd">    Median values for &#39;n_singleton&#39; or &#39;n_singleton_residuals&#39; are extracted from</span>
+<span class="sd">    &#39;qc_metrics_stats&#39; in `ht`. &#39;qc_metrics_stats&#39; takes different forms depending on</span>
+<span class="sd">    `filtering_method` and the use of &#39;strata&#39; (defined as a global on `ht` if used) in</span>
+<span class="sd">    filtering (described below).</span>
+
+<span class="sd">    Then the `sample_qc_ht` is filtered to only samples with &#39;n_singleton&#39; (or</span>
+<span class="sd">    &#39;n_singleton_residuals&#39;) &gt; the median in &#39;qc_metrics_stats&#39; that is relevant to the</span>
+<span class="sd">    sample. This filtered `sample_qc_ht` is rerun through the filtering function for</span>
+<span class="sd">    `filtering_method` using only &#39;r_ti_tv_singleton&#39;, and `ht` is updated with new</span>
+<span class="sd">    global and row values relevant to &#39;r_ti_tv_singleton&#39; filtering.</span>
+
+<span class="sd">    If `filtering_method` is &#39;stratified&#39;:</span>
+
+<span class="sd">        - &#39;strata&#39; is defined as a global annotation on `ht` in the form:</span>
+<span class="sd">          ``tuple&lt;str, ...&gt;`` where the number of string elements in the tuple depends</span>
+<span class="sd">          on the number of strata.</span>
+<span class="sd">        - &#39;qc_metrics_stats&#39; is defined as a global annotation on `ht` in the form:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            dict&lt;strata, struct {</span>
+<span class="sd">                metric: struct {</span>
+<span class="sd">                    &#39;median&#39;: float64, &#39;mad&#39;: float64, &#39;lower&#39;: float64, &#39;upper&#39;: float64</span>
+<span class="sd">                }</span>
+<span class="sd">            }&gt;</span>
+
+<span class="sd">    If `filtering_method` is &#39;regressed&#39;:</span>
+
+<span class="sd">        - &#39;qc_metrics_stats&#39; is defined as a global annotation on `ht`.</span>
+<span class="sd">        - If platform stratification was performed, the &#39;strata&#39; global annotation is</span>
+<span class="sd">          ``tuple&lt;&#39;platform&#39;&gt;``, and &#39;qc_metrics_stats&#39; is in the same form as described</span>
+<span class="sd">          for &#39;stratified&#39;, except metric -&gt; metric_residual.</span>
+<span class="sd">        - If there was no platform stratification, &#39;qc_metrics_stats&#39; is in the form:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            struct {</span>
+<span class="sd">                metric_residual: struct {</span>
+<span class="sd">                    &#39;median&#39;: float64, &#39;mad&#39;: float64, &#39;lower&#39;: float64, &#39;upper&#39;: float64</span>
+<span class="sd">                }</span>
+<span class="sd">            }</span>
+
+<span class="sd">    If `filtering_method` is &#39;nearest_neighbor&#39;:</span>
+
+<span class="sd">        - &#39;qc_metrics_stats&#39; is defined as a row annotation on `ht` in the form:</span>
+
+<span class="sd">        .. code-block::</span>
+
+<span class="sd">            struct {</span>
+<span class="sd">                metric: struct {</span>
+<span class="sd">                &#39;median&#39;: float64, &#39;mad&#39;: float64, &#39;lower&#39;: float64, &#39;upper&#39;: float64</span>
+<span class="sd">                }</span>
+<span class="sd">            }</span>
+
+<span class="sd">    :param ht: Input filtering Table with n_singleton or n_singleton_residuals medians</span>
+<span class="sd">        computed.</span>
+<span class="sd">    :param sample_qc_ht: Sample QC HT.</span>
+<span class="sd">    :param filtering_method: The filtering method to apply to `sample_qc_ht`. One of</span>
+<span class="sd">        &#39;stratified&#39;, &#39;regressed&#39;, or &#39;nearest_neighbors&#39;.</span>
+<span class="sd">    :param ann_exprs: Dictionary of the expressions for population assignment and/or</span>
+<span class="sd">        platform assignment on `sample_qc_ht` to be used if filtering is stratified.</span>
+<span class="sd">    :return: Table with outlier filter annotations updated for r_ti_tv_singleton or</span>
+<span class="sd">        r_ti_tv_singleton_residuals.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">filtering_methods</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;stratified&quot;</span><span class="p">,</span> <span class="s2">&quot;regressed&quot;</span><span class="p">,</span> <span class="s2">&quot;nearest_neighbors&quot;</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">filtering_methods</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Filtering method must be one of: </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">filtering_methods</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Setup repeatedly used variables.</span>
+    <span class="n">median_filter_metric</span> <span class="o">=</span> <span class="s2">&quot;n_singleton&quot;</span>
+    <span class="n">update_metric</span> <span class="o">=</span> <span class="s2">&quot;r_ti_tv_singleton&quot;</span>
+    <span class="n">filtering_qc_metrics</span> <span class="o">=</span> <span class="p">[</span><span class="n">update_metric</span><span class="p">]</span>
+    <span class="n">empty_stats_struct</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+        <span class="n">median</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">),</span>
+        <span class="n">mad</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">),</span>
+        <span class="n">lower</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">),</span>
+        <span class="n">upper</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tfloat64</span><span class="p">),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Annotate the sample QC Table with annotations provided in &#39;ann_expr&#39;.</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ann_exprs</span><span class="p">)</span>
+
+    <span class="c1"># Extract the strata annotations from input Table globals (pop and/or platform</span>
+    <span class="c1"># if present).</span>
+    <span class="n">ht_globals</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">())</span>
+    <span class="k">if</span> <span class="s2">&quot;strata&quot;</span> <span class="ow">in</span> <span class="n">ht_globals</span><span class="p">:</span>
+        <span class="n">strata</span> <span class="o">=</span> <span class="n">ht_globals</span><span class="p">[</span><span class="s2">&quot;strata&quot;</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">strata</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># If filtering method is &#39;nearest_neighbors&#39;, the &#39;qc_metrics_stats&#39; is per sample,</span>
+    <span class="c1"># so it is stored in the rows of &#39;ht&#39; instead of the globals.</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;nearest_neighbors&quot;</span><span class="p">:</span>
+        <span class="n">qc_metrics_stats</span> <span class="o">=</span> <span class="n">ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">qc_metrics_stats</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">qc_metrics_stats</span> <span class="o">=</span> <span class="n">ht_globals</span><span class="p">[</span><span class="s2">&quot;qc_metrics_stats&quot;</span><span class="p">]</span>
+
+    <span class="c1"># If the filtering method is &#39;regressed&#39;, the metrics will have &#39;_residual&#39; on the</span>
+    <span class="c1"># end of the annotation name and be stored in &#39;ht&#39; instead of &#39;sample_qc_ht&#39;.</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;regressed&quot;</span><span class="p">:</span>
+        <span class="n">median_filter_metric</span> <span class="o">+=</span> <span class="s2">&quot;_residual&quot;</span>
+        <span class="n">median_filter_metric_expr</span> <span class="o">=</span> <span class="n">ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">][</span><span class="n">median_filter_metric</span><span class="p">]</span>
+        <span class="n">update_metric</span> <span class="o">+=</span> <span class="s2">&quot;_residual&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">median_filter_metric_expr</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">median_filter_metric</span><span class="p">]</span>
+
+    <span class="c1"># Determine the expression for median cutoffs of &#39;median_filter_metric&#39;.</span>
+    <span class="c1"># When stratification is applied, &#39;qc_metrics_stats&#39; has a median value per strata.</span>
+    <span class="k">if</span> <span class="n">median_filter_metric</span> <span class="ow">in</span> <span class="n">qc_metrics_stats</span><span class="p">:</span>
+        <span class="n">median_expr</span> <span class="o">=</span> <span class="n">qc_metrics_stats</span><span class="p">[</span><span class="n">median_filter_metric</span><span class="p">]</span><span class="o">.</span><span class="n">median</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">medians</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="n">strat</span><span class="p">:</span> <span class="n">cutoff_dict</span><span class="p">[</span><span class="n">median_filter_metric</span><span class="p">]</span><span class="o">.</span><span class="n">median</span>
+                <span class="k">for</span> <span class="n">strat</span><span class="p">,</span> <span class="n">cutoff_dict</span> <span class="ow">in</span> <span class="n">qc_metrics_stats</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">cutoff_dict</span><span class="p">[</span><span class="n">median_filter_metric</span><span class="p">]</span><span class="o">.</span><span class="n">median</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="n">median_expr</span> <span class="o">=</span> <span class="n">medians</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tuple</span><span class="p">([</span><span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">strata</span><span class="p">]))</span>
+
+    <span class="c1"># Filter &#39;sample_qc_ht&#39; to only samples that have &#39;median_filter_metric&#39; greater</span>
+    <span class="c1"># than the &#39;median_expr&#39;. These are the only samples that should be included in the</span>
+    <span class="c1"># updated outlier filtering.</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+        <span class="n">median_filter_metric_expr</span> <span class="o">&gt;</span> <span class="n">median_expr</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">select_globals</span><span class="p">()</span>
+
+    <span class="n">filter_ht</span> <span class="o">=</span> <span class="n">apply_filter</span><span class="p">(</span>
+        <span class="n">filtering_method</span><span class="o">=</span><span class="n">filtering_method</span><span class="p">,</span>
+        <span class="n">sample_qc_ht</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="p">,</span>
+        <span class="n">qc_metrics</span><span class="o">=</span><span class="n">filtering_qc_metrics</span><span class="p">,</span>
+        <span class="n">apply_r_ti_tv_singleton_filter</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ann</span><span class="si">}</span><span class="s2">_expr&quot;</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="p">[</span><span class="n">ann</span><span class="p">]</span> <span class="k">for</span> <span class="n">ann</span> <span class="ow">in</span> <span class="n">ann_exprs</span><span class="p">},</span>
+        <span class="o">**</span><span class="n">kwargs</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># For all filtering methods other than nearest_neighbors, the global</span>
+    <span class="c1"># &#39;qc_metrics_stats&#39; needs to be updated for the &#39;update_metric&#39;.</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">!=</span> <span class="s2">&quot;nearest_neighbors&quot;</span><span class="p">:</span>
+        <span class="n">updated_stats</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">filter_ht</span><span class="o">.</span><span class="n">qc_metrics_stats</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">strata</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">qc_metrics_stats</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">update_metric</span><span class="p">:</span> <span class="n">updated_stats</span><span class="p">[</span><span class="n">update_metric</span><span class="p">]})</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">strat</span> <span class="ow">in</span> <span class="n">qc_metrics_stats</span><span class="p">:</span>
+                <span class="n">update_stats_struct</span> <span class="o">=</span> <span class="n">empty_stats_struct</span>
+                <span class="k">if</span> <span class="n">strat</span> <span class="ow">in</span> <span class="n">updated_stats</span><span class="p">:</span>
+                    <span class="n">update_stats_struct</span> <span class="o">=</span> <span class="n">updated_stats</span><span class="p">[</span><span class="n">strat</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                        <span class="n">update_metric</span><span class="p">,</span> <span class="n">empty_stats_struct</span>
+                    <span class="p">)</span>
+                <span class="n">qc_metrics_stats</span><span class="p">[</span><span class="n">strat</span><span class="p">]</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">update_metric</span><span class="p">:</span> <span class="n">update_stats_struct</span><span class="p">})</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span><span class="n">qc_metrics_stats</span><span class="o">=</span><span class="n">qc_metrics_stats</span><span class="p">)</span>
+
+    <span class="c1"># For all filtering methods: add a sample annotation indicating whether the sample</span>
+    <span class="c1"># was included in the updated outlier filtering, update the &#39;fail_{update_metric}&#39;</span>
+    <span class="c1"># annotation, and remove &#39;update_metric&#39; from &#39;qc_metrics_filters&#39; if no longer</span>
+    <span class="c1"># filtered or add it if the sample would now be filtered.</span>
+    <span class="n">ht_idx</span> <span class="o">=</span> <span class="n">filter_ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span>
+    <span class="n">ann_expr</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">median_filter_metric</span><span class="si">}</span><span class="s2">_median_filtered&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">is_defined</span><span class="p">(</span><span class="n">ht_idx</span><span class="p">),</span>
+        <span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">update_metric</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span><span class="n">ht_idx</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">update_metric</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">],</span> <span class="kc">False</span><span class="p">),</span>
+        <span class="s2">&quot;qc_metrics_filters&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">qc_metrics_filters</span> <span class="o">-</span> <span class="n">hl</span><span class="o">.</span><span class="n">set</span><span class="p">({</span><span class="n">update_metric</span><span class="p">}))</span>
+        <span class="o">|</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span><span class="n">ht_idx</span><span class="o">.</span><span class="n">qc_metrics_filters</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">empty_set</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">)),</span>
+    <span class="p">}</span>
+
+    <span class="c1"># For the &#39;regressed&#39; filtering method, residuals were recomputed, so update them.</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;regressed&quot;</span><span class="p">:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="n">update_metric</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht_idx</span><span class="p">[</span><span class="n">update_metric</span><span class="p">]</span>
+
+    <span class="c1"># For the &#39;nearest_neighbors&#39; filtering method, the per sample &#39;qc_metrics_stats&#39;</span>
+    <span class="c1"># annotation needs to be updated with the new medians and cutoffs for</span>
+    <span class="c1"># &#39;update_metric&#39;.</span>
+    <span class="k">if</span> <span class="n">filtering_method</span> <span class="o">==</span> <span class="s2">&quot;nearest_neighbors&quot;</span><span class="p">:</span>
+        <span class="n">ann_expr</span><span class="p">[</span><span class="s2">&quot;qc_metrics_stats&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">qc_metrics_stats</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="o">**</span><span class="p">{</span>
+                <span class="n">update_metric</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">coalesce</span><span class="p">(</span>
+                    <span class="n">ht_idx</span><span class="o">.</span><span class="n">qc_metrics_stats</span><span class="p">[</span><span class="n">update_metric</span><span class="p">],</span>
+                    <span class="n">ht</span><span class="o">.</span><span class="n">qc_metrics_stats</span><span class="p">[</span><span class="n">update_metric</span><span class="p">],</span>
+                <span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="o">**</span><span class="n">ann_expr</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="create_finalized_outlier_filter_ht"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.create_finalized_outlier_filter_ht">[docs]</a><span class="k">def</span> <span class="nf">create_finalized_outlier_filter_ht</span><span class="p">(</span>
+    <span class="n">finalized_outlier_hts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">],</span>
+    <span class="n">qc_metrics</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">ensemble_operator</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;and&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">Table</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create the finalized outlier filtering Table.</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        `qc_metrics` must be the same as, or a subset of the original QC metrics used</span>
+<span class="sd">        to create each Table in `finalized_outlier_hts`.</span>
+
+<span class="sd">    Tables included in `finalized_outlier_hts` are reformatted to include only</span>
+<span class="sd">    information from metrics in`qc_metrics`, and the &#39;qc_metrics_filters&#39; annotation</span>
+<span class="sd">    is modified to include only metrics in `qc_metrics`.</span>
+
+<span class="sd">    If `finalized_outlier_hts` includes multiple Tables, the reformatted Table</span>
+<span class="sd">    annotations are grouped under top level annotations specified by the keys of</span>
+<span class="sd">    `finalized_outlier_hts`. The following annotations are also added:</span>
+
+<span class="sd">        - `qc_metrics_fail`: includes the combined (using `ensemble_operator`) outlier</span>
+<span class="sd">          fail boolean for each metric.</span>
+<span class="sd">        - `qc_metrics_filters`: The combined set of QC metrics that a sample is an</span>
+<span class="sd">          outlier for using `ensemble_operator` for the combination (&#39;and&#39; uses set</span>
+<span class="sd">          intersection, &#39;or&#39; uses set union).</span>
+
+<span class="sd">    Finally, an `outlier_filtered` annotation is added indicating if a sample has any</span>
+<span class="sd">    metrics in `qc_metrics_filters`.</span>
+
+<span class="sd">    :param finalized_outlier_hts: Dictionary containing Tables to use for the finalized</span>
+<span class="sd">        outlier filtering, keyed by a string to use as a top level annotation to group</span>
+<span class="sd">        the annotations and global annotations under.</span>
+<span class="sd">    :param qc_metrics: List of sample QC metrics to use for the finalized outlier</span>
+<span class="sd">        filtering.</span>
+<span class="sd">    :param ensemble_operator: Logical operator to use for combining filtering methods</span>
+<span class="sd">        when multiple Tables are in `finalized_outlier_hts`. Options are [&#39;or&#39;, &#39;and&#39;].</span>
+<span class="sd">        Default is &#39;and&#39;.</span>
+<span class="sd">    :return: Finalized outlier filtering Table.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">ensemble_operator</span> <span class="o">==</span> <span class="s2">&quot;and&quot;</span><span class="p">:</span>
+        <span class="n">fail_combine_func</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">all</span>
+    <span class="k">elif</span> <span class="n">ensemble_operator</span> <span class="o">==</span> <span class="s2">&quot;or&quot;</span><span class="p">:</span>
+        <span class="n">fail_combine_func</span> <span class="o">=</span> <span class="n">hl</span><span class="o">.</span><span class="n">any</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;&#39;ensemble_operator&#39; must be one of: &#39;and&#39; or &#39;or&#39;!&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_ensemble_func</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">SetExpression</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">SetExpression</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">hl</span><span class="o">.</span><span class="n">SetExpression</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Combine sets `x` and `y`.</span>
+
+<span class="sd">        If x is missing return `y`.</span>
+
+<span class="sd">        Logical operator for combination is determined by external `ensemble_operator`</span>
+<span class="sd">        variable. Uses set intersection when `ensemble_operator` is &#39;and&#39;, and set</span>
+<span class="sd">        union when `ensemble_operator` is &#39;or&#39;.</span>
+
+<span class="sd">        :param x: Input set to combine with `y`.</span>
+<span class="sd">        :param y: Input set to combine with `x`.</span>
+<span class="sd">        :return: Combined SetExpression.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="n">hl</span><span class="o">.</span><span class="n">case</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">is_missing</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">y</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">ensemble_operator</span> <span class="o">==</span> <span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="n">y</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">when</span><span class="p">(</span><span class="n">ensemble_operator</span> <span class="o">==</span> <span class="s2">&quot;or&quot;</span><span class="p">,</span> <span class="n">x</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">y</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">or_missing</span><span class="p">()</span>
+        <span class="p">)</span>
+
+    <span class="n">num_methods</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">finalized_outlier_hts</span><span class="p">)</span>
+    <span class="n">hts</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">fail_map</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">filter_method</span><span class="p">,</span> <span class="n">ht</span> <span class="ow">in</span> <span class="n">finalized_outlier_hts</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Reformatting Hail Table for </span><span class="si">%s</span><span class="s2"> outlier filtering method...&quot;</span><span class="p">,</span> <span class="n">filter_method</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Determine the annotations that should be kept in the final filter Table</span>
+        <span class="n">annotations</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">row</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="n">fail_annotations_keep</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([])</span>
+        <span class="n">residual_annotations_keep</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([])</span>
+        <span class="n">qc_metrics_filters_keep</span> <span class="o">=</span> <span class="nb">set</span><span class="p">([])</span>
+        <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">qc_metrics</span><span class="p">:</span>
+            <span class="k">if</span> <span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span> <span class="ow">in</span> <span class="n">annotations</span><span class="p">:</span>
+                <span class="n">fail_map</span><span class="p">[</span><span class="n">filter_method</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="n">fail_annotations_keep</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">qc_metrics_filters_keep</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_residual&quot;</span> <span class="ow">in</span> <span class="n">annotations</span><span class="p">:</span>
+                <span class="n">fail_map</span><span class="p">[</span><span class="n">filter_method</span><span class="p">][</span><span class="n">m</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_residual&quot;</span>
+                <span class="n">residual_annotations_keep</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_residual&quot;</span><span class="p">)</span>
+                <span class="n">fail_annotations_keep</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;fail_</span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">_residual&quot;</span><span class="p">)</span>
+                <span class="n">qc_metrics_filters_keep</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;The following metric is not found in the Table(s) provided for &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;outlier filtering finalization: </span><span class="si">{</span><span class="n">m</span><span class="si">}</span><span class="s2">.&quot;</span>
+                <span class="p">)</span>
+
+        <span class="c1"># If residuals are annotated on the filtering Table, re-annotate under</span>
+        <span class="c1"># &#39;qc_metrics_residuals&#39; rather than keeping them top level</span>
+        <span class="n">select_expr</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">residual_annotations_keep</span><span class="p">:</span>
+            <span class="n">select_expr</span><span class="p">[</span><span class="s2">&quot;qc_metrics_residuals&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">residual_annotations_keep</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Nearest neighbors filtering has &#39;qc_metrics_stats&#39; as a row annotation</span>
+        <span class="c1"># instead of a global annotation. This adds it to the final Table.</span>
+        <span class="k">if</span> <span class="s2">&quot;qc_metrics_stats&quot;</span> <span class="ow">in</span> <span class="n">ht</span><span class="o">.</span><span class="n">row</span><span class="p">:</span>
+            <span class="n">select_expr</span><span class="p">[</span><span class="s2">&quot;qc_metrics_stats&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">qc_metrics_stats</span><span class="o">.</span><span class="n">select</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">qc_metrics_filters_keep</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Group all filter fail annotations under &#39;qc_metrics_fail&#39; rather than</span>
+        <span class="c1"># keeping them top level</span>
+        <span class="n">select_expr</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;qc_metrics_fail&quot;</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">fail_annotations_keep</span><span class="p">),</span>
+                <span class="s2">&quot;qc_metrics_filters&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">literal</span><span class="p">(</span><span class="n">qc_metrics_filters_keep</span><span class="p">)</span>
+                <span class="o">&amp;</span> <span class="n">ht</span><span class="o">.</span><span class="n">qc_metrics_filters</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;_residual&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)),</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">**</span><span class="n">select_expr</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">_update_globals</span><span class="p">(</span>
+            <span class="n">global_ann</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">],</span>
+            <span class="n">metrics_keep</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">dict</span><span class="p">]:</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Update a global annotation to have values for only the requested metrics.</span>
+
+<span class="sd">            :param global_ann: Dict or Struct for global annotation to modify.</span>
+<span class="sd">            :param metrics_keep: Metrics to keep in the global annotation.</span>
+<span class="sd">            :return: Updated global annotation Dict or Struct.</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">global_ann</span><span class="p">,</span> <span class="n">hl</span><span class="o">.</span><span class="n">tstruct</span><span class="p">):</span>
+                <span class="n">global_ann</span> <span class="o">=</span> <span class="n">global_ann</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">*</span><span class="n">metrics_keep</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">global_ann</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="n">s</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">x</span><span class="p">:</span> <span class="n">global_ann</span><span class="p">[</span><span class="n">s</span><span class="p">][</span><span class="n">x</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">metrics_keep</span><span class="p">})</span>
+                    <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">hl</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="n">global_ann</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="p">}</span>
+            <span class="k">return</span> <span class="n">global_ann</span>
+
+        <span class="c1"># If multiple filtering Tables are provided, group all Table annotations under a</span>
+        <span class="c1"># filtering method annotation rather than keeping it top level. This is needed</span>
+        <span class="c1"># for joining requested filtering method Tables.</span>
+        <span class="k">if</span> <span class="n">num_methods</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="n">filter_method</span><span class="p">:</span> <span class="n">ht</span><span class="p">[</span><span class="n">ht</span><span class="o">.</span><span class="n">key</span><span class="p">]})</span>
+            <span class="n">filter_globals</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">index_globals</span><span class="p">()</span>
+            <span class="n">updated_globals</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">filter_globals</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">g</span> <span class="o">==</span> <span class="s2">&quot;qc_metrics_stats&quot;</span><span class="p">:</span>
+                    <span class="n">update_g</span> <span class="o">=</span> <span class="n">_update_globals</span><span class="p">(</span>
+                        <span class="n">filter_globals</span><span class="p">[</span><span class="n">g</span><span class="p">],</span>
+                        <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;fail_&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">fail_annotations_keep</span><span class="p">],</span>
+                    <span class="p">)</span>
+                <span class="k">elif</span> <span class="n">g</span> <span class="o">==</span> <span class="s2">&quot;lms&quot;</span><span class="p">:</span>
+                    <span class="n">update_g</span> <span class="o">=</span> <span class="n">_update_globals</span><span class="p">(</span>
+                        <span class="n">filter_globals</span><span class="p">[</span><span class="n">g</span><span class="p">],</span>
+                        <span class="n">qc_metrics_filters_keep</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">update_g</span> <span class="o">=</span> <span class="n">filter_globals</span><span class="p">[</span><span class="n">g</span><span class="p">]</span>
+                <span class="n">updated_globals</span><span class="p">[</span><span class="n">g</span><span class="p">]</span> <span class="o">=</span> <span class="n">update_g</span>
+
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">select_globals</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filter_method</span><span class="si">}</span><span class="s2">_globals&quot;</span><span class="p">:</span> <span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span><span class="o">**</span><span class="n">updated_globals</span><span class="p">)}</span>
+            <span class="p">)</span>
+            <span class="n">hts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ht</span><span class="p">)</span>
+
+    <span class="c1"># If multiple filtering Tables are provided, join all filtering Tables, and make</span>
+    <span class="c1"># top level annotations for &#39;qc_metrics_fail&#39; and &#39;qc_metrics_filters&#39; based on the</span>
+    <span class="c1"># combination of all methods using &#39;ensemble_operator&#39; as the combination method.</span>
+    <span class="k">if</span> <span class="n">num_methods</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">hts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">ht2</span> <span class="ow">in</span> <span class="n">hts</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ht2</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;outer&quot;</span><span class="p">)</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">qc_metrics_fail</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">struct</span><span class="p">(</span>
+                <span class="o">**</span><span class="p">{</span>
+                    <span class="n">m</span><span class="p">:</span> <span class="n">fail_combine_func</span><span class="p">(</span>
+                        <span class="p">[</span>
+                            <span class="n">ht</span><span class="p">[</span><span class="n">f</span><span class="p">][</span><span class="s2">&quot;qc_metrics_fail&quot;</span><span class="p">][</span><span class="n">fail_map</span><span class="p">[</span><span class="n">f</span><span class="p">][</span><span class="n">m</span><span class="p">]]</span>
+                            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">finalized_outlier_hts</span>
+                        <span class="p">]</span>
+                    <span class="p">)</span>
+                    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">qc_metrics</span>
+                <span class="p">}</span>
+            <span class="p">),</span>
+            <span class="n">qc_metrics_filters</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">fold</span><span class="p">(</span>
+                <span class="n">_ensemble_func</span><span class="p">,</span>
+                <span class="n">hl</span><span class="o">.</span><span class="n">missing</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tset</span><span class="p">(</span><span class="n">hl</span><span class="o">.</span><span class="n">tstr</span><span class="p">)),</span>
+                <span class="p">[</span><span class="n">ht</span><span class="p">[</span><span class="n">f</span><span class="p">][</span><span class="s2">&quot;qc_metrics_filters&quot;</span><span class="p">]</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">finalized_outlier_hts</span><span class="p">],</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span><span class="n">outlier_filtered</span><span class="o">=</span><span class="n">hl</span><span class="o">.</span><span class="n">len</span><span class="p">(</span><span class="n">ht</span><span class="o">.</span><span class="n">qc_metrics_filters</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+        <span class="n">filter_qc_metrics</span><span class="o">=</span><span class="n">qc_metrics</span><span class="p">,</span> <span class="n">ensemble_combination_operator</span><span class="o">=</span><span class="n">ensemble_operator</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ht</span></div>
+
+
+<div class="viewcode-block" id="get_outlier_filtering_resources"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.get_outlier_filtering_resources">[docs]</a><span class="k">def</span> <span class="nf">get_outlier_filtering_resources</span><span class="p">(</span>
+    <span class="n">args</span><span class="p">:</span> <span class="n">argparse</span><span class="o">.</span><span class="n">Namespace</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PipelineResourceCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get PipelineResourceCollection for all resources needed in the outlier filtering pipeline.</span>
+
+<span class="sd">    :param args: argparse Namespace for arguments passed to the outlier_filtering.py</span>
+<span class="sd">        script.</span>
+<span class="sd">    :return: PipelineResourceCollection containing resources for all steps of the</span>
+<span class="sd">        outlier filtering pipeline.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">test</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">exclude_releasable_samples_all_steps</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">exclude_unreleasable_samples_all_steps</span>
+
+    <span class="c1"># Adding resources from previous scripts that are used by multiple steps in the</span>
+    <span class="c1"># outlier filtering pipeline.</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">get_sample_qc</span><span class="p">(</span><span class="s2">&quot;under_three_alt_alleles&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get ancestry PCA scores.</span>
+    <span class="n">pop_scores_ht</span> <span class="o">=</span> <span class="n">ancestry_pca_scores</span><span class="p">()</span>
+    <span class="n">pop_ht</span> <span class="o">=</span> <span class="n">get_pop_ht</span><span class="p">()</span>
+
+    <span class="n">sample_qc_input</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;hard_filters.py --sample-qc&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;sample_qc_ht&quot;</span><span class="p">:</span> <span class="n">sample_qc_ht</span><span class="p">},</span>
+    <span class="p">}</span>
+    <span class="n">pop_scores_input</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;assign_ancestry.py --run-pca&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pop_scores_ht&quot;</span><span class="p">:</span> <span class="n">pop_scores_ht</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">pop_assign_input</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;assign_ancestry.py --assign-pops&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;pop_ht&quot;</span><span class="p">:</span> <span class="n">pop_ht</span><span class="p">}}</span>
+    <span class="n">platform_input</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;platform_inference.py --assign-platforms&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;platform_ht&quot;</span><span class="p">:</span> <span class="n">platform</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="n">joint_qc_meta_input</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;generate_qc_mt.py --generate-qc-meta&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;joint_qc_meta&quot;</span><span class="p">:</span> <span class="n">joint_qc_meta</span><span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="c1"># Initialize outlier filtering pipeline resource collection.</span>
+    <span class="n">outlier_filtering_pipeline</span> <span class="o">=</span> <span class="n">PipelineResourceCollection</span><span class="p">(</span>
+        <span class="n">pipeline_name</span><span class="o">=</span><span class="s2">&quot;outlier_filtering&quot;</span><span class="p">,</span>
+        <span class="n">pipeline_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="o">**</span><span class="n">sample_qc_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">pop_scores_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">pop_assign_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">platform_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">joint_qc_meta_input</span><span class="p">,</span>
+        <span class="p">},</span>
+        <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Create resource collection for each step of the outlier filtering pipeline.</span>
+    <span class="n">apply_regressed_filters</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-regressed-filters&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;regressed_filter_ht&quot;</span><span class="p">:</span> <span class="n">regressed_filtering</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                <span class="n">pop_pc_regressed</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">regress_population</span><span class="p">,</span>
+                <span class="n">platform_pc_regressed</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">regress_platform</span><span class="p">,</span>
+                <span class="n">platform_stratified</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">regress_per_platform</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="o">**</span><span class="n">sample_qc_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">pop_scores_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">pop_assign_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">platform_input</span><span class="p">,</span>
+            <span class="o">**</span><span class="n">joint_qc_meta_input</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">apply_stratified_filters</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-stratified-filters&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;stratified_filter_ht&quot;</span><span class="p">:</span> <span class="n">stratified_filtering</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                <span class="n">pop_stratified</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">stratify_population</span><span class="p">,</span>
+                <span class="n">platform_stratified</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">stratify_platform</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span><span class="o">**</span><span class="n">sample_qc_input</span><span class="p">,</span> <span class="o">**</span><span class="n">pop_assign_input</span><span class="p">,</span> <span class="o">**</span><span class="n">platform_input</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">determine_nearest_neighbors</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--determine-nearest-neighbors&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span>
+            <span class="s2">&quot;nn_ht&quot;</span><span class="p">:</span> <span class="n">nearest_neighbors</span><span class="p">(</span>
+                <span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">,</span>
+                <span class="n">platform_stratified</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">nearest_neighbors_per_platform</span><span class="p">,</span>
+                <span class="n">approximation</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">use_nearest_neighbors_approximation</span><span class="p">,</span>
+                <span class="n">include_unreleasable_samples</span><span class="o">=</span><span class="ow">not</span> <span class="n">exclude_releasable_samples_all_steps</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">},</span>
+        <span class="n">input_resources</span><span class="o">=</span><span class="p">{</span><span class="o">**</span><span class="n">sample_qc_input</span><span class="p">,</span> <span class="o">**</span><span class="n">pop_assign_input</span><span class="p">,</span> <span class="o">**</span><span class="n">platform_input</span><span class="p">},</span>
+    <span class="p">)</span>
+    <span class="n">apply_nearest_neighbor_filters</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-nearest-neighbor-filters&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;nn_filter_ht&quot;</span><span class="p">:</span> <span class="n">nearest_neighbors_filtering</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="p">[</span><span class="n">determine_nearest_neighbors</span><span class="p">],</span>
+        <span class="n">add_input_resources</span><span class="o">=</span><span class="n">sample_qc_input</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">finalized_input_steps</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_regressed_filters</span><span class="p">:</span>
+        <span class="n">finalized_input_steps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">apply_regressed_filters</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_stratified_filters</span><span class="p">:</span>
+        <span class="n">finalized_input_steps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">apply_stratified_filters</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_nearest_neighbor_filters</span><span class="p">:</span>
+        <span class="n">finalized_input_steps</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">apply_nearest_neighbor_filters</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_finalized_outlier_filter</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">finalized_input_steps</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;At least one filtering method and relevant options must be supplied &quot;</span>
+            <span class="s2">&quot;when using &#39;--create-finalized-outlier-filter&#39;&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">create_finalized_outlier_filter</span> <span class="o">=</span> <span class="n">PipelineStepResourceCollection</span><span class="p">(</span>
+        <span class="s2">&quot;--create-finalized-outlier-filter&quot;</span><span class="p">,</span>
+        <span class="n">output_resources</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;finalized_ht&quot;</span><span class="p">:</span> <span class="n">finalized_outlier_filtering</span><span class="p">(</span><span class="n">test</span><span class="o">=</span><span class="n">test</span><span class="p">)},</span>
+        <span class="n">pipeline_input_steps</span><span class="o">=</span><span class="n">finalized_input_steps</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add all steps to the outlier filtering pipeline resource collection.</span>
+    <span class="n">outlier_filtering_pipeline</span><span class="o">.</span><span class="n">add_steps</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;apply_regressed_filters&quot;</span><span class="p">:</span> <span class="n">apply_regressed_filters</span><span class="p">,</span>
+            <span class="s2">&quot;apply_stratified_filters&quot;</span><span class="p">:</span> <span class="n">apply_stratified_filters</span><span class="p">,</span>
+            <span class="s2">&quot;determine_nearest_neighbors&quot;</span><span class="p">:</span> <span class="n">determine_nearest_neighbors</span><span class="p">,</span>
+            <span class="s2">&quot;apply_nearest_neighbor_filters&quot;</span><span class="p">:</span> <span class="n">apply_nearest_neighbor_filters</span><span class="p">,</span>
+            <span class="s2">&quot;create_finalized_outlier_filter&quot;</span><span class="p">:</span> <span class="n">create_finalized_outlier_filter</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">outlier_filtering_pipeline</span></div>
+
+
+<div class="viewcode-block" id="main"><a class="viewcode-back" href="../../../../api_reference/v4/sample_qc/outlier_filtering.html#gnomad_qc.v4.sample_qc.outlier_filtering.main">[docs]</a><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Determine sample QC metric outliers that should be filtered.&quot;&quot;&quot;</span>
+    <span class="n">hl</span><span class="o">.</span><span class="n">init</span><span class="p">(</span>
+        <span class="n">log</span><span class="o">=</span><span class="s2">&quot;/outlier_filtering.log&quot;</span><span class="p">,</span>
+        <span class="n">default_reference</span><span class="o">=</span><span class="s2">&quot;GRCh38&quot;</span><span class="p">,</span>
+        <span class="n">tmp_dir</span><span class="o">=</span><span class="s2">&quot;gs://gnomad-tmp-4day&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">overwrite</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span>
+    <span class="n">filtering_qc_metrics</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">filtering_qc_metrics</span>
+    <span class="n">apply_r_ti_tv_singleton_filter</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_n_singleton_filter_to_r_ti_tv_singleton</span>
+    <span class="n">unreleasable_in_cutoffs</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">include_unreleasable_in_cutoff_determination</span>
+    <span class="n">unreleasable_in_regression</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">include_unreleasable_in_regression</span>
+    <span class="n">exclude_releasable_samples_all_steps</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">exclude_unreleasable_samples_all_steps</span>
+    <span class="n">nn_platform_stratified</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">nearest_neighbors_per_platform</span>
+    <span class="n">nn_approximation</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">use_nearest_neighbors_approximation</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_n_singleton_filter_to_r_ti_tv_singleton</span><span class="p">:</span>
+        <span class="n">err_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">metric</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;n_singleton&quot;</span><span class="p">,</span> <span class="s2">&quot;r_ti_tv_singleton&quot;</span><span class="p">}:</span>
+            <span class="k">if</span> <span class="n">metric</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">filtering_qc_metrics</span><span class="p">:</span>
+                <span class="n">err_msg</span> <span class="o">+=</span> <span class="p">(</span>
+                    <span class="s2">&quot;&#39;--apply-n-singleton-filter-to-r-ti-tv-singleton&#39; flag is set, but&quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot; </span><span class="si">{</span><span class="n">metric</span><span class="si">}</span><span class="s2"> is not in requested &#39;filtering_qc_metrics&#39;!</span><span class="se">\n</span><span class="s2">&quot;</span>
+                <span class="p">)</span>
+        <span class="k">if</span> <span class="n">err_msg</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">err_msg</span><span class="p">)</span>
+
+    <span class="n">outlier_resources</span> <span class="o">=</span> <span class="n">get_outlier_filtering_resources</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="n">outlier_resources</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+    <span class="n">pop_ht</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">pop_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">platform_ht</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">platform_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">pop_scores_ht</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">pop_scores_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">joint_qc_meta_ht</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">joint_qc_meta</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+    <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">get_sample_qc_ht</span><span class="p">(</span>
+        <span class="n">outlier_resources</span><span class="o">.</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span> <span class="n">test</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">test</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">seed</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Add releasable information to the sample QC Table if unreleasable samples are</span>
+    <span class="c1"># included, otherwise filter to only releasable samples.</span>
+    <span class="k">if</span> <span class="n">exclude_releasable_samples_all_steps</span><span class="p">:</span>
+        <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span>
+            <span class="n">joint_qc_meta_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">releasable</span>
+        <span class="p">)</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">unreleasable_in_cutoffs</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">unreleasable_in_regression</span><span class="p">:</span>
+        <span class="n">sample_qc_ht</span> <span class="o">=</span> <span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">annotate</span><span class="p">(</span>
+            <span class="n">releasable</span><span class="o">=</span><span class="n">joint_qc_meta_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">releasable</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_finalized_outlier_filter</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">use_existing_filter_tables</span><span class="p">:</span>
+        <span class="n">rerun_filtering</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">rerun_filtering</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_regressed_filters</span> <span class="ow">and</span> <span class="n">rerun_filtering</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">apply_regressed_filters</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_filter</span><span class="p">(</span>
+            <span class="n">filtering_method</span><span class="o">=</span><span class="s2">&quot;regressed&quot;</span><span class="p">,</span>
+            <span class="n">apply_r_ti_tv_singleton_filter</span><span class="o">=</span><span class="n">apply_r_ti_tv_singleton_filter</span><span class="p">,</span>
+            <span class="n">sample_qc_ht</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="p">,</span>
+            <span class="n">qc_metrics</span><span class="o">=</span><span class="n">filtering_qc_metrics</span><span class="p">,</span>
+            <span class="n">pop_scores_ht</span><span class="o">=</span><span class="n">pop_scores_ht</span><span class="p">,</span>
+            <span class="n">platform_ht</span><span class="o">=</span><span class="n">platform_ht</span><span class="p">,</span>
+            <span class="n">regress_pop_n_pcs</span><span class="o">=</span><span class="p">(</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">regress_pop_n_pcs</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">regress_population</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">),</span>
+            <span class="n">regress_platform_n_pcs</span><span class="o">=</span><span class="p">(</span>
+                <span class="n">args</span><span class="o">.</span><span class="n">regress_platform_n_pcs</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">regress_platform</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">),</span>
+            <span class="n">regress_per_platform</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">regress_per_platform</span><span class="p">,</span>
+            <span class="n">include_unreleasable_in_regression</span><span class="o">=</span><span class="n">unreleasable_in_regression</span><span class="p">,</span>
+            <span class="n">include_unreleasable_in_cutoffs</span><span class="o">=</span><span class="n">unreleasable_in_cutoffs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">exclude_unreleasable_samples</span><span class="o">=</span><span class="n">exclude_releasable_samples_all_steps</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">exclude_releasable_samples_all_steps</span><span class="p">:</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">include_unreleasable_in_regression</span><span class="o">=</span><span class="n">unreleasable_in_regression</span><span class="p">,</span>
+                <span class="n">include_unreleasable_in_cutoffs</span><span class="o">=</span><span class="n">unreleasable_in_cutoffs</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">regressed_filter_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_stratified_filters</span> <span class="ow">and</span> <span class="n">rerun_filtering</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">apply_stratified_filters</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_filter</span><span class="p">(</span>
+            <span class="n">filtering_method</span><span class="o">=</span><span class="s2">&quot;stratified&quot;</span><span class="p">,</span>
+            <span class="n">apply_r_ti_tv_singleton_filter</span><span class="o">=</span><span class="n">apply_r_ti_tv_singleton_filter</span><span class="p">,</span>
+            <span class="n">sample_qc_ht</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="p">,</span>
+            <span class="n">qc_metrics</span><span class="o">=</span><span class="n">filtering_qc_metrics</span><span class="p">,</span>
+            <span class="n">pop_ht</span><span class="o">=</span><span class="n">pop_ht</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">stratify_population</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">platform_ht</span><span class="o">=</span><span class="n">platform_ht</span> <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">stratify_platform</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">include_unreleasable_in_cutoffs</span><span class="o">=</span><span class="n">unreleasable_in_cutoffs</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">exclude_unreleasable_samples</span><span class="o">=</span><span class="n">exclude_releasable_samples_all_steps</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">exclude_releasable_samples_all_steps</span><span class="p">:</span>
+            <span class="n">ht</span> <span class="o">=</span> <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+                <span class="n">include_unreleasable_in_cutoffs</span><span class="o">=</span><span class="n">unreleasable_in_cutoffs</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">stratified_filter_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">determine_nearest_neighbors</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">determine_nearest_neighbors</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">nn_platform_stratified</span><span class="p">:</span>
+            <span class="n">strata</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;platform&quot;</span><span class="p">:</span> <span class="n">res</span><span class="o">.</span><span class="n">platform_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">()[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">qc_platform</span><span class="p">}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">strata</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">determine_nearest_neighbors</span><span class="p">(</span>
+            <span class="n">sample_qc_ht</span><span class="p">,</span>
+            <span class="n">pop_scores_ht</span><span class="p">[</span><span class="n">sample_qc_ht</span><span class="o">.</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">scores</span><span class="p">,</span>
+            <span class="n">strata</span><span class="o">=</span><span class="n">strata</span><span class="p">,</span>
+            <span class="n">n_pcs</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">nearest_neighbors_pop_n_pcs</span><span class="p">,</span>
+            <span class="n">n_neighbors</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_nearest_neighbors</span><span class="p">,</span>
+            <span class="n">n_jobs</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_jobs</span><span class="p">,</span>
+            <span class="n">add_neighbor_distances</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">get_neighbor_distances</span><span class="p">,</span>
+            <span class="n">distance_metric</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">distance_metric</span><span class="p">,</span>
+            <span class="n">use_approximation</span><span class="o">=</span><span class="n">nn_approximation</span><span class="p">,</span>
+            <span class="n">n_trees</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_trees</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">exclude_unreleasable_samples</span><span class="o">=</span><span class="n">exclude_releasable_samples_all_steps</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">nn_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">apply_nearest_neighbor_filters</span> <span class="ow">and</span> <span class="n">rerun_filtering</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">apply_nearest_neighbor_filters</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">apply_filter</span><span class="p">(</span>
+            <span class="n">filtering_method</span><span class="o">=</span><span class="s2">&quot;nearest_neighbors&quot;</span><span class="p">,</span>
+            <span class="n">apply_r_ti_tv_singleton_filter</span><span class="o">=</span><span class="n">apply_r_ti_tv_singleton_filter</span><span class="p">,</span>
+            <span class="n">sample_qc_ht</span><span class="o">=</span><span class="n">sample_qc_ht</span><span class="p">,</span>
+            <span class="n">qc_metrics</span><span class="o">=</span><span class="n">filtering_qc_metrics</span><span class="p">,</span>
+            <span class="n">nn_ht</span><span class="o">=</span><span class="n">res</span><span class="o">.</span><span class="n">nn_ht</span><span class="o">.</span><span class="n">ht</span><span class="p">(),</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">annotate_globals</span><span class="p">(</span>
+            <span class="n">exclude_unreleasable_samples</span><span class="o">=</span><span class="n">exclude_releasable_samples_all_steps</span><span class="p">,</span>
+            <span class="n">nearest_neighbors_platform_stratified</span><span class="o">=</span><span class="n">nn_platform_stratified</span><span class="p">,</span>
+            <span class="n">nearest_neighbors_approximation</span><span class="o">=</span><span class="n">nn_approximation</span><span class="p">,</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">nn_filter_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">create_finalized_outlier_filter</span><span class="p">:</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">outlier_resources</span><span class="o">.</span><span class="n">create_finalized_outlier_filter</span>
+        <span class="n">res</span><span class="o">.</span><span class="n">check_resource_existence</span><span class="p">()</span>
+        <span class="c1"># Reformat input step names for use as annotation labels.</span>
+        <span class="n">ht</span> <span class="o">=</span> <span class="n">create_finalized_outlier_filter_ht</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="n">k</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;--apply-&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">,</span> <span class="s2">&quot;_&quot;</span><span class="p">):</span> <span class="n">v</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">ht</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">res</span><span class="o">.</span><span class="n">input_resources</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="p">},</span>
+            <span class="n">qc_metrics</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">final_filtering_qc_metrics</span><span class="p">,</span>
+            <span class="n">ensemble_operator</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">ensemble_method_logical_operator</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ht</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">finalized_ht</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="n">overwrite</span><span class="p">)</span></div>
+
+
+<span class="k">def</span> <span class="nf">get_script_argument_parser</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get script argument parser.&quot;&quot;&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">()</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-o&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--overwrite&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Overwrite output files.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--test&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Test filtering using a random sample of 1</span><span class="si">%%</span><span class="s2"> of the dataset.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--seed&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Random seed for making random test dataset.&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">24</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--exclude-unreleasable-samples-all-steps&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Exclude unreleasable samples in all pipeline steps including the nearest &quot;</span>
+            <span class="s2">&quot;neighbors determination, sample QC metric regressions, and sample QC &quot;</span>
+            <span class="s2">&quot;filtering.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--filtering-qc-metrics&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;List of sample QC metrics to use for filtering.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[</span>
+            <span class="s2">&quot;n_snp&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_singleton&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_ti_tv&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_insertion_deletion&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_insertion&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_deletion&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_het_hom_var&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_transition&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;n_transversion&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_ti_tv_singleton&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_snp_indel&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">list</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-n-singleton-filter-to-r-ti-tv-singleton&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to apply the filtering method to only samples with: Number of &quot;</span>
+            <span class="s2">&quot;singletons (or n_singleton residuals) &gt; median(number of &quot;</span>
+            <span class="s2">&quot;singletons/n_singleton residuals) where the median is computed on only &quot;</span>
+            <span class="s2">&quot;samples within the same strata or on only the 50 nearest neighbors.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">stratified_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Apply stratified filtering method.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to stratified outlier filtering.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">stratified_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-stratified-filters&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Apply stratified outlier filtering method.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">stratified_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--stratify-population&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Stratify by population for filtering.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">stratified_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--stratify-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Stratify by platform for filtering.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">unreleasable_cutoffs</span> <span class="o">=</span> <span class="n">stratified_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--include-unreleasable-in-cutoff-determination&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to include unreleasable samples when determining the sample QC &quot;</span>
+            <span class="s2">&quot;filtering MAD cutoffs.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">regressed_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Apply regression filtering method.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to regression outlier filtering.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-regressed-filters&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Apply regression outlier filtering method.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--regress-population&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use population PCs in sample QC metric regressions.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--regress-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Use platform PCs in sample QC metric regressions.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--regress-pop-n-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of population PCs to use for sample QC metric regressions.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--regress-platform-n-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of platform PCs to use for sample QC metric regressions.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--regress-per-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Perform sample QC metric regressions and outlier filtering per platform.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--include-unreleasable-in-regression&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Whether to include unreleasable samples in sample QC metric regressions.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Indicate that the --include-unreleasable-in-cutoff-determination option applies</span>
+    <span class="c1"># to the &quot;regressed_args&quot; argument group as well as the &quot;stratified_args&quot; group.</span>
+    <span class="n">regressed_args</span><span class="o">.</span><span class="n">_group_actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">unreleasable_cutoffs</span><span class="p">)</span>
+
+    <span class="n">nn_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Determine nearest neighbors for each sample.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to determining nearest neighbors.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--determine-nearest-neighbors&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Determine nearest neighbors for each sample.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--nearest-neighbors-pop-n-pcs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of population PCs to use for nearest neighbor determination.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_per_platform</span> <span class="o">=</span> <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--nearest-neighbors-per-platform&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Stratify samples by platform assignment when determining the population &quot;</span>
+            <span class="s2">&quot;PC nearest neighbors.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-nearest-neighbors&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Number of nearest neighbors to report for each sample.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-jobs&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of threads to use when finding the nearest neighbors. Default &quot;</span>
+            <span class="s2">&quot;is -1 which uses the number of CPUs on the head node -1.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--get-neighbor-distances&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Return distances of the nearest neighbors too.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--distance-metric&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Distance metric to use for nearest neighbor determination.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;euclidean&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span>
+            <span class="s2">&quot;euclidean&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;cityblock&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;cosine&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;haversine&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;l1&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;l2&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;manhattan&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;angular&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;hamming&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;dot&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">nn_approx</span> <span class="o">=</span> <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use-nearest-neighbors-approximation&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use the package Annoy to determine approximate nearest &quot;</span>
+            <span class="s2">&quot;neighbors instead of using scikit-learn&#39;s `NearestNeighbors`. This method &quot;</span>
+            <span class="s2">&quot;is faster, but only needed for very large datasets, for instance &quot;</span>
+            <span class="s2">&quot;&gt; 500,000 samples.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--n-trees&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Number of trees to build in the Annoy approximate nearest neighbors &quot;</span>
+            <span class="s2">&quot;method. Only used if &#39;use-nearest-neighbors-approximation&#39; is set. &quot;</span>
+            <span class="s2">&quot;&#39;n_trees&#39; is provided during build time and affects the build time and &quot;</span>
+            <span class="s2">&quot;the index size. A larger value will give more accurate results, but &quot;</span>
+            <span class="s2">&quot;larger indexes.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">nn_filter_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Apply nearest neighbors filtering method.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments specific to nearest neighbors outlier filtering.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">nn_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--apply-nearest-neighbor-filters&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Apply nearest neighbors outlier filtering method.&quot;</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="c1"># Indicate that the --nearest-neighbors-per-platform and</span>
+    <span class="c1"># --use-nearest-neighbors-approximation options apply to the</span>
+    <span class="c1"># &quot;nn_filter_args&quot; argument group as well as the &quot;nn_args&quot; group.</span>
+    <span class="n">nn_filter_args</span><span class="o">.</span><span class="n">_group_actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn_per_platform</span><span class="p">)</span>
+    <span class="n">nn_filter_args</span><span class="o">.</span><span class="n">_group_actions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn_approx</span><span class="p">)</span>
+
+    <span class="n">final_filter_args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_argument_group</span><span class="p">(</span>
+        <span class="s2">&quot;Create finalized outlier filtering Table.&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Arguments for finalizing outlier filtering.&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">final_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--create-finalized-outlier-filter&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Create the finalized outlier filtering Table. To specify filtering method &quot;</span>
+            <span class="s2">&quot;to use for the finalized outlier filtering Table, use the parameter &quot;</span>
+            <span class="s2">&quot;options from that method. e.g. To use the stratified outlier filtering &quot;</span>
+            <span class="s2">&quot;with population stratification include the following arguments: &quot;</span>
+            <span class="s2">&quot;--apply-stratified-filters --stratify-population. If an ensemble between &quot;</span>
+            <span class="s2">&quot;two methods is desired, include arguments for both. The filtering Table &quot;</span>
+            <span class="s2">&quot;for each method requested must already exist, the outlier filtering will &quot;</span>
+            <span class="s2">&quot;not be rerun.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">final_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--use-existing-filter-tables&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Whether to use existing filter Tables if they exist instead of re-running &quot;</span>
+            <span class="s2">&quot;any specified filtering methods before creating the finalized outlier &quot;</span>
+            <span class="s2">&quot;filtering Table.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">&quot;store_true&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">final_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--final-filtering-qc-metrics&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;List of sample QC metrics to use for the finalized outlier filtering. &quot;</span>
+            <span class="s2">&quot;Note: This must be the same as, or a subset of `--filtering-qc-metrics` &quot;</span>
+            <span class="s2">&quot;used when generating the filtering Table(s) desired for final filtering.&quot;</span>
+        <span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="p">[</span>
+            <span class="s2">&quot;r_ti_tv&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_insertion_deletion&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_het_hom_var&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;r_ti_tv_singleton&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">list</span><span class="p">,</span>
+        <span class="n">nargs</span><span class="o">=</span><span class="s2">&quot;+&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">final_filter_args</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--ensemble-method-logical-operator&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Logical operator to use for combining filtering methods for the ensemble &quot;</span>
+            <span class="s2">&quot;method.&quot;</span>
+        <span class="p">),</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;and&quot;</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;and&quot;</span><span class="p">,</span> <span class="s2">&quot;or&quot;</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;--slack-channel&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">&quot;Slack channel to post results and notifications to.&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">get_script_argument_parser</span><span class="p">()</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">slack_notifications</span><span class="p">(</span><span class="n">slack_token</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">slack_channel</span><span class="p">):</span>
+            <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p></p>
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

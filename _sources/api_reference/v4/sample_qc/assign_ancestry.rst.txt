@@ -1,0 +1,21 @@
+gnomad_qc.v4.sample_qc.assign_ancestry
+======================================
+
+Script to assign global ancestry labels to samples using known v3 population labels or TGP and HGDP labels.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.sample_qc.assign_ancestry.get_script_argument_parser
+   :prog: gnomad_qc.v4.sample_qc.assign_ancestry.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.sample_qc.assign_ancestry
+
+.. automodule:: gnomad_qc.v4.sample_qc.assign_ancestry
+    :exclude-members: get_script_argument_parser
