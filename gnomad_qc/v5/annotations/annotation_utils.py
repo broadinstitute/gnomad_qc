@@ -47,11 +47,11 @@ def annotate_adj_no_dp(
 
     :param mt: Input MatrixTable.
     :param adj_gq: Minimum GQ. Default is 20.
-    :param adj_dp: Minimum DP (sum of allele depths) for non-hom-ref calls. Default is
-        10.
+    :param adj_dp: Minimum DP (sum of allele depths) for calls with allele depths.
+        Default is 10.
     :param adj_ab: Minimum allele balance for het calls. Default is 0.2.
-    :param haploid_adj_dp: Minimum DP (sum of allele depths) for haploid non-ref
-        calls. Default is 5.
+    :param haploid_adj_dp: Minimum DP (sum of allele depths) for haploid calls with
+        allele depths. Default is 5.
     :return: MatrixTable with adj annotation.
     """
     entry_fields = set(mt.entry)
