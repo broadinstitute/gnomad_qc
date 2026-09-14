@@ -1,0 +1,16 @@
+gnomad_qc.v5.resources.basics
+=============================
+
+Script containing generic resources.
+
+
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v5.resources.basics
+
+.. automodule:: gnomad_qc.v5.resources.basics
+    :exclude-members: get_script_argument_parser

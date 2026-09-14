@@ -1,0 +1,21 @@
+gnomad_qc.v4.variant_qc.evaluation
+==================================
+
+Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots.
+
+
+
+
+.. argparse::
+   :ref: gnomad_qc.v4.variant_qc.evaluation.get_script_argument_parser
+   :prog: gnomad_qc.v4.variant_qc.evaluation.py
+
+
+
+Module Functions
+****************
+
+.. gnomad_automodulesummary:: gnomad_qc.v4.variant_qc.evaluation
+
+.. automodule:: gnomad_qc.v4.variant_qc.evaluation
+    :exclude-members: get_script_argument_parser
