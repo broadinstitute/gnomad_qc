@@ -1780,6 +1780,17 @@ def main(args):
     )
     if args.generate_ac_info_ht or args.union_ac_info_hts or args.create_final_info_ht:
         logger.info("AC info HT checkpoint path: %s", ac_info_ht_checkpoint_path)
+    if args.generate_ac_info_ht:
+        # Checked here, before interval derivation and the VDS load, so an
+        # existing output fails the run immediately instead of after the
+        # expensive chunk-bounds aggregation job.
+        _check_resource_existence(
+            environment=environment,
+            output_step_resources={
+                "ac_info_ht": [ac_info_ht_checkpoint_path],
+            },
+            overwrite=overwrite,
+        )
     vcf_ht_checkpoint_path = args.vcf_ht_checkpoint_path_override or (
         get_vcf_ht_checkpoint_path(
             add_test_suffix=test,
@@ -1831,13 +1842,6 @@ def main(args):
                 )
         if args.generate_ac_info_ht:
             logger.info("Generating AC info HT (no VCF join)...")
-            _check_resource_existence(
-                environment=environment,
-                output_step_resources={
-                    "ac_info_ht": [ac_info_ht_checkpoint_path],
-                },
-                overwrite=overwrite,
-            )
             ht = generate_ac_info_ht(
                 vds,
                 max_alleles=args.max_alleles,
