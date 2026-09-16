@@ -112,7 +112,7 @@ def extract_variant_annotations_job(
     sites_only_vcf: str,
     features: List[str],
     resource_args: str,
-    calling_intervals_arg: str,
+    calling_intervals_args: str,
     exclude_intervals: str,
     out_root: str,
     gatk_image: str,
@@ -126,7 +126,7 @@ def extract_variant_annotations_job(
     :param sites_only_vcf: AS-annotated sites-only input VCF.
     :param features: Features to extract for this mode.
     :param resource_args: GATK ``--resource`` args for the labeled sets.
-    :param calling_intervals_arg: GATK ``-L`` args restricting the extracted sites.
+    :param calling_intervals_args: GATK ``-L`` args restricting the extracted sites.
     :param exclude_intervals: Telomere/centromere intervals excluded from the
         training/calibration set (``-XL``); these sites are not scored either.
     :param out_root: Output prefix (files written as ``{out_root}.*``).
@@ -153,7 +153,7 @@ def extract_variant_annotations_job(
             -O {j.extract} \\
             --mode {mode} \\
             {_annotation_args(features)} \\
-            {calling_intervals_arg} \\
+            {calling_intervals_args} \\
             -XL {exclude_intervals} \\
             --gcs-project-for-requester-pays {gcp_billing_project} \\
             {resource_args}
@@ -220,7 +220,7 @@ def train_variant_annotations_model_job(
 
 def split_intervals_job(
     b: hb.Batch,
-    calling_intervals_arg: str,
+    calling_intervals_args: str,
     exclude_intervals: str,
     scatter_count: int,
     gatk_image: str,
@@ -230,7 +230,7 @@ def split_intervals_job(
     Split the calling contigs into ``scatter_count`` intervals, excluding telomeres/centromeres.
 
     :param b: Batch to add the job to.
-    :param calling_intervals_arg: GATK ``-L`` args covering the calling contigs.
+    :param calling_intervals_args: GATK ``-L`` args covering the calling contigs.
     :param exclude_intervals: Path to an intervals file to exclude (``-XL``).
     :param scatter_count: Number of interval shards to produce.
     :param gatk_image: GATK docker image.
@@ -251,7 +251,7 @@ def split_intervals_job(
         f"""set -euo pipefail
         gatk --java-options "-Xms3g" SplitIntervals \\
             -R {REFERENCE_RESOURCES['ref_fasta']} \\
-            {calling_intervals_arg} \\
+            {calling_intervals_args} \\
             -XL {exclude_intervals} \\
             -O {j.intervals} \\
             -scatter {scatter_count} \\
@@ -343,7 +343,7 @@ def isolation_forest_workflow(
     run_prefix: str,
     out_vcf_name: str,
     singletons_vcf: Optional[str],
-    calling_intervals_arg: str,
+    calling_intervals_args: str,
     exclude_intervals: str,
     scatter_count: int,
     gatk_image: str,
@@ -361,7 +361,7 @@ def isolation_forest_workflow(
     :param run_prefix: GCS prefix for this run's GATK outputs.
     :param out_vcf_name: Base name for scored VCF shards.
     :param singletons_vcf: Optional true-positive singletons VCF.
-    :param calling_intervals_arg: GATK ``-L`` args for the calling contigs.
+    :param calling_intervals_args: GATK ``-L`` args for the calling contigs.
     :param exclude_intervals: Path to the telomere/centromere exclusion intervals file.
     :param scatter_count: Number of interval shards for scoring.
     :param gatk_image: GATK docker image.
@@ -372,7 +372,7 @@ def isolation_forest_workflow(
     """
     intervals = split_intervals_job(
         b=b,
-        calling_intervals_arg=calling_intervals_arg,
+        calling_intervals_arg=calling_intervals_args,
         exclude_intervals=exclude_intervals,
         scatter_count=scatter_count,
         gatk_image=gatk_image,
@@ -404,7 +404,7 @@ def isolation_forest_workflow(
                 sites_only_vcf=sites_only_vcf,
                 features=features,
                 resource_args=resource_args,
-                calling_intervals_arg=calling_intervals_arg,
+                calling_intervals_arg=calling_intervals_args,
                 exclude_intervals=exclude_intervals,
                 out_root=extract_root,
                 gatk_image=gatk_image,
@@ -758,9 +758,9 @@ def main(args):
     # Stable path so the same file used by GATK -XL is read back during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
 
-    # Fail fast before the Batch if an input is missing. sites_only_vcf is checked
-    # unconditionally because reconcile_scored_sites reads it on --load-only runs too,
-    # unless this run exports it.
+    # Fail fast on missing inputs. The sites VCF is read in every mode (including
+    # --load-only), so skip its check only when this run exports it. The singletons
+    # VCF is only read by the Batch.
     input_step_resources = {}
     if not args.export_v4_test_vcf:
         input_step_resources["sites_only_vcf"] = [sites_only_vcf]
