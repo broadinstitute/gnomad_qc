@@ -340,7 +340,9 @@ def check_run_config(
 
     :param run_prefix: GCS prefix for this run's GATK outputs.
     :param config: Current run configuration.
-    :param overwrite: Whether outputs are being overwritten (skips the comparison).
+    :param overwrite: Whether outputs are being overwritten. Skips the comparison
+        only in the Batch step; --load-only reuses whatever is under ``run_prefix``
+        (its --overwrite only replaces the result HT), so it always compares.
     :param write: Whether to record ``config`` (the Batch step; the load step only
         compares).
     :return: None.
@@ -350,7 +352,7 @@ def check_run_config(
         with hl.hadoop_open(path, "r") as f:
             prev = json.load(f)
         diff = {k: (prev.get(k), v) for k, v in config.items() if prev.get(k) != v}
-        if diff and not overwrite:
+        if diff and not (overwrite and write):
             raise ValueError(
                 f"Run config differs from the existing outputs under {run_prefix} "
                 f"(recorded, current): {diff}. Pass --overwrite or use a new --model-id."
