@@ -372,7 +372,7 @@ def isolation_forest_workflow(
     """
     intervals = split_intervals_job(
         b=b,
-        calling_intervals_arg=calling_intervals_args,
+        calling_intervals_args=calling_intervals_args,
         exclude_intervals=exclude_intervals,
         scatter_count=scatter_count,
         gatk_image=gatk_image,
@@ -404,7 +404,7 @@ def isolation_forest_workflow(
                 sites_only_vcf=sites_only_vcf,
                 features=features,
                 resource_args=resource_args,
-                calling_intervals_arg=calling_intervals_args,
+                calling_intervals_args=calling_intervals_args,
                 exclude_intervals=exclude_intervals,
                 out_root=extract_root,
                 gatk_image=gatk_image,
@@ -708,7 +708,7 @@ def main(args):
     test_mode = test or args.test_on_v4
     scatter_count = 10 if test_mode else args.scatter_count
     contigs = args.test_chrom if test_mode else CALLING_CONTIGS
-    calling_intervals_arg = " ".join(f"-L {c}" for c in contigs)
+    calling_intervals_args = " ".join(f"-L {c}" for c in contigs)
 
     true_positive_type = None
     if args.transmitted_singletons and args.sibling_singletons:
@@ -804,7 +804,7 @@ def main(args):
             run_prefix=run_prefix,
             out_vcf_name=args.out_vcf_name,
             singletons_vcf=singletons_vcf,
-            calling_intervals_arg=calling_intervals_arg,
+            calling_intervals_args=calling_intervals_args,
             exclude_intervals=exclude_intervals,
             scatter_count=scatter_count,
             gatk_image=args.gatk_image,
