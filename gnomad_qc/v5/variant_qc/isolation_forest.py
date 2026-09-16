@@ -7,8 +7,9 @@ merged into a single result HT in the ``--load-iforest`` step.
 """
 
 import argparse
+import json
 import logging
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import hail as hl
 import hailtop.batch as hb
@@ -324,6 +325,41 @@ def score_variant_annotations_job(
     )
     b.write_output(j.output_score, out_root)
     return j
+
+
+def check_run_config(
+    run_prefix: str, config: Dict[str, Any], overwrite: bool, write: bool
+) -> None:
+    """
+    Guard reuse of outputs under ``run_prefix`` against a changed run configuration.
+
+    Extract/model/score outputs are reused by path alone, so a rerun with different
+    contigs, scatter count, or inputs would silently reuse region- or split-mismatched
+    files. Compare against the config recorded by the first run and raise on any
+    difference unless ``overwrite``.
+
+    :param run_prefix: GCS prefix for this run's GATK outputs.
+    :param config: Current run configuration.
+    :param overwrite: Whether outputs are being overwritten (skips the comparison).
+    :param write: Whether to record ``config`` (the Batch step; the load step only
+        compares).
+    :return: None.
+    """
+    path = f"{run_prefix}/run_config.json"
+    if file_exists(path):
+        with hl.hadoop_open(path, "r") as f:
+            prev = json.load(f)
+        diff = {k: (prev.get(k), v) for k, v in config.items() if prev.get(k) != v}
+        if diff and not overwrite:
+            raise ValueError(
+                f"Run config differs from the existing outputs under {run_prefix} "
+                f"(recorded, current): {diff}. Pass --overwrite or use a new --model-id."
+            )
+    elif not write:
+        logger.warning("No run config found at %s; cannot check consistency.", path)
+    if write:
+        with hl.hadoop_open(path, "w") as f:
+            f.write(json.dumps(config))
 
 
 def isolation_forest_workflow(
@@ -682,6 +718,13 @@ def reconcile_scored_sites(
             f"{[(m.locus, m.alleles) for m in missing.take(5)]}"
         )
 
+    # Duplicate keys (e.g. shards from two different scatter splits merged together)
+    # satisfy both the presence and SCORE checks, so check explicitly.
+    n_scored = scored_ht.count()
+    n_dup = n_scored - scored_ht.distinct().count()
+    if n_dup > 0:
+        raise ValueError(f"{n_dup} duplicate variants in the scored output.")
+
     unscored = hl.is_missing(scored_ht.info.SCORE)
     n_unscored = scored_ht.aggregate(hl.agg.count_where(unscored))
     if n_unscored > 0:
@@ -809,6 +852,21 @@ def main(args):
     # passed to GATK -XL in the Batch step, then re-read during reconciliation.
     exclude_intervals = f"{run_prefix}/exclude.intervals"
 
+    # Everything that determines what the reused extract/model/score outputs contain.
+    check_run_config(
+        run_prefix,
+        config={
+            "contigs": contigs,
+            "scatter_count": scatter_count,
+            "sites_only_vcf": sites_only_vcf,
+            "singletons_vcf": singletons_vcf,
+            "hyperparameters_json": args.hyperparameters_json,
+            "out_vcf_name": args.out_vcf_name,
+        },
+        overwrite=args.overwrite,
+        write=not args.load_only,
+    )
+
     if not args.load_only:
         backend = hb.ServiceBackend(
             billing_project=args.batch_billing_project,
@@ -830,7 +888,10 @@ def main(args):
             hyperparameters_json=args.hyperparameters_json,
             overwrite=args.overwrite,
         )
-        run_batch(b, "Isolation forest")
+        try:
+            run_batch(b, "Isolation forest")
+        finally:
+            backend.close()
 
     if args.load_iforest or args.load_only:
         ht = merge_iforest_result(

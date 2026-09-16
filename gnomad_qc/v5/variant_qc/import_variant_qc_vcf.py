@@ -12,7 +12,11 @@ from gnomad_qc.v5.resources.basics import (
     _get_batch_resource_kwargs,
     _init_hail,
 )
-from gnomad_qc.v5.resources.variant_qc import VARIANT_QC_FEATURES, get_variant_qc_result
+from gnomad_qc.v5.resources.variant_qc import (
+    VARIANT_QC_FEATURES,
+    _validate_model_id,
+    get_variant_qc_result,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
@@ -41,11 +45,7 @@ def import_variant_qc_vcf(
     :param deduplicate_check: Whether to remove duplicate variants.
     :return: HT (or split, unsplit HTs) containing variant QC results.
     """
-    model_type = model_id.split("_")[0]
-    if model_type not in ["rf", "vqsr", "if"]:
-        raise ValueError(
-            f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but got {model_id}"
-        )
+    model_type = _validate_model_id(model_id)
 
     logger.info(
         "Importing variant QC annotations for model %s (array_elements_required=%s)...",
