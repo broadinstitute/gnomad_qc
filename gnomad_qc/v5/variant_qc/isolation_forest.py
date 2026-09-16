@@ -755,9 +755,6 @@ def main(args):
             model_id, test=test, split=True, environment=environment
         ).path
 
-    # Stable path so the same file used by GATK -XL is read back during reconciliation.
-    exclude_intervals = f"{run_prefix}/exclude.intervals"
-
     # Fail fast on missing inputs. The sites VCF is read in every mode (including
     # --load-only), so skip its check only when this run exports it. The singletons
     # VCF is only read by the Batch.
@@ -790,6 +787,10 @@ def main(args):
         if args.export_only:
             logger.info("Exported %s; stopping.", sites_only_vcf)
             return
+
+    # Telomere/centromere exclusion file. Used by both branches below: written and
+    # passed to GATK -XL in the Batch step, then re-read during reconciliation.
+    exclude_intervals = f"{run_prefix}/exclude.intervals"
 
     if not args.load_only:
         backend = hb.ServiceBackend(
