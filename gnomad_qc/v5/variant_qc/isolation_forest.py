@@ -848,39 +848,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--test",
-        help="Filter to --test-chrom and use a small scatter count for testing.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--test-chrom",
-        help=(
-            "Contig(s) to score under --test/--test-on-v4. Must match the contigs in "
-            "the test info VCF."
-        ),
-        type=str,
-        nargs="+",
-        default=["chr22"],
-    )
-    parser.add_argument(
-        "--test-on-v4",
-        help="Use gnomAD v4 sites/true-positive VCFs as inputs (v5 data unavailable).",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--export-v4-test-vcf",
-        help=(
-            "Export the v4 split info HT filtered to --test-chrom as the --test-on-v4 "
-            "sites VCF. Requires --test-on-v4."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--export-only",
-        help="Stop after --export-v4-test-vcf instead of continuing to the Batch.",
-        action="store_true",
-    )
-    parser.add_argument(
         "--environment",
         help="Compute environment.",
         default="batch",
@@ -893,113 +860,156 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         type=str,
         required=True,
     )
-    parser.add_argument(
-        "--out-vcf-name",
-        help="Base name for scored VCF shards.",
-        type=str,
-        required=True,
+
+    test_args = parser.add_argument_group("testing options")
+    test_args.add_argument(
+        "--test",
+        help="Filter to --test-chrom and use a small scatter count for testing.",
+        action="store_true",
     )
-    parser.add_argument(
+    test_args.add_argument(
+        "--test-chrom",
+        help=(
+            "Contig(s) to score under --test/--test-on-v4. Must match the contigs in "
+            "the test info VCF."
+        ),
+        type=str,
+        nargs="+",
+        default=["chr22"],
+    )
+    test_args.add_argument(
+        "--test-on-v4",
+        help="Use gnomAD v4 sites/true-positive VCFs as inputs (v5 data unavailable).",
+        action="store_true",
+    )
+    test_args.add_argument(
+        "--export-v4-test-vcf",
+        help=(
+            "Export the v4 split info HT filtered to --test-chrom as the --test-on-v4 "
+            "sites VCF. Requires --test-on-v4."
+        ),
+        action="store_true",
+    )
+    test_args.add_argument(
+        "--export-only",
+        help="Stop after --export-v4-test-vcf instead of continuing to the Batch.",
+        action="store_true",
+    )
+
+    batch_args = parser.add_argument_group("batch/GCP configuration")
+    batch_args.add_argument(
         "--batch-billing-project",
         help="Hail Batch billing project.",
         type=str,
         required=True,
     )
-    parser.add_argument(
+    batch_args.add_argument(
         "--gcp-billing-project",
         help="GCP billing project for requester-pays buckets.",
         type=str,
         required=True,
     )
-    parser.add_argument(
-        "--gatk-image",
-        help="GATK docker image.",
-        default=DEFAULT_GATK_IMAGE,
-        type=str,
-    )
-    parser.add_argument(
-        "--scatter-count",
-        help="Number of intervals to scatter scoring across.",
-        default=100,
-        type=int,
-    )
-    parser.add_argument(
-        "--transmitted-singletons",
-        help="Include transmitted singletons as a training/calibration set.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--sibling-singletons",
-        help="Include sibling singletons as a training/calibration set.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--adj",
-        help="Use adj genotypes for the true-positive singletons VCF.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--hyperparameters-json",
-        help="Optional GATK model hyperparameters JSON path.",
-        type=str,
-    )
-    parser.add_argument(
+    batch_args.add_argument(
         "--batch-suffix",
         help="String to append to the Batch name.",
         default="",
         type=str,
     )
-    parser.add_argument(
+    batch_args.add_argument(
         "--app-name",
         help="Job name for the batch/QoB backend.",
         default=None,
         type=str,
     )
-    parser.add_argument(
+    batch_args.add_argument(
         "--driver-cores",
-        help="Number of driver cores (Batch only).",
+        help="Number of driver cores.",
         default=None,
         type=int,
     )
-    parser.add_argument(
+    batch_args.add_argument(
         "--driver-memory",
-        help="Driver memory (Batch only).",
+        help="Driver memory.",
         default=None,
         type=str,
     )
-    parser.add_argument(
+    batch_args.add_argument(
         "--worker-cores",
-        help="Number of worker cores (Batch only).",
+        help="Number of worker cores.",
         default=None,
         type=int,
     )
-    parser.add_argument(
+    batch_args.add_argument(
         "--worker-memory",
-        help="Worker memory (Batch only).",
+        help="Worker memory.",
         default=None,
         type=str,
     )
-    parser.add_argument(
+
+    gatk_args = parser.add_argument_group("GATK scoring")
+    gatk_args.add_argument(
+        "--gatk-image",
+        help="GATK docker image.",
+        default=DEFAULT_GATK_IMAGE,
+        type=str,
+    )
+    gatk_args.add_argument(
+        "--scatter-count",
+        help="Number of intervals to scatter scoring across.",
+        default=100,
+        type=int,
+    )
+    gatk_args.add_argument(
+        "--out-vcf-name",
+        help="Base name for scored VCF shards.",
+        type=str,
+        required=True,
+    )
+    gatk_args.add_argument(
+        "--hyperparameters-json",
+        help="Optional GATK model hyperparameters JSON path.",
+        type=str,
+    )
+
+    tp_args = parser.add_argument_group("training/calibration set")
+    tp_args.add_argument(
+        "--transmitted-singletons",
+        help="Include transmitted singletons as a training/calibration set.",
+        action="store_true",
+    )
+    tp_args.add_argument(
+        "--sibling-singletons",
+        help="Include sibling singletons as a training/calibration set.",
+        action="store_true",
+    )
+    tp_args.add_argument(
+        "--adj",
+        help="Use adj genotypes for the true-positive singletons VCF.",
+        action="store_true",
+    )
+
+    load_args = parser.add_argument_group("load results HT")
+    load_args.add_argument(
         "--load-iforest",
         help="Merge the scored VCFs into a variant QC result HT.",
         action="store_true",
     )
-    parser.add_argument(
+    load_args.add_argument(
         "--load-only",
         help="Skip the GATK Batch and only run the load step.",
         action="store_true",
     )
-    parser.add_argument(
+    load_args.add_argument(
         "--n-partitions",
         help="Number of partitions for the result HT.",
         default=5000,
         type=int,
     )
-    parser.add_argument(
+    load_args.add_argument(
         "--header-path",
         help="Optional header file to use when importing the scored VCFs.",
     )
-    parser.add_argument(
+    load_args.add_argument(
         "--array-elements-required",
         help="Set array_elements_required=True when importing the scored VCFs.",
         action="store_true",
