@@ -2,8 +2,8 @@ r"""
 Compute coverage, allele number, and quality histograms for gnomAD v5 genomes.
 
 v5 genomes = AoU v8 (new) + gnomAD v4 genomes minus the consent-drop set. This
-script computes per-reference-site coverage (gnomAD only), AN, and qual
-histograms (AoU only) per project and joins them into the v5 release HT/TSVs.
+script computes per-reference-site AN per project, coverage (gnomAD only), and qual
+histograms (AoU only) and joins them into the v5 release HT/TSVs.
 
 Execution roles (mutually exclusive; dispatched by early return in ``main``):
 
@@ -759,7 +759,7 @@ def compute_all_release_stats_per_ref_site(
     # so AN is unchanged. AoU arrives with adj already annotated; gnomAD keeps
     # LAD so compute_stats_per_ref_site annotates adj itself, after the
     # sex-ploidy adjustment (haploid calls get the haploid DP cutoff).
-    mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT))
+    mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT) if "GT" in mtds.entry else mtds.LGT)
     mtds = mtds.select_entries(
         *[f for f in ("LGT", "GQ", "DP", "LAD", "adj", "END") if f in mtds.entry]
     )
@@ -925,9 +925,7 @@ def merge_gnomad_coverage_hts(
     )
     gnomad_ht = gnomad_ht.transmute(**merged_fields)
 
-    # Back to the v4 release schema: mean and fraction over-X bins from the
-    # subtracted sums; median_approx is kept from the v4 release as-is. This
-    # HT is exported for release unchanged (AoU computes no coverage stats).
+    # Keep median_approx from v4 release.
     gnomad_ht = gnomad_ht.select(
         mean=gnomad_ht.sum_gnomad / gnomad_v5_count,
         median_approx=gnomad_ht.median_approx_gnomad_release,
@@ -2814,20 +2812,6 @@ def main(args):
 
     # QoB / dataproc init — ROLE 2 (worker) and ROLE 3 (in-process) only.
     #
-    # Hail 0.2.139 workaround: the hl.experimental.densify scan crashes at
-    # compile time (NotImplementedError, SimpleSStream.settableTupleTypes) when
-    # the scanned table has more partitions than the branching factor (default
-    # 50); 0.2.137/0.2.138 are unaffected. A branching factor above the chunk's
-    # partition count (chunks read at most --read-subintervals-per-chunk) keeps
-    # the scan combine single-level, avoiding the broken lowering. Chunk
-    # workers only: the single-job path runs on dataproc (0.2.137). A
-    # --test-region chunk with one sub-interval reads the region's native VDS
-    # partitions (filter_intervals), so it gets a fixed high floor instead.
-    branching_factor = None
-    if args.run_chunk:
-        branching_factor = max(
-            50, 2 * args.read_subintervals_per_chunk, 1024 if args.test_region else 0
-        )
 
     _init_hail(
         log_name,
@@ -2836,7 +2820,6 @@ def main(args):
         tmp_dir_days=args.tmp_dir_days,
         tmp_dir=f"{qc_temp_prefix(environment=environment, days=args.tmp_dir_days)}coverage_and_an_generation",
         experimental=args.experimental,
-        branching_factor=branching_factor,
         **_get_batch_resource_kwargs(args),
     )
 
