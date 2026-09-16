@@ -5,9 +5,3 @@ hail-*.log
 *.pyc
 *.pyo
 __pycache__/
-
-# Local, machine-specific Claude config
-CLAUDE.local.md
-
-# Local code review output
-.code_review/
