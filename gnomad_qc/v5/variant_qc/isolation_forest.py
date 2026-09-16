@@ -8,7 +8,7 @@ merged into a single result HT in the ``--load-iforest`` step.
 
 import argparse
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import hail as hl
 import hailtop.batch as hb
@@ -256,7 +256,7 @@ def score_variant_annotations_job(
     sites_only_vcf: str,
     features: List[str],
     extracted_vcf: hb.ResourceFile,
-    model: hb.ResourceGroup,
+    model: Union[hb.ResourceGroup, str],
     resource_args: str,
     interval: hb.ResourceFile,
     idx: int,
@@ -272,7 +272,9 @@ def score_variant_annotations_job(
     :param sites_only_vcf: AS-annotated sites-only input VCF.
     :param features: Features for this mode (must match the trained model).
     :param extracted_vcf: Extracted training/calibration VCF from the extract step.
-    :param model: Trained model ResourceGroup (its root is the ``--model-prefix``).
+    :param model: ``--model-prefix``: the trained model ResourceGroup from the train
+        job, or a prefix string built from a read-in group (see
+        `isolation_forest_workflow`).
     :param resource_args: GATK ``--resource`` args for the labeled sets.
     :param interval: Interval file to restrict scoring to.
     :param idx: Shard index, used to identify the job in the Batch.
@@ -403,13 +405,17 @@ def isolation_forest_workflow(
         # Reuse trained model if present.
         if not overwrite and file_exists(f"{model_root}.{m}.scorer.pkl"):
             logger.info("Reusing existing %s model.", mode)
-            model = b.read_input_group(
+            model_group = b.read_input_group(
                 **{
                     f"{m}.scorer.pkl": f"{model_root}.{m}.scorer.pkl",
                     f"{m}.trainingScores.hdf5": f"{model_root}.{m}.trainingScores.hdf5",
                     f"{m}.calibrationScores.hdf5": f"{model_root}.{m}.calibrationScores.hdf5",
                 }
             )
+            # A read-in group localizes as a directory ({group}/model.{m}.scorer.pkl),
+            # unlike a job-declared group whose root is the file prefix, so build the
+            # --model-prefix from the group path. Interpolating the group localizes it.
+            model = f"{model_group}/model"
         else:
             model = train_variant_annotations_model_job(
                 b=b,
@@ -657,12 +663,23 @@ def reconcile_scored_sites(
         & hl.is_missing(exclude_ht[input_ht.locus])
     ).select()
 
-    missing = input_ht.anti_join(scored_ht.select())
-    n_missing = missing.count()
-    if n_missing > 0:
+    input_ht = input_ht.annotate(scored=hl.is_defined(scored_ht[input_ht.key]))
+    counts = input_ht.aggregate(
+        hl.struct(n=hl.agg.count(), n_missing=hl.agg.count_where(~input_ht.scored))
+    )
+    # Zero input variants would trivially pass the checks below; treat as a config
+    # error (e.g. --test-chrom contigs absent from the info VCF).
+    if counts.n == 0:
         raise ValueError(
-            f"{n_missing} input variants in the scored region are missing from the "
-            f"scored output. Examples: {[(m.locus, m.alleles) for m in missing.take(5)]}"
+            "No input variants in the scored region; check that the contigs and "
+            "exclusion intervals match the input VCF."
+        )
+    if counts.n_missing > 0:
+        missing = input_ht.filter(~input_ht.scored)
+        raise ValueError(
+            f"{counts.n_missing} input variants in the scored region are missing from "
+            f"the scored output. Examples: "
+            f"{[(m.locus, m.alleles) for m in missing.take(5)]}"
         )
 
     unscored = hl.is_missing(scored_ht.info.SCORE)
@@ -673,7 +690,10 @@ def reconcile_scored_sites(
             f"{n_unscored} variants have no SCORE. Examples: "
             f"{[(e.locus, e.alleles) for e in examples]}"
         )
-    logger.info("Reconciliation passed: all input variants are present and scored.")
+    logger.info(
+        "Reconciliation passed: all %s input variants are present and scored.",
+        counts.n,
+    )
 
 
 def main(args):
