@@ -14,6 +14,7 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.reference_genome import get_primary_contigs
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from hailtop.batch.job import Job
 
@@ -25,6 +26,7 @@ from gnomad_qc.v5.resources.basics import (
 )
 from gnomad_qc.v5.resources.constants import BATCH_TMP_BUCKET
 from gnomad_qc.v5.resources.variant_qc import (
+    REFERENCE_RESOURCES,
     VARIANT_QC_FEATURES,
     _validate_model_id,
     get_iforest_run_prefix,
@@ -38,21 +40,6 @@ logger.setLevel(logging.INFO)
 
 DEFAULT_GATK_IMAGE = "us.gcr.io/broad-gatk/gatk:4.6.1.0"
 """GATK image. 4.6.1.0 ships the conda env (scikit-learn, dill) needed for PYTHON_IFOREST."""
-
-CALLING_CONTIGS = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY"]
-"""Contigs to score (autosomes and sex chromosomes)."""
-
-# Public GATK resource VCFs (broad-references); used as labeled training/calibration
-# sets. SNP and INDEL modes use different truth resources.
-REFERENCE_RESOURCES = {
-    "ref_fasta": "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta",
-    "dbsnp": "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.gz",
-    "hapmap": "gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz",
-    "omni": "gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz",
-    "one_thousand_genomes": "gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
-    "mills": "gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
-    "axiom_poly": "gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz",
-}
 
 
 def _resource_args(mode: str, singletons_vcf: Optional[str]) -> str:
@@ -717,7 +704,7 @@ def main(args):
     # --test-chrom in generate_variant_qc_annotations).
     test_mode = test or args.test_on_v4
     scatter_count = 10 if test_mode else args.scatter_count
-    contigs = args.test_chrom if test_mode else CALLING_CONTIGS
+    contigs = args.test_chrom if test_mode else get_primary_contigs()
     calling_intervals_args = " ".join(f"-L {c}" for c in contigs)
 
     true_positive_type = None

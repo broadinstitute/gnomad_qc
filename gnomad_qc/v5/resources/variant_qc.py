@@ -43,6 +43,22 @@ VARIANT_QC_FEATURES = {
 """Features used by the v5 variant QC models, keyed by variant type."""
 
 
+# GATK isolation forest resource VCFs, used as labeled training/calibration sets. SNP
+# and INDEL modes use different truth resources. These stay on the Broad references
+# bucket rather than gnomad_methods: GATK needs indexed VCFs (and a FASTA with .fai/
+# .dict), but the gnomAD public bucket only serves Hail Table versions of hapmap/omni/
+# kgp/mills and has no Axiom Poly, dbSNP 138, or GATK-ready FASTA.
+REFERENCE_RESOURCES = {
+    "ref_fasta": "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta",
+    "dbsnp": "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.gz",
+    "hapmap": "gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz",
+    "omni": "gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz",
+    "one_thousand_genomes": "gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
+    "mills": "gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
+    "axiom_poly": "gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz",
+}
+
+
 def _variant_qc_root(
     version: str = CURRENT_VARIANT_QC_VERSION,
     test: bool = False,
