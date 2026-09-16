@@ -698,6 +698,16 @@ def main(args):
         raise ValueError("--export-v4-test-vcf requires --test-on-v4.")
     if args.export_only and not args.export_v4_test_vcf:
         raise ValueError("--export-only requires --export-v4-test-vcf.")
+    if (args.load_iforest or args.load_only) and args.environment == "batch":
+        # Reconciliation OOMs the default QoB driver, even on a chr22 test.
+        if args.driver_memory != "highmem":
+            raise ValueError(
+                "--load-iforest/--load-only require --driver-memory highmem."
+            )
+        if args.driver_cores is None:
+            logger.warning(
+                "--driver-cores not set; the load step has been run with 4-8 cores."
+            )
 
     environment = args.environment
     _init_hail("isolation_forest", environment, **_get_batch_resource_kwargs(args))
@@ -924,13 +934,13 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     batch_args.add_argument(
         "--driver-cores",
-        help="Number of driver cores.",
+        help="Number of driver cores. The load step has been run with 4-8.",
         default=None,
         type=int,
     )
     batch_args.add_argument(
         "--driver-memory",
-        help="Driver memory.",
+        help="Driver memory. Must be 'highmem' for --load-iforest/--load-only.",
         default=None,
         type=str,
     )
