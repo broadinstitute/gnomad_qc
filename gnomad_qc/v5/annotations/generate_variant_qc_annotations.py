@@ -2,9 +2,10 @@
 
 import argparse
 import functools
+import json
 import logging
 import math
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import GROUPS
@@ -43,6 +44,7 @@ from gnomad_qc.v5.resources.basics import (
     _check_resource_existence,
     _get_batch_resource_kwargs,
     _init_hail,
+    aou_genotypes,
     get_aou_vds,
     get_logging_path,
 )
@@ -1413,67 +1415,134 @@ def compute_chunks(args):
     return sub_intervals
 
 
+def _contig_partition_spans(contig: str, contig_len: int) -> List[Tuple[int, int]]:
+    """
+    Get disjoint per-partition position spans on `contig` from the AoU VDS metadata.
+
+    Reads only the variant-data table spec (one small JSON, never variant rows) for
+    the partition range bounds. Each returned pair is a half-open [start, end)
+    position span holding one partition's rows on the contig, clamped to
+    [1, contig_len + 1). A boundary locus shared by two adjacent partitions is
+    assigned to the later partition's span so spans stay disjoint; regions between
+    spans hold no variant rows.
+
+    :param contig: Contig whose partition spans are returned.
+    :param contig_len: Reference length of `contig`.
+    :return: List of half-open (start, end) position spans in genomic order.
+    """
+    url = f"{aou_genotypes.path}/variant_data/rows/rows/metadata.json.gz"
+    # hl.hadoop_open carries the requester-pays billing project configured at
+    # init and transparently gunzips .gz files.
+    with hl.hadoop_open(url) as f:
+        meta = json.load(f)
+    # The key is "_jRangeBounds" in current table specs, "jRangeBounds" in older.
+    bounds = meta.get("_jRangeBounds", meta.get("jRangeBounds"))
+    if bounds is None:
+        raise ValueError(
+            f"jRangeBounds not found in {url}; metadata keys: {list(meta)}"
+        )
+
+    order = {c: i for i, c in enumerate(hl.get_reference("GRCh38").contigs)}
+    c_idx = order[contig]
+    raw: List[Tuple[int, int]] = []
+    for b in bounds:
+        s = b["start"].get("locus", b["start"])
+        e = b["end"].get("locus", b["end"])
+        s_idx, e_idx = order.get(s["contig"]), order.get(e["contig"])
+        if s_idx is None or e_idx is None or s_idx > c_idx or e_idx < c_idx:
+            continue
+        lo = s["position"] if s_idx == c_idx else 1
+        hi = e["position"] + 1 if e_idx == c_idx else contig_len + 1
+        raw.append((lo, hi))
+
+    spans: List[Tuple[int, int]] = []
+    for i, (lo, hi) in enumerate(raw):
+        if i + 1 < len(raw):
+            hi = min(hi, raw[i + 1][0])
+        if hi > lo:
+            spans.append((lo, hi))
+    return spans
+
+
 def compute_contig_intervals(args) -> List[hl.utils.Interval]:
     """
-    Derive equal-width read intervals covering a single contig.
+    Derive ~equal-data read intervals covering a single contig.
 
-    The contig's span is known from the reference genome, so unlike chunk mode no
-    bounds aggregation over the VDS reference data is needed. With
-    --read-subintervals-scale, the sub-interval count is the scale times the
-    number of VDS partitions overlapping the contig (a metadata-only lookup);
-    otherwise --read-subintervals-per-chunk gives the absolute count.
+    Each VDS partition's position span on the contig (from the partition bounds
+    in the table metadata, a metadata-only lookup) is subdivided into equal-width
+    slices, so interval width adapts to data density: every interval holds about
+    1/scale of one ~equal-data partition. Equal-width slicing of the full contig
+    span instead gives severely skewed jobs on contigs with large variant-free
+    regions (empty sub-second reads over the p-arm/centromere next to
+    multi-partition slices in dense pockets). Regions between partition spans
+    hold no variant rows and get no interval, matching chunk mode's
+    variant-bounds semantics.
+
+    With --read-subintervals-scale, each partition span gets `scale` slices;
+    otherwise --read-subintervals-per-chunk gives a total spread evenly across
+    the contig's partition spans.
 
     :param args: Parsed CLI args.
-    :return: List of locus intervals covering the contig, in genomic order.
+    :return: List of locus intervals covering the contig's data, in genomic order.
     """
     contig = args.chrom
     reference_genome = "GRCh38"
     rg = hl.get_reference(reference_genome)
     contig_len = rg.contig_length(contig)
 
+    spans = _contig_partition_spans(contig, contig_len)
+    n_parts = len(spans)
+
     if args.read_subintervals_scale is not None:
-        vds_probe = get_aou_vds(
-            environment=args.environment,
-            remove_hard_filtered_samples=False,
-            log_sample_counts=False,
-        )
-        n_parts = hl.vds.filter_intervals(
-            vds_probe,
-            [hl.parse_locus_interval(contig, reference_genome=reference_genome)],
-        ).variant_data.n_partitions()
-        n_sub = max(1, math.ceil(args.read_subintervals_scale * n_parts))
+        per_part = max(1, math.ceil(args.read_subintervals_scale))
         logger.info(
-            "Scaling explode: %d %s partitions x %s = %d total sub-intervals",
+            "Scaling explode: %d %s partition spans x %s = up to %d total "
+            "sub-intervals",
             n_parts,
             contig,
             args.read_subintervals_scale,
-            n_sub,
+            per_part * n_parts,
         )
     else:
-        n_sub = max(args.read_subintervals_per_chunk or 1, 1)
-        if n_sub == 1:
+        total_sub = max(args.read_subintervals_per_chunk or 1, 1)
+        per_part = max(1, math.ceil(total_sub / n_parts))
+        if per_part == 1:
             logger.warning(
-                "Deriving a single read interval for all of %s (one interval = one "
-                "partition on re-read); pass --read-subintervals-per-chunk or "
-                "--read-subintervals-scale to subdivide it.",
+                "Deriving one read interval per %s partition span (one interval "
+                "= one partition on re-read); raise "
+                "--read-subintervals-per-chunk or pass "
+                "--read-subintervals-scale to subdivide further.",
                 contig,
             )
 
-    n_sub = min(n_sub, contig_len)
-    step = max(contig_len // n_sub, 1)
     intervals: List[hl.utils.Interval] = []
-    for i in range(n_sub):
-        sub_lo = 1 + i * step
-        last = i == n_sub - 1
-        sub_hi = contig_len if last else 1 + (i + 1) * step
-        intervals.append(
-            hl.Interval(
-                hl.Locus(contig, sub_lo, reference_genome=reference_genome),
-                hl.Locus(contig, sub_hi, reference_genome=reference_genome),
-                includes_start=True,
-                includes_end=last,
+    for lo, hi in spans:
+        n = min(per_part, hi - lo)
+        step = max((hi - lo) // n, 1)
+        for i in range(n):
+            sub_lo = lo + i * step
+            sub_hi = hi if i == n - 1 else lo + (i + 1) * step
+            # A span's exclusive end can be contig_len + 1, which is not a valid
+            # locus; close that interval at contig_len inclusively instead.
+            past_end = sub_hi > contig_len
+            intervals.append(
+                hl.Interval(
+                    hl.Locus(contig, sub_lo, reference_genome=reference_genome),
+                    hl.Locus(
+                        contig,
+                        contig_len if past_end else sub_hi,
+                        reference_genome=reference_genome,
+                    ),
+                    includes_start=True,
+                    includes_end=past_end,
+                )
             )
-        )
+    logger.info(
+        "Derived %d ~equal-data read intervals from %d %s partition spans.",
+        len(intervals),
+        n_parts,
+        contig,
+    )
     return intervals
 
 
