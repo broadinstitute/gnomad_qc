@@ -57,7 +57,11 @@ def get_gnomad_v3_vds(
     :param read_intervals: Optional list of locus intervals passed to
         `hl.vds.read_vds` at read time. Creates one VDS partition per interval,
         so the VDS can be co-partitioned with another table read on the same
-        intervals. Mutually exclusive with `filter_partitions` and `n_partitions`.
+        intervals. Unlike `filter_intervals`, reference blocks are kept by start
+        locus, so a block that starts before an interval and extends into it is
+        dropped: widen each contig's leading interval by `ref_block_max_length - 1`
+        (see `_expand_leading_edges` in v5 compute_coverage.py). Mutually
+        exclusive with `filter_partitions` and `n_partitions`.
     :param chrom: Optional argument to filter the VDS to specific chromosomes.
     :param autosomes_only: Whether to filter the VDS to autosomes only. Default is
         False.

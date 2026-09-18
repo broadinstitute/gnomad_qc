@@ -27,8 +27,9 @@ read inside ``get_aou_vds``.
 Workflow::
 
     1. (AoU) --write-aou-downsampling-ht
-    2. --write-group-membership-ht: one aggregation cell per distinct
+    2. --write-group-membership-ht. AoU: one aggregation cell per distinct
        membership pattern; every AN group is reconstructed by summing cells.
+       gnomAD: the consent-drop samples, one boolean per group.
     3. --write-vep-context-sites: deduped, telomere/centromere/chrM-stripped
        sites HT -- the definition of "every site the compute must cover".
     4. Compute: --compute-all-cov-release-stats-ht (strict single job), or
@@ -39,7 +40,10 @@ Workflow::
        chunks.
     5. --validate-cov-and-an: the merged HT must cover every site exactly.
     6. (gnomad) --merge-gnomad-coverage / --merge-gnomad-an: subtract the
-       consent-drop cohort from the v4 release HTs.
+       consent-drop samples from the release HTs. AN: the samples in the v4
+       release, from the v4.1 AN release. Coverage: the samples in the v3.0
+       release, from the 3.0.1 coverage release (the only genomes coverage
+       ever computed; v4 reused it).
     7. (aou) Release: --export-coverage-release-files (gnomAD-only; AoU
        computes no coverage stats), --export-an-release-files,
        --merge-qual-hists (gnomAD v4 hists reused as-is).
@@ -73,11 +77,10 @@ import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Sequence
 from datetime import datetime, timezone
 from functools import reduce
 from itertools import groupby
-from typing import Any, NamedTuple
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 import hail as hl
 import hailtop.batch as hb
@@ -110,6 +113,7 @@ from gnomad.utils.sparse_mt import (
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.meta import meta as v4_meta
 from gnomad_qc.v5.resources.annotations import (
     coverage_and_an_path,
@@ -144,14 +148,22 @@ logger.setLevel(logging.INFO)
 # vep_context, and outputs are us-central1) to avoid inter-region GCS egress.
 BATCH_REGIONS = ["us-central1"]
 
-# gnomAD sample counts
-GNOMAD_SAMPLE_COUNT = 71702
-GNOMAD_CONSENT_DROP_SAMPLE_COUNT = 849
+# Consent-drop samples are removed from each release table they were in. The
+# two gnomAD release tables have different sample sets:
+#   - AN: v4.1 AN release, 76,215 v4 genomes -> 866 consent-drop samples.
+#   - Coverage: 3.0.1 coverage release, 71,702 v3.0 genomes (the only genomes
+#     coverage ever computed; v4 reused it) -> 849 consent-drop samples.
+# 845 samples are in both sets; 21 are AN-only (added after v3.0) and 4 are
+# coverage-only (not in the v4 release).
+# coverage_stats is computed over the 849 via the GNOMAD_COVERAGE_GROUP stratum.
+GNOMAD_COVERAGE_RELEASE_SAMPLE_COUNT = 71702
+GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT = 849
+V3_RELEASE_STRATUM_KEY = "v3_release"
+GNOMAD_COVERAGE_GROUP = {"group": "adj", V3_RELEASE_STRATUM_KEY: "true"}
 
-# chrM is called by a separate pipeline and absent from the v4 all-sites AN
-# release, but present in vep_context v105 -- both the sites HT and the chunk
-# intervals must drop it, or --validate-cov-and-an fails on sites the fan-out
-# never computes.
+# chrM is called by a separate pipeline, so it is excluded here even though
+# vep_context v105 has it. Both the sites HT and the chunk intervals must drop
+# it, or --validate-cov-and-an fails on sites the fan-out never computes.
 EXCLUDED_CONTIGS = ["chrM"]
 
 # The group_membership HT is one row per sample (~365k for AoU) and only feeds
@@ -186,25 +198,26 @@ def get_downsampling_ht(ht: hl.Table) -> hl.Table:
 def get_group_membership_ht(
     meta_ht: hl.Table,
     project: str,
-    ds_ht: hl.Table | None = None,
+    ds_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Get genomes group membership HT for all sites allele number stratification.
 
-    The HT is reduced to cells (``reduce_to_cells=True``): one aggregation per
+    AoU: reduced to cells (``reduce_to_cells=True``): one aggregation per
     distinct membership pattern instead of one per group, with every group --
     downsamplings included -- reconstructed by summing cells. Compute calls
     must pass ``reducible_aggs={"AN"}`` and pin every non-summable annotation
-    (qual_hists, coverage_stats) to a single group via
-    ``entry_agg_group_membership``; a pinned group that is not itself a cell
-    (gnomAD coverage_stats -> adj) is aggregated over the union of its cells.
+    (qual_hists) to a single group via ``entry_agg_group_membership``.
 
-    :param meta_ht: Meta HT.
-    :param project: "aou" or "gnomad". For "gnomad", filters ``meta_ht`` to the consent-drop samples.
+    gnomAD: consent-drop samples only. The AN groups contain the samples that
+    were in the v4 release; the coverage group (``GNOMAD_COVERAGE_GROUP``)
+    contains the samples that were in the v3.0 release.
+
+    :param meta_ht: Meta HT (v5 project meta for AoU, v4 genomes meta for gnomAD).
+    :param project: "aou" or "gnomad".
     :param ds_ht: Optional downsampling HT (AoU only).
     :return: Group membership HT.
     """
-    reduce_kwargs = dict(reduce_to_cells=True)
     if project == "aou":
         ht = generate_freq_group_membership_array(
             meta_ht,
@@ -213,7 +226,7 @@ def get_group_membership_ht(
                 gen_anc_expr=meta_ht.genetic_ancestry_inference.gen_anc,
                 downsampling_expr=ds_ht[meta_ht.key].downsampling,
             ),
-            **reduce_kwargs,
+            reduce_to_cells=True,
             downsamplings=hl.eval(ds_ht.downsamplings),
             ds_gen_anc_counts=hl.eval(ds_ht.ds_gen_anc_counts),
         )
@@ -229,23 +242,52 @@ def get_group_membership_ht(
         )
 
     else:
-        # Filter to v4 consent-drop samples (v4 meta, not v5 project meta: this
-        # step runs on Dataproc).
-        ht = meta_ht.filter(
-            meta_ht.release
-            & (
-                (meta_ht.project_meta.research_project_key == "RP-1061")
-                | (meta_ht.project_meta.research_project_key == "RP-1411")
+        # Consent-drop samples in the v4 release (AN) or the v3.0 release
+        # (coverage); meta_ht is the v4 genomes meta (this step runs on
+        # Dataproc). The two sets differ by QC calls: 21 samples failed v3.0
+        # outlier filters but passed v4, and 4 passed v3.0 but failed v4 hard
+        # filters, relatedness, or outlier filters.
+        v3_release_ht = v3_meta.versions["3"].ht()
+        v3_release_ht = v3_release_ht.filter(v3_release_ht.release)
+        ht = meta_ht.annotate(
+            in_v3_release=hl.or_missing(
+                hl.is_defined(v3_release_ht[meta_ht.key]), "true"
             )
         )
-        ht = generate_freq_group_membership_array(
+        ht = ht.filter(
+            (
+                (ht.project_meta.research_project_key == "RP-1061")
+                | (ht.project_meta.research_project_key == "RP-1411")
+            )
+            & (ht.release | hl.is_defined(ht.in_v3_release))
+        )
+        gm_ht = generate_freq_group_membership_array(
             ht,
             build_freq_stratification_list(
                 sex_expr=ht.sex_imputation.sex_karyotype,
                 gen_anc_expr=ht.population_inference.pop,
+                additional_strata_expr={V3_RELEASE_STRATUM_KEY: ht.in_v3_release},
             ),
-            **reduce_kwargs,
         )
+        # Overwrite the membership of samples not in the v4 release so they
+        # count only toward the coverage group, then recount every group.
+        v3_idx = hl.eval(gm_ht.freq_meta).index(GNOMAD_COVERAGE_GROUP)
+        gm_ht = gm_ht.annotate(
+            group_membership=hl.if_else(
+                ht[gm_ht.key].release,
+                gm_ht.group_membership,
+                hl.range(hl.len(gm_ht.group_membership)).map(lambda i: i == v3_idx),
+            )
+        )
+        gm_ht = gm_ht.annotate_globals(
+            freq_meta_sample_count=gm_ht.aggregate(
+                hl.agg.array_agg(
+                    lambda m: hl.agg.count_where(m), gm_ht.group_membership
+                ),
+                _localize=False,
+            )
+        )
+        ht = gm_ht
 
     # Coalesce: this is a small per-sample lookup (~365k rows) that otherwise
     # inherits ~330 partitions from the meta HT and fans every downstream
@@ -255,7 +297,7 @@ def get_group_membership_ht(
     return ht.naive_coalesce(GROUP_MEMBERSHIP_N_PARTITIONS)
 
 
-def _chunk_intervals_hash(data: dict[str, Any]) -> str:
+def _chunk_intervals_hash(data: Dict[str, Any]) -> str:
     """
     Return a stable 16-hex-char content hash of the chunk-intervals JSON.
 
@@ -307,7 +349,7 @@ def _chunk_path(cov_and_an_ht_path: str, idx: int, intervals_hash: str) -> str:
 
 def _list_present_chunk_indices(
     cov_and_an_ht_path: str, intervals_hash: str
-) -> set[int]:
+) -> Set[int]:
     """
     Return the set of chunk indices with a completed (``_SUCCESS``) output.
 
@@ -320,7 +362,7 @@ def _list_present_chunk_indices(
     :return: Set of completed chunk indices for this layout.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
-    present: set[int] = set()
+    present: Set[int] = set()
     for entry in hfs.ls(f"{base}_chunks/{intervals_hash}/*/_SUCCESS"):
         m = re.search(r"/(\d+)\.chunk\.ht/_SUCCESS$", entry.path)
         if m:
@@ -347,8 +389,8 @@ def _write_failed_chunks_manifest(
     n_dispatched: int,
     run_id: str,
     commit: str,
-    app_name: str | None,
-    waves: Sequence[dict[str, Any]],
+    app_name: Optional[str],
+    waves: Sequence[Dict[str, Any]],
 ) -> str:
     """
     Record the chunk indices that did not land, for a later targeted rerun.
@@ -401,27 +443,33 @@ def _group_path(
     group_idx: int,
     partitions_per_chunk: int,
     merge_group_size: int,
+    intervals_hash: str,
 ) -> str:
     """
-    Return a per-group merged HT path under ``<cov_and_an_path>_merge_groups_*/``.
+    Return a per-group merged HT path under ``<cov_and_an_path>_merge_groups_*/<hash>/``.
 
-    Level-tagged so recursive merge levels don't overwrite each other; the
-    directory encodes the tree-shape params so a rerun with different values
-    writes fresh rather than mixing stale group HTs.
+    Level-tagged so recursive merge levels don't overwrite each other. The
+    directory encodes the tree-shape params and the chunk-layout hash, so a
+    rerun with different values -- or a regenerated intervals JSON, which
+    always yields a new hash -- writes fresh rather than letting the
+    skip-check reuse group HTs merged from a previous layout's chunks.
 
     :param cov_and_an_ht_path: Canonical output cov_and_an HT path.
     :param level: Merge-tree level (1-indexed).
     :param group_idx: Group index within this level (zero-based).
     :param partitions_per_chunk: Partitions per chunk (tree-base shape).
     :param merge_group_size: Chunk HTs per group-merge job (tree fan-in).
+    :param intervals_hash: Layout hash namespacing the output (see :func:`_chunk_intervals_hash`).
     :return: Per-group HT path.
     """
     base = cov_and_an_ht_path.rstrip("/").removesuffix(".ht")
     tree = f"pp{partitions_per_chunk}_gs{merge_group_size}"
-    return f"{base}_merge_groups_{tree}/L{level:02d}_{group_idx:08d}.ht"
+    return (
+        f"{base}_merge_groups_{tree}/{intervals_hash}/L{level:02d}_{group_idx:08d}.ht"
+    )
 
 
-def _apply_path_suffix(path: str, suffix: str | None) -> str:
+def _apply_path_suffix(path: str, suffix: Optional[str]) -> str:
     """
     Insert ``_<suffix>`` before the ``.ht`` extension, or return unchanged if no suffix.
 
@@ -436,7 +484,7 @@ def _apply_path_suffix(path: str, suffix: str | None) -> str:
 
 
 def _results_environment(
-    environment: str, test: bool, override: str | None = None
+    environment: str, test: bool, override: Optional[str] = None
 ) -> str:
     """
     Return the bucket-selecting environment for coverage release artifacts.
@@ -459,8 +507,8 @@ def _resolve_cov_and_an_ht_path(
     project: str,
     environment: str,
     test: bool,
-    suffix: str | None,
-    chrom: str | None = None,
+    suffix: Optional[str],
+    chrom: Optional[str] = None,
 ) -> str:
     """
     Return the cov_and_an HT path, applying ``suffix`` and ``chrom`` when set.
@@ -485,11 +533,11 @@ def _resolve_cov_and_an_ht_path(
 
 def _group_membership_ht_path(project: str, environment: str, test: bool) -> str:
     """
-    Return the path of the cell-reduced group_membership HT this script writes and reads.
+    Return the path of the group_membership HT this script writes and reads.
 
-    It is kept apart (``_cells`` suffix) from the full-shape HT at the
-    ``group_membership`` resource path, which ``generate_frequency.py`` reads
-    and which does not expand cells.
+    It is kept apart (``_cells`` suffix) from the HT at the ``group_membership``
+    resource path, which ``generate_frequency.py`` reads: the AoU HT here is
+    cell-reduced, and the gnomAD HT holds only the consent-drop samples.
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
@@ -524,7 +572,7 @@ def _log_name_for_run(
     run_merge: bool,
     chunk_start: int,
     chunk_stop: int,
-    merge_output: str | None,
+    merge_output: Optional[str],
 ) -> str:
     """
     Build a per-worker log name so concurrent workers don't clobber one log.
@@ -550,7 +598,7 @@ def _derive_chunk_locus_intervals(
     vds_filtered: hl.vds.VariantDataset,
     n_subdivisions: int = 1,
     reference_genome: str = "GRCh38",
-) -> list[hl.utils.Interval]:
+) -> List[hl.utils.Interval]:
     """
     Derive per-contig locus intervals covering the filtered VDS reference_data.
 
@@ -575,7 +623,7 @@ def _derive_chunk_locus_intervals(
         )
     )
     n = max(n_subdivisions, 1)
-    sub_intervals: list[hl.utils.Interval] = []
+    sub_intervals: List[hl.utils.Interval] = []
     for contig, b in bounds.items():
         lo, hi = b.lo, b.hi + 1
         total = max(hi - lo, 1)
@@ -597,8 +645,8 @@ def _derive_chunk_locus_intervals(
 
 
 def _derive_ref_partition_intervals(
-    n_partitions: int, chrom: str | None = None
-) -> list[hl.utils.Interval]:
+    n_partitions: int, chrom: Optional[str] = None
+) -> List[hl.utils.Interval]:
     """
     Derive balanced locus intervals from the vep_context sites table.
 
@@ -635,7 +683,7 @@ def _spans_sex_chromosome(intervals: Sequence[hl.utils.Interval]) -> bool:
     order = {c: k for k, c in enumerate(rg.contigs)}
     # An interval may span several contigs (partition bounds are not
     # contig-aligned), so take every contig from its start to its end.
-    contigs: set[str] = set()
+    contigs: Set[str] = set()
     for i in intervals:
         contigs.update(rg.contigs[order[i.start.contig] : order[i.end.contig] + 1])
     return bool(contigs & (set(rg.x_contigs) | set(rg.y_contigs)))
@@ -644,11 +692,11 @@ def _spans_sex_chromosome(intervals: Sequence[hl.utils.Interval]) -> bool:
 def compute_all_release_stats_per_ref_site(
     vds: hl.vds.VariantDataset,
     ref_ht: hl.Table,
-    sex_karyotype_field: str | None,
+    sex_karyotype_field: Optional[str],
     project: str,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
-    interval_ht: hl.Table | None = None,
-    group_membership_ht: hl.Table | None = None,
+    interval_ht: Optional[hl.Table] = None,
+    group_membership_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Compute coverage, allele number, and quality histograms per reference site.
@@ -674,12 +722,13 @@ def compute_all_release_stats_per_ref_site(
     :param interval_ht: Optional interval Table for partition pruning. Unused
         on the v5 path.
     :param group_membership_ht: Group-membership Table defining the per-stratum
-        sample sets AN is fanned out across. Must be the cell-reduced HT from
-        :func:`get_group_membership_ht`: AN is passed as the only
-        ``reducible_aggs`` entry, so it is aggregated once per cell and every
-        group is rebuilt by summing cells.
+        sample sets AN is fanned out across, from :func:`get_group_membership_ht`.
+        AN is passed as the only ``reducible_aggs`` entry: on the cell-reduced
+        AoU HT it is aggregated once per cell and every group is rebuilt by
+        summing cells; on the gnomAD HT it is aggregated per group.
     :return: HT keyed by locus with per-stratum ``AN``; flat coverage fields
-        (global adj group) for gnomAD; ``qual_hists`` (adj GQ histogram only)
+        (adj, over the ``GNOMAD_COVERAGE_GROUP`` samples) for gnomAD;
+        ``qual_hists`` (adj GQ histogram only)
         for AoU. AoU reference blocks carry no DP, so its coverage would
         measure ~0 genome-wide (chr1:55.06-55.16Mb: mean 0.048x, ``over_1``
         432 of 365,318) and is never computed, and for the same reason its DP
@@ -710,19 +759,17 @@ def compute_all_release_stats_per_ref_site(
     cov_bins = hl.array(cov_bins)
 
     entry_agg_funcs = {"AN": get_allele_number_agg_func("LGT")}
+    # AN is omitted from entry_agg_group_membership so it fans out across all strata.
+    entry_agg_group_membership = {}
     # Coverage stats are gnomAD-only: AoU ref blocks carry no DP (see docstring).
+    # Pin coverage_stats to the single adj group of consent-drop samples that
+    # were in the v3.0 release (see GNOMAD_COVERAGE_GROUP): downstream uses
+    # coverage_stats[0] exclusively, so per-strata coverage is wasted work.
     if project == "gnomad":
         entry_agg_funcs["coverage_stats"] = get_coverage_agg_func(
             dp_field="DP", max_cov_bin=max_cov_bin
         )
-    # Pin coverage_stats to the global adj group only: downstream uses
-    # coverage_stats[0] exclusively, so per-strata coverage is wasted work. The
-    # label must be "adj" (not "raw") -- with a pre-built group_membership_ht,
-    # compute_stats_per_ref_site does not rewrite labels, so freq_meta[0] is
-    # {"group": "adj"}. AN is omitted so it fans out across all strata.
-    entry_agg_group_membership = {}
-    if project == "gnomad":
-        entry_agg_group_membership["coverage_stats"] = [{"group": "adj"}]
+        entry_agg_group_membership["coverage_stats"] = [GNOMAD_COVERAGE_GROUP]
     if project == "aou":
         entry_agg_funcs["qual_hists"] = (lambda t: [t.GQ, t.adj], _get_hists)
 
@@ -759,7 +806,9 @@ def compute_all_release_stats_per_ref_site(
     # so AN is unchanged. AoU arrives with adj already annotated; gnomAD keeps
     # LAD so compute_stats_per_ref_site annotates adj itself, after the
     # sex-ploidy adjustment (haploid calls get the haploid DP cutoff).
-    mtds = mtds.annotate_entries(LGT=hl.coalesce(mtds.LGT, mtds.GT) if "GT" in mtds.entry else mtds.LGT)
+    mtds = mtds.annotate_entries(
+        LGT=hl.coalesce(mtds.LGT, mtds.GT) if "GT" in mtds.entry else mtds.LGT
+    )
     mtds = mtds.select_entries(
         *[f for f in ("LGT", "GQ", "DP", "LAD", "adj", "END") if f in mtds.entry]
     )
@@ -802,10 +851,14 @@ def compute_all_release_stats_per_ref_site(
         bin_expr = {f"over_{x}": bin_expr[i] for i, x in enumerate(rev_cov_bins)}
         return cov_stat.annotate(**bin_expr).drop("coverage_counter")
 
-    # The sample-count global is annotated for both projects; downstream
-    # readers expect it.
+    # The sample-count global is annotated for both projects. strata_sample_count
+    # is indexed like strata_meta, so for gnomAD look up the coverage group
+    # rather than the global adj group.
+    cov_group_idx = 0
+    if project == "gnomad":
+        cov_group_idx = hl.eval(ht.strata_meta).index(GNOMAD_COVERAGE_GROUP)
     ht = ht.annotate_globals(
-        coverage_stats_meta_sample_count=ht.strata_sample_count[0],
+        coverage_stats_meta_sample_count=ht.strata_sample_count[cov_group_idx],
     )
     if project == "gnomad":
         cov_stats_expr = _cov_stats(ht.coverage_stats[0])
@@ -867,8 +920,8 @@ def _merge_coverage_fields(
     merged.
 
     :param ht: Input HT with both projects' annotations.
-    :param project_1: Minuend project.
-    :param project_2: Subtrahend project.
+    :param project_1: Project to subtract from.
+    :param project_2: Project to subtract.
     :param coverage_over_x_bins: Boundaries for the over-X fields. Default is :data:`COVERAGE_OVER_X_BINS`.
     :return: Merged fields.
     """
@@ -891,17 +944,17 @@ def merge_gnomad_coverage_hts(
     gnomad_ht: hl.Table,
     gnomad_release_ht: hl.Table,
     coverage_over_x_bins: Sequence[int] = COVERAGE_OVER_X_BINS,
-    gnomad_sample_count: int = GNOMAD_SAMPLE_COUNT,
-    consent_drop_count: int = GNOMAD_CONSENT_DROP_SAMPLE_COUNT,
+    gnomad_sample_count: int = GNOMAD_COVERAGE_RELEASE_SAMPLE_COUNT,
+    consent_drop_count: int = GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT,
 ) -> hl.Table:
     """
-    Subtract consent-drop samples from the v4 coverage release to create the gnomAD v5 coverage HT.
+    Subtract consent-drop samples from the 3.0.1 coverage release to create the v5 HT.
 
-    :param gnomad_ht: Coverage HT of the consent-drop samples only.
-    :param gnomad_release_ht: gnomAD v4 genomes coverage release HT.
+    :param gnomad_ht: Coverage HT of the consent-drop samples in the v3.0 release.
+    :param gnomad_release_ht: gnomAD 3.0.1 genomes coverage release HT.
     :param coverage_over_x_bins: Boundaries for the over-X fields. Default is :data:`COVERAGE_OVER_X_BINS`.
-    :param gnomad_sample_count: v4 release genome count. Default `GNOMAD_SAMPLE_COUNT`.
-    :param consent_drop_count: Consent-drop genome count. Default `GNOMAD_CONSENT_DROP_SAMPLE_COUNT`.
+    :param gnomad_sample_count: 3.0.1 coverage release genome count. Default `GNOMAD_COVERAGE_RELEASE_SAMPLE_COUNT`.
+    :param consent_drop_count: Consent-drop genomes in the 3.0.1 coverage release. Default `GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT`.
     :return: gnomAD v5 genomes coverage HT in the release schema (``mean``,
         ``median_approx``, ``total_DP``, fraction ``over_X``).
     """
@@ -969,10 +1022,10 @@ def _rename_fields(
 
 def _merge_an_fields(
     ht: hl.Table, project_1: str, project_2: str, operation: str
-) -> tuple[
+) -> Tuple[
     hl.expr.ArrayExpression,
-    list[dict[str, str]],
-    dict[str, hl.expr.ArrayExpression],
+    List[Dict[str, str]],
+    Dict[str, hl.expr.ArrayExpression],
 ]:
     """
     Merge AN fields from two projects.
@@ -1174,13 +1227,13 @@ def _filter_to_locus_bounds(target_ht: hl.Table, source_ht: hl.Table) -> hl.Tabl
 def _load_project_vds(
     project: str,
     environment: str,
-    partition_range: list[int] | None = None,
-    sub_intervals: list[hl.utils.Interval] | None = None,
-    filter_intervals: list[hl.utils.Interval] | None = None,
-    chrom: str | None = None,
+    partition_range: Optional[List[int]] = None,
+    sub_intervals: Optional[List[hl.utils.Interval]] = None,
+    filter_intervals: Optional[List[hl.utils.Interval]] = None,
+    chrom: Optional[str] = None,
     test: bool = False,
     test_sample_subset: bool = False,
-) -> tuple[hl.vds.VariantDataset, str]:
+) -> Tuple[hl.vds.VariantDataset, str]:
     """
     Load the per-project VDS with consistent test/subsample handling.
 
@@ -1246,9 +1299,7 @@ def _load_project_vds(
         vds = hl.vds.VariantDataset(rmt, vmt)
 
         if test and test_sample_subset:
-            meta_ht = hl.read_table(
-                meta(data_type="genomes", environment=environment).path
-            )
+            meta_ht = meta(data_type="genomes", environment=environment).ht()
             meta_ht = meta_ht.filter(
                 (meta_ht.project_meta.project == project) & (meta_ht.release)
             ).select()
@@ -1273,9 +1324,9 @@ def _load_project_vds(
 def _probe_vds(
     project: str,
     environment: str,
-    partition_range: list[int] | None,
-    chrom: str | None,
-    filter_intervals: list[hl.utils.Interval] | None = None,
+    partition_range: Optional[List[int]],
+    chrom: Optional[str],
+    filter_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Cheap reference_data-bounds probe-load of the per-project VDS.
@@ -1309,7 +1360,7 @@ def _probe_vds(
 
 
 def _vep_context_sites_path(
-    test: bool = False, test_region: list[str] | None = None
+    test: bool = False, test_region: Optional[List[str]] = None
 ) -> str:
     """
     Return the path to the preprocessed vep_context sites HT (30-day storage).
@@ -1335,7 +1386,7 @@ def _vep_context_sites_path(
 
 
 def _build_vep_context_sites_ht(
-    intervals: list[hl.utils.Interval] | None = None,
+    intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
     """
     Build the locus-keyed, deduped, telomere/centromere/chrM-stripped sites HT.
@@ -1364,26 +1415,29 @@ def _build_vep_context_sites_ht(
     return ref_ht
 
 
-def _chunk_intervals_path(environment: str, test: bool = False) -> str:
+def _chunk_intervals_path(project: str, results_environment: str, test: bool) -> str:
     """
-    Return the path of the precomputed per-chunk read sub-intervals JSON (30-day storage).
+    Return the path of the precomputed per-chunk read sub-intervals JSON.
 
     Written once by ``--write-chunk-intervals``: one VDS open derives every
     chunk's balanced sub-intervals. Plain JSON (not a Hail Table) so the
     orchestrator, merge, and workers read it driver-side with no QoB job.
     Holds ``chunks`` (``{"contig", "intervals"}`` per chunk index, never
     spanning a contig boundary), ``ref_block_max_length``,
-    ``reference_genome``, and ``read_subintervals_per_chunk``.
+    ``reference_genome``, and ``read_subintervals_per_chunk``. Stored beside
+    the canonical cov_and_an HT and shared by every fan-out, merge, per-contig,
+    and suffixed run.
 
-    :param environment: Compute environment.
+    :param project: "aou" or "gnomad".
+    :param results_environment: Bucket-selecting environment (see :func:`_results_environment`).
     :param test: If True, return the test-scoped intervals path.
     :return: GCS path to the chunk-intervals JSON.
     """
-    name = "chunk_intervals_test.json" if test else "chunk_intervals.json"
-    return f"{qc_temp_prefix(environment=environment, days=30)}{name}"
+    base = _resolve_cov_and_an_ht_path(project, results_environment, test, suffix=None)
+    return base.rstrip("/").removesuffix(".ht") + "_chunk_intervals.json"
 
 
-def _interval_to_list(iv: hl.utils.Interval) -> list[str | int | bool]:
+def _interval_to_list(iv: hl.utils.Interval) -> List[Union[str, int, bool]]:
     """
     Serialize a locus interval to a JSON-friendly list.
 
@@ -1402,7 +1456,7 @@ def _interval_to_list(iv: hl.utils.Interval) -> list[str | int | bool]:
 
 
 def _interval_from_list(
-    t: list[str | int | bool], reference_genome: str
+    t: List[Union[str, int, bool]], reference_genome: str
 ) -> hl.utils.Interval:
     """
     Reconstruct a locus interval from its :func:``_interval_to_list`` serialization.
@@ -1446,8 +1500,8 @@ def _parse_region_interval(
 
 
 def _split_intervals_at_contigs(
-    intervals: list[hl.utils.Interval], reference_genome: str
-) -> list[hl.utils.Interval]:
+    intervals: List[hl.utils.Interval], reference_genome: str
+) -> List[hl.utils.Interval]:
     """
     Split any locus interval that straddles a contig boundary into one per contig.
 
@@ -1463,7 +1517,7 @@ def _split_intervals_at_contigs(
     rg = hl.get_reference(reference_genome)
     contigs = rg.contigs
     lengths = rg.lengths
-    out: list[hl.utils.Interval] = []
+    out: List[hl.utils.Interval] = []
     for iv in intervals:
         if iv.start.contig == iv.end.contig:
             out.append(iv)
@@ -1492,9 +1546,9 @@ def _split_intervals_at_contigs(
 
 
 def _snap_edges_to_bounds(
-    intervals: list[hl.utils.Interval],
-    bounds: dict[str, tuple[int, int, bool]],
-) -> list[hl.utils.Interval]:
+    intervals: List[hl.utils.Interval],
+    bounds: Dict[str, Tuple[int, int, bool]],
+) -> List[hl.utils.Interval]:
     """
     Extend each contig's first interval back to a bound start and its last forward to a bound end.
 
@@ -1508,7 +1562,7 @@ def _snap_edges_to_bounds(
     :return: Intervals with per-contig edges snapped to ``bounds``.
     """
     out = list(intervals)
-    by_contig: dict[str, list[int]] = {}
+    by_contig: Dict[str, List[int]] = {}
     for i, iv in enumerate(out):
         by_contig.setdefault(iv.start.contig, []).append(i)
     for contig, idxs in by_contig.items():
@@ -1538,15 +1592,15 @@ def _snap_edges_to_bounds(
 
 
 def _region_bounds(
-    regions: list[hl.utils.Interval],
-) -> dict[str, tuple[int, int, bool]]:
+    regions: List[hl.utils.Interval],
+) -> Dict[str, Tuple[int, int, bool]]:
     """
     Per-contig ``(min start, max end, includes_end)`` of the ``--test-region`` intervals.
 
     :param regions: Parsed ``--test-region`` intervals.
     :return: Bounds for ``_snap_edges_to_bounds``.
     """
-    bounds: dict[str, tuple[int, int, bool]] = {}
+    bounds: Dict[str, Tuple[int, int, bool]] = {}
     for r in regions:
         c = r.start.contig
         lo, hi, inc = bounds.get(c, (r.start.position, r.end.position, r.includes_end))
@@ -1562,8 +1616,9 @@ def _build_chunk_intervals(
     total_partitions: int,
     partitions_per_chunk: int,
     n_sub: int,
-    chrom: str | None = None,
-) -> dict[str, Any]:
+    extend_trailing_edge: bool,
+    chrom: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Precompute every chunk's balanced read sub-intervals in one VDS open, by contig.
 
@@ -1571,7 +1626,8 @@ def _build_chunk_intervals(
     sub-intervals over all reference-data loci, splits any that straddle a
     contig boundary, groups by contig, and slices each contig's run into
     chunks of ``n_sub``. No chunk crosses a contig boundary, chunks are
-    disjoint, and their union covers every contig end to end.
+    disjoint, and their union covers every contig end to end (except the
+    trailing edge of a ``--test-n-partitions`` slice; see ``extend_trailing_edge``).
 
     :param project: "aou" or "gnomad".
     :param environment: Compute environment.
@@ -1579,6 +1635,9 @@ def _build_chunk_intervals(
         (``--test-n-partitions`` overrides this for tests).
     :param partitions_per_chunk: Sets ``n_chunks = ceil(total_partitions / this)``.
     :param n_sub: Sub-intervals per chunk (``--read-subintervals-per-chunk``).
+    :param extend_trailing_edge: Extend the last contig's final sub-interval to
+        the contig end. False for a ``--test-n-partitions`` slice, which ends
+        mid-contig and should stop where the probe did.
     :param chrom: Optional single contig to restrict the precompute to.
     :return: JSON-serializable dict: ``read_subintervals_per_chunk``,
         ``ref_block_max_length``, ``reference_genome``, ``chunks``.
@@ -1620,11 +1679,17 @@ def _build_chunk_intervals(
         ]
     # The bounds span the first to last reference-block key; sites outside
     # that span on each contig must still be read (AN=0), not dropped.
-    contig_subs = _snap_edges_to_bounds(
-        contig_subs,
-        {c: (1, rg.lengths[c], True) for c in {iv.start.contig for iv in contig_subs}},
-    )
-    chunks: list[dict[str, Any]] = []
+    bounds = {
+        c: (1, rg.lengths[c], True) for c in {iv.start.contig for iv in contig_subs}
+    }
+    if not extend_trailing_edge:
+        # A leading-partition slice ends mid-contig: that contig's leading edge
+        # still snaps to position 1, but its trailing edge stays at the last
+        # sub-interval's own end so the snap does not extend it.
+        last = contig_subs[-1]
+        bounds[last.start.contig] = (1, last.end.position, last.includes_end)
+    contig_subs = _snap_edges_to_bounds(contig_subs, bounds)
+    chunks: List[Dict[str, Any]] = []
     for contig, group in groupby(contig_subs, key=lambda iv: iv.start.contig):
         contig_ivs = list(group)
         for j in range(0, len(contig_ivs), n_sub):
@@ -1659,9 +1724,9 @@ def _build_chunk_intervals(
 def _build_chunk_ref_ht(
     vds_filtered: hl.vds.VariantDataset,
     partition_count: int,
-    chrom: str | None,
+    chrom: Optional[str],
     sites_path: str,
-    sub_intervals: list[hl.utils.Interval] | None = None,
+    sub_intervals: Optional[List[hl.utils.Interval]] = None,
 ) -> hl.Table:
     """
     Build the per-chunk ``ref_ht`` from the preprocessed vep_context sites HT.
@@ -1697,8 +1762,8 @@ def _build_chunk_ref_ht(
 
 
 def _expand_leading_edges(
-    intervals: list[hl.utils.Interval], max_ref_block_len: int
-) -> list[hl.utils.Interval]:
+    intervals: List[hl.utils.Interval], max_ref_block_len: int
+) -> List[hl.utils.Interval]:
     """
     Back up each contig's first interval start by ``max_ref_block_len - 1``.
 
@@ -1714,8 +1779,8 @@ def _expand_leading_edges(
     :param max_ref_block_len: The VDS ``ref_block_max_length`` global value.
     :return: Intervals with each contig's leading start backed up (clamped at 1).
     """
-    seen_contigs: set[str] = set()
-    expanded: list[hl.utils.Interval] = []
+    seen_contigs: Set[str] = set()
+    expanded: List[hl.utils.Interval] = []
     for interval in intervals:
         contig = interval.start.contig
         if contig in seen_contigs:
@@ -1760,17 +1825,15 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
     test = args.test
     chrom = args.chrom
     n_sub = max(args.read_subintervals_per_chunk, 1)
-    results_environment = _results_environment(
-        environment, test, args.results_environment
-    )
+    results_environment = args.results_environment
 
     group_membership_ht_path = _group_membership_ht_path(project, environment, test)
 
-    sub_intervals: list[hl.utils.Interval] | None = None
+    sub_intervals: Optional[List[hl.utils.Interval]] = None
     # sub_intervals with leading edges widened (see _expand_leading_edges).
-    vds_read_intervals: list[hl.utils.Interval] | None = None
+    vds_read_intervals: Optional[List[hl.utils.Interval]] = None
     # --test-region reads the VDS via filter_intervals instead; holds those.
-    vds_filter_intervals: list[hl.utils.Interval] | None = None
+    vds_filter_intervals: Optional[List[hl.utils.Interval]] = None
     # Layout hash namespacing the output (see _test_region_hash for --test-region).
     intervals_hash: str
     if args.test_region:
@@ -1819,7 +1882,7 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
         # Look this chunk up by index in the precompute JSON, driver-side (no
         # QoB job, no ~400s VDS re-open). --chrom is handled by the
         # orchestrator, so the worker just processes chunks[start].
-        intervals_path = _chunk_intervals_path(environment, test)
+        intervals_path = _chunk_intervals_path(project, results_environment, test)
         if not file_exists(intervals_path):
             raise FileNotFoundError(
                 f"chunk-intervals JSON not found at {intervals_path};"
@@ -1899,9 +1962,9 @@ def _run_coverage_chunk(args: argparse.Namespace) -> None:
 
 
 def _run_coverage_merge(
-    input_paths: list[str],
+    input_paths: List[str],
     output_path: str,
-    coalesce_to: int | None = None,
+    coalesce_to: Optional[int] = None,
 ) -> None:
     """
     Union per-chunk coverage HTs and write the merged HT to ``output_path``.
@@ -2078,9 +2141,9 @@ def _submit_relay_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
     batch_name: str,
-    job_specs: list[_RelayJobSpec],
+    job_specs: List[_RelayJobSpec],
     log_label: str,
-) -> int | None:
+) -> Optional[int]:
     """
     Build and submit one Hail Batch of relay jobs sharing the same config.
 
@@ -2199,14 +2262,14 @@ def _submit_orchestrator_batch(args: argparse.Namespace) -> None:
 def _submit_chunk_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
-    chunk_indices: list[int],
+    chunk_indices: List[int],
     cov_and_an_ht_path: str,
     intervals_hash: str,
     setup_cmd: str,
     common_flags_str: str,
     script: str,
-    wave_label: str | None = None,
-) -> int | None:
+    wave_label: Optional[str] = None,
+) -> Optional[int]:
     """
     Build and submit one Hail Batch containing all pending chunk jobs.
 
@@ -2261,7 +2324,7 @@ def _submit_chunk_batch(
 
 def _eligible_chunk_indices(
     args: argparse.Namespace,
-) -> tuple[list[str | None], list[int], str]:
+) -> Tuple[List[Optional[str]], List[int], str]:
     """
     Enumerate fan-out chunks and the subset selected by ``--chrom``.
 
@@ -2276,10 +2339,12 @@ def _eligible_chunk_indices(
         when there is no JSON).
     """
     if args.test_region:
-        chunk_contigs: list[str | None] = [None]
+        chunk_contigs: List[Optional[str]] = [None]
         intervals_hash = _test_region_hash(args)
     else:
-        intervals_path = _chunk_intervals_path(args.environment, args.test)
+        intervals_path = _chunk_intervals_path(
+            args.project_name, args.results_environment, args.test
+        )
         if not file_exists(intervals_path):
             raise FileNotFoundError(
                 f"chunk-intervals JSON not found at {intervals_path}. Run"
@@ -2398,8 +2463,8 @@ def _orchestrate_coverage_batch(
         "Orchestrator run id: %s (stamped into the failed-chunk manifest)", run_id
     )
 
-    all_failed: list[int] = []
-    wave_records: list[dict[str, Any]] = []
+    all_failed: List[int] = []
+    wave_records: List[Dict[str, Any]] = []
     n_dispatched = 0
     for wi, wave_indices in enumerate(waves, start=1):
         wave_label = f"w{wi:03d}of{n_waves:03d}" if n_waves > 1 else None
@@ -2422,6 +2487,11 @@ def _orchestrate_coverage_batch(
             script=script,
             wave_label=wave_label,
         )
+        if args.batch_dry_run:
+            # Nothing ran, so there are no outputs to check and no manifest to
+            # write (it would overwrite the last real run's failed-chunk list).
+            logger.info("--batch-dry-run: wave %d DAG validated; stopping.", wi)
+            return
         # batch.run() does not raise on per-job failure; re-check the outputs.
         present = _list_present_chunk_indices(cov_and_an_ht_path, intervals_hash)
         failed = [idx for idx in wave_indices if idx not in present]
@@ -2541,9 +2611,9 @@ def _orchestrate_coverage_batch(
 def _submit_merge_batch(
     args: argparse.Namespace,
     backend_kwargs: dict,
-    group_indices: list[int],
-    groups: list[list[str]],
-    group_output_paths: list[str],
+    group_indices: List[int],
+    groups: List[List[str]],
+    group_output_paths: List[str],
     setup_cmd: str,
     common_flags_str: str,
     script: str,
@@ -2673,6 +2743,7 @@ def _orchestrate_coverage_merge(
                 idx,
                 args.partitions_per_chunk,
                 args.merge_group_size,
+                intervals_hash,
             )
             for idx in range(n_out)
         ]
@@ -2755,8 +2826,10 @@ def main(args):
     Compute all sites coverage, AN, and quality histograms for v5 genomes.
 
     Dispatches the three mutually-exclusive roles (see the module docstring):
-    orchestrator (submit and return), worker (one chunk/merge unit), or the
-    in-process pipeline (setup -> compute -> assemble).
+
+      - orchestrator: submit a Hail Batch and return.
+      - worker: run one chunk/merge unit and return.
+      - in-process pipeline: setup -> compute -> assemble.
     """
     project = args.project_name
     environment = args.environment
@@ -2765,9 +2838,7 @@ def main(args):
     test = args.test
     chrom = args.chrom
     overwrite = args.overwrite
-    results_environment = _results_environment(
-        environment, test, args.results_environment
-    )
+    results_environment = args.results_environment
 
     # ===================================================================
     # ROLE 1: ORCHESTRATOR — submit a Hail Batch of relay jobs and return.
@@ -2852,7 +2923,13 @@ def main(args):
         # Union the per-contig HTs (written by --chrom merges) into the
         # canonical HT; validate afterward with --validate-cov-and-an.
         if args.assemble_chrom_coverage:
-            with hfs.open(_chunk_intervals_path(environment, test)) as f:
+            check_resource_existence(
+                output_step_resources={"coverage_and_an_ht": [cov_and_an_ht_path]},
+                overwrite=overwrite,
+            )
+            with hfs.open(
+                _chunk_intervals_path(project, results_environment, test)
+            ) as f:
                 contigs = sorted({c["contig"] for c in json.load(f)["chunks"]})
             inputs = [_apply_path_suffix(cov_and_an_ht_path, c) for c in contigs]
             _run_coverage_merge(
@@ -2893,7 +2970,9 @@ def main(args):
                 # Scope the test sites to the loci the test compute reads: the
                 # chunk-intervals JSON's sub-intervals when present, else the
                 # first N native VDS partitions (strict single-job path).
-                intervals_path = _chunk_intervals_path(environment, test)
+                intervals_path = _chunk_intervals_path(
+                    project, results_environment, test
+                )
                 if file_exists(intervals_path):
                     _, eligible, _ = _eligible_chunk_indices(args)
                     with hfs.open(intervals_path) as f:
@@ -2940,7 +3019,7 @@ def main(args):
 
         if args.write_chunk_intervals:
             logger.info("Precomputing per-chunk read sub-intervals...")
-            intervals_path = _chunk_intervals_path(environment, test=test)
+            intervals_path = _chunk_intervals_path(project, results_environment, test)
             check_resource_existence(
                 output_step_resources={"chunk_intervals": [intervals_path]},
                 overwrite=overwrite,
@@ -2951,6 +3030,7 @@ def main(args):
                 total_partitions=args.test_n_partitions or args.total_partitions,
                 partitions_per_chunk=args.partitions_per_chunk,
                 n_sub=max(args.read_subintervals_per_chunk, 1),
+                extend_trailing_edge=args.test_n_partitions is None,
                 chrom=chrom,
             )
             with hfs.open(intervals_path, "w") as f:
@@ -3095,7 +3175,7 @@ def main(args):
             sites_ht = hl.read_table(_vep_context_sites_path(test, args.test_region))
             # Scope validation to what actually ran: the JSON's chunks for a
             # --test-n-partitions run, whole contigs for --chrom.
-            intervals_path = _chunk_intervals_path(environment, test)
+            intervals_path = _chunk_intervals_path(project, results_environment, test)
             if args.test_n_partitions and file_exists(intervals_path):
                 _, eligible, _ = _eligible_chunk_indices(args)
                 with hfs.open(intervals_path) as f:
@@ -3167,19 +3247,31 @@ def main(args):
                 gnomad_release_ht = _filter_to_locus_bounds(
                     gnomad_release_ht, gnomad_ht
                 )
-            # The subtraction rebuilds DP sums as mean * n, so n must be the
-            # cohort the HT was actually computed on, not the script constant.
+            # Use the sample count stored in the consent-drop HT for the merge
+            # DP sum calculation of mean * sample count.
             consent_drop_count = hl.eval(gnomad_ht.coverage_stats_meta_sample_count)
-            if consent_drop_count != GNOMAD_CONSENT_DROP_SAMPLE_COUNT:
+            if consent_drop_count != GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT:
                 logger.warning(
                     "Consent-drop coverage HT has %d samples; script constant is %d.",
                     consent_drop_count,
-                    GNOMAD_CONSENT_DROP_SAMPLE_COUNT,
+                    GNOMAD_CONSENT_DROP_COVERAGE_SAMPLE_COUNT,
                 )
             ht = merge_gnomad_coverage_hts(
                 gnomad_ht, gnomad_release_ht, consent_drop_count=consent_drop_count
             )
-            ht.write(merged_gnomad_coverage_ht_path, overwrite=overwrite)
+            ht = ht.checkpoint(merged_gnomad_coverage_ht_path, overwrite=overwrite)
+            # The consent-drop HT has a row for every sites-HT locus, so a
+            # release locus that subtracts to missing is one the sites HT lacks.
+            missing_ht = ht.filter(hl.is_missing(ht.mean))
+            n_missing = missing_ht.count()
+            if n_missing:
+                sample = [str(x) for x in missing_ht.head(15).locus.collect()]
+                raise ValueError(
+                    f"gnomAD v5 coverage HT at {merged_gnomad_coverage_ht_path} has"
+                    f" {n_missing} locus/loci with missing mean: release sites with"
+                    " no consent-drop row. Inspect before releasing. Sample loci:"
+                    f" {sample}."
+                )
 
         if args.merge_gnomad_an:
             logger.info("Building gnomAD v5 AN HT (subtracting consent-drop)...")
@@ -3323,7 +3415,9 @@ def main(args):
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
-    parser = argparse.ArgumentParser()
+    # No prefix abbreviation: --submit-orchestrator is stripped from the
+    # forwarded argv by exact string, so an abbreviation would resubmit forever.
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument(
         "--project-name",
         help="Project name.",
@@ -3541,9 +3635,9 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--write-chunk-intervals",
         help=(
             "Precompute every chunk's balanced read sub-intervals in one VDS"
-            " open (JSON, 30-day storage). REQUIRED before the fan-out. Uses"
+            " open. REQUIRED before the fan-out. Uses"
             " --total-partitions / --partitions-per-chunk /"
-            " --read-subintervals-per-chunk; --test writes a _test file."
+            " --read-subintervals-per-chunk; --test writes to the test path."
         ),
         action="store_true",
     )
@@ -3941,6 +4035,10 @@ if __name__ == "__main__":
     args.test = (
         args.test or args.test_n_partitions is not None or args.test_region is not None
     )
+    # Resolve the results bucket once; every path helper reads this value.
+    args.results_environment = _results_environment(
+        args.environment, args.test, args.results_environment
+    )
 
     # Every batch-only argument lives in this one list; "provided" is detected
     # by comparing against the parser default.
@@ -3976,6 +4074,9 @@ if __name__ == "__main__":
         "merge_memory",
         "merge_storage",
         "final_merge_storage",
+        "batch_billing_project",
+        "batch_remote_tmpdir",
+        "batch_dry_run",
     ]
     provided_batch_args = [
         a for a in batch_only_args if getattr(args, a) != parser.get_default(a)
@@ -4082,6 +4183,25 @@ if __name__ == "__main__":
             "--test-region and --test-n-partitions are mutually exclusive:"
             " --test-region scopes to explicit intervals, --test-n-partitions"
             " to the first N VDS partitions."
+        )
+    if args.test_region and args.chrom:
+        parser.error(
+            "--test-region and --chrom are mutually exclusive: a test-region run"
+            " is a single unscoped chunk that no --chrom filter can match."
+        )
+    if args.write_chunk_intervals and args.chrom and not args.test:
+        parser.error(
+            "--write-chunk-intervals --chrom would replace the genome-wide chunk"
+            " layout with a single-contig one; apply --chrom at fan-out/merge time."
+        )
+    if args.partitions_per_chunk < 1:
+        parser.error("--partitions-per-chunk must be >= 1.")
+    if args.merge_group_size < 2:
+        parser.error("--merge-group-size must be >= 2 (merge tree never converges).")
+    if args.batch_dry_run and not (args.use_batch_fanout or args.merge_cov_chunks):
+        parser.error(
+            "--batch-dry-run only applies to --use-batch-fanout or"
+            " --merge-cov-chunks; other steps would run for real."
         )
     if args.run_chunk:
         if args.chunk_stop <= args.chunk_start:
