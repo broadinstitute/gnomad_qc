@@ -995,22 +995,6 @@ def calculate_faf_and_grpmax_annotations(
     return ht
 
 
-def _initialize_hail(args) -> None:
-    """
-    Initialize Hail with appropriate configuration for the environment.
-
-    :param args: Parsed command-line arguments.
-    """
-    _init_hail(
-        "v5_frequency_generation",
-        args.environment,
-        billing_project=getattr(args, "gcp_billing_project", None),
-        tmp_dir_days=args.tmp_dir_days,
-        tmp_dir=f"{qc_temp_prefix(environment=args.environment, days=args.tmp_dir_days)}frequency_generation",
-        **_get_batch_resource_kwargs(args),
-    )
-
-
 def main(args):
     """Generate v5 frequency data."""
     environment = args.environment
@@ -1020,7 +1004,14 @@ def main(args):
     overwrite = args.overwrite
     tmp_dir_days = args.tmp_dir_days
 
-    _initialize_hail(args)
+    _init_hail(
+        "v5_frequency_generation",
+        environment,
+        billing_project=getattr(args, "gcp_billing_project", None),
+        tmp_dir_days=tmp_dir_days,
+        tmp_dir=f"{qc_temp_prefix(environment=environment, days=tmp_dir_days)}frequency_generation",
+        **_get_batch_resource_kwargs(args),
+    )
 
     try:
         logger.info("Running generate_frequency.py...")
