@@ -427,6 +427,7 @@ def get_aou_vds(
     add_project_prefix: bool = False,
     environment: str = "batch",
     log_sample_counts: bool = True,
+    sample_collisions: Optional[Set[str]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Load the AOU VDS.
@@ -459,15 +460,25 @@ def get_aou_vds(
     :param environment: Environment to use. Default is "batch". Must be one of "rwb" or "batch".
     :param log_sample_counts: Whether to log sample counts before/after filtering out samples to exclude.
         When False, skips the ``count_cols`` calls used for logging. Default is True.
+    :param sample_collisions: Optional pre-collected set of sample IDs that collide with
+        gnomAD samples. When None, the set is collected from the sample-collisions
+        Table here (a full scan of it), so callers that run this per chunk should
+        collect once and pass it in. Default is None.
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
-    if filter_partitions and read_intervals:
+    if filter_partitions is not None and read_intervals is not None:
         raise ValueError(
             "`filter_partitions` and `read_intervals` are mutually exclusive."
         )
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
-    read_args = {"intervals": read_intervals} if read_intervals else None
+    # NOTE: explicit None check -- an empty interval list must restrict the read
+    # to zero rows, not silently fall back to an unrestricted full-VDS read. The
+    # zero-row read is intentional, not an error: the info HT pipeline
+    # passes read_intervals=[] when a
+    # chunk/scout stratum derives no target intervals, so it can still write an
+    # empty provenance-stamped stratum.
+    read_args = {"intervals": read_intervals} if read_intervals is not None else None
     vds = aou_v8_resource.vds(read_args=read_args)
 
     if isinstance(chrom, str):
@@ -565,19 +576,27 @@ def get_aou_vds(
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
-        # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
-        # over rescanning the sample-collisions Table.
-        collisions = load_aou_sample_artifact_json(
-            "sample_id_collisions.json", environment=environment
-        )
-        if collisions is not None:
-            logger.info(
-                "Using precomputed sample_id_collisions.json (%d sample IDs).",
-                len(collisions),
+        if sample_collisions is None:
+            # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
+            # over rescanning the sample-collisions Table.
+            collisions = load_aou_sample_artifact_json(
+                "sample_id_collisions.json", environment=environment
             )
-            sample_collisions = set(collisions)
-        else:
-            sample_collisions = get_sample_id_collisions(environment=environment).ht()
+            if collisions is not None:
+                logger.info(
+                    "Using precomputed sample_id_collisions.json (%d sample IDs).",
+                    len(collisions),
+                )
+                sample_collisions = set(collisions)
+        if sample_collisions is None:
+            sample_collisions_ht = get_sample_id_collisions(
+                environment=environment
+            ).ht()
+            # Collect once: passing the Table would rescan it inside each of the two
+            # calls below.
+            sample_collisions = sample_collisions_ht.aggregate(
+                hl.agg.collect_as_set(sample_collisions_ht.s)
+            )
         vmt = add_project_prefix_to_sample_collisions(
             t=vmt, sample_collisions=sample_collisions, project="aou"
         )
