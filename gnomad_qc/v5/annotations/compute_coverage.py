@@ -270,7 +270,10 @@ def get_group_membership_ht(
             ),
         )
         # Overwrite the membership of samples not in the v4 release so they
-        # count only toward the coverage group, then recount every group.
+        # count only toward the coverage group, then recount every group. The
+        # recount is localized so the global is an int32 literal like the one
+        # generate_freq_group_membership_array writes; the release HTs' counts
+        # are int32 and the AN merge refuses to zip int32 with int64.
         v3_idx = hl.eval(gm_ht.freq_meta).index(GNOMAD_COVERAGE_GROUP)
         gm_ht = gm_ht.annotate(
             group_membership=hl.if_else(
@@ -283,8 +286,7 @@ def get_group_membership_ht(
             freq_meta_sample_count=gm_ht.aggregate(
                 hl.agg.array_agg(
                     lambda m: hl.agg.count_where(m), gm_ht.group_membership
-                ),
-                _localize=False,
+                )
             )
         )
         ht = gm_ht
@@ -3259,18 +3261,21 @@ def main(args):
             ht = merge_gnomad_coverage_hts(
                 gnomad_ht, gnomad_release_ht, consent_drop_count=consent_drop_count
             )
+            # The 3.0.1 coverage release table has a row for every locus it
+            # covered; the consent-drop coverage HT has a row for every locus in
+            # the v5 sites HT. A 3.0.1 locus absent from the sites HT (non-ACGT
+            # reference positions that no vep_context version has; 5 on chr22,
+            # all with mean 0) has no consent-drop row, so its subtraction is
+            # missing. Those loci cannot be in the v5 AN release either, so drop
+            # them. The dropped count comes from two reads, not a second write.
+            ht = ht.filter(hl.is_defined(ht.mean))
             ht = ht.checkpoint(merged_gnomad_coverage_ht_path, overwrite=overwrite)
-            # The consent-drop HT has a row for every sites-HT locus, so a
-            # release locus that subtracts to missing is one the sites HT lacks.
-            missing_ht = ht.filter(hl.is_missing(ht.mean))
-            n_missing = missing_ht.count()
-            if n_missing:
-                sample = [str(x) for x in missing_ht.head(15).locus.collect()]
-                raise ValueError(
-                    f"gnomAD v5 coverage HT at {merged_gnomad_coverage_ht_path} has"
-                    f" {n_missing} locus/loci with missing mean: release sites with"
-                    " no consent-drop row. Inspect before releasing. Sample loci:"
-                    f" {sample}."
+            n_dropped = gnomad_release_ht.count() - ht.count()
+            if n_dropped:
+                logger.warning(
+                    "Dropped %d 3.0.1 coverage release locus/loci absent from the"
+                    " v5 sites HT.",
+                    n_dropped,
                 )
 
         if args.merge_gnomad_an:
