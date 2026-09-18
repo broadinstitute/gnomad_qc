@@ -1075,6 +1075,10 @@ def merge_gnomad_an_hts(
     )
 
     gnomad_ht = gnomad_ht.join(gnomad_release_ht, "right")
+    # v4.1 loci outside the v5 sites HT (chrM, non-ACGT reference positions)
+    # have no consent-drop row and would keep their unsubtracted AN; drop them
+    # so this table and the coverage merge cover the same sites.
+    gnomad_ht = gnomad_ht.filter(hl.is_defined(gnomad_ht.AN_gnomad))
     joint_an, joint_strata_meta, count_arrays_dict = _merge_an_fields(
         ht=gnomad_ht,
         project_1="gnomad_release",
@@ -3267,7 +3271,7 @@ def main(args):
             # reference positions that no vep_context version has; 5 on chr22,
             # all with mean 0) has no consent-drop row, so its subtraction is
             # missing. Those loci cannot be in the v5 AN release either, so drop
-            # them. The dropped count comes from two reads, not a second write.
+            # them. The dropped count is two metadata row counts, not a scan.
             ht = ht.filter(hl.is_defined(ht.mean))
             ht = ht.checkpoint(merged_gnomad_coverage_ht_path, overwrite=overwrite)
             n_dropped = gnomad_release_ht.count() - ht.count()
@@ -3302,7 +3306,13 @@ def main(args):
                     gnomad_release_ht, gnomad_ht
                 )
             ht = merge_gnomad_an_hts(gnomad_ht, gnomad_release_ht)
-            ht.write(merged_gnomad_an_ht_path, overwrite=overwrite)
+            ht = ht.checkpoint(merged_gnomad_an_ht_path, overwrite=overwrite)
+            n_dropped = gnomad_release_ht.count() - ht.count()
+            if n_dropped:
+                logger.warning(
+                    "Dropped %d v4.1 AN release locus/loci absent from the v5 sites HT.",
+                    n_dropped,
+                )
 
         # --- ASSEMBLE (AoU): release exports + qual-hists merge. ---
         if args.export_coverage_release_files:
