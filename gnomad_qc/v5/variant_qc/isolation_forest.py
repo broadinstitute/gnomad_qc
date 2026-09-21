@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import hail as hl
 import hailtop.batch as hb
+import hailtop.fs as hfs
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.reference_genome import get_primary_contigs
@@ -865,12 +866,21 @@ def main(args):
             "hyperparameters_json": args.hyperparameters_json,
             "out_vcf_name": args.out_vcf_name,
             "gatk_image": args.gatk_image,
+            "features": VARIANT_QC_FEATURES,
+            "resource_args": {
+                m: _resource_args(m, singletons_vcf) for m in ("SNP", "INDEL")
+            },
         },
         overwrite=args.overwrite,
         write=not args.load_only,
     )
 
     if not args.load_only:
+        # Clear old outputs so a resume after a failed --overwrite cannot reuse them.
+        if args.overwrite:
+            for d in ("extract", "model", "score"):
+                if hfs.is_dir(f"{run_prefix}/{d}"):
+                    hfs.rmtree(f"{run_prefix}/{d}")
         backend = hb.ServiceBackend(
             billing_project=args.batch_billing_project,
             remote_tmpdir=f"gs://{BATCH_TMP_BUCKET}/",
@@ -957,7 +967,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         type=str,
         nargs="+",
-        default=["chr22"],
+        # Test trio stats (singletons) exist only for DENSE_TRIO_TEST_CHROMS.
+        default=["chr21"],
     )
     test_args.add_argument(
         "--test-on-v4",

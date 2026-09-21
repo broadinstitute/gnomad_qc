@@ -908,7 +908,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-chrom",
         help=(
-            "Contig(s) (e.g. 'chr22') to cut the full info HT to for --export-info-vcf. "
+            "Contig(s) (e.g. 'chr21') to cut the full info HT to for --export-info-vcf. "
             "Use to match the contigs a downstream test run scores. Implies --test."
         ),
         type=str,
