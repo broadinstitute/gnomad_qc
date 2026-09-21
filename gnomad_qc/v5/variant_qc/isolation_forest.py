@@ -911,7 +911,12 @@ def main(args):
             overwrite=args.overwrite,
         )
         try:
-            run_batch(b, "Isolation forest")
+            # An all-reused rerun schedules no jobs; an empty batch may not report
+            # success.
+            if b.select_jobs("GATK"):
+                run_batch(b, "Isolation forest")
+            else:
+                logger.info("All outputs exist; skipping Batch.")
         finally:
             backend.close()
 
