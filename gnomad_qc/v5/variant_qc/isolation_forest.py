@@ -398,14 +398,26 @@ def isolation_forest_workflow(
     :param overwrite: Whether to rerun extract/train even if outputs exist.
     :return: None.
     """
-    intervals = split_intervals_job(
-        b=b,
-        calling_intervals_args=calling_intervals_args,
-        exclude_intervals=exclude_intervals,
-        scatter_count=scatter_count,
-        gatk_image=gatk_image,
-        gcp_billing_project=gcp_billing_project,
-    ).intervals
+    # Skip SplitIntervals when every score shard is reused.
+    missing = {
+        m: [
+            idx
+            for idx in range(scatter_count)
+            if overwrite
+            or not file_exists(f"{run_prefix}/score/{m}/{out_vcf_name}{idx}.vcf.gz")
+        ]
+        for m in ("snp", "indel")
+    }
+    intervals = None
+    if any(missing.values()):
+        intervals = split_intervals_job(
+            b=b,
+            calling_intervals_args=calling_intervals_args,
+            exclude_intervals=exclude_intervals,
+            scatter_count=scatter_count,
+            gatk_image=gatk_image,
+            gcp_billing_project=gcp_billing_project,
+        ).intervals
 
     # GATK requires an uppercase --mode; VARIANT_QC_FEATURES is keyed 'snv'/'indel'.
     for mode, feature_key in [("SNP", "snv"), ("INDEL", "indel")]:
@@ -468,12 +480,8 @@ def isolation_forest_workflow(
 
         # Reuse existing score shards so a partial-failure rerun resumes instead of
         # re-scoring and clobbering every shard.
-        n_skipped = 0
-        for idx in range(scatter_count):
+        for idx in missing[m]:
             score_root = f"{run_prefix}/score/{m}/{out_vcf_name}{idx}"
-            if not overwrite and file_exists(f"{score_root}.vcf.gz"):
-                n_skipped += 1
-                continue
             score_variant_annotations_job(
                 b=b,
                 mode=mode,
@@ -488,6 +496,7 @@ def isolation_forest_workflow(
                 gatk_image=gatk_image,
                 gcp_billing_project=gcp_billing_project,
             )
+        n_skipped = scatter_count - len(missing[m])
         if n_skipped:
             logger.info("Reusing %s existing %s score shards.", n_skipped, mode)
 
