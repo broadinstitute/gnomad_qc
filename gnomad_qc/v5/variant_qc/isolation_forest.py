@@ -864,6 +864,7 @@ def main(args):
             "singletons_vcf": singletons_vcf,
             "hyperparameters_json": args.hyperparameters_json,
             "out_vcf_name": args.out_vcf_name,
+            "gatk_image": args.gatk_image,
         },
         overwrite=args.overwrite,
         write=not args.load_only,
