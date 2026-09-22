@@ -1466,19 +1466,13 @@ def compute_scout_intervals(args) -> Tuple[List[hl.utils.Interval], Dict]:
 
     parent_sizes = None
     if args.scout_byte_weight:
-        if args.test:
-            logger.warning(
-                "--scout-byte-weight is ignored with --test: the test VDS's "
-                "part-file sizes do not reflect the full VDS."
-            )
-        else:
-            parent_sizes = _partition_entry_sizes(contig=args.chrom)
-            logger.info(
-                "Byte-weighting scout chunks over %d parent partition entries "
-                "part-file sizes%s.",
-                len(parent_sizes),
-                f" on {args.chrom}" if args.chrom else "",
-            )
+        parent_sizes = _partition_entry_sizes(contig=args.chrom)
+        logger.info(
+            "Byte-weighting scout chunks over %d parent partition entries "
+            "part-file sizes%s.",
+            len(parent_sizes),
+            f" on {args.chrom}" if args.chrom else "",
+        )
 
     intervals, byte_weight_info = group_scout_loci_into_intervals(
         target_ht,
@@ -1866,8 +1860,17 @@ def _validate_args(args) -> None:
             "--scout-alleles requires at least one of --min-alleles or --max-alleles"
         )
 
-    if args.scout_byte_weight and not args.scout_alleles:
-        raise ValueError("--scout-byte-weight requires --scout-alleles.")
+    if args.scout_byte_weight:
+        if not args.scout_alleles:
+            raise ValueError("--scout-byte-weight requires --scout-alleles.")
+        if args.test:
+            # Rejected rather than ignored: a silently dropped flag would make
+            # a --test run look like it exercised the weighted path.
+            raise ValueError(
+                "--scout-byte-weight cannot be combined with --test: the test "
+                "VDS's entries part-file sizes do not reflect the full VDS, so "
+                "the derived weights would be meaningless."
+            )
 
     if args.scout_limit_intervals is not None:
         if not args.scout_alleles:
@@ -2862,7 +2865,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "is disproportionately large (bytes per target locus vs the median "
             "partition), so entry-dense regions get proportionally more, smaller "
             "intervals. Uses only storage metadata (one JSON read + one parts "
-            "listing). Requires --scout-alleles; ignored with --test."
+            "listing). Requires --scout-alleles; incompatible with --test."
         ),
         action="store_true",
     )
