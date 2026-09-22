@@ -1667,8 +1667,13 @@ def _partition_entry_sizes(contig: str = None) -> List[Dict]:
             continue
         size = size_by_name.get(name)
         if size is None:
-            logger.warning("No parts listing entry for partition %d (%s).", gi, name)
-            continue
+            # Dropping the partition would leave its target loci in the scout
+            # table with no parent of their own; the lower-bound search would
+            # fold them into a neighbor and chunk them at the wrong density.
+            raise ValueError(
+                f"No entries parts listing entry for partition {gi} ({name}); "
+                "the parent byte map would be incomplete."
+            )
         out.append(
             {
                 "index": gi,
@@ -1708,6 +1713,12 @@ def compute_contig_intervals(args) -> List[hl.utils.Interval]:
 
     spans = _contig_partition_spans(contig, contig_len)
     n_parts = len(spans)
+    if n_parts == 0:
+        logger.warning(
+            "No %s variant-data partition spans found; deriving no intervals.",
+            contig,
+        )
+        return []
 
     if args.read_subintervals_scale is not None:
         per_part = max(1, math.ceil(args.read_subintervals_scale))
@@ -1870,6 +1881,14 @@ def _validate_args(args) -> None:
                 "--scout-byte-weight cannot be combined with --test: the test "
                 "VDS's entries part-file sizes do not reflect the full VDS, so "
                 "the derived weights would be meaningless."
+            )
+        cap = args.scout_byte_weight_cap
+        if not math.isfinite(cap) or cap < 1.0:
+            # The cap divides the base chunk size, so 0 raises, NaN breaks the
+            # ceiling, and anything in (0, 1) enlarges chunks despite the flag
+            # being an up-weight ceiling.
+            raise ValueError(
+                f"--scout-byte-weight-cap must be a finite value >= 1.0; got {cap}."
             )
 
     if args.scout_limit_intervals is not None:
@@ -2803,7 +2822,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Number of locus sub-intervals to subdivide each chunk into, per "
             "contig. Default is None (1 sub-interval per contig, legacy "
-            "behavior). Mutually exclusive with --read-subintervals-scale."
+            "behavior). In contig mode (--chrom without --explode-partitions) "
+            "this count is spread across the contig's VDS partition spans "
+            "with a floor of one interval per span, so the realized total is "
+            "at least the number of spans regardless of this value. Mutually "
+            "exclusive with --read-subintervals-scale."
         ),
         type=int,
         default=None,
