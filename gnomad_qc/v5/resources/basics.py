@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -13,8 +13,10 @@ from gnomad.resources.resource_utils import (
 from gnomad.utils.file_utils import file_exists
 from hail.utils import new_temp_file
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.basics import _split_and_filter_variant_data_for_loading
 from gnomad_qc.v5.resources.constants import (
+    AOU_BUCKET,
     AOU_GENOMIC_METRICS_PATH,
     AOU_LOW_QUALITY_PATH,
     AOU_WGS_BUCKET,
@@ -139,6 +141,8 @@ def _init_hail(
     environment: str = "batch",
     billing_project: Optional[str] = None,
     tmp_dir_days: Optional[int] = 4,
+    experimental: bool = False,
+    batch_id: Optional[int] = None,
     **kwargs,
 ) -> None:
     """
@@ -150,11 +154,43 @@ def _init_hail(
         Default is None. When None, uses "broad-mpg-gnomad".
     :param tmp_dir_days: Retention days for the tmp directory passed to qc_temp_prefix.
         Must be None, 4, or 30. Default is 4.
+    :param experimental: If True (batch only), route the init through
+        ``hl.experimental.init`` instead of ``hl.init`` and attach the
+        QoB driver to an existing Hail Batch (also required to pass
+        ``jvm_heap_size``, which is experimental-only). By default,
+        ``batch_id`` is auto-resolved from the ``HAIL_BATCH_ID`` env
+        var (set by Hail Batch when a job runs inside a batch); pass
+        ``batch_id`` explicitly to override. Raises error if neither is
+        available.
+    :param batch_id: Explicit Hail Batch ID to attach the QoB driver
+        to. When set, automatically enables the experimental path
+        (attach-to-batch is only exposed via ``hl.experimental.init``).
+        When unset and ``experimental=True``, falls back to the
+        ``HAIL_BATCH_ID`` env var.
     :param kwargs: Additional keyword arguments forwarded to hl.init() in all
         environments. None values are silently dropped, so optional params (e.g.
         batch resource params from :func:`_get_batch_resource_kwargs`, or
         ``spark_conf`` for dataproc) can be passed unconditionally.
     """
+    use_experimental = experimental or batch_id is not None
+    if use_experimental and environment != "batch":
+        raise ValueError(
+            "experimental=True / batch_id=... is only supported when"
+            f" environment='batch'; got environment={environment!r}."
+        )
+
+    if experimental and batch_id is None:
+        # Default: pick up the outer batch's ID from HAIL_BATCH_ID
+        # (set automatically by Hail Batch inside a batch job).
+        env_batch_id = os.getenv("HAIL_BATCH_ID")
+        if not env_batch_id:
+            raise ValueError(
+                "experimental=True requires batch_id, or HAIL_BATCH_ID"
+                " in the environment. (When running outside a Hail Batch"
+                " job, pass batch_id explicitly or omit experimental.)"
+            )
+        batch_id = int(env_batch_id)
+
     if environment == "rwb":
         log = f"/home/jupyter/workspaces/gnomadproduction/{log_name}.log"
     elif environment == "batch":
@@ -179,7 +215,24 @@ def _init_hail(
                 "regions": ["us-central1"],
             }
         )
-    hl.init(**init_kwargs, default_reference="GRCh38")
+        if batch_id is not None:
+            init_kwargs["batch_id"] = batch_id
+
+    # Two init paths: the experimental path is required when we need
+    # attach-to-batch (`batch_id`) or per-driver JVM heap sizing
+    # (`jvm_heap_size`); the regular path is the default.
+    if use_experimental:
+        # Hail team request: skip Hail's own logging configuration on the
+        # experimental path so they can attach their own handlers when
+        # troubleshooting QoB-driver issues.
+        init_kwargs["skip_logging_configuration"] = True
+        hl.experimental.init(**init_kwargs)
+    else:
+        # `jvm_heap_size` is `hl.experimental.init`-only; `hl.init` would
+        # reject it.
+        init_kwargs.pop("jvm_heap_size", None)
+        hl.init(**init_kwargs)
+    hl.default_reference("GRCh38")
 
 
 def _init_hail_local_spark(
@@ -215,7 +268,102 @@ def _init_hail_local_spark(
     hl.init(**init_kwargs)
 
 
-# hl.default_reference("GRCh38")
+# GCS buckets that our user emails cannot stat (the read-only Batch bucket and the
+# controlled-access AoU bucket), so resources living in them must be excluded from
+# existence checks. All other buckets (including the writable Batch buckets) are
+# stat-able and checked normally.
+_UNSTATTABLE_BUCKET_PREFIXES = (
+    f"gs://{BATCH_READ_ONLY_BUCKET}",
+    f"gs://{AOU_BUCKET}",
+)
+
+
+def _drop_unstattable_resources(
+    step_resources: Optional[Dict[str, List]],
+) -> Tuple[Optional[Dict[str, List]], List[str]]:
+    """
+    Drop resources in unstattable buckets from a step-resource dict.
+
+    `hailtop.fs.exists` and `hl.hadoop_exists` use our user emails to check for file
+    existence, and our user emails cannot stat the buckets in
+    `_UNSTATTABLE_BUCKET_PREFIXES`, so those resources must be excluded from existence
+    checks.
+
+    :param step_resources: A dictionary with keys as pipeline steps and values as lists
+        of resources (path strings or resource objects with a `.path` attribute).
+        Default is None.
+    :return: A tuple of (filtered dictionary with unstattable resources removed and any
+        steps left with no resources dropped, list of the dropped resource paths). The
+        filtered dictionary is None if `step_resources` is None.
+    """
+    if step_resources is None:
+        return None, []
+
+    filtered = {}
+    skipped = []
+    for step, resources in step_resources.items():
+        kept = []
+        for r in resources:
+            path = r if isinstance(r, str) else r.path
+            if path.startswith(_UNSTATTABLE_BUCKET_PREFIXES):
+                skipped.append(path)
+            else:
+                kept.append(r)
+        if kept:
+            filtered[step] = kept
+
+    return filtered, skipped
+
+
+def _check_resource_existence(
+    environment: str,
+    input_step_resources: Optional[Dict[str, List]] = None,
+    output_step_resources: Optional[Dict[str, List]] = None,
+    overwrite: bool = False,
+) -> None:
+    """
+    Check resource existence, skipping only resources our user emails cannot stat.
+
+    `hailtop.fs.exists` and `hl.hadoop_exists` use our user emails to check for file
+    existence, and our user emails do not have access to the buckets in
+    `_UNSTATTABLE_BUCKET_PREFIXES` (the read-only Batch bucket and the controlled-access
+    AoU bucket) for v5. Resources living in those buckets are dropped before checking;
+    all other buckets (including the writable Batch buckets) are stat-able and checked
+    normally.
+
+    :param environment: The environment to check. When 'batch', resources in unstattable
+        buckets are skipped.
+    :param input_step_resources: A dictionary with keys as pipeline steps that generate
+        input files and the value as a list of the input files to check the existence
+        of. Default is None.
+    :param output_step_resources: A dictionary with keys as pipeline step that generate
+        output files and the value as a list of the output files to check the existence
+        of. Default is None.
+    :param overwrite: The overwrite parameter used when writing the output files.
+        Default is False.
+    :return: None.
+    """
+    if environment == "batch":
+        input_step_resources, skipped_input = _drop_unstattable_resources(
+            input_step_resources
+        )
+        output_step_resources, skipped_output = _drop_unstattable_resources(
+            output_step_resources
+        )
+        skipped = skipped_input + skipped_output
+        if skipped:
+            logger.info(
+                "Skipping resource existence checks for the following unstattable "
+                "bucket resources (read-only Batch and controlled-access AoU buckets). "
+                "To replace any existing outputs there, run with --overwrite:\n%s",
+                "\n".join(skipped),
+            )
+
+    check_resource_existence(
+        input_step_resources=input_step_resources,
+        output_step_resources=output_step_resources,
+        overwrite=overwrite,
+    )
 
 
 def qc_temp_prefix(
@@ -291,6 +439,7 @@ _BATCH_RESOURCE_PARAMS = [
     "app_name",
     "driver_cores",
     "driver_memory",
+    "jvm_heap_size",
     "worker_cores",
     "worker_memory",
 ]
@@ -301,8 +450,13 @@ def _get_batch_resource_kwargs(args) -> dict:
     Extract optional Hail Batch resource parameters from parsed args, omitting None values.
 
     Intended for use with scripts that expose ``--app-name``, ``--driver-cores``,
-    ``--driver-memory``, ``--worker-cores``, and ``--worker-memory`` arguments. The
-    result can be unpacked directly into :func:`_init_hail`.
+    ``--driver-memory``, ``--jvm-heap-size``, ``--worker-cores``, and
+    ``--worker-memory`` arguments. The result can be unpacked directly into
+    :func:`_init_hail`.
+
+    ``jvm_heap_size`` is only honored under ``hl.experimental.init``; it is
+    dropped silently for the non-experimental path since ``hl.init`` rejects
+    unknown kwargs.
 
     :param args: Parsed command-line arguments.
     :return: Dict of non-None batch resource kwargs.
@@ -368,7 +522,7 @@ def get_aou_vds(
     :param sex_chr_only: Whether to include only sex chromosomes. Default is False.
     :param filter_variant_ht: Optional argument to filter the VDS to a specific set of variants. Only supported when splitting the VDS.
     :param filter_intervals: Optional argument to filter the VDS to specific intervals (applied AFTER the read; does not prune the read).
-    :param read_intervals: Optional list of locus intervals to prune the VDS to at READ time (``hl.vds.read_vds(intervals=...)``), so only overlapping partitions are scanned. Prefer this over `filter_intervals` for a small locus scope -- a post-read filter otherwise leaves the read fanned across thousands of (empty) partitions. Default is None.
+    :param read_intervals: Optional list of locus intervals to prune the VDS to at READ time (``hl.vds.read_vds(intervals=...)``), so only overlapping partitions are scanned. Prefer this over `filter_intervals` for a small locus scope -- a post-read filter otherwise leaves the read fanned across thousands of (empty) partitions. Mutually exclusive with `filter_partitions`. Default is None.
     :param split_reference_blocks: Whether to split the reference data at the edges of the intervals defined by `filter_intervals`. Default is True.
     :param remove_dead_alleles: Whether to remove dead alleles when removing samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata. Default is False.
@@ -385,6 +539,10 @@ def get_aou_vds(
     :return: AoU v8 VDS.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    if filter_partitions is not None and read_intervals is not None:
+        raise ValueError(
+            "`filter_partitions` and `read_intervals` are mutually exclusive."
+        )
     aou_v8_resource = aou_test_dataset if test else aou_genotypes
 
     if isinstance(chrom, str):
@@ -436,10 +594,15 @@ def get_aou_vds(
     # small region: a post-read interval filter does not reliably push partition pruning
     # back through the earlier transforms, so the read otherwise fans across thousands of
     # (empty) partitions -- each a tiny QoB task whose startup overhead dominates cost.
+    # NOTE: explicit None check -- an empty interval list must restrict the read
+    # to zero rows, not silently fall back to an unrestricted full-VDS read. The
+    # zero-row read is intentional, not an error: the info HT pipeline
+    # passes read_intervals=[] when a chunk/scout stratum derives no target
+    # intervals, so it can still write an empty provenance-stamped stratum.
     read_args = {}
     if n_partitions_on_read:
         read_args["n_partitions"] = n_partitions_on_read
-    if read_intervals:
+    if read_intervals is not None:
         read_args["intervals"] = read_intervals
     vds = aou_v8_resource.vds(read_args=read_args or None)
 
@@ -535,7 +698,6 @@ def get_aou_vds(
     vds = hl.vds.filter_samples(
         vds, s_to_exclude, keep=False, remove_dead_alleles=remove_dead_alleles
     )
-
     # Report final sample exclusion count.
     if log_sample_counts:
         n_samples_after = vds.variant_data.count_cols()
@@ -546,13 +708,29 @@ def get_aou_vds(
 
     if release_only or high_quality_only or annotate_meta or add_project_prefix:
         # Import here to avoid circular imports.
-        from gnomad_qc.v5.resources.meta import get_sample_id_collisions, meta
+        from gnomad_qc.v5.resources.meta import (
+            get_sample_id_collisions,
+            load_aou_sample_artifact_json,
+            meta,
+        )
 
         meta_ht = meta(data_type="genomes", environment=environment).ht()
 
         logger.warning(
             "Adding 'aou_' prefix to samples that had ID collisions with gnomAD samples..."
         )
+        if sample_collisions is None:
+            # Prefer the permanent precomputed JSON (write_aou_vds_sample_jsons)
+            # over rescanning the sample-collisions Table.
+            collisions = load_aou_sample_artifact_json(
+                "sample_id_collisions.json", environment=environment
+            )
+            if collisions is not None:
+                logger.info(
+                    "Using precomputed sample_id_collisions.json (%d sample IDs).",
+                    len(collisions),
+                )
+                sample_collisions = set(collisions)
         if sample_collisions is None:
             sample_collisions_ht = get_sample_id_collisions(
                 environment=environment
@@ -595,15 +773,36 @@ def get_aou_vds(
 
     vds = hl.vds.VariantDataset(rmt, vmt)
 
+    # For the release and high-quality filters, prefer the permanent precomputed
+    # JSONs (write_aou_vds_sample_jsons) over the meta-table scans. The JSON IDs
+    # are post-prefix, matching the VDS sample IDs at this point.
     if release_only:
         logger.info("Filtering VDS to release samples only...")
-        filter_expr = meta_ht.release
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        release_samples = load_aou_sample_artifact_json(
+            "release_samples.json", environment=environment
+        )
+        if release_samples is not None:
+            logger.info(
+                "Using precomputed release_samples.json (%d sample IDs).",
+                len(release_samples),
+            )
+            vds = hl.vds.filter_samples(vds, release_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
 
     if high_quality_only:
         logger.info("Filtering VDS to high quality samples only...")
-        filter_expr = meta_ht.high_quality
-        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        hq_samples = load_aou_sample_artifact_json(
+            "high_quality_samples.json", environment=environment
+        )
+        if hq_samples is not None:
+            logger.info(
+                "Using precomputed high_quality_samples.json (%d sample IDs).",
+                len(hq_samples),
+            )
+            vds = hl.vds.filter_samples(vds, hq_samples)
+        else:
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.high_quality))
 
     if filter_samples:
         logger.info(
@@ -844,7 +1043,7 @@ def get_samples_to_exclude(
 
     if overwrite or not _file_exists_for_env(ste_resource.path, environment):
 
-        if not _file_exists_for_env(lq_resource.path, environment):
+        if overwrite or not _file_exists_for_env(lq_resource.path, environment):
             # Load samples flagged in AoU Known Issues #1.
             logger.info("Removing 3 known low-quality samples (Known Issues #1)...")
             low_quality_ht = hl.import_table(AOU_LOW_QUALITY_PATH).key_by("research_id")
@@ -854,7 +1053,7 @@ def get_samples_to_exclude(
             hl.experimental.write_expression(
                 hl.set(low_quality_sample_ids), lq_resource.path
             )
-        if not _file_exists_for_env(fm_resource.path, environment):
+        if overwrite or not _file_exists_for_env(fm_resource.path, environment):
             # Load and count samples failing genomic metrics filters.
             failing_genomic_metrics_samples = get_aou_failing_genomic_metrics_samples()
             logger.info(

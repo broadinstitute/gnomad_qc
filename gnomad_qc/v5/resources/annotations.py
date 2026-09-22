@@ -34,6 +34,7 @@ def _annotations_root(
     data_set: str = "aou",
     environment: str = "batch",
     read_only: bool = False,
+    days: Optional[int] = None,
 ) -> str:
     """
     Get root path to the variant annotation files.
@@ -47,6 +48,8 @@ def _annotations_root(
     :param read_only: Whether the path is for read-only resources. When True
         and environment is "batch", the read-only bucket is used.
         Default is False.
+    :param days: Optional retention days for the temp bucket; only used when `test`
+        is True. Default is None.
     :return: Root path of the variant annotation files.
     """
     _validate_environment(environment, _ALL_ENVIRONMENTS)
@@ -54,20 +57,22 @@ def _annotations_root(
 
     if test:
         return (
-            f"{qc_temp_prefix(version=version, environment=environment)}{path_suffix}"
+            f"{qc_temp_prefix(version=version, environment=environment, days=days)}"
+            f"{path_suffix}"
         )
 
     return f"gs://{_get_base_bucket(environment, read_only=read_only)}/v{version}/{path_suffix}"
 
 
 ######################################################################
-# Variant QC annotation resources
+# Trio and sibling stats resources
 ######################################################################
 
 
 def get_trio_stats(
     test: bool = False,
     environment: str = "batch",
+    chrom: Optional[str] = None,
 ) -> VersionedTableResource:
     """
     Get gnomAD v5 (AoU genomes only) trio stats VersionedTableResource.
@@ -75,6 +80,8 @@ def get_trio_stats(
     :param test: Whether to use a temporary path for testing.
     :param environment: Environment to use. Default is "batch". Must be one of "rwb"
         or "batch".
+    :param chrom: Optional single chromosome for a per-chromosome trio stats HT (trio
+        stats are computed one chromosome at a time). Default is None (combined HT).
     :return: AoU trio stats VersionedTableResource.
     """
     _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
@@ -83,7 +90,7 @@ def get_trio_stats(
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test, environment=environment)}/aou.genomes.v{version}."
-                "trio_stats.ht"
+                f"trio_stats{f'.{chrom}' if chrom else ''}.ht"
             )
             for version in ANNOTATION_VERSIONS
         },
@@ -351,6 +358,98 @@ def get_info_ht(
     )
 
 
+def get_ac_info_ht_checkpoint_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    add_test_suffix: bool = False,
+    environment: str = "batch",
+    test: bool = False,
+    test_n_partitions: int = None,
+    contig: str = None,
+    chunk_start: int = None,
+    chunk_stop: int = None,
+    min_alleles: int = None,
+    max_alleles: int = None,
+    union: bool = False,
+) -> str:
+    """
+    Get checkpoint path for the AC info table written by --generate-ac-info-ht.
+
+    Uses the durable annotations bucket (30-day temp bucket when `test` is True)
+    and a filename derived from the run's parameters
+    (each component included only when set), so per-stratum and per-chunk runs
+    get distinct paths without manual overrides, e.g.
+    ``ac_info_ht_test_3p_min10_max100.ht`` or ``ac_info_ht_chunk0_2000_max9.ht``.
+    This helper only returns the checkpoint path and does not imply that reruns
+    will automatically reuse existing data.
+
+    :param version: Version of annotation path to return.
+    :param add_test_suffix: Whether the filename should include the test suffix.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :param test: If True, place the checkpoint under the 30-day temp bucket
+        (--use-tmp-info-paths or test runs); default False places it under the
+        durable annotations bucket, so production AC info HTs are kept.
+    :param test_n_partitions: Optional number of test partitions used for the run.
+    :param contig: Optional contig the run was restricted to.
+    :param chunk_start: Optional chunk start partition index used for the run.
+    :param chunk_stop: Optional chunk stop partition index used for the run.
+    :param min_alleles: Optional minimum allele count used for the run.
+    :param max_alleles: Optional maximum allele count used for the run.
+    :param union: Whether this is the unioned (all-strata) AC info HT, i.e. the
+        --union-ac-info-hts output that --create-final-info-ht reads.
+    :return: Path to AC info checkpoint HT.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    parts = ["ac_info_ht"]
+    if add_test_suffix:
+        parts.append("test")
+    if test_n_partitions is not None:
+        parts.append(f"{test_n_partitions}p")
+    if contig is not None:
+        parts.append(contig)
+    if chunk_start is not None or chunk_stop is not None:
+        parts.append(f"chunk{chunk_start}_{chunk_stop}")
+    if min_alleles is not None:
+        parts.append(f"min{min_alleles}")
+    if max_alleles is not None:
+        parts.append(f"max{max_alleles}")
+    if union:
+        parts.append("union")
+    prefix = (
+        f"{_annotations_root(version, test=test, environment=environment, days=30)}"
+        "/create_info_ht"
+    )
+    return f"{prefix}/{'_'.join(parts)}.ht"
+
+
+def get_vcf_ht_checkpoint_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    add_test_suffix: bool = False,
+    environment: str = "batch",
+    test: bool = False,
+) -> str:
+    """
+    Get checkpoint path for the reformatted sites VCF HT (--create-sites-vcf-ht).
+
+    :param version: Version of annotation path to return.
+    :param add_test_suffix: Whether the filename should include the test suffix. A
+        test sites VCF HT holds only the first two partitions of the VCF, so it is
+        a distinct file.
+    :param environment: Environment to use. Default is "batch". Must be one of
+        "rwb" or "batch".
+    :param test: If True, place the checkpoint under the 30-day temp bucket
+        (--use-tmp-info-paths or test runs); default False places it under the
+        durable annotations bucket.
+    :return: Path to the reformatted sites VCF HT checkpoint.
+    """
+    _validate_environment(environment, _SAMPLE_DATA_ENVIRONMENTS)
+    prefix = (
+        f"{_annotations_root(version, test=test, environment=environment, days=30)}"
+        "/create_info_ht"
+    )
+    return f"{prefix}/sites_vcf{'_test' if add_test_suffix else ''}.ht"
+
+
 def info_vcf_path(
     version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
@@ -399,6 +498,76 @@ def get_aou_annotated_sites_only_vcf(environment: str = "batch") -> str:
     if environment == "batch":
         return f"gs://{bucket}/aou_sites_vcf/v8/echo_full_gnomad_annotated.sites-only.vcf.gz"
     return f"gs://{bucket}/echo_full_gnomad_annotated.sites-only.vcf.gz"
+
+
+def get_variant_qc_annotations(
+    test: bool = False, environment: str = "batch"
+) -> VersionedTableResource:
+    """
+    Return the VersionedTableResource to the variant QC annotation Table.
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.AS_QD < 0.5) | (ht.AS_FS > 60) | (ht.AS_MQ < 30)
+
+    :param test: Whether to use a tmp path for testing.
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :return: Table with variant QC annotations.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    return VersionedTableResource(
+        CURRENT_ANNOTATION_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.variant_qc_annotations.ht"
+            )
+            for version in ANNOTATION_VERSIONS
+        },
+    )
+
+
+def get_true_positive_vcf_path(
+    version: str = CURRENT_ANNOTATION_VERSION,
+    test: bool = False,
+    adj: bool = False,
+    true_positive_type: str = "transmitted_singleton",
+    environment: str = "batch",
+) -> str:
+    """
+    Provide the path to the true positive VCF used as input to VQSR.
+
+    :param version: Version of true positive VCF path to return. Default is CURRENT_ANNOTATION_VERSION.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param adj: Whether to use adj genotypes. Default is False.
+    :param true_positive_type: Type of true positive VCF path to return. Should be one
+        of "transmitted_singleton", "sibling_singleton", or
+        "transmitted_singleton.sibling_singleton". Default is "transmitted_singleton".
+    :param environment: Environment to use. Default is "batch". Must be one of "rwb", "batch", or "dataproc".
+    :return: String for the path to the true positive VCF.
+    """
+    _validate_environment(environment, _ALL_ENVIRONMENTS)
+    tp_types = [
+        "transmitted_singleton",
+        "sibling_singleton",
+        "transmitted_singleton.sibling_singleton",
+    ]
+    if true_positive_type not in tp_types:
+        raise ValueError(f"true_positive_type must be one of {tp_types}")
+    return f'{_annotations_root(version, test=test, environment=environment)}/gnomad.genomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
 
 
 ######################################################################

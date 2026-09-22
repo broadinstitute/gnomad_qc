@@ -7,12 +7,7 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
-import onnx
-from gnomad.sample_qc.ancestry import (
-    apply_onnx_classification_model,
-    assign_genetic_ancestry_pcs,
-    run_pca_with_relateds,
-)
+from gnomad.sample_qc.ancestry import assign_genetic_ancestry_pcs, run_pca_with_relateds
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -546,6 +541,17 @@ def project_aou_onto_v4(
     :return: Table of PCA scores of projected AoU samples onto v4 loadings and table of genetic ancestry assignments for projected AoU samples.
     """
     # Load ONNX RF model.
+    try:
+        import onnx  # pylint: disable=import-error
+    except ImportError as e:
+        raise ImportError(
+            "This function requires 'onnx', which is not included in the default gnomad_methods dependencies because"
+            " it conflicts with hailctl's protobuf pin. Install it with:"
+            " pip install onnx"
+        ) from e
+
+    from gnomad.sample_qc.ancestry import apply_onnx_classification_model
+
     with hl.hadoop_open(gnomad_v4_onnx_rf_path, "rb") as f:
         v4_onx_fit = onnx.load(f)
 
